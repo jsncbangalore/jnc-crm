@@ -1370,7 +1370,7 @@ export default function LeadsPage() {
                         </label>
                       ) : (
                         <span className="text-slate-600 dark:text-slate-400 italic">
-                          ℹ️ Outbound emailing is authorized for <strong>Super Admin</strong> only. This note will be recorded internally.
+                          Outbound emailing is authorized for <strong>Super Admin</strong> only. This note will be recorded internally.
                         </span>
                       )}
                       <span className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">From: {user?.email || 'System Email Account'}</span>
@@ -1546,7 +1546,7 @@ export default function LeadsPage() {
                       value={newLead.urgency}
                       onChange={(e) => setNewLead({ ...newLead, urgency: e.target.value })}
                     >
-                      <option value="urgent">🔥 Urgent (Immediate Procurement)</option>
+                      <option value="urgent">Urgent (Immediate Procurement)</option>
                       <option value="standard">Standard (Next 1-2 Weeks)</option>
                       <option value="planning">Planning (Budgeting / Future)</option>
                     </select>

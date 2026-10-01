@@ -10,8 +10,8 @@ import {
 
 // ─── PLATFORM OWNER MASTER NAVIGATION ─────────────────────────────────────────
 const platformMasterNavItems = [
-  { to: '/platform/companies', icon: Building2, label: '🏢 Companies Hub' },
-  { to: '/users',              icon: Shield,    label: '👥 Global Users' },
+  { to: '/platform/companies', icon: Building2, label: 'Companies Hub' },
+  { to: '/users',              icon: Shield,    label: 'Global Users' },
 ];
 
 // ─── CLIENT ORGANIZATION CRM NAVIGATION ──────────────────────────────────────

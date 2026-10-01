@@ -299,7 +299,7 @@ export default function ProjectStockPositionView() {
               className="btn bg-gradient-to-r from-crm-blue to-crm-teal hover:opacity-90 text-white text-xs gap-1.5 shadow-glow-blue font-bold px-3.5 py-2"
               title="Pick from company component inventory & batch add to project"
             >
-              <Boxes size={15} /> ⚡ Company Component Library (Fast Add)
+              <Boxes size={15} /> Company Component Library (Fast Add)
             </button>
           )}
 
@@ -353,12 +353,12 @@ export default function ProjectStockPositionView() {
               onChange={(e) => setSelectedProject(e.target.value)}
               className="input text-xs w-full font-bold text-slate-950 dark:text-white bg-slate-100 dark:bg-[#141722] border-crm-blue/40"
             >
-              <option value="all">📁 All Finished Products ({projectsList.length} Active)</option>
+              <option value="all">All Finished Products ({projectsList.length} Active)</option>
               {projectsList.map((proj) => (
-                <option key={proj} value={proj}>📦 {proj}</option>
+                <option key={proj} value={proj}>{proj}</option>
               ))}
               {projectsList.length === 0 && (
-                <option value="2 CTBS- 20 Zone -Controller">📦 2 CTBS- 20 Zone -Controller</option>
+                <option value="2 CTBS- 20 Zone -Controller">2 CTBS- 20 Zone -Controller</option>
               )}
             </select>
           </div>
@@ -399,7 +399,7 @@ export default function ProjectStockPositionView() {
           >
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-crm-coral flex items-center gap-1.5">
-                <ShieldAlert size={16} /> 🔴 MUST BUY FROM SUPPLIERS
+                <ShieldAlert size={16} /> BUY FROM SUPPLIERS
               </span>
               <span className="px-2 py-0.5 rounded text-[10px] font-black bg-red-500/20 text-red-300">
                 {buyItems.length} SHORTAGES
@@ -420,7 +420,7 @@ export default function ProjectStockPositionView() {
           >
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-emerald-400 flex items-center gap-1.5">
-                <CheckCircle2 size={16} /> 🟢 READY TO COLLECT FROM STORE
+                <CheckCircle2 size={16} /> READY TO COLLECT FROM STORE
               </span>
               <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-500/20 text-emerald-300">
                 {collectItems.length} AVAILABLE
@@ -441,7 +441,7 @@ export default function ProjectStockPositionView() {
           >
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-crm-blue-light flex items-center gap-1.5">
-                <Layers size={16} /> 📋 TOTAL FINISHED PRODUCT DEMAND
+                <Layers size={16} /> TOTAL FINISHED PRODUCT DEMAND
               </span>
               <span className="px-2 py-0.5 rounded text-[10px] font-black bg-crm-blue/20 text-crm-blue-light">
                 {positions.length} TOTAL PARTS
@@ -457,7 +457,7 @@ export default function ProjectStockPositionView() {
         </div>
       </div>
 
-      {/* ─── TAB 1: 🔴 WHAT TO BUY FROM SUPPLIERS (PROCUREMENT LIST) ──────── */}
+      {/* ─── TAB 1: WHAT TO BUY FROM SUPPLIERS (PROCUREMENT LIST) ──────── */}
       {activeTab === 'what_to_buy' && (
         <div className="space-y-3">
           <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-between text-xs flex-wrap gap-2">
@@ -532,7 +532,7 @@ export default function ProjectStockPositionView() {
                       </td>
                       <td className="p-3 text-center">
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300 border border-red-300 dark:border-red-500/40">
-                          🔴 Critical Shortage
+                          Critical Shortage
                         </span>
                       </td>
                       {canManage && (
@@ -555,7 +555,7 @@ export default function ProjectStockPositionView() {
         </div>
       )}
 
-      {/* ─── TAB 2: 🟢 WHAT TO COLLECT FROM STORE (PICKING LIST) ──────────── */}
+      {/* ─── TAB 2: WHAT TO COLLECT FROM STORE (PICKING LIST) ──────────── */}
       {activeTab === 'what_to_collect' && (
         <div className="space-y-3">
           <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-xs flex-wrap gap-2">
@@ -627,11 +627,11 @@ export default function ProjectStockPositionView() {
                         <td className="p-3 text-center">
                           {isFullyCovered ? (
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                              🟢 100% In-Stock
+                              100% In-Stock
                             </span>
                           ) : (
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                              🟡 Partial ({item.presentStock} / {item.plannedRequirement})
+                              Partial ({item.presentStock} / {item.plannedRequirement})
                             </span>
                           )}
                         </td>
@@ -656,7 +656,7 @@ export default function ProjectStockPositionView() {
         </div>
       )}
 
-      {/* ─── TAB 3: 📋 COMPLETE ENGINEERING BOM TABLE ──────────────────────── */}
+      {/* ─── TAB 3: COMPLETE ENGINEERING BOM TABLE ──────────────────────── */}
       {activeTab === 'full_bom' && (
         <div className="space-y-3">
           <div className="border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-hidden bg-slate-100 dark:bg-[#141722] shadow-xl">
@@ -683,7 +683,7 @@ export default function ProjectStockPositionView() {
                   {positions.length === 0 ? (
                     <tr>
                       <td colSpan={13} className="p-10 text-center text-slate-500">
-                        No BOM positions found for this product. Click "⚡ Company Component Library (Fast Add)" to add components.
+                        No BOM positions found for this product. Click "Company Component Library (Fast Add)" to add components.
                       </td>
                     </tr>
                   ) : (
@@ -710,7 +710,7 @@ export default function ProjectStockPositionView() {
                           </td>
                           <td className="p-2.5 text-center">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${hasShortage ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300 border border-red-300 dark:border-red-500/30 font-bold' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}`}>
-                              {hasShortage ? '🔴 Shortage' : '🟢 Sufficient'}
+                              {hasShortage ? 'Shortage' : 'Sufficient'}
                             </span>
                           </td>
                           {canManage && (
@@ -774,12 +774,12 @@ export default function ProjectStockPositionView() {
               </div>
 
               <form onSubmit={handleSavePosition} className="space-y-4 text-xs">
-                {/* ⚡ Quick Auto-Fill from Company Component Library */}
+                {/* Quick Auto-Fill from Company Component Library */}
                 <div className="p-3.5 rounded-xl bg-gradient-to-r from-crm-blue/15 to-crm-teal/15 border border-crm-blue/30 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-slate-950 dark:text-white flex items-center gap-1.5">
                       <Sparkles size={14} className="text-amber-400" />
-                      ⚡ Instant Auto-Fill from Company Inventory Catalog
+                      Instant Auto-Fill from Company Inventory Catalog
                     </span>
                     <span className="text-[10.5px] text-emerald-400 font-bold">
                       {skus.length} Company Parts Ready
@@ -978,10 +978,10 @@ export default function ProjectStockPositionView() {
                       onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                       className="input font-bold"
                     >
-                      <option value="Sufficient">🟢 Sufficient</option>
-                      <option value="Shortage">🟡 Shortage</option>
-                      <option value="Critical Shortage">🔴 Critical Shortage</option>
-                      <option value="Surplus">🔵 Surplus</option>
+                      <option value="Sufficient">Sufficient</option>
+                      <option value="Shortage">Shortage</option>
+                      <option value="Critical Shortage">Critical Shortage</option>
+                      <option value="Surplus">Surplus</option>
                     </select>
                   </div>
                 </div>

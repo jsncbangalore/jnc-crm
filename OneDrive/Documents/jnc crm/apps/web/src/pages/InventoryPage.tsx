@@ -1048,7 +1048,7 @@ export default function InventoryPage() {
                           {/* Actions: Add List, Restock, Edit & Delete */}
                           <td className={`text-right whitespace-nowrap min-w-[210px] ${density === 'compact' ? 'px-2 py-1.5' : 'px-3 py-2'}`}>
                             <div className="flex items-center justify-end gap-1.5 min-w-[200px]">
-                              {/* ⚡ Restock / Add Batch Button */}
+                              {/* Restock / Add Batch Button */}
                               {canManage && (
                                 <button
                                   onClick={() => {

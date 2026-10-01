@@ -272,7 +272,7 @@ export default function ShipmentsPage() {
                   >
                     <option value="dispatched">Dispatched</option>
                     <option value="in_transit">In Transit</option>
-                    <option value="delivered">Delivered ✅</option>
+                    <option value="delivered">Delivered</option>
                   </select>
                 </td>
               </tr>

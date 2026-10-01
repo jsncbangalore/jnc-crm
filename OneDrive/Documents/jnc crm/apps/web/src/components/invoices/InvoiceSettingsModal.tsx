@@ -252,7 +252,7 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
             {/* Live Invoice Preview Box */}
             <div className="p-4 rounded-xl bg-white text-black border border-gray-300 space-y-2">
               <span className="text-[10.5px] uppercase font-bold text-gray-500 tracking-wider block">
-                📄 Live Bottom-Right Invoice Preview:
+                Live Bottom-Right Invoice Preview:
               </span>
               <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex justify-end">
                 <div className="text-right w-64 space-y-1">

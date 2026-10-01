@@ -112,7 +112,7 @@ export class NotificationsController {
           leadId: lead.id,
           userId: lead.assignedToId || undefined,
           type: 'email',
-          title: `📩 Customer Email Reply: ${body.subject || 'No Subject'}`,
+          title: `Customer Email Reply: ${body.subject || 'No Subject'}`,
           description: content,
           isCompleted: true,
           completedAt: new Date(),

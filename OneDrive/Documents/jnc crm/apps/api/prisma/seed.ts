@@ -393,7 +393,7 @@ async function main() {
           stepType: 'send_email',
           config: JSON.stringify({
             recipient: 'assigned_employee',
-            subject: '🔥 [IndiaMART Lead] {{customerName}} - {{productName}}',
+            subject: '[IndiaMART Lead] {{customerName}} - {{productName}}',
             body: 'New urgent IndiaMART inquiry received from {{customerName}}. Contact immediately.',
           }),
         },
@@ -427,7 +427,7 @@ async function main() {
           stepType: 'send_email',
           config: JSON.stringify({
             recipient: 'assigned_employee',
-            subject: '🌐 [Website RFQ] High-priority quotation request from {{customerName}}',
+            subject: '[Website RFQ] High-priority quotation request from {{customerName}}',
             body: 'Website quotation requested by {{customerName}} for {{productName}}.',
           }),
         },
@@ -444,7 +444,7 @@ async function main() {
           stepType: 'create_in_app_task',
           config: JSON.stringify({
             recipient: 'assigned_employee',
-            title: '⚠️ 24h SLA Warning: Outreach Required for {{customerName}}',
+            title: '24h SLA Warning: Outreach Required for {{customerName}}',
             description: 'No sales activity recorded on Lead {{leadNumber}} for 24h. Please follow up immediately.',
           }),
         },
@@ -471,7 +471,7 @@ async function main() {
           stepType: 'send_email',
           config: JSON.stringify({
             recipient: 'admin',
-            subject: '🚨 [SLA Escalation] Lead {{leadNumber}} Stalled for 48 Hours',
+            subject: '[SLA Escalation] Lead {{leadNumber}} Stalled for 48 Hours',
             body: 'Lead {{leadNumber}} ({{customerName}}) has received no rep activity in 48 hours.',
           }),
         },
@@ -589,7 +589,7 @@ async function main() {
           stepType: 'send_email',
           config: JSON.stringify({
             recipient: 'admin',
-            subject: '⚠️ [Low Stock Alert] SKU {{skuCode}} below reorder threshold',
+            subject: '[Low Stock Alert] SKU {{skuCode}} below reorder threshold',
             body: 'Item {{name}} ({{skuCode}}) has reached reorder level {{reorderPoint}}.',
           }),
         },

@@ -250,7 +250,7 @@ export const CompanyComponentLibraryModal: React.FC<CompanyComponentLibraryModal
                   className="input text-xs w-full font-bold text-slate-950 dark:text-white"
                 >
                   {projectsList.map((p) => (
-                    <option key={p} value={p}>📁 {p}</option>
+                    <option key={p} value={p}>{p}</option>
                   ))}
                   {projectsList.length === 0 && (
                     <option value="2 CTBS- 20 Zone -Controller">2 CTBS- 20 Zone -Controller</option>

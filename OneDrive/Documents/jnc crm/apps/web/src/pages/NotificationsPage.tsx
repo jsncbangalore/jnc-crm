@@ -160,8 +160,8 @@ export default function NotificationsPage() {
         <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-1 rounded-xl border border-slate-200 dark:border-[#2A3042] overflow-x-auto scrollbar-none shrink-0">
           {[
             { id: 'all', label: 'All' },
-            { id: 'email_inbound', label: '📥 Replies' },
-            { id: 'email', label: '📤 Outbound' },
+            { id: 'email_inbound', label: 'Replies' },
+            { id: 'email', label: 'Outbound' },
             { id: 'in_app', label: 'Tasks' },
           ].map((c) => (
             <button

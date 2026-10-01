@@ -153,7 +153,7 @@ export default function QuickAddComponentForm({ preselectedProduct, onClose, onS
               <CheckCircle2 size={28} className="text-emerald-400" />
             </div>
             <div>
-              <p className="text-white font-black text-base">Component Added! 🎉</p>
+              <p className="text-white font-black text-base">Component Added Successfully</p>
               <p className="text-xs text-emerald-300 mt-1">
                 "{form.name}" is now in the catalog and linked to {selectedProduct?.name || 'the product'}
               </p>

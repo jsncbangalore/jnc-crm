@@ -300,7 +300,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
     }
 
     if (isSEZ && (lutStatus.isExpired || lutStatus.isExpiringSoon) && !lutAcknowledged) {
-      alert(`⚠️ LUT Compliance Acknowledgment Required:\n\n${lutStatus.warningMessage}\n\nPlease check the acknowledgment box in the SEZ LUT section to confirm before proceeding.`);
+      alert(`LUT Compliance Acknowledgment Required:\n\n${lutStatus.warningMessage}\n\nPlease check the acknowledgment box in the SEZ LUT section to confirm before proceeding.`);
       return;
     }
 

@@ -21,10 +21,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import { Link } from 'react-router-dom';
 
 const SOURCE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
-  indiamart: { label: 'IndiaMART', color: '#F97316', icon: '🏭' },
-  web:       { label: 'Website',   color: '#2E5EFF', icon: '🌐' },
-  whatsapp:  { label: 'WhatsApp',  color: '#10B981', icon: '💬' },
-  manual:    { label: 'Direct / Manual', color: '#8B5CF6', icon: '✏️' },
+  indiamart: { label: 'IndiaMART', color: '#F97316', icon: '' },
+  web:       { label: 'Website',   color: '#2E5EFF', icon: '' },
+  whatsapp:  { label: 'WhatsApp',  color: '#10B981', icon: '' },
+  manual:    { label: 'Direct / Manual', color: '#8B5CF6', icon: '' },
 };
 
 const LEAD_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -270,15 +270,15 @@ export default function DashboardPage() {
               </div>
               <div>
                 <h4 className="text-sm font-black text-slate-950 dark:text-white flex items-center gap-2">
-                  <span>🏢 {kpis.clientTenantInfo.name}</span>
+                  <span>{kpis.clientTenantInfo.name}</span>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
                     {kpis.clientTenantInfo.code}
                   </span>
                 </h4>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                   {!kpis.clientTenantInfo.isOnboarded || !kpis.clientTenantInfo.gstin
-                    ? '⚠️ Setup incomplete: Please configure your Legal Name, GSTIN, PAN, Bank Details & Invoicing Stamp so printed invoices reflect your company details.'
-                    : '✅ Organization Profile is active. All invoices and quotations are customized with your company branding and tax details.'}
+                    ? 'Setup incomplete: Please configure your Legal Name, GSTIN, PAN, Bank Details & Invoicing Stamp so printed invoices reflect your company details.'
+                    : 'Organization Profile is active. All invoices and quotations are customized with your company branding and tax details.'}
                 </p>
               </div>
             </div>
@@ -330,10 +330,10 @@ export default function DashboardPage() {
           icon={<Users size={18} />}
           subtitle="across all sources"
           breakdown={[
-            { label: '🏭 IndiaMART', value: kpis.leadsToday.breakdown.indiamart, color: 'text-orange-700 dark:text-orange-400 font-bold' },
-            { label: '🌐 Website',   value: kpis.leadsToday.breakdown.web,       color: 'text-blue-700 dark:text-crm-blue-light font-bold' },
-            { label: '💬 WhatsApp',  value: kpis.leadsToday.breakdown.whatsapp,  color: 'text-emerald-700 dark:text-crm-whatsapp font-bold' },
-            { label: '✏️ Manual',    value: kpis.leadsToday.breakdown.manual,    color: 'text-purple-700 dark:text-purple-300 font-bold' },
+            { label: 'IndiaMART', value: kpis.leadsToday.breakdown.indiamart, color: 'text-orange-700 dark:text-orange-400 font-bold' },
+            { label: 'Website',   value: kpis.leadsToday.breakdown.web,       color: 'text-blue-700 dark:text-crm-blue-light font-bold' },
+            { label: 'WhatsApp',  value: kpis.leadsToday.breakdown.whatsapp,  color: 'text-emerald-700 dark:text-crm-whatsapp font-bold' },
+            { label: 'Manual',    value: kpis.leadsToday.breakdown.manual,    color: 'text-purple-700 dark:text-purple-300 font-bold' },
           ]}
         />
         <KpiCard
@@ -451,7 +451,7 @@ export default function DashboardPage() {
                   : 'bg-slate-100 dark:bg-[#1E2230] text-slate-700 dark:text-slate-400 border-slate-200 dark:border-[#2A3042] hover:text-slate-950 dark:hover:text-white'
               }`}
             >
-              ⚡ All Channels
+              All Channels
             </button>
             {Object.entries(SOURCE_CONFIG).map(([key, cfg]) => {
               const active = activeChannel === key;

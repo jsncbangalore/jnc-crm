@@ -309,9 +309,9 @@ export default function PublicInquiryPage() {
                     value={formData.urgency}
                     onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
                   >
-                    <option value="high">🚨 Urgent (Ready stock / Immediate installation)</option>
-                    <option value="medium">⚡ Standard (1-2 weeks)</option>
-                    <option value="low">📋 Planning / Future Project Tender</option>
+                    <option value="high">Urgent (Ready stock / Immediate installation)</option>
+                    <option value="medium">Standard (1-2 weeks)</option>
+                    <option value="low">Planning / Future Project Tender</option>
                   </select>
                 </div>
               </div>
@@ -358,8 +358,8 @@ export default function PublicInquiryPage() {
             </p>
           </div>
           <div className="flex items-center gap-4 text-slate-400">
-            <span>📞 +91 9663421455 / +91 9964219891</span>
-            <span>✉️ sales@jsnc.co.in</span>
+            <span>+91 9663421455 / +91 9964219891</span>
+            <span>sales@jsnc.co.in</span>
           </div>
         </div>
       </footer>

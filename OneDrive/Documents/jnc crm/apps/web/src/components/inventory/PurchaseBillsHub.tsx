@@ -375,7 +375,7 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
               </div>
 
               <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300 font-medium leading-relaxed">
-                ⚠️ This bill and its soft copy record will be permanently deleted from your system.
+                Warning: This bill and its soft copy record will be permanently deleted from your system.
               </div>
 
               {actionError && (

@@ -12,8 +12,8 @@ import {
 
 // ─── PLATFORM OWNER MASTER NAVIGATION ─────────────────────────────────────────
 const platformMasterNavItems = [
-  { to: '/platform/companies', icon: Building2, label: '🏢 Companies Hub' },
-  { to: '/users',              icon: Shield,    label: '👥 Global Users' },
+  { to: '/platform/companies', icon: Building2, label: 'Companies Hub' },
+  { to: '/users',              icon: Shield,    label: 'Global Users' },
 ];
 
 // ─── CLIENT ORGANIZATION CRM NAVIGATION ──────────────────────────────────────
@@ -219,7 +219,7 @@ export default function Navbar() {
                       className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
                     >
                       <Building2 size={13} className="text-indigo-600 dark:text-indigo-400" />
-                      <span>🏢 Companies Hub</span>
+                      <span>Companies Hub</span>
                     </NavLink>
                     <NavLink
                       to="/users"
@@ -227,7 +227,7 @@ export default function Navbar() {
                       className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
                     >
                       <Shield size={13} className="text-crm-blue" />
-                      <span>👥 Global Users</span>
+                      <span>Global Users</span>
                     </NavLink>
                   </div>
                 ) : isAdmin ? (

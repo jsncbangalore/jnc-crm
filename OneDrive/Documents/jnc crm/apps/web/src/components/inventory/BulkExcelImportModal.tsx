@@ -437,7 +437,7 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
                       key={idx}
                       className="px-2 py-0.5 rounded-lg bg-white dark:bg-black/40 border border-emerald-200 dark:border-white/10 text-[10.5px] text-slate-800 dark:text-slate-300 font-mono"
                     >
-                      📑 {s.name}: <strong className="text-emerald-700 dark:text-emerald-400">{s.count} items</strong>
+                      {s.name}: <strong className="text-emerald-700 dark:text-emerald-400">{s.count} items</strong>
                     </span>
                   ))}
                 </div>

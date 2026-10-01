@@ -175,7 +175,7 @@ export default function AutomationPage() {
       {
         id: 'step-1',
         stepType: 'send_email',
-        config: { recipient: 'assigned_employee', subject: '🔥 [Lead Alert] {{customerName}}', body: 'New lead received.' },
+        config: { recipient: 'assigned_employee', subject: '[Lead Alert] {{customerName}}', body: 'New lead received.' },
       },
     ]);
     setIsActive(true);
@@ -973,7 +973,7 @@ export default function AutomationPage() {
                                   <label className="text-[11px] text-slate-400">Email Subject</label>
                                   <input
                                     className="input w-full text-xs"
-                                    placeholder="e.g. 🔥 [Lead Alert] {{customerName}}"
+                                    placeholder="e.g. [Lead Alert] {{customerName}}"
                                     value={step.config.subject || ''}
                                     onChange={(e) => handleUpdateStepConfig(idx, 'subject', e.target.value)}
                                   />

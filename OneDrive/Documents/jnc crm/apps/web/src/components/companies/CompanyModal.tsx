@@ -185,7 +185,7 @@ export default function CompanyModal({
                 onChange={(e) => setFormData({ ...formData, billingEmail: e.target.value })}
               />
               <p className="text-[10.5px] text-slate-400">
-                💡 When generating invoices, the recipient email will automatically default to this address.
+                Note: When generating invoices, the recipient email will automatically default to this address.
               </p>
             </div>
 

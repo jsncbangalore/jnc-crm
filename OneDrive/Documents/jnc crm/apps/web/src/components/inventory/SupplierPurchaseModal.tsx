@@ -203,12 +203,12 @@ export default function SupplierPurchaseModal({ supplier, prefillSkuId, onClose,
                   <CheckCircle2 size={32} className="text-emerald-400" />
                 </div>
                 <div>
-                  <p className="text-white font-black text-lg">Purchase Recorded! ✅</p>
+                  <p className="text-white font-black text-lg">Purchase Recorded Successfully</p>
                   <p className="text-xs text-emerald-300 mt-1">
                     ₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })} purchase from {supplier.name}
                   </p>
                   {documentUrl && (
-                    <p className="text-xs text-slate-400 mt-1">📎 GST document uploaded and linked</p>
+                    <p className="text-xs text-slate-400 mt-1">GST document uploaded and linked</p>
                   )}
                 </div>
               </motion.div>
@@ -455,7 +455,7 @@ export default function SupplierPurchaseModal({ supplier, prefillSkuId, onClose,
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-slate-950 dark:text-white truncate">{uploadedFile.name}</p>
                       <p className="text-[10px] text-slate-400">
-                        {uploading ? 'Uploading...' : documentUrl ? 'Uploaded & linked ✓' : 'Upload failed'}
+                        {uploading ? 'Uploading...' : documentUrl ? 'Uploaded & linked' : 'Upload failed'}
                       </p>
                     </div>
                     <button
