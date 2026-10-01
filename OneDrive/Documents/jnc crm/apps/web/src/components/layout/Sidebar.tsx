@@ -8,24 +8,35 @@ import {
   Truck, LogOut, Zap, Building2, FileText, Shield, ClipboardList
 } from 'lucide-react';
 
-const navItems = [
-  { to: '/',                  icon: LayoutDashboard, label: 'Dashboard',        roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'dashboard' },
-  { to: '/leads',             icon: Users,           label: 'Leads',            roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'leads' },
-  { to: '/orders',            icon: ShoppingCart,    label: 'Orders',           roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'orders' },
-  { to: '/inventory',         icon: Package,         label: 'Inventory',        roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'inventory' },
-  { to: '/suppliers',         icon: Building2,       label: 'Suppliers',        roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'suppliers' },
-  { to: '/shipments',         icon: Truck,           label: 'Shipments',        roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'shipments' },
-  { to: '/quotations',        icon: FileText,        label: 'Quotations',       roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'quotations' },
-  { to: '/users',             icon: Shield,          label: 'Team & Users',     roles: ['platform_super_admin', 'super_admin', 'tenant_admin', 'admin'], pageKey: 'users' },
-  { to: '/platform/companies',icon: Building2,       label: '🏢 Companies (SaaS)', platformOwnerOnly: true, roles: ['platform_super_admin', 'super_admin'], pageKey: 'platform_companies' },
-  { to: '/automation',        icon: Zap,             label: 'Automation',       roles: ['super_admin', 'tenant_admin', 'admin'], pageKey: 'automation' },
+// ─── PLATFORM OWNER MASTER NAVIGATION ─────────────────────────────────────────
+const platformMasterNavItems = [
+  { to: '/platform/companies', icon: Building2, label: '🏢 Companies Hub' },
+  { to: '/users',              icon: Shield,    label: '👥 Global Users' },
+  { to: '/automation',         icon: Zap,       label: '⚡ Automations' },
+  { to: '/setup/objects',      icon: Package,   label: '🧩 Object Manager' },
+  { to: '/inventory',          icon: Package,   label: '📦 Master Catalog' },
+  { to: '/settings/branding',  icon: Shield,    label: '⚙️ Platform Setup' },
+];
+
+// ─── CLIENT ORGANIZATION CRM NAVIGATION ──────────────────────────────────────
+const clientOrgNavItems = [
+  { to: '/',                  icon: LayoutDashboard, label: 'Dashboard',        roles: ['super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'dashboard' },
+  { to: '/leads',             icon: Users,           label: 'Leads',            roles: ['super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'leads' },
+  { to: '/orders',            icon: ShoppingCart,    label: 'Orders',           roles: ['super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'orders' },
+  { to: '/invoices',          icon: FileText,        label: 'Invoices',         roles: ['super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'invoices' },
+  { to: '/inventory',         icon: Package,         label: 'Inventory',        roles: ['super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'inventory' },
+  { to: '/suppliers',         icon: Building2,       label: 'Suppliers',        roles: ['super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'suppliers' },
+  { to: '/shipments',         icon: Truck,           label: 'Shipments',        roles: ['super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'shipments' },
+  { to: '/quotations',        icon: FileText,        label: 'Quotations',       roles: ['super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'quotations' },
   { to: '/daily-activities',  icon: ClipboardList,   label: 'Daily Activities', roles: ['super_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer'] as string[], pageKey: 'daily_activities' },
+  { to: '/users',             icon: Shield,          label: 'Team & Users',     roles: ['super_admin', 'tenant_admin', 'admin'], pageKey: 'users' },
 ];
 
 const colorForPath: Record<string, string> = {
   '/':                  'text-crm-blue',
   '/leads':             'text-crm-blue',
   '/orders':            'text-amber-600 dark:text-crm-amber',
+  '/invoices':          'text-emerald-500',
   '/inventory':         'text-purple-600 dark:text-crm-violet',
   '/suppliers':         'text-indigo-600 dark:text-crm-violet-light',
   '/shipments':         'text-teal-600 dark:text-crm-teal',
@@ -44,6 +55,21 @@ export default function Sidebar() {
   const isPlatformOwner =
     user?.role === 'platform_super_admin' ||
     (user?.role === 'super_admin' && (!user?.tenantId || user?.tenantId === 'default-tenant-id'));
+
+  const visibleNavItems = isPlatformOwner
+    ? platformMasterNavItems
+    : clientOrgNavItems.filter((item) => {
+        if (item.roles && !item.roles.includes(user?.role || '')) return false;
+        if (user?.role !== 'super_admin' && user?.role !== 'platform_super_admin') {
+          if (user?.teamId && user?.teamRef) {
+            const allowedPages = typeof user.teamRef.allowedPages === 'string'
+              ? JSON.parse(user.teamRef.allowedPages || '[]')
+              : user.teamRef.allowedPages || [];
+            if (item.pageKey && !allowedPages.includes(item.pageKey)) return false;
+          }
+        }
+        return true;
+      });
 
   const handleLogout = () => {
     logout();
@@ -66,34 +92,22 @@ export default function Sidebar() {
             <div className="text-sm font-black text-slate-950 dark:text-white leading-tight truncate">
               {branding.companyDisplayName}
             </div>
-            {branding.companyPhone && (
+            {isPlatformOwner ? (
+              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider block">
+                Platform Master
+              </span>
+            ) : branding.companyPhone ? (
               <span className="text-[10px] text-slate-500 font-mono leading-tight block truncate">
                 {branding.companyPhone}
               </span>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto">
-        {navItems
-          .filter((item) => {
-            if (item.platformOwnerOnly && !isPlatformOwner) return false;
-            // Role-array guard (e.g. daily-activities)
-            if (item.roles && !item.roles.includes(user?.role || '')) return false;
-            // Team-based page access check
-            if (user?.role !== 'super_admin' && user?.role !== 'platform_super_admin') {
-              if (user?.teamId && user?.teamRef) {
-                const allowedPages = typeof user.teamRef.allowedPages === 'string' 
-                  ? JSON.parse(user.teamRef.allowedPages || '[]') 
-                  : user.teamRef.allowedPages || [];
-                if (item.pageKey && !allowedPages.includes(item.pageKey)) return false;
-              }
-            }
-            return true;
-          })
-          .map(({ to, icon: Icon, label }) => (
+        {visibleNavItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}

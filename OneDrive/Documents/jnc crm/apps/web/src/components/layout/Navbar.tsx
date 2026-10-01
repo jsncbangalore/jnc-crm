@@ -10,19 +10,29 @@ import {
   ChevronDown, Settings, User as UserIcon, ShieldCheck, Receipt, Sun, Moon, ClipboardList
 } from 'lucide-react';
 
-const mainNavItems = [
-  { to: '/',              icon: LayoutDashboard, label: 'Dashboard',        roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'dashboard' },
-  { to: '/leads',         icon: Users,           label: 'Leads',            roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'leads' },
-  { to: '/notifications', icon: Bell,            label: 'Inbox & Alerts',   roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'notifications' },
-  { to: '/orders',        icon: ShoppingCart,    label: 'Orders',           roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'orders' },
-  { to: '/invoices',      icon: Receipt,         label: 'Invoices',         roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'invoices' },
-  { to: '/inventory',     icon: Package,         label: 'Inventory',        roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'inventory' },
-  { to: '/suppliers',     icon: Building2,       label: 'Suppliers',        roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'suppliers' },
-  { to: '/shipments',     icon: Truck,           label: 'Shipments',        roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'shipments' },
-  { to: '/quotations',    icon: FileText,        label: 'Quotations',       roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'quotations' },
-  { to: '/daily-activities', icon: ClipboardList, label: 'Daily Activities', roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer'], pageKey: 'daily_activities' },
-  { to: '/platform/companies', icon: Building2,   label: '🏢 Companies',     platformOwnerOnly: true, roles: ['super_admin', 'platform_super_admin'], pageKey: 'platform_companies' },
-  { to: '/users',         icon: Shield,          label: 'Team & Users',     roles: ['super_admin', 'platform_super_admin', 'tenant_admin', 'admin'], pageKey: 'users' },
+// ─── PLATFORM OWNER MASTER NAVIGATION ─────────────────────────────────────────
+const platformMasterNavItems = [
+  { to: '/platform/companies', icon: Building2, label: '🏢 Companies Hub' },
+  { to: '/users',              icon: Shield,    label: '👥 Global Users' },
+  { to: '/automation',         icon: Zap,       label: '⚡ Automations' },
+  { to: '/setup/objects',      icon: Boxes,     label: '🧩 Object Manager' },
+  { to: '/inventory',          icon: Package,   label: '📦 System Master Catalog' },
+  { to: '/settings/branding',  icon: Settings,  label: '⚙️ Platform Setup' },
+];
+
+// ─── CLIENT ORGANIZATION CRM NAVIGATION ──────────────────────────────────────
+const clientOrgNavItems = [
+  { to: '/',              icon: LayoutDashboard, label: 'Dashboard',        roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'dashboard' },
+  { to: '/leads',         icon: Users,           label: 'Leads',            roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'leads' },
+  { to: '/notifications', icon: Bell,            label: 'Inbox & Alerts',   roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'notifications' },
+  { to: '/orders',        icon: ShoppingCart,    label: 'Orders',           roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'orders' },
+  { to: '/invoices',      icon: Receipt,         label: 'Invoices',         roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'invoices' },
+  { to: '/inventory',     icon: Package,         label: 'Inventory',        roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'inventory' },
+  { to: '/suppliers',     icon: Building2,       label: 'Suppliers',        roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'suppliers' },
+  { to: '/shipments',     icon: Truck,           label: 'Shipments',        roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'shipments' },
+  { to: '/quotations',    icon: FileText,        label: 'Quotations',       roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'quotations' },
+  { to: '/daily-activities', icon: ClipboardList, label: 'Daily Activities', roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer'], pageKey: 'daily_activities' },
+  { to: '/users',         icon: Shield,          label: 'Team & Users',     roles: ['tenant_admin', 'super_admin', 'admin'], pageKey: 'users' },
 ];
 
 const colorForPath: Record<string, string> = {
@@ -59,6 +69,10 @@ export default function Navbar() {
 
   const isAdmin = isPlatformOwner || user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
 
+  const visibleNavItems = isPlatformOwner
+    ? platformMasterNavItems
+    : clientOrgNavItems.filter((item) => !item.roles || item.roles.includes(user?.role || ''));
+
   // Click outside listener
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -80,7 +94,7 @@ export default function Navbar() {
     <header className="hidden lg:flex h-14 shrink-0 bg-white/95 dark:bg-[#181B26]/95 backdrop-blur-md border-b border-slate-200 dark:border-[#2A3042] sticky top-0 z-40 px-4 sm:px-5 items-center justify-between gap-3">
       {/* ─── BRAND LOGO & OFFICIAL SITE LINK ───────────────────────────────── */}
       <div className="flex items-center gap-2.5 shrink-0">
-        <NavLink to="/" className="flex items-center gap-2.5 group">
+        <NavLink to={isPlatformOwner ? "/platform/companies" : "/"} className="flex items-center gap-2.5 group">
           <div className="h-9 px-1.5 py-0.5 rounded-lg bg-white dark:bg-white flex items-center justify-center shadow-sm border border-slate-200 dark:border-transparent hover:opacity-95 transition-opacity">
             <img
               src={branding.companyLogoUrl || '/jnc-logo.jpg'}
@@ -88,25 +102,26 @@ export default function Navbar() {
               className="h-7 w-auto object-contain"
             />
           </div>
-          <span className="text-xs font-black text-slate-900 dark:text-white tracking-tight hidden 2xl:inline max-w-[160px] truncate">
-            {branding.companyDisplayName}
-          </span>
+          <div className="flex flex-col text-left">
+            <span className="text-xs font-black text-slate-900 dark:text-white tracking-tight hidden 2xl:inline max-w-[160px] truncate">
+              {branding.companyDisplayName}
+            </span>
+            {isPlatformOwner && (
+              <span className="text-[9px] font-mono text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider hidden 2xl:inline">
+                Master Platform
+              </span>
+            )}
+          </div>
         </NavLink>
       </div>
 
       {/* ─── HORIZONTAL BALANCED LINEAR NAVIGATION ITEMS (Desktop) ────────── */}
       <nav className="hidden lg:flex items-center gap-1 overflow-x-auto py-1 scrollbar-none">
-        {mainNavItems
-          .filter(item => {
-            if (item.platformOwnerOnly && !isPlatformOwner) return false;
-            if (item.roles && !item.roles.includes(user?.role || '')) return false;
-            return true;
-          })
-          .map(({ to, icon: Icon, label }) => (
+        {visibleNavItems.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
-            end={to === '/'}
+            end={to === '/' || to === '/platform/companies'}
             className={({ isActive }) =>
               `relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150
               ${

@@ -64,6 +64,18 @@ function PlatformOwnerGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RootLandingRoute() {
+  const { user } = useAuth();
+  const isPlatformOwner =
+    user?.role === 'platform_super_admin' ||
+    (user?.role === 'super_admin' && (!user?.tenantId || user?.tenantId === 'default-tenant-id'));
+
+  if (isPlatformOwner) {
+    return <Navigate to="/platform/companies" replace />;
+  }
+  return <DashboardPage />;
+}
+
 function AppRoutes() {
   const { isAuthenticated } = useAuth();
 
@@ -83,7 +95,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<TeamPageGuard pageKey="dashboard"><DashboardPage /></TeamPageGuard>} />
+        <Route index element={<TeamPageGuard pageKey="dashboard"><RootLandingRoute /></TeamPageGuard>} />
         <Route path="leads" element={<TeamPageGuard pageKey="leads"><LeadsPage /></TeamPageGuard>} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="orders" element={<TeamPageGuard pageKey="orders"><OrdersPage /></TeamPageGuard>} />
