@@ -12,10 +12,6 @@ import {
 const platformMasterNavItems = [
   { to: '/platform/companies', icon: Building2, label: '🏢 Companies Hub' },
   { to: '/users',              icon: Shield,    label: '👥 Global Users' },
-  { to: '/automation',         icon: Zap,       label: '⚡ Automations' },
-  { to: '/setup/objects',      icon: Package,   label: '🧩 Object Manager' },
-  { to: '/inventory',          icon: Package,   label: '📦 Master Catalog' },
-  { to: '/settings/branding',  icon: Shield,    label: '⚙️ Platform Setup' },
 ];
 
 // ─── CLIENT ORGANIZATION CRM NAVIGATION ──────────────────────────────────────
