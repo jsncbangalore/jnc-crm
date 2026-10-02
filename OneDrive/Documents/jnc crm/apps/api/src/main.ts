@@ -10,8 +10,15 @@ import * as path from 'path';
 
 // Load .env variables into process.env
 try {
-  const envPath = path.resolve(process.cwd(), '.env');
-  if (fs.existsSync(envPath)) {
+  const possiblePaths = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(process.cwd(), '../../.env'),
+    path.resolve(process.cwd(), '../.env'),
+    path.resolve(__dirname, '../../.env'),
+    path.resolve(__dirname, '../../../.env'),
+  ];
+  const envPath = possiblePaths.find((p) => fs.existsSync(p));
+  if (envPath) {
     const envContent = fs.readFileSync(envPath, 'utf8');
     envContent.split('\n').forEach((line) => {
       const trimmed = line.trim();

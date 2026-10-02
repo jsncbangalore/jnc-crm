@@ -66,6 +66,7 @@ export default function PlatformCompaniesPage() {
     city: 'Bengaluru',
     state: 'Karnataka',
     gstin: '',
+    sendEmail: true,
   });
 
   // Created Tenant Success Modal State
@@ -77,6 +78,8 @@ export default function PlatformCompaniesPage() {
       email: string;
       tempPassword: string;
     };
+    emailDispatched?: boolean;
+    emailStatusMessage?: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -202,7 +205,11 @@ export default function PlatformCompaniesPage() {
 
     setCreating(true);
     try {
-      const { data } = await platformApi.createTenant(form);
+      const payload = {
+        ...form,
+        appUrl: window.location.origin + '/login',
+      };
+      const { data } = await platformApi.createTenant(payload);
       setShowCreateModal(false);
       setCreatedResult(data);
       fetchTenants();
@@ -1254,6 +1261,24 @@ export default function PlatformCompaniesPage() {
                   </div>
                 </div>
 
+                <div className="p-3 rounded-xl bg-purple-50/60 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900/30 flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    id="createSendEmailCheck"
+                    checked={form.sendEmail}
+                    onChange={(e) => setForm({ ...form, sendEmail: e.target.checked })}
+                    className="mt-0.5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <label htmlFor="createSendEmailCheck" className="text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <span className="font-semibold block text-slate-900 dark:text-white">
+                      Send Official Welcome & Access Credentials Email
+                    </span>
+                    <span className="text-[11px] text-slate-500 block mt-0.5">
+                      Automatically dispatches a welcome email containing the Company Code, User ID, Password, and Direct Login URL to <strong>{form.adminEmail || 'Admin Email'}</strong>.
+                    </span>
+                  </label>
+                </div>
+
                 <div className="pt-3 border-t border-slate-200 dark:border-[#2A3042] flex items-center justify-end gap-2">
                   <button
                     type="button"
@@ -1268,7 +1293,7 @@ export default function PlatformCompaniesPage() {
                     className="btn btn-primary text-xs flex items-center gap-1.5"
                   >
                     {creating ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
-                    <span>{creating ? 'Provisioning...' : 'Create Company Workspace'}</span>
+                    <span>{creating ? 'Provisioning & Dispatching...' : 'Create Company Workspace'}</span>
                   </button>
                 </div>
               </form>
@@ -1285,45 +1310,75 @@ export default function PlatformCompaniesPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-lg shadow-2xl p-6 text-slate-900 dark:text-white"
+              className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-lg shadow-2xl p-6 text-slate-900 dark:text-white space-y-4"
             >
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center mb-4">
-                <CheckCircle2 size={24} />
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+                  <CheckCircle2 size={24} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold">Company Workspace Provisioned!</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    The isolated company tenant and Tenant Admin account are active.
+                  </p>
+                </div>
               </div>
 
-              <h2 className="text-lg font-bold">Company Workspace Provisioned!</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                The isolated company tenant and Tenant Admin account are active. Share these credentials with the customer:
-              </p>
+              {createdResult.emailDispatched ? (
+                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                  <span>
+                    Official credentials email dispatched to <strong>{createdResult.adminUser.email}</strong>
+                  </span>
+                </div>
+              ) : createdResult.emailStatusMessage ? (
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs">
+                  <span>{createdResult.emailStatusMessage}</span>
+                </div>
+              ) : null}
 
-              <div className="bg-slate-50 dark:bg-[#1E2230] p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] my-4 space-y-2 text-xs font-mono">
+              <div className="bg-slate-50 dark:bg-[#1E2230] p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-2 text-xs font-mono">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Company:</span>
-                  <span className="font-bold">{createdResult.tenant.name}</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{createdResult.tenant.name}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Company Code:</span>
-                  <span className="font-bold text-purple-600">{createdResult.tenant.code}</span>
+                  <span className="font-bold text-purple-600 dark:text-purple-400">{createdResult.tenant.code}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Admin Username:</span>
-                  <span className="font-bold">{createdResult.adminUser.employeeCode}</span>
+                  <span className="text-slate-500">Admin Username / User ID:</span>
+                  <span className="font-bold text-blue-600 dark:text-blue-400">{createdResult.adminUser.employeeCode}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Admin Email:</span>
-                  <span className="font-bold">{createdResult.adminUser.email}</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{createdResult.adminUser.email}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">One-Time Password:</span>
-                  <span className="font-bold text-emerald-600">{createdResult.adminUser.tempPassword}</span>
+                  <span className="text-slate-500">Temporary Password:</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                    {createdResult.adminUser.tempPassword}
+                  </span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-slate-200 dark:border-slate-800">
+                  <span className="text-slate-500">Login Portal:</span>
+                  <span className="text-indigo-600 dark:text-indigo-400 font-bold">{window.location.origin}/login</span>
                 </div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   onClick={() => {
-                    const loginUrl = typeof window !== 'undefined' ? `${window.location.origin}/login` : '/login';
-                    const text = `Company: ${createdResult.tenant.name}\nCompany Code: ${createdResult.tenant.code}\nLogin URL: ${loginUrl}\nAdmin Username: ${createdResult.adminUser.employeeCode}\nAdmin Email: ${createdResult.adminUser.email}\nTemporary Password: ${createdResult.adminUser.tempPassword}`;
+                    const loginUrl = `${window.location.origin}/login`;
+                    const text = [
+                      `--- JNC CRM Access Credentials ---`,
+                      `Company: ${createdResult.tenant.name} (${createdResult.tenant.code})`,
+                      `Admin User ID: ${createdResult.adminUser.employeeCode}`,
+                      `Admin Email: ${createdResult.adminUser.email}`,
+                      `Temporary Password: ${createdResult.adminUser.tempPassword}`,
+                      `Login Portal: ${loginUrl}`,
+                      `Note: Please change your password upon first login.`,
+                    ].join('\n');
                     navigator.clipboard.writeText(text);
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2500);
