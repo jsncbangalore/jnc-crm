@@ -1,14 +1,30 @@
-# JNC-CRM Hostinger / cPanel SPA Configuration (for admin.jsnc.co.in)
+# JNC-CRM Single Page Application (SPA) Apache Rewrite Configuration
+# Compatible with Hostinger / cPanel / Apache 2.4+ for admin.jsnc.co.in
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteBase /
 
-  # 1. Serve existing files and directories directly
+  # 1. Enable UTF-8 encoding
+  AddDefaultCharset UTF-8
+
+  # 2. Prevent directory listing (prevents 403 Forbidden on empty directory access)
+  Options -Indexes
+
+  # 3. Serve existing files and directories directly
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # 2. Single Page Application (SPA) Fallback to index.html
+  # 4. Fallback all non-file routes to index.html for React Router pushState
   RewriteRule ^ index.html [L]
+</IfModule>
+
+# Ensure correct MIME Types for modern web assets (ES modules, CSS, SVGs, Fonts)
+<IfModule mod_mime.c>
+  AddType text/html .html
+  AddType text/css .css
+  AddType application/javascript .js .mjs
+  AddType application/json .json
+  AddType image/svg+xml .svg
+  AddType font/woff2 .woff2
 </IfModule>
