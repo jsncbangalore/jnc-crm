@@ -1,5 +1,5 @@
 // Prisma Schema for JNC-CRM Multi-Tenant SaaS Platform
-// Modeled after Salesforce Organizations & Zoho Multi-Company Partitioning
+// Multi-Tenant SaaS Platform Partitioning
 
 generator client {
   provider = "prisma-client-js"

@@ -270,7 +270,7 @@ export class PlatformService {
   }
 
   /**
-   * Salesforce-style Support Impersonation ("Login-As-Org Admin")
+   * Support Impersonation ("Login-As-Org Admin")
    * Allows Platform Super Admin to switch context into a subscriber org.
    */
   async impersonateTenant(id: string) {

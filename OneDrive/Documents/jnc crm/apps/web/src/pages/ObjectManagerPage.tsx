@@ -892,7 +892,7 @@ export default function ObjectManagerPage() {
             <div>
               <h1 className="text-2xl font-black text-slate-950 dark:text-white">Object Manager</h1>
               <p className="text-slate-400 text-xs mt-0.5">
-                Salesforce-Style Schema Builder • Define Custom Objects, Field Types & Relational Lookups
+                Custom Object Schema Builder • Define Custom Objects, Field Types & Relational Lookups
               </p>
             </div>
           </div>
@@ -984,7 +984,7 @@ export default function ObjectManagerPage() {
         </div>
       </div>
 
-      {/* Object Manager Table (Salesforce Style) */}
+      {/* Object Manager Table */}
       <div className="table-wrapper">
         <table className="crm-table">
           <thead>

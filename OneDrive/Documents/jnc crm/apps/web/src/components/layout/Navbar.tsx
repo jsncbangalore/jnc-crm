@@ -274,13 +274,13 @@ export default function Navbar() {
   return (
     <header ref={navRef} className="hidden lg:flex flex-col shrink-0 bg-white dark:bg-[#181B26] border-b border-slate-200 dark:border-[#2A3042] sticky top-0 z-40 select-none shadow-sm overflow-visible">
       {/* ═══════════════════════════════════════════════════════════════════════
-          TIER 1: SALESFORCE LIGHTNING GLOBAL UTILITY HEADER BAR (48px)
+          TIER 1: GLOBAL UTILITY HEADER BAR (48px)
           ═══════════════════════════════════════════════════════════════════════ */}
       <div className="h-12 px-4 flex items-center justify-between gap-4 border-b border-slate-200/80 dark:border-[#2A3042]/80 bg-slate-50/60 dark:bg-[#141721]/60 overflow-visible">
         
         {/* Left: App Launcher 9-Dots & Company Branding */}
         <div className="flex items-center gap-3 shrink-0">
-          {/* 9-Dot App Launcher (Salesforce Grid Icon) */}
+          {/* 9-Dot App Launcher */}
           <div className="relative">
             <button
               type="button"
@@ -354,7 +354,7 @@ export default function Navbar() {
                 {branding.companyDisplayName}
               </span>
               <span className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
-                {isPlatformOwner ? 'Master Platform' : 'Salesforce Lightning CRM'}
+                {isPlatformOwner ? 'Master Platform' : 'Enterprise CRM Portal'}
               </span>
             </div>
           </NavLink>
@@ -657,15 +657,15 @@ export default function Navbar() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          TIER 2: SALESFORCE LIGHTNING APP NAVIGATION TABS (40px)
+          TIER 2: APP NAVIGATION TABS (40px)
           ═══════════════════════════════════════════════════════════════════════ */}
       <div className="h-10 px-4 flex items-center justify-between overflow-visible relative bg-white dark:bg-[#181B26]">
         
-        {/* Left: App Title ("Sales" / "CRM") + Nav Tabs */}
+        {/* Left: App Title + Nav Tabs */}
         <div className="flex items-center gap-1 h-full overflow-visible">
-          {/* Salesforce App Name */}
+          {/* CRM App Title */}
           <span className="text-xs font-black text-slate-900 dark:text-white mr-3 tracking-tight shrink-0 hidden xl:inline">
-            Sales
+            CRM
           </span>
 
           {/* Tabs */}

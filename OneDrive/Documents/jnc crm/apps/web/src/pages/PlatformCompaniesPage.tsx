@@ -538,7 +538,7 @@ export default function PlatformCompaniesPage() {
                         <button
                           onClick={() => handleImpersonate(tenant)}
                           className="btn px-2.5 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 border border-amber-500/30 flex items-center gap-1 shadow-sm"
-                          title="Salesforce-style Support Login: Enter Company Workspace"
+                          title="Support Access: Enter Company Workspace"
                         >
                           <KeyRound size={13} className="text-amber-600 dark:text-amber-400" />
                           <span>Login As</span>

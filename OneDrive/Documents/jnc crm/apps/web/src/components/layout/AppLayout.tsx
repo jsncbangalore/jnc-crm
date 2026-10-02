@@ -64,7 +64,7 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0F1117] text-slate-900 dark:text-slate-100 overflow-x-hidden pb-16 lg:pb-0">
-      {/* ─── SALESFORCE-STYLE SUBSCRIBER SUPPORT / IMPERSONATION BANNER ───── */}
+      {/* ─── SUBSCRIBER SUPPORT / IMPERSONATION BANNER ───── */}
       {isImpersonating && (
         <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white px-4 py-2 flex items-center justify-between text-xs font-bold shadow-md z-50 sticky top-0">
           <div className="flex items-center gap-2">
