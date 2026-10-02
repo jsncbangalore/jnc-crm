@@ -461,18 +461,6 @@ export default function LeadsPage() {
             <Building2 size={14} className={activeTab === 'client-directory' ? 'text-violet-300' : ''} />
             Client Directory & Lead Research ({filteredLeads.length})
           </button>
-
-          <button
-            onClick={() => setActiveTab('lead-setup')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-              activeTab === 'lead-setup'
-                ? 'bg-crm-teal text-white shadow-glow-teal'
-                : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 font-bold'
-            }`}
-          >
-            <Sliders size={14} className={activeTab === 'lead-setup' ? 'text-cyan-200' : 'text-crm-teal'} />
-            Lead Setup & Inbound Flow Engine
-          </button>
         </div>
 
         {/* Right Upper Corner: Actions & Setup Icon */}
