@@ -20,7 +20,6 @@ const platformMasterNavItems = [
 const clientOrgNavItems = [
   { to: '/',              icon: LayoutDashboard, label: 'Dashboard',        roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'dashboard' },
   { to: '/leads',         icon: Users,           label: 'Leads',            roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'leads' },
-  { to: '/notifications', icon: Bell,            label: 'Inbox & Alerts',   roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'notifications' },
   { to: '/orders',        icon: ShoppingCart,    label: 'Orders',           roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'orders' },
   { to: '/invoices',      icon: Receipt,         label: 'Invoices',         roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'invoices' },
   { to: '/inventory',     icon: Package,         label: 'Inventory',        roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'inventory' },
@@ -34,7 +33,6 @@ const clientOrgNavItems = [
 const colorForPath: Record<string, string> = {
   '/':                  'text-crm-blue',
   '/leads':             'text-crm-blue',
-  '/notifications':     'text-crm-blue-light',
   '/orders':            'text-crm-amber',
   '/invoices':          'text-emerald-500',
   '/inventory':         'text-crm-violet',

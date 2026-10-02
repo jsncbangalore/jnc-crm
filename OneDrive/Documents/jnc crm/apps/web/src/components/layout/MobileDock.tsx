@@ -11,20 +11,17 @@ import {
 const mobilePrimaryTabs = [
   { to: '/',              icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/leads',         icon: Users,           label: 'Leads' },
-  { to: '/notifications', icon: Bell,            label: 'Inbox' },
   { to: '/orders',        icon: ShoppingCart,    label: 'Orders' },
+  { to: '/invoices',      icon: Receipt,         label: 'Invoices' },
 ];
 
 const mobileDrawerItems = [
   { to: '/daily-activities', icon: ClipboardList, label: 'Daily Activities', desc: 'Project daily work log sheets & uploads', roles: ['super_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer'] },
-  { to: '/invoices',      icon: Receipt,         label: 'Invoices & DC', desc: 'Tax Invoices, SEZ LUT, Proforma & DCs' },
   { to: '/quotations',    icon: FileText,        label: 'Quotations', desc: 'Estimates & GST price quotes' },
   { to: '/inventory',     icon: Package,         label: 'Inventory',  desc: 'Stock counts & warehouse bins' },
   { to: '/shipments',     icon: Truck,           label: 'Shipments',  desc: 'Dispatch tracking & couriers' },
   { to: '/suppliers',     icon: Building2,       label: 'Suppliers',  desc: 'Vendors & purchasing' },
   { to: '/users',         icon: Shield,          label: 'Team & Users', desc: 'Sales reps & admin roles', adminOnly: true },
-  { to: '/automation',    icon: Zap,             label: 'Automation', desc: 'Rules & auto-assignment', adminOnly: true },
-  { to: '/setup/objects', icon: Boxes,           label: 'Custom Objects', desc: 'Schemas & custom fields', adminOnly: true },
 ];
 
 export default function MobileDock() {
