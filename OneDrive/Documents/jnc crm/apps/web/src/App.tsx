@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AppLayout from './components/layout/AppLayout';
 import TeamPageGuard from './components/layout/TeamPageGuard';
-import LoginPage from './pages/LoginPage';
+import LoginPage, { getRoleRedirectPath } from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import LeadsPage from './pages/LeadsPage';
 import OrdersPage from './pages/OrdersPage';
@@ -66,6 +66,8 @@ function PlatformOwnerGuard({ children }: { children: React.ReactNode }) {
 
 function RootLandingRoute() {
   const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+
   const isPlatformOwner =
     user?.role === 'platform_super_admin' ||
     (user?.role === 'super_admin' && (!user?.tenantId || user?.tenantId === 'default-tenant-id'));
@@ -73,17 +75,23 @@ function RootLandingRoute() {
   if (isPlatformOwner) {
     return <Navigate to="/platform/companies" replace />;
   }
+  if (['developer', 'developer_lead', 'project_manager'].includes(user?.role || '')) {
+    return <Navigate to="/daily-activities" replace />;
+  }
+  if (['client', 'customer'].includes(user?.role || '')) {
+    return <Navigate to="/orders" replace />;
+  }
   return <DashboardPage />;
 }
 
 function AppRoutes() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   return (
     <Routes>
       <Route
         path="/login"
-        element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
+        element={isAuthenticated ? <Navigate to={getRoleRedirectPath(user)} replace /> : <LoginPage />}
       />
       <Route path="/inquiry" element={<PublicInquiryPage />} />
       <Route path="/quote-request" element={<PublicInquiryPage />} />
