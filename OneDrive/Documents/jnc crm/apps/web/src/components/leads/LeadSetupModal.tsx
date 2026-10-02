@@ -11,19 +11,21 @@ import { usePopup } from '../../contexts/PopupContext';
 import { leadsApi, usersApi } from '../../services/api';
 import { User as UserType } from '../../types';
 
-interface LeadSetupModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+export interface LeadSetupViewProps {
   initialTab?: 'indiamart' | 'website' | 'whatsapp' | 'routing' | 'pipeline';
   onLeadCreated?: () => void;
+  onNavigateToPipeline?: () => void;
+  isModal?: boolean;
+  onClose?: () => void;
 }
 
-export default function LeadSetupModal({
-  isOpen,
-  onClose,
+export function LeadSetupView({
   initialTab = 'indiamart',
   onLeadCreated,
-}: LeadSetupModalProps) {
+  onNavigateToPipeline,
+  isModal = false,
+  onClose,
+}: LeadSetupViewProps) {
   const { user } = useAuth();
   const { showAlert } = usePopup();
 
@@ -51,18 +53,16 @@ export default function LeadSetupModal({
   }, [initialTab]);
 
   useEffect(() => {
-    if (isOpen) {
-      usersApi.list({ role: 'employee' })
-        .then((res) => {
-          const list = res.data.items || [];
-          setEmployees(list);
-          if (list.length > 0 && !selectedRepId) {
-            setSelectedRepId(list[0].id);
-          }
-        })
-        .catch(() => {});
-    }
-  }, [isOpen]);
+    usersApi.list({ role: 'employee' })
+      .then((res) => {
+        const list = res.data.items || [];
+        setEmployees(list);
+        if (list.length > 0 && !selectedRepId) {
+          setSelectedRepId(list[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleCopy = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -112,38 +112,51 @@ export default function LeadSetupModal({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto animate-fade-in">
-      <div className="relative w-full max-w-4xl bg-white dark:bg-[#13161F] border border-slate-200 dark:border-[#2A3042] rounded-2xl shadow-2xl overflow-hidden my-6 flex flex-col max-h-[90vh]">
-        
-        {/* ─── MODAL HEADER ─────────────────────────────────────────────────── */}
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-[#2A3042] flex items-center justify-between bg-slate-50/80 dark:bg-[#181B26] shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-crm-blue/15 border border-crm-blue/30 flex items-center justify-center text-crm-blue shadow-glow-blue">
-              <Sliders size={20} />
-            </div>
-            <div>
-              <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Lead Setup & Real-time Sales Controller</span>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                  Live Engine
-                </span>
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Manage automated inbound lead capture, webhook hooks, sales routing, and instant SLA reach.
-              </p>
-            </div>
+    <div className={`bg-white dark:bg-[#13161F] border border-slate-200 dark:border-[#2A3042] rounded-2xl shadow-xl overflow-hidden flex flex-col ${isModal ? 'max-h-[90vh]' : 'w-full'}`}>
+      
+      {/* ─── HEADER ──────────────────────────────────────────────────────── */}
+      <div className="px-6 py-5 border-b border-slate-200 dark:border-[#2A3042] flex items-center justify-between bg-slate-50/80 dark:bg-[#181B26] shrink-0">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-crm-blue/15 border border-crm-blue/30 flex items-center justify-center text-crm-blue shadow-glow-blue">
+            <Sliders size={22} />
           </div>
-
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-          >
-            <X size={18} />
-          </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-black text-slate-900 dark:text-white">
+                Lead Setup & Real-time Flow Controller
+              </h2>
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Ingestion
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+              Configure IndiaMART webhook listener, Web-to-Lead inquiry form, WhatsApp Cloud API, and real-time sales auto-routing.
+            </p>
+          </div>
         </div>
+
+        <div className="flex items-center gap-2">
+          {onNavigateToPipeline && (
+            <button
+              onClick={onNavigateToPipeline}
+              className="btn bg-crm-blue hover:bg-crm-blue-hover text-white text-xs gap-1.5 shadow-glow-blue font-bold px-3 py-1.5"
+            >
+              <span>Go to Pipeline Board</span>
+              <ArrowRight size={13} />
+            </button>
+          )}
+
+          {isModal && onClose && (
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+      </div>
 
         {/* ─── LIVE STATUS BAR ──────────────────────────────────────────────── */}
         <div className="px-6 py-2.5 bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-teal-50/70 dark:from-blue-950/30 dark:via-indigo-950/20 dark:to-teal-950/30 border-b border-slate-200 dark:border-[#2A3042] flex items-center justify-between gap-3 text-xs shrink-0 flex-wrap">
@@ -697,25 +710,28 @@ export default function LeadSetupModal({
 
         </div>
 
-        {/* ─── MODAL FOOTER ─────────────────────────────────────────────────── */}
-        <div className="px-6 py-3.5 border-t border-slate-200 dark:border-[#2A3042] bg-slate-50/80 dark:bg-[#181B26] flex items-center justify-between shrink-0">
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            Changes and webhook listeners are active in real-time across your workspace.
+        {/* ─── FOOTER ──────────────────────────────────────────────────────── */}
+        <div className="px-6 py-4 border-t border-slate-200 dark:border-[#2A3042] bg-slate-50/80 dark:bg-[#181B26] flex items-center justify-between shrink-0 flex-wrap gap-3">
+          <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Webhook listeners and sales SLA rules are live across your tenant instance.</span>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="btn btn-secondary text-xs"
-            >
-              Close
-            </button>
+            {isModal && onClose && (
+              <button
+                onClick={onClose}
+                className="btn btn-secondary text-xs"
+              >
+                Close
+              </button>
+            )}
             <button
               onClick={() => {
                 showAlert('Saved', 'Lead setup preferences and sales routing rules updated successfully.');
-                onClose();
+                if (onClose) onClose();
               }}
-              className="btn-primary text-xs flex items-center gap-1.5"
+              className="btn-primary text-xs flex items-center gap-1.5 shadow-glow-blue px-4 py-2 font-bold"
             >
               <Check size={14} />
               <span>Save & Apply Configuration</span>
@@ -723,6 +739,40 @@ export default function LeadSetupModal({
           </div>
         </div>
 
+    </div>
+  );
+}
+
+export interface LeadSetupModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  initialTab?: 'indiamart' | 'website' | 'whatsapp' | 'routing' | 'pipeline';
+  onLeadCreated?: () => void;
+  onNavigateToPipeline?: () => void;
+}
+
+export default function LeadSetupModal({
+  isOpen,
+  onClose,
+  initialTab = 'indiamart',
+  onLeadCreated,
+  onNavigateToPipeline,
+}: LeadSetupModalProps) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto animate-fade-in">
+      <div className="relative w-full max-w-4xl my-6">
+        <LeadSetupView
+          initialTab={initialTab}
+          onLeadCreated={onLeadCreated}
+          onNavigateToPipeline={() => {
+            onClose();
+            if (onNavigateToPipeline) onNavigateToPipeline();
+          }}
+          isModal={true}
+          onClose={onClose}
+        />
       </div>
     </div>
   );

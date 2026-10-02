@@ -12,7 +12,7 @@ import { leadsApi, usersApi } from '../services/api';
 import { Lead, LeadStatus, LeadSource, User as UserType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { usePopup } from '../contexts/PopupContext';
-import LeadSetupModal from '../components/leads/LeadSetupModal';
+import LeadSetupModal, { LeadSetupView } from '../components/leads/LeadSetupModal';
 import { format, formatDistanceToNow, isToday } from 'date-fns';
 import Papa from 'papaparse';
 
@@ -89,7 +89,7 @@ export default function LeadsPage() {
   const { showAlert } = usePopup();
   const canImport = user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
 
-  const [activeTab, setActiveTab] = useState<'pipeline' | 'client-directory'>('pipeline');
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'client-directory' | 'lead-setup'>('pipeline');
   const [leads, setLeads] = useState<Lead[]>([]);
   const [employees, setEmployees] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -466,9 +466,9 @@ export default function LeadsPage() {
             <button
               onClick={() => {
                 setLeadSetupInitialTab('indiamart');
-                setLeadSetupModalOpen(true);
+                setActiveTab('lead-setup');
               }}
-              title="Click to configure IndiaMART Webhook & Live API sync"
+              title="Click to view IndiaMART Webhook & Live API sync inside Leads page"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2E5EFF]/15 hover:bg-[#2E5EFF]/25 text-[#2E5EFF] border border-[#2E5EFF]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
             >
               <span className="w-2 h-2 rounded-full bg-[#2E5EFF]" />
@@ -482,9 +482,9 @@ export default function LeadsPage() {
             <button
               onClick={() => {
                 setLeadSetupInitialTab('website');
-                setLeadSetupModalOpen(true);
+                setActiveTab('lead-setup');
               }}
-              title="Click to configure Website Inquiry Form & Embed Widget"
+              title="Click to view Website Inquiry Form & Embed Widget inside Leads page"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-blue-50 dark:bg-[#1E2230] dark:hover:bg-[#262C3E] text-[#60A5FA] border border-[#3B82F6]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
             >
               <Globe size={13} className="text-[#60A5FA]" />
@@ -498,9 +498,9 @@ export default function LeadsPage() {
             <button
               onClick={() => {
                 setLeadSetupInitialTab('whatsapp');
-                setLeadSetupModalOpen(true);
+                setActiveTab('lead-setup');
               }}
-              title="Click to configure Meta WhatsApp Cloud API Webhook"
+              title="Click to view Meta WhatsApp Cloud API Webhook inside Leads page"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] border border-[#25D366]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
             >
               <MessageSquare size={13} />
@@ -514,7 +514,7 @@ export default function LeadsPage() {
             <button
               onClick={() => {
                 setLeadSetupInitialTab('routing');
-                setLeadSetupModalOpen(true);
+                setActiveTab('lead-setup');
               }}
               title="Click to configure Sales Auto-Assignment & SLA Routing"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#9AA0B4]/15 hover:bg-[#9AA0B4]/25 text-[#9AA0B4] border border-[#9AA0B4]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
@@ -534,12 +534,16 @@ export default function LeadsPage() {
           <button
             onClick={() => {
               setLeadSetupInitialTab('routing');
-              setLeadSetupModalOpen(true);
+              setActiveTab('lead-setup');
             }}
-            className="btn bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-white/10 text-xs gap-1.5 shadow-sm font-bold"
-            title="Configure Lead Capture Channels, Routing Rules & SLA"
+            className={`btn text-xs gap-1.5 shadow-sm font-bold transition-all ${
+              activeTab === 'lead-setup'
+                ? 'bg-crm-blue text-white shadow-glow-blue border-crm-blue'
+                : 'bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-white/10'
+            }`}
+            title="Configure Lead Capture Channels, Routing Rules & SLA in page"
           >
-            <Sliders size={14} className="text-crm-blue" />
+            <Sliders size={14} className={activeTab === 'lead-setup' ? 'text-white' : 'text-crm-blue'} />
             <span>Lead Setup & Flow</span>
           </button>
 
@@ -547,7 +551,7 @@ export default function LeadsPage() {
           <button
             onClick={() => {
               setLeadSetupInitialTab('website');
-              setLeadSetupModalOpen(true);
+              setActiveTab('lead-setup');
             }}
             className="btn bg-crm-teal/15 hover:bg-crm-teal/25 text-crm-teal border border-crm-teal/30 text-xs gap-1.5 shadow-glow-teal font-bold"
           >
@@ -577,9 +581,9 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      {/* ─── TAB NAVIGATION: Pipeline Board vs Client Data Directory ──────── */}
+      {/* ─── TAB NAVIGATION: Pipeline Board vs Client Directory vs Lead Setup ──────── */}
       <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2A3042] pb-1 gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setActiveTab('pipeline')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
@@ -602,6 +606,18 @@ export default function LeadsPage() {
           >
             <Building2 size={14} className={activeTab === 'client-directory' ? 'text-violet-300' : ''} />
             Client Directory & Lead Research ({filteredLeads.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('lead-setup')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'lead-setup'
+                ? 'bg-crm-teal text-white shadow-glow-teal'
+                : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 font-bold'
+            }`}
+          >
+            <Sliders size={14} className={activeTab === 'lead-setup' ? 'text-cyan-200' : 'text-crm-teal'} />
+            Lead Setup & Inbound Flow Engine
           </button>
         </div>
 
@@ -645,210 +661,223 @@ export default function LeadsPage() {
         )}
       </div>
 
-      {/* ─── CONTROLS: Search, Filter Chips, & View Toggle ────────────────── */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-1 max-w-4xl flex-wrap">
-          {/* Search Box */}
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              className="input pl-9 text-xs"
-              placeholder="Search contact, company, phone, SKU..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
+      {/* ─── CONTROLS: Search, Filter Chips, & View Toggle (Pipeline & Directory) ─── */}
+      {activeTab !== 'lead-setup' && (
+        <>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 flex-1 max-w-4xl flex-wrap">
+              {/* Search Box */}
+              <div className="relative flex-1 min-w-[200px]">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  className="input pl-9 text-xs"
+                  placeholder="Search contact, company, phone, SKU..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
 
-          {/* Source Chips */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-1 rounded-xl border border-slate-200 dark:border-[#2A3042]">
-            <span className="text-[10px] text-slate-500 font-bold px-2 uppercase">Source:</span>
-            {[
-              { id: 'all', label: 'All' },
-              { id: 'indiamart', label: 'IndiaMART' },
-              { id: 'web', label: 'Website' },
-              { id: 'whatsapp', label: 'WhatsApp' },
-              { id: 'manual', label: 'Manual' },
-            ].map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setSourceFilter(s.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                  sourceFilter === s.id
-                    ? 'bg-crm-blue text-white shadow-glow-blue'
-                    : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 font-bold'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
+              {/* Source Chips */}
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-1 rounded-xl border border-slate-200 dark:border-[#2A3042]">
+                <span className="text-[10px] text-slate-500 font-bold px-2 uppercase">Source:</span>
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'indiamart', label: 'IndiaMART' },
+                  { id: 'web', label: 'Website' },
+                  { id: 'whatsapp', label: 'WhatsApp' },
+                  { id: 'manual', label: 'Manual' },
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setSourceFilter(s.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                      sourceFilter === s.id
+                        ? 'bg-crm-blue text-white shadow-glow-blue'
+                        : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 font-bold'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
 
-          {/* Urgency Chips */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-1 rounded-xl border border-slate-200 dark:border-[#2A3042]">
-            <span className="text-[10px] text-slate-500 font-bold px-2 uppercase">Urgency:</span>
-            {[
-              { id: 'all', label: 'All' },
-              { id: 'urgent', label: 'Urgent' },
-              { id: 'standard', label: 'Standard' },
-              { id: 'planning', label: 'Planning' },
-            ].map((u) => (
-              <button
-                key={u.id}
-                onClick={() => setUrgencyFilter(u.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                  urgencyFilter === u.id
-                    ? u.id === 'urgent'
-                      ? 'bg-crm-coral text-white shadow-glow-coral'
-                      : 'bg-crm-amber text-black font-bold'
-                    : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 font-bold'
-                }`}
-              >
-                {u.label}
-              </button>
-            ))}
-          </div>
+              {/* Urgency Chips */}
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-1 rounded-xl border border-slate-200 dark:border-[#2A3042]">
+                <span className="text-[10px] text-slate-500 font-bold px-2 uppercase">Urgency:</span>
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'urgent', label: 'Urgent' },
+                  { id: 'standard', label: 'Standard' },
+                  { id: 'planning', label: 'Planning' },
+                ].map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => setUrgencyFilter(u.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                      urgencyFilter === u.id
+                        ? u.id === 'urgent'
+                          ? 'bg-crm-coral text-white shadow-glow-coral'
+                          : 'bg-crm-amber text-black font-bold'
+                        : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 font-bold'
+                    }`}
+                  >
+                    {u.label}
+                  </button>
+                ))}
+              </div>
 
-          {/* Assigned Rep Filter */}
-          {employees.length > 0 && (
-            <select
-              className="input w-44 text-xs"
-              value={employeeFilter}
-              onChange={(e) => setEmployeeFilter(e.target.value)}
-            >
-              <option value="all">All Sales Reps</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.name} ({emp.employeeCode})
-                </option>
-              ))}
-            </select>
-          )}
+              {/* Assigned Rep Filter */}
+              {employees.length > 0 && (
+                <select
+                  className="input w-44 text-xs"
+                  value={employeeFilter}
+                  onChange={(e) => setEmployeeFilter(e.target.value)}
+                >
+                  <option value="all">All Sales Reps</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.name} ({emp.employeeCode})
+                    </option>
+                  ))}
+                </select>
+              )}
 
-          {/* Reset All Filters Button */}
-          {(search || sourceFilter !== 'all' || urgencyFilter !== 'all' || employeeFilter !== 'all') && (
-            <button
-              onClick={() => {
-                setSearch('');
-                setSourceFilter('all');
-                setUrgencyFilter('all');
-                setEmployeeFilter('all');
-              }}
-              className="btn-ghost text-xs text-crm-coral hover:bg-crm-coral/10 border border-crm-coral/30 px-2.5 py-1.5 flex items-center gap-1 font-semibold"
-              title="Reset all active filters"
-            >
-              <X size={13} /> Clear Filters
-            </button>
-          )}
-        </div>
+              {/* Reset All Filters Button */}
+              {(search || sourceFilter !== 'all' || urgencyFilter !== 'all' || employeeFilter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setSearch('');
+                    setSourceFilter('all');
+                    setUrgencyFilter('all');
+                    setEmployeeFilter('all');
+                  }}
+                  className="btn-ghost text-xs text-crm-coral hover:bg-crm-coral/10 border border-crm-coral/30 px-2.5 py-1.5 flex items-center gap-1 font-semibold"
+                  title="Reset all active filters"
+                >
+                  <X size={13} /> Clear Filters
+                </button>
+              )}
+            </div>
 
-        {/* View Switcher & Refresh (Only on Pipeline tab) */}
-        <div className="flex items-center gap-2">
-          {activeTab === 'pipeline' && (
-            <div className="flex bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-xl p-1 gap-1">
-              <button
-                onClick={() => setView('kanban')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  view === 'kanban'
-                    ? 'bg-crm-blue text-white shadow-glow-blue'
-                    : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-                }`}
-              >
-                Kanban Board
-              </button>
-              <button
-                onClick={() => setView('list')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  view === 'list'
-                    ? 'bg-crm-blue text-white shadow-glow-blue'
-                    : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-                }`}
-              >
-                Pipeline Table
+            {/* View Switcher & Refresh (Only on Pipeline tab) */}
+            <div className="flex items-center gap-2">
+              {activeTab === 'pipeline' && (
+                <div className="flex bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-xl p-1 gap-1">
+                  <button
+                    onClick={() => setView('kanban')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      view === 'kanban'
+                        ? 'bg-crm-blue text-white shadow-glow-blue'
+                        : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                    }`}
+                  >
+                    Kanban Board
+                  </button>
+                  <button
+                    onClick={() => setView('list')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      view === 'list'
+                        ? 'bg-crm-blue text-white shadow-glow-blue'
+                        : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                    }`}
+                  >
+                    Pipeline Table
+                  </button>
+                </div>
+              )}
+
+              <button onClick={fetchLeads} className="btn-ghost text-xs gap-1" title="Refresh leads">
+                <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
               </button>
             </div>
-          )}
-
-          <button onClick={fetchLeads} className="btn-ghost text-xs gap-1" title="Refresh leads">
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-          </button>
-        </div>
-      </div>
-
-      {/* ─── TABLE & BOARD NAVIGATOR TOOLBAR (Scroll or Pan) ────────────────── */}
-      <div className="flex items-center justify-between bg-white dark:bg-[#181B26] p-2 rounded-xl border border-slate-200 dark:border-[#2A3042] flex-wrap gap-2 text-xs shadow-sm">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-crm-blue animate-pulse" />
-            Table Navigator (Scroll or Pan):
-          </span>
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-0.5 rounded-lg border border-slate-200 dark:border-[#2A3042]">
-            <button
-              type="button"
-              onClick={() => setDensity('compact')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-                density === 'compact' ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-              }`}
-            >
-              Compact
-            </button>
-            <button
-              type="button"
-              onClick={() => setDensity('normal')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-                density === 'normal' ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-              }`}
-            >
-              Normal
-            </button>
           </div>
-        </div>
 
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => scrollTable('start')}
-            className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-crm-blue text-slate-800 dark:text-slate-300 flex items-center gap-1 font-bold shadow-sm"
-            title="Scroll to Start"
-          >
-            <ChevronsLeft size={13} /> Start (Component & SKU)
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTable('left')}
-            className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-            title="Pan Left"
-          >
-            <ChevronLeft size={13} /> Left
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTable('right')}
-            className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-            title="Pan Right"
-          >
-            Right <ChevronRight size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTable('end')}
-            className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-amber-500 text-amber-700 dark:text-crm-amber flex items-center gap-1 font-bold shadow-sm"
-            title="Scroll to End"
-          >
-            End (Actions & Bill) <ChevronsRight size={13} />
-          </button>
-        </div>
-      </div>
+          {/* ─── TABLE & BOARD NAVIGATOR TOOLBAR (Scroll or Pan) ────────────────── */}
+          <div className="flex items-center justify-between bg-white dark:bg-[#181B26] p-2 rounded-xl border border-slate-200 dark:border-[#2A3042] flex-wrap gap-2 text-xs shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-crm-blue animate-pulse" />
+                Table Navigator (Scroll or Pan):
+              </span>
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-0.5 rounded-lg border border-slate-200 dark:border-[#2A3042]">
+                <button
+                  type="button"
+                  onClick={() => setDensity('compact')}
+                  className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+                    density === 'compact' ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                  }`}
+                >
+                  Compact
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDensity('normal')}
+                  className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+                    density === 'normal' ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                  }`}
+                >
+                  Normal
+                </button>
+              </div>
+            </div>
 
-      {/* ─── TAB CONTENT: Pipeline vs Client Data Directory ──────────────── */}
-      {activeTab === 'pipeline' ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => scrollTable('start')}
+                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-crm-blue text-slate-800 dark:text-slate-300 flex items-center gap-1 font-bold shadow-sm"
+                title="Scroll to Start"
+              >
+                <ChevronsLeft size={13} /> Start (Component & SKU)
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollTable('left')}
+                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
+                title="Pan Left"
+              >
+                <ChevronLeft size={13} /> Left
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollTable('right')}
+                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
+                title="Pan Right"
+              >
+                Right <ChevronRight size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollTable('end')}
+                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-amber-500 text-amber-700 dark:text-crm-amber flex items-center gap-1 font-bold shadow-sm"
+                title="Scroll to End"
+              >
+                End (Actions & Bill) <ChevronsRight size={13} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ─── TAB CONTENT: Lead Setup & Inbound Flow Engine ─────────────────── */}
+      {activeTab === 'lead-setup' && (
+        <LeadSetupView
+          initialTab={leadSetupInitialTab}
+          onLeadCreated={fetchLeads}
+          onNavigateToPipeline={() => setActiveTab('pipeline')}
+        />
+      )}
+
+      {/* ─── TAB CONTENT: Pipeline Kanban vs Table ────────────────────────── */}
+      {activeTab === 'pipeline' && (
         view === 'kanban' ? (
           <div
             ref={kanbanContainerRef}
@@ -1122,8 +1151,10 @@ export default function LeadsPage() {
             </div>
           </div>
         )
-      ) : (
-        /* ─── TAB 2: CLIENT DIRECTORY & LEAD RESEARCH DATA TABLE ─────────── */
+      )}
+
+      {/* ─── TAB CONTENT: Client Directory & Lead Research ──────────────── */}
+      {activeTab === 'client-directory' && (
         <div className="table-wrapper border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-hidden shadow-sm bg-white dark:bg-[#141722]">
           <div
             ref={tableContainerRef}
