@@ -288,7 +288,7 @@ export default function ProjectStockPositionView() {
             <span>Product Order BOM & Shortage Planner</span>
           </h1>
           <p className="text-slate-400 text-xs sm:text-sm mt-0.5">
-            Select your ordered product (e.g. 20-Zone Controller, Fire Alarm Panel) to instantly see what to <strong>Collect from Store</strong> vs what to <strong>BUY from Suppliers</strong>.
+            Select your ordered product to instantly see what to <strong>Collect from Store</strong> vs what to <strong>BUY from Suppliers</strong>.
           </p>
         </div>
 
@@ -466,7 +466,7 @@ export default function ProjectStockPositionView() {
               <div>
                 <strong className="text-white">Supplier Purchase Order & Shortage Requirement</strong>
                 <span className="block text-[11px] text-slate-400">
-                  These components are missing from your warehouse. Contact your component suppliers (e.g. Ahuja, Electronic Distributors) to procure them.
+                  These components are missing from your warehouse. Contact your component suppliers to procure them.
                 </span>
               </div>
             </div>
@@ -816,10 +816,10 @@ export default function ProjectStockPositionView() {
                       }
                     }}
                   >
-                    <option value="">-- Click to pick any Company Component (e.g. 10K SIP, Relay, IC) --</option>
+                    <option value="">-- Click to pick any Component --</option>
                     {skus.map((sku) => (
                       <option key={sku.id} value={sku.id}>
-                        {sku.skuCode} — {sku.name} ({sku.packageType || 'TH'}) [Stock: {sku.totalOnHand || 0} Nos]
+                        {sku.skuCode} — {sku.name} ({sku.packageType || 'Unit'}) [Stock: {sku.totalOnHand || 0} Nos]
                       </option>
                     ))}
                   </select>
@@ -831,7 +831,7 @@ export default function ProjectStockPositionView() {
                     <input
                       type="text"
                       required
-                      placeholder="e.g. 2 CTBS- 20 Zone -Controller"
+                      placeholder="Enter product / model name"
                       value={formData.project}
                       onChange={(e) => setFormData({ ...formData, project: e.target.value })}
                       className="input font-bold"
@@ -842,7 +842,7 @@ export default function ProjectStockPositionView() {
                     <label className="label">Circuit / PCB / BOM Tag</label>
                     <input
                       type="text"
-                      placeholder="e.g. 8 / R1 / IC-01"
+                      placeholder="Enter tag or reference"
                       value={formData.reference}
                       onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
                       className="input font-mono"
@@ -856,7 +856,7 @@ export default function ProjectStockPositionView() {
                     <input
                       type="text"
                       required
-                      placeholder="e.g. 10K – SIP – 5PIN"
+                      placeholder="Enter item code / SKU"
                       value={formData.itemCode}
                       onChange={(e) => setFormData({ ...formData, itemCode: e.target.value })}
                       className="input uppercase font-mono font-bold text-crm-blue-light"
@@ -867,7 +867,7 @@ export default function ProjectStockPositionView() {
                     <label className="label">Part Value / Specs</label>
                     <input
                       type="text"
-                      placeholder="e.g. 10K – SIP – 5pin"
+                      placeholder="Enter part value / specifications"
                       value={formData.partValue}
                       onChange={(e) => setFormData({ ...formData, partValue: e.target.value })}
                       className="input"
@@ -878,7 +878,7 @@ export default function ProjectStockPositionView() {
                     <label className="label">Package / Mounting</label>
                     <input
                       type="text"
-                      placeholder="e.g. TH / SMD / Chassis"
+                      placeholder="Enter package type"
                       value={formData.package}
                       onChange={(e) => setFormData({ ...formData, package: e.target.value })}
                       className="input"
@@ -1012,7 +1012,7 @@ export default function ProjectStockPositionView() {
                   <label className="label">Procurement Remarks / Supplier PO Notes</label>
                   <textarea
                     rows={2}
-                    placeholder="e.g. Order 100 pcs from Ahuja; lead time 3 days"
+                    placeholder="Enter procurement remarks / notes"
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     className="input resize-none"

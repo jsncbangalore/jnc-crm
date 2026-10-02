@@ -46,8 +46,8 @@ export const RestockComponentModal: React.FC<RestockComponentModalProps> = ({
 
       const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       setBatchNumber(`LOT-${todayStr}-${item.skuCode?.slice(-4) || '01'}`);
-      setSupplierName(item.supplier || 'Authorized Component Supplier');
-      setUnitPrice(Number(item.unitPrice || 5));
+      setSupplierName(item.supplier || '');
+      setUnitPrice(Number(item.unitPrice || 0));
       setTaxRate(Number(item.taxRate ?? 18));
       setInvoiceNumber('');
       setError(null);
@@ -265,7 +265,7 @@ export const RestockComponentModal: React.FC<RestockComponentModalProps> = ({
                   value={batchNumber}
                   onChange={(e) => setBatchNumber(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. LOT-20260901-01"
+                  placeholder="e.g. LOT-001"
                 />
               </div>
             </div>
@@ -284,7 +284,7 @@ export const RestockComponentModal: React.FC<RestockComponentModalProps> = ({
                   value={supplierName}
                   onChange={(e) => setSupplierName(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. Aarthi Electronics / SP Road"
+                  placeholder="Enter supplier name"
                 />
               </div>
 
@@ -300,7 +300,7 @@ export const RestockComponentModal: React.FC<RestockComponentModalProps> = ({
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs font-mono uppercase rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. AE/CR/26-27/2265"
+                  placeholder="e.g. INV-001"
                 />
               </div>
             </div>

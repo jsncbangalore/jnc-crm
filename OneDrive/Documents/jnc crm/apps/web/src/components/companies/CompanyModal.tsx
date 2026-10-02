@@ -154,7 +154,7 @@ export default function CompanyModal({
                 <input
                   required
                   className="input text-xs"
-                  placeholder="e.g. Apex Robotics Pvt Ltd"
+                  placeholder="Enter company name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
@@ -164,7 +164,7 @@ export default function CompanyModal({
                 <label className="label">GSTIN Number</label>
                 <input
                   className="input text-xs font-mono uppercase"
-                  placeholder="e.g. 29AAAAA0000A1Z5"
+                  placeholder="Enter GSTIN (Optional)"
                   maxLength={15}
                   value={formData.gstin}
                   onChange={(e) => setFormData({ ...formData, gstin: e.target.value })}
@@ -180,7 +180,7 @@ export default function CompanyModal({
               <input
                 type="email"
                 className="input text-xs"
-                placeholder="e.g. accounts.payable@apexrobotics.in / billing@client.com"
+                placeholder="Enter billing email"
                 value={formData.billingEmail}
                 onChange={(e) => setFormData({ ...formData, billingEmail: e.target.value })}
               />
@@ -195,7 +195,7 @@ export default function CompanyModal({
                 <label className="label">Registered Address</label>
                 <input
                   className="input text-xs"
-                  placeholder="e.g. Plot 42, Electronic City Phase 1"
+                  placeholder="Enter street address"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 />
@@ -205,7 +205,7 @@ export default function CompanyModal({
                 <label className="label">City</label>
                 <input
                   className="input text-xs"
-                  placeholder="e.g. Bengaluru"
+                  placeholder="Enter city"
                   value={formData.city}
                   onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                 />
@@ -218,7 +218,7 @@ export default function CompanyModal({
                 <label className="label">State</label>
                 <input
                   className="input text-xs"
-                  placeholder="e.g. Karnataka"
+                  placeholder="Enter state"
                   value={formData.state}
                   onChange={(e) => setFormData({ ...formData, state: e.target.value })}
                 />
@@ -228,7 +228,7 @@ export default function CompanyModal({
                 <label className="label">Industry</label>
                 <input
                   className="input text-xs"
-                  placeholder="e.g. Manufacturing / IT"
+                  placeholder="Enter industry"
                   value={formData.industry}
                   onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
                 />
@@ -238,7 +238,7 @@ export default function CompanyModal({
                 <label className="label">Website</label>
                 <input
                   className="input text-xs"
-                  placeholder="e.g. https://apexrobotics.in"
+                  placeholder="Enter website URL"
                   value={formData.website}
                   onChange={(e) => setFormData({ ...formData, website: e.target.value })}
                 />

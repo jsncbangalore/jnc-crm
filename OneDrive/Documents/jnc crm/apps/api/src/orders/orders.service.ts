@@ -44,9 +44,14 @@ export class OrdersService {
     private auditService: AuditService,
   ) {}
 
-  private async resolveSkuForLine(line: { skuId?: string; name?: string; unitPrice: number; hsnCode?: string }, warehouseId?: string) {
+  private async resolveSkuForLine(
+    line: { skuId?: string; name?: string; unitPrice: number; hsnCode?: string },
+    user: ScopedUser,
+    warehouseId?: string,
+  ) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     if (line.skuId && line.skuId.trim()) {
-      const existing = await this.prisma.sku.findUnique({ where: { id: line.skuId } });
+      const existing = await this.prisma.sku.findFirst({ where: { id: line.skuId, tenantId } });
       if (existing) return existing;
     }
 
@@ -58,6 +63,7 @@ export class OrdersService {
     // Try finding by skuCode or name
     let found = await this.prisma.sku.findFirst({
       where: {
+        tenantId,
         OR: [
           { skuCode: { equals: text } },
           { name: { equals: text } },
@@ -70,22 +76,33 @@ export class OrdersService {
     // Create on-the-fly SKU for typed text item
     const codePrefix = text.slice(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'ITEM';
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const skuCode = `JNC-${codePrefix}-${randomSuffix}`;
+    const skuCode = `SKU-${codePrefix}-${randomSuffix}`;
 
     const newSku = await this.prisma.sku.create({
       data: {
+        tenantId,
         skuCode,
         name: text,
-        category: 'Custom Equipment',
+        category: 'Equipment',
         unitPrice: line.unitPrice || 0,
         costPrice: Math.round((line.unitPrice || 0) * 0.7),
         hsnCode: line.hsnCode || '85312000',
-        packageType: "No's",
+        packageType: "Unit",
       },
     });
 
     // Ensure default stock item exists so reservations work smoothly
-    const defaultWarehouse = await this.prisma.warehouse.findFirst();
+    let defaultWarehouse = await this.prisma.warehouse.findFirst({ where: { tenantId } });
+    if (!defaultWarehouse) {
+      defaultWarehouse = await this.prisma.warehouse.create({
+        data: {
+          tenantId,
+          code: 'MAIN-01',
+          name: 'Main Warehouse',
+          city: 'Headquarters',
+        },
+      });
+    }
     if (defaultWarehouse) {
       await this.prisma.stockItem.create({
         data: {
@@ -101,13 +118,14 @@ export class OrdersService {
   }
 
   async createOrder(dto: CreateOrderDto, user: ScopedUser) {
-    const count = await this.prisma.order.count();
-    const orderNumber = `JNC-ORD-${String(count + 1).padStart(5, '0')}`;
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const count = await this.prisma.order.count({ where: { tenantId } });
+    const orderNumber = `ORD-${String(count + 1).padStart(5, '0')}`;
 
     // Resolve SKUs (matching dropdown or typed text)
     const resolvedLines: { skuId: string; quantity: number; unitPrice: number }[] = [];
     for (const line of dto.lines) {
-      const sku = await this.resolveSkuForLine(line);
+      const sku = await this.resolveSkuForLine(line, user);
       resolvedLines.push({
         skuId: sku.id,
         quantity: line.quantity,
@@ -122,6 +140,7 @@ export class OrdersService {
 
     const order = await this.prisma.order.create({
       data: {
+        tenantId,
         orderNumber,
         quotationId: dto.quotationId,
         contactId: dto.contactId,
@@ -381,7 +400,7 @@ export class OrdersService {
     if (dto.lines && dto.lines.length > 0) {
       const resolvedLines: { skuId: string; quantity: number; unitPrice: number }[] = [];
       for (const line of dto.lines) {
-        const sku = await this.resolveSkuForLine(line);
+        const sku = await this.resolveSkuForLine(line, user);
         resolvedLines.push({
           skuId: sku.id,
           quantity: line.quantity,

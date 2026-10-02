@@ -345,7 +345,7 @@ export const BulkEditComponentsModal: React.FC<BulkEditComponentsModalProps> = (
                   <div className="pl-6 pt-1">
                     <input
                       type="text"
-                      placeholder="e.g. Ahuja Radios, Bosch India, Arrow Electronics"
+                      placeholder="Enter preferred supplier / brand name"
                       value={supplierName}
                       onChange={(e) => setSupplierName(e.target.value)}
                       className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"

@@ -65,8 +65,8 @@ export class InventoryController {
 
   @Get('reorder-alerts')
   @Roles('super_admin', 'admin')
-  getReorderAlerts() {
-    return this.inventoryService.getReorderAlerts();
+  getReorderAlerts(@CurrentUser() user: ScopedUser) {
+    return this.inventoryService.getReorderAlerts(user);
   }
 
   @Get('warehouses')
@@ -76,8 +76,11 @@ export class InventoryController {
 
   @Post('warehouses')
   @Roles('super_admin', 'admin')
-  createWarehouse(@Body() data: { name: string; code: string; address?: string; city?: string }) {
-    return this.inventoryService.createWarehouse(data);
+  createWarehouse(
+    @Body() data: { name: string; code: string; address?: string; city?: string },
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.inventoryService.createWarehouse(data, user);
   }
 
   @Get('skus')
@@ -104,17 +107,17 @@ export class InventoryController {
 
   @Delete('skus/:id')
   @Roles('super_admin', 'admin')
-  deleteSku(@Param('id') id: string) {
-    return this.inventoryService.deleteSku(id);
+  deleteSku(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
+    return this.inventoryService.deleteSku(id, user);
   }
 
   @Post('skus/bulk-delete')
   @Roles('super_admin', 'admin')
-  bulkDeleteSkus(@Body() body: { ids: string[] }) {
+  bulkDeleteSkus(@Body() body: { ids: string[] }, @CurrentUser() user: ScopedUser) {
     if (!body.ids || !Array.isArray(body.ids)) {
       throw new BadRequestException('ids array is required');
     }
-    return this.inventoryService.bulkDeleteSkus(body.ids);
+    return this.inventoryService.bulkDeleteSkus(body.ids, user);
   }
 
   /**
@@ -295,7 +298,7 @@ NET-SW-24POE-GIG,24-Port Gigabit Managed PoE+ Network Switch 370W,Network Infras
 NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastructure,85444999,Drum,8800.00,6200.00,5,20,18,Schneider / D-Link India,BLR-F-01-A02
 `;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="jsnc_inventory_import_template.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="inventory_import_template.csv"');
     return res.send(csvContent);
   }
 
@@ -343,12 +346,13 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
 
   @Get('project-stock')
   async getProjectStock(
+    @CurrentUser() user: ScopedUser,
     @Query('project') project?: string,
     @Query('search') search?: string,
     @Query('status') status?: string,
     @Query('shortageOnly') shortageOnly?: string,
   ) {
-    return this.inventoryService.getProjectStockPositions({
+    return this.inventoryService.getProjectStockPositions(user, {
       project,
       search,
       status,
@@ -357,20 +361,24 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
   }
 
   @Get('project-stock/summary')
-  async getProjectStockSummary() {
-    return this.inventoryService.getProjectStockSummary();
+  async getProjectStockSummary(@CurrentUser() user: ScopedUser) {
+    return this.inventoryService.getProjectStockSummary(user);
   }
 
   @Post('project-stock')
   @Roles('super_admin', 'admin', 'sub_admin')
-  async createProjectStock(@Body() data: any) {
-    return this.inventoryService.createProjectStockPosition(data);
+  async createProjectStock(@Body() data: any, @CurrentUser() user: ScopedUser) {
+    return this.inventoryService.createProjectStockPosition(data, user);
   }
 
   @Patch('project-stock/:id')
   @Roles('super_admin', 'admin', 'sub_admin')
-  async updateProjectStock(@Param('id') id: string, @Body() data: any) {
-    return this.inventoryService.updateProjectStockPosition(id, data);
+  async updateProjectStock(
+    @Param('id') id: string,
+    @Body() data: any,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.inventoryService.updateProjectStockPosition(id, data, user);
   }
 
   @Post('project-stock/:id/purchase')
@@ -395,17 +403,17 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
 
   @Delete('project-stock/:id')
   @Roles('super_admin', 'admin')
-  async deleteProjectStock(@Param('id') id: string) {
-    return this.inventoryService.deleteProjectStockPosition(id);
+  async deleteProjectStock(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
+    return this.inventoryService.deleteProjectStockPosition(id, user);
   }
 
   @Post('project-stock/bulk')
   @Roles('super_admin', 'admin', 'sub_admin')
-  async bulkImportProjectStock(@Body() body: { rows: any[] }) {
+  async bulkImportProjectStock(@Body() body: { rows: any[] }, @CurrentUser() user: ScopedUser) {
     if (!body.rows || !Array.isArray(body.rows)) {
       throw new BadRequestException('Invalid payload: rows array required');
     }
-    return this.inventoryService.bulkImportProjectStockPositions(body.rows);
+    return this.inventoryService.bulkImportProjectStockPositions(body.rows, user);
   }
 
   @Delete('clear-all')
@@ -424,28 +432,28 @@ CyberTech IT Park Surveillance & Access Control,ACS-FACE-01,4,ACS-BIO-FP-FACE,Fa
 Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-Bed Digital LCD Station,Nurse Station Console,Nos,2,2,4,5,0,1,4,0,Sufficient,ICU & Emergency ward central monitoring console
 `;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="jsnc_project_stock_position_template.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="project_stock_position_template.csv"');
     return res.send(csvContent);
   }
 
   // ─── Finished Products (3-Tier) ─────────────────────────────────────────────
 
   @Get('products')
-  async getProducts() {
-    return this.inventoryService.getProducts();
+  async getProducts(@CurrentUser() user: ScopedUser) {
+    return this.inventoryService.getProducts(user);
   }
 
   @Post('seed-products')
   @Roles('super_admin', 'admin')
-  async seedProducts() {
-    return this.inventoryService.seedFinishedProducts();
+  async seedProducts(@CurrentUser() user: ScopedUser) {
+    return this.inventoryService.seedFinishedProducts(user);
   }
 
   // ─── Inventory Dashboard ─────────────────────────────────────────────────────
 
   @Get('dashboard')
-  async getInventoryDashboard() {
-    return this.inventoryService.getInventoryDashboard();
+  async getInventoryDashboard(@CurrentUser() user: ScopedUser) {
+    return this.inventoryService.getInventoryDashboard(user);
   }
 
   // ─── Purchase Document Upload ────────────────────────────────────────────────
@@ -480,8 +488,11 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   // ─── Supplier Purchase History ───────────────────────────────────────────────
 
   @Get('suppliers/:supplierId/purchases')
-  async getSupplierPurchases(@Param('supplierId') supplierId: string) {
-    return this.inventoryService.getSupplierPurchases(supplierId);
+  async getSupplierPurchases(
+    @Param('supplierId') supplierId: string,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.inventoryService.getSupplierPurchases(supplierId, user);
   }
 
   @Post('suppliers/:supplierId/purchase')
@@ -509,13 +520,13 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   // ─── Purchase Bills & Soft Copies Repository ─────────────────────────────────
 
   @Get('purchase-bills')
-  async getPurchaseBills(@Query() query: any) {
-    return this.inventoryService.getPurchaseBills(query);
+  async getPurchaseBills(@CurrentUser() user: ScopedUser, @Query() query: any) {
+    return this.inventoryService.getPurchaseBills(user, query);
   }
 
   @Get('purchase-bills/:id')
-  async getPurchaseBill(@Param('id') id: string) {
-    return this.inventoryService.getPurchaseBill(id);
+  async getPurchaseBill(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
+    return this.inventoryService.getPurchaseBill(id, user);
   }
 
   @Post('purchase-bills')
@@ -526,8 +537,8 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
 
   @Delete('purchase-bills/:id')
   @Roles('super_admin', 'admin')
-  async deletePurchaseBill(@Param('id') id: string) {
-    return this.inventoryService.deletePurchaseBill(id);
+  async deletePurchaseBill(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
+    return this.inventoryService.deletePurchaseBill(id, user);
   }
 
   @Post('purchase-bills/scan-ocr')

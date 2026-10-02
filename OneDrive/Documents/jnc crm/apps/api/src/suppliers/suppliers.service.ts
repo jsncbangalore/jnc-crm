@@ -7,6 +7,7 @@
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ScopedUser } from '../auth/scoping.service';
 
 export interface CreateSupplierDto {
   name: string;
@@ -24,9 +25,11 @@ export interface CreateSupplierDto {
 export class SuppliersService {
   constructor(private prisma: PrismaService) {}
 
-  async create(dto: CreateSupplierDto) {
+  async create(dto: CreateSupplierDto, user?: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     return this.prisma.supplier.create({
       data: {
+        tenantId,
         name: dto.name,
         contactPerson: dto.contactPerson,
         email: dto.email,
@@ -40,8 +43,9 @@ export class SuppliersService {
     });
   }
 
-  async findAll(query: { search?: string; isActive?: boolean }) {
-    const where: any = { deletedAt: null };
+  async findAll(user?: ScopedUser, query: { search?: string; isActive?: boolean } = {}) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const where: any = { deletedAt: null, tenantId };
     if (query.isActive !== undefined) {
       where.isActive = query.isActive;
     }
@@ -69,9 +73,10 @@ export class SuppliersService {
     });
   }
 
-  async findOne(id: string) {
-    const supplier = await this.prisma.supplier.findUnique({
-      where: { id },
+  async findOne(id: string, user?: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const supplier = await this.prisma.supplier.findFirst({
+      where: { id, tenantId },
       include: {
         preferredSkus: true,
         stockMovements: {
@@ -89,29 +94,27 @@ export class SuppliersService {
     return supplier;
   }
 
-  async update(id: string, dto: Partial<CreateSupplierDto>) {
-    await this.findOne(id);
+  async update(id: string, dto: Partial<CreateSupplierDto>, user?: ScopedUser) {
+    await this.findOne(id, user);
     return this.prisma.supplier.update({
       where: { id },
       data: dto,
     });
   }
 
-  async delete(id: string) {
-    await this.findOne(id);
+  async delete(id: string, user?: ScopedUser) {
+    await this.findOne(id, user);
     return this.prisma.supplier.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
   }
 
-  async countActiveSuppliers(): Promise<number> {
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-
-    // Count suppliers that are active or had an inward stock movement in last 90 days
+  async countActiveSuppliers(user?: ScopedUser): Promise<number> {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     return this.prisma.supplier.count({
       where: {
+        tenantId,
         isActive: true,
         deletedAt: null,
       },

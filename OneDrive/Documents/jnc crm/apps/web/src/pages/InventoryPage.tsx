@@ -271,7 +271,7 @@ export default function InventoryPage() {
           skuCode: pos.itemCode || matchedSku?.skuCode || 'ITEM',
           name: pos.partValue || matchedSku?.name || pos.itemCode || 'Component',
           project: pos.project || 'General Inventory',
-          supplier: matchedSku?.preferredSupplier?.name || 'JNC Sourcing / Ahuja Electronics',
+          supplier: matchedSku?.preferredSupplier?.name || 'Direct / Authorized Supplier',
           packageType: pos.package || matchedSku?.packageType || '0805',
           quantityOnHand: present,
           plannedRequirement: planned,
@@ -1265,7 +1265,7 @@ export default function InventoryPage() {
                 Procurement & Vendor PO Generator
               </span>
               <span className="text-slate-600 dark:text-slate-400 text-[11px]">
-                Export this list to Excel/CSV for sending to Ahuja, Bosch, or component distributors
+                Export this list to Excel/CSV for sending to vendors or component distributors
               </span>
             </div>
 

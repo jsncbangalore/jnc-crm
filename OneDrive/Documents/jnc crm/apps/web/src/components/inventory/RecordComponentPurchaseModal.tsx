@@ -35,12 +35,12 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
 }) => {
   const [componentName, setComponentName] = useState('');
   const [skuCode, setSkuCode] = useState('');
-  const [project, setProject] = useState(existingProjects[0] || 'PA System Integration');
+  const [project, setProject] = useState(existingProjects[0] || 'General Inventory');
   const [customProject, setCustomProject] = useState('');
   const [supplierName, setSupplierName] = useState('');
-  const [quantity, setQuantity] = useState<number>(10);
+  const [quantity, setQuantity] = useState<number>(1);
   const [unit, setUnit] = useState('Nos');
-  const [unitPrice, setUnitPrice] = useState<number>(500);
+  const [unitPrice, setUnitPrice] = useState<number>(0);
   const [taxRate, setTaxRate] = useState<number>(18);
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [notes, setNotes] = useState('');
@@ -117,7 +117,7 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
         await inventoryApi.createSku({
           skuCode: generatedSku,
           name: componentName.trim(),
-          category: effectiveProject.split(' ')[0] || 'PA System',
+          category: effectiveProject.split(' ')[0] || 'General',
           unitPrice: baseRate,
           costPrice: baseRate,
           taxRate: taxRate,
@@ -212,7 +212,7 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
                 <input
                   type="text"
                   required
-                  placeholder="e.g. 240W Mixer Amplifier, Optical Smoke Detector"
+                  placeholder="Enter item or component name"
                   value={componentName}
                   onChange={(e) => {
                     setComponentName(e.target.value);
@@ -232,7 +232,7 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. PA-AMP-240W, FAS-DET-OPT"
+                  placeholder="e.g. SKU-001"
                   value={skuCode}
                   onChange={(e) => setSkuCode(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -259,10 +259,8 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
                       {p}
                     </option>
                   ))}
-                  <option value="PA System Integration">PA System Integration</option>
-                  <option value="Talk Back & Intercom System">Talk Back & Intercom System</option>
-                  <option value="Fire Alarm & Safety Automation">Fire Alarm & Safety Automation</option>
-                  <option value="CCTV & Surveillance Network">CCTV & Surveillance Network</option>
+                  <option value="General Inventory">General Inventory</option>
+                  <option value="Standard Production">Standard Production</option>
                   <option value="__custom__">+ Add New Custom Project...</option>
                 </select>
                 {project === '__custom__' && (
@@ -286,7 +284,7 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Ahuja Radios, Honeywell India, Bosch"
+                  placeholder="Enter supplier name"
                   value={supplierName}
                   onChange={(e) => setSupplierName(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -401,7 +399,7 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. INV-2026-9812"
+                  placeholder="e.g. INV-001"
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -454,7 +452,7 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
               </label>
               <input
                 type="text"
-                placeholder="e.g. Received at Bangalore store; tested ok"
+                placeholder="Enter remarks or notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"

@@ -31,19 +31,23 @@ export class InventoryService {
     page?: number;
     limit?: number;
   }) {
-    const scopeWhere = this.scopingService.getInventoryScope(user);
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const page = Number(query.page) || 1;
     const limit = Number(query.limit) || 200;
     const skip = (page - 1) * limit;
     const canSeeCostPrice = user.role === 'super_admin' || user.role === 'admin';
 
-    // Build SKU filter (never return soft-deleted SKUs)
-    const skuWhere: any = { deletedAt: null };
+    // Build SKU filter scoped by tenant (never return soft-deleted SKUs)
+    const skuWhere: any = { deletedAt: null, tenantId };
     if (query.search) {
-      skuWhere.OR = [
-        { skuCode: { contains: query.search } },
-        { name: { contains: query.search } },
-        { category: { contains: query.search } },
+      skuWhere.AND = [
+        {
+          OR: [
+            { skuCode: { contains: query.search } },
+            { name: { contains: query.search } },
+            { category: { contains: query.search } },
+          ],
+        },
       ];
     }
 
@@ -160,9 +164,10 @@ export class InventoryService {
     return movement;
   }
 
-  async getReorderAlerts() {
+  async getReorderAlerts(user?: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const skus = await this.prisma.sku.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, tenantId },
       include: {
         preferredSupplier: true,
         stockItems: true,
@@ -180,13 +185,11 @@ export class InventoryService {
   }
 
   async getWarehouses(user: ScopedUser) {
-    const where: any = { deletedAt: null };
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const where: any = { deletedAt: null, tenantId };
     const scope: any = this.scopingService.getInventoryScope(user);
     if (scope.warehouseId) {
       where.id = scope.warehouseId;
-    }
-    if (scope.tenantId) {
-      where.tenantId = scope.tenantId;
     }
     return this.prisma.warehouse.findMany({
       where,
@@ -199,15 +202,23 @@ export class InventoryService {
     });
   }
 
-  async createWarehouse(data: { name: string; code: string; address?: string; city?: string }) {
-    return this.prisma.warehouse.create({ data });
+  async createWarehouse(data: { name: string; code: string; address?: string; city?: string }, user?: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    return this.prisma.warehouse.create({
+      data: {
+        ...data,
+        tenantId,
+      },
+    });
   }
 
   async getSkus(user: ScopedUser, search?: string) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const canSeeCostPrice = user.role === 'super_admin' || user.role === 'admin';
     const skus = await this.prisma.sku.findMany({
       where: {
         deletedAt: null,
+        tenantId,
         ...(search ? {
           OR: [
             { skuCode: { contains: search } },
@@ -230,9 +241,10 @@ export class InventoryService {
   }
 
   async getSkuById(id: string, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const canSeeCostPrice = user.role === 'super_admin' || user.role === 'admin';
-    const sku = await this.prisma.sku.findUnique({
-      where: { id },
+    const sku = await this.prisma.sku.findFirst({
+      where: { id, tenantId },
       include: {
         preferredSupplier: true,
         stockItems: {
@@ -327,11 +339,13 @@ export class InventoryService {
     },
     user: ScopedUser,
   ) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const sku = await this.prisma.sku.create({
       data: {
+        tenantId,
         skuCode: data.skuCode.trim(),
         name: data.name.trim(),
-        category: data.category || 'PA System',
+        category: data.category || 'General',
         hsnCode: data.hsnCode?.trim() || undefined,
         packageType: data.packageType || 'Unit',
         unitPrice: Number(data.unitPrice) || 0,
@@ -343,9 +357,20 @@ export class InventoryService {
       },
     });
 
-    const warehouse = data.warehouseId
-      ? await this.prisma.warehouse.findUnique({ where: { id: data.warehouseId } })
-      : await this.prisma.warehouse.findFirst();
+    let warehouse = data.warehouseId
+      ? await this.prisma.warehouse.findFirst({ where: { id: data.warehouseId, tenantId } })
+      : await this.prisma.warehouse.findFirst({ where: { tenantId } });
+
+    if (!warehouse) {
+      warehouse = await this.prisma.warehouse.create({
+        data: {
+          tenantId,
+          code: 'MAIN-01',
+          name: 'Main Warehouse',
+          city: 'Headquarters',
+        },
+      });
+    }
 
     const initialQty = Number(data.initialStock) || 0;
     if (warehouse && initialQty > 0) {
@@ -376,7 +401,14 @@ export class InventoryService {
   }
 
   async updateSku(id: string, data: any, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const { quantityOnHand, reasonCode, supplierId: inputSupplierId, supplierName, ...skuData } = data;
+
+    // Verify ownership
+    const existingSku = await this.prisma.sku.findFirst({ where: { id, tenantId } });
+    if (!existingSku) {
+      throw new NotFoundException('SKU not found');
+    }
 
     // Update SKU fields
     const updated = await this.prisma.sku.update({
@@ -395,7 +427,17 @@ export class InventoryService {
     if (quantityOnHand !== undefined) {
       let stockItem = await this.prisma.stockItem.findFirst({ where: { skuId: id } });
       if (!stockItem) {
-        const defaultWarehouse = await this.prisma.warehouse.findFirst();
+        let defaultWarehouse = await this.prisma.warehouse.findFirst({ where: { tenantId } });
+        if (!defaultWarehouse) {
+          defaultWarehouse = await this.prisma.warehouse.create({
+            data: {
+              tenantId,
+              code: 'MAIN-01',
+              name: 'Main Warehouse',
+              city: 'Headquarters',
+            },
+          });
+        }
         if (defaultWarehouse) {
           stockItem = await this.prisma.stockItem.create({
             data: {
@@ -418,11 +460,11 @@ export class InventoryService {
           // If supplierName was passed, resolve or create supplier
           if (!resolvedSupplierId && supplierName) {
             let sup = await this.prisma.supplier.findFirst({
-              where: { name: { equals: supplierName.trim() } },
+              where: { name: { equals: supplierName.trim() }, tenantId },
             });
             if (!sup) {
               sup = await this.prisma.supplier.create({
-                data: { name: supplierName.trim(), leadTimeDays: 7, isActive: true },
+                data: { tenantId, name: supplierName.trim(), leadTimeDays: 7, isActive: true },
               });
             }
             resolvedSupplierId = sup.id;
@@ -464,9 +506,10 @@ export class InventoryService {
   /**
    * Soft-delete a SKU — preserves historical Orders, Quotations & Movements
    */
-  async deleteSku(id: string) {
-    return this.prisma.sku.update({
-      where: { id },
+  async deleteSku(id: string, user?: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    return this.prisma.sku.updateMany({
+      where: { id, tenantId },
       data: { deletedAt: new Date() },
     });
   }
@@ -474,9 +517,10 @@ export class InventoryService {
   /**
    * Bulk soft-delete SKUs
    */
-  async bulkDeleteSkus(ids: string[]) {
+  async bulkDeleteSkus(ids: string[], user?: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const result = await this.prisma.sku.updateMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, tenantId },
       data: { deletedAt: new Date() },
     });
     return { deletedCount: result.count };
@@ -485,7 +529,11 @@ export class InventoryService {
   /**
    * Bulk import / load inventory from spreadsheet rows (CSV or Excel)
    */
-  async importSpreadsheet(records: any[], user: ScopedUser, defaultWarehouseCode = 'BLR-MAIN') {
+  /**
+   * Bulk import / load inventory from spreadsheet rows (CSV or Excel)
+   */
+  async importSpreadsheet(records: any[], user: ScopedUser, defaultWarehouseCode = 'MAIN-01') {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const results = {
       totalRows: records.length,
       importedCount: 0,
@@ -494,16 +542,17 @@ export class InventoryService {
       skusCreated: [] as string[],
     };
 
-    // Find or create default warehouse
+    // Find or create default warehouse for this tenant
     let defaultWarehouse = await this.prisma.warehouse.findFirst({
-      where: { code: defaultWarehouseCode },
+      where: { code: defaultWarehouseCode, tenantId },
     });
     if (!defaultWarehouse) {
-      defaultWarehouse = await this.prisma.warehouse.findFirst() || await this.prisma.warehouse.create({
+      defaultWarehouse = await this.prisma.warehouse.findFirst({ where: { tenantId } }) || await this.prisma.warehouse.create({
         data: {
-          code: 'BLR-MAIN',
-          name: 'Bengaluru Main Warehouse',
-          city: 'Bengaluru',
+          tenantId,
+          code: defaultWarehouseCode,
+          name: 'Main Warehouse',
+          city: 'Headquarters',
         },
       });
     }
@@ -617,7 +666,7 @@ export class InventoryService {
           continue;
         }
 
-        const category = (row.category || row.type || 'PA System').toString().trim();
+        const category = (row.category || row.type || 'General').toString().trim();
         const hsnCode = (row.hsncode || row.hsn || '').toString().trim() || undefined;
         const packageType = (row.packagetype || row.package || row.unit || 'Unit').toString().trim();
         const unitPrice = parseFloat(row.unitprice || row.price || row.sellingprice || 0) || 0;
@@ -634,11 +683,12 @@ export class InventoryService {
         let preferredSupplierId: string | null = null;
         if (supplierName) {
           let sup = await this.prisma.supplier.findFirst({
-            where: { name: { equals: supplierName } },
+            where: { name: { equals: supplierName }, tenantId },
           });
           if (!sup) {
             sup = await this.prisma.supplier.create({
               data: {
+                tenantId,
                 name: supplierName,
                 leadTimeDays: 7,
                 isActive: true,
@@ -670,7 +720,7 @@ export class InventoryService {
 
         // 3. Upsert SKU (restore if soft-deleted)
         const existingSku = await this.prisma.sku.findFirst({
-          where: { skuCode, tenantId: user.tenantId || 'default-tenant-id' },
+          where: { skuCode, tenantId },
         });
 
         let skuId: string;
@@ -696,6 +746,7 @@ export class InventoryService {
         } else {
           const newSku = await this.prisma.sku.create({
             data: {
+              tenantId,
               skuCode,
               name,
               category,
@@ -786,6 +837,8 @@ export class InventoryService {
     },
     user: ScopedUser,
   ) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
+
     if (user.role === 'employee') {
       throw new ForbiddenException('Employees are not authorized to initiate stock transfers.');
     }
@@ -804,13 +857,13 @@ export class InventoryService {
       throw new ForbiddenException('Sub-Admins are only permitted to transfer stock out of their assigned warehouse.');
     }
 
-    const sku = await this.prisma.sku.findUnique({ where: { id: data.skuId } });
+    const sku = await this.prisma.sku.findFirst({ where: { id: data.skuId, tenantId } });
     if (!sku || sku.deletedAt) {
       throw new NotFoundException('SKU not found or has been deleted.');
     }
 
-    const sourceWh = await this.prisma.warehouse.findUnique({ where: { id: data.sourceWarehouseId } });
-    const destWh = await this.prisma.warehouse.findUnique({ where: { id: data.destinationWarehouseId } });
+    const sourceWh = await this.prisma.warehouse.findFirst({ where: { id: data.sourceWarehouseId, tenantId } });
+    const destWh = await this.prisma.warehouse.findFirst({ where: { id: data.destinationWarehouseId, tenantId } });
     if (!sourceWh || !destWh) {
       throw new NotFoundException('One or both specified warehouses do not exist.');
     }
@@ -827,13 +880,14 @@ export class InventoryService {
       );
     }
 
-    // Sequential Transfer Number: JNC-TRF-00001
-    const totalTransfers = await this.prisma.stockTransfer.count();
-    const transferNumber = `JNC-TRF-${String(totalTransfers + 1).padStart(5, '0')}`;
+    // Sequential Transfer Number
+    const totalTransfers = await this.prisma.stockTransfer.count({ where: { tenantId } });
+    const transferNumber = `TRF-${String(totalTransfers + 1).padStart(5, '0')}`;
 
     // 1. Create Transfer record in_transit
     const transfer = await this.prisma.stockTransfer.create({
       data: {
+        tenantId,
         transferNumber,
         skuId: data.skuId,
         sourceWarehouseId: data.sourceWarehouseId,
@@ -893,11 +947,12 @@ export class InventoryService {
     user: ScopedUser,
     query?: { page?: number; limit?: number; status?: string; warehouseId?: string; search?: string },
   ) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const page = Number(query?.page) || 1;
     const limit = Number(query?.limit) || 50;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = { tenantId };
 
     // Scoping for sub_admin
     if (user.role === 'sub_admin' && user.warehouseId) {
@@ -951,12 +1006,13 @@ export class InventoryService {
    * 3. Sets Transfer status='completed' with receivedAt and receivedById.
    */
   async receiveTransfer(id: string, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     if (user.role === 'employee') {
       throw new ForbiddenException('Employees are not authorized to receive stock transfers.');
     }
 
-    const transfer = await this.prisma.stockTransfer.findUnique({
-      where: { id },
+    const transfer = await this.prisma.stockTransfer.findFirst({
+      where: { id, tenantId },
       include: { sku: true, sourceWarehouse: true, destinationWarehouse: true },
     });
 
@@ -1049,12 +1105,13 @@ export class InventoryService {
    * 3. Sets Transfer status='cancelled'.
    */
   async cancelTransfer(id: string, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     if (user.role === 'employee') {
       throw new ForbiddenException('Employees are not authorized to cancel stock transfers.');
     }
 
-    const transfer = await this.prisma.stockTransfer.findUnique({
-      where: { id },
+    const transfer = await this.prisma.stockTransfer.findFirst({
+      where: { id, tenantId },
       include: { sku: true, sourceWarehouse: true, destinationWarehouse: true },
     });
 
@@ -1141,7 +1198,8 @@ export class InventoryService {
    * Aggregates total in-transit stock figures across the system
    */
   async getInTransitSummary(user: ScopedUser) {
-    const where: any = { status: 'in_transit' };
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const where: any = { status: 'in_transit', tenantId };
     if (user.role === 'sub_admin' && user.warehouseId) {
       where.OR = [
         { sourceWarehouseId: user.warehouseId },
@@ -1170,11 +1228,14 @@ export class InventoryService {
     user: ScopedUser,
     query?: { warehouseId?: string; skuId?: string; type?: string; page?: number; limit?: number },
   ) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const page = Number(query?.page) || 1;
     const limit = Number(query?.limit) || 50;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = {
+      sku: { tenantId },
+    };
 
     // Scoping
     if (user.role === 'sub_admin' && user.warehouseId) {
@@ -1280,13 +1341,20 @@ export class InventoryService {
   /**
    * Get all Project-wise Stock Positions with filters
    */
-  async getProjectStockPositions(query?: {
-    project?: string;
-    search?: string;
-    status?: string;
-    shortageOnly?: boolean;
-  }) {
-    const where: any = { deletedAt: null };
+  /**
+   * Get all Project-wise Stock Positions with filters
+   */
+  async getProjectStockPositions(
+    user: ScopedUser,
+    query?: {
+      project?: string;
+      search?: string;
+      status?: string;
+      shortageOnly?: boolean;
+    },
+  ) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const where: any = { deletedAt: null, tenantId };
 
     if (query?.project && query.project !== 'all') {
       where.project = query.project;
@@ -1302,13 +1370,17 @@ export class InventoryService {
 
     if (query?.search) {
       const q = query.search.trim();
-      where.OR = [
-        { project: { contains: q } },
-        { reference: { contains: q } },
-        { itemCode: { contains: q } },
-        { partValue: { contains: q } },
-        { package: { contains: q } },
-        { notes: { contains: q } },
+      where.AND = [
+        {
+          OR: [
+            { project: { contains: q } },
+            { reference: { contains: q } },
+            { itemCode: { contains: q } },
+            { partValue: { contains: q } },
+            { package: { contains: q } },
+            { notes: { contains: q } },
+          ],
+        },
       ];
     }
 
@@ -1318,7 +1390,7 @@ export class InventoryService {
     });
 
     const projectsList = await this.prisma.projectStockPosition.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, tenantId },
       select: { project: true },
       distinct: ['project'],
       orderBy: { project: 'asc' },
@@ -1334,9 +1406,10 @@ export class InventoryService {
   /**
    * Get KPI Metrics & Health Summary for Project-wise Stock Positions
    */
-  async getProjectStockSummary() {
+  async getProjectStockSummary(user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const items = await this.prisma.projectStockPosition.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, tenantId },
     });
 
     const totalPositions = items.length;
@@ -1347,7 +1420,7 @@ export class InventoryService {
     const shortageItemsCount = items.filter((i) => i.shortage > 0).length;
     const criticalItemsCount = items.filter((i) => i.status === 'Critical Shortage' || (i.shortage > 0 && i.presentStock === 0)).length;
     const sufficientCount = items.filter((i) => i.shortage === 0).length;
-    const totalSuppliers = await this.prisma.supplier.count({ where: { deletedAt: null, isActive: true } });
+    const totalSuppliers = await this.prisma.supplier.count({ where: { deletedAt: null, isActive: true, tenantId } });
 
     return {
       totalPositions,
@@ -1363,14 +1436,15 @@ export class InventoryService {
   }
 
   /**
-   * Get all finished products (JNC product lines)
+   * Get all finished products (Product lines)
    */
-  async getProducts() {
+  async getProducts(user?: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     return this.prisma.product.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, tenantId },
       include: {
         skus: {
-          where: { deletedAt: null },
+          where: { deletedAt: null, tenantId },
           select: { id: true, skuCode: true, name: true, category: true },
         },
       },
@@ -1379,28 +1453,29 @@ export class InventoryService {
   }
 
   /**
-   * Seed the 9 canonical JNC finished product lines (idempotent upsert)
+   * Seed canonical product lines (idempotent upsert)
    */
-  async seedFinishedProducts() {
+  async seedFinishedProducts(user?: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const products = [
-      { name: 'Call Station', category: 'Talk Back System', description: 'IP/Analog call stations for intercom and paging systems' },
-      { name: 'PA Controller', category: 'PA System', description: 'Public address amplifier/controller units for distributed audio' },
-      { name: 'Conventional Talk Back Controller', category: 'Talk Back System', description: 'Conventional wired talk-back intercom master controllers' },
-      { name: 'Talk Back Speaker', category: 'Talk Back System', description: 'Two-way talk-back speaker units for intercom systems' },
-      { name: '3-in-1 Speaker (Fire+PA+TalkBack)', category: 'PA System', description: 'Combined speaker for fire alarm, PA, and talk-back applications' },
-      { name: 'Addressable Controller', category: 'Addressable Talk Back', description: 'Addressable loop-based intercom/talk-back master controllers' },
-      { name: 'Addressable Speaker', category: 'Addressable Talk Back', description: 'Loop-addressable speaker units for addressable systems' },
-      { name: 'Nurse Call', category: 'Nurse Call System', description: 'Hospital nurse call station and patient pendant systems' },
-      { name: 'Fire Alarm System', category: 'Fire Alarm System', description: 'Conventional and addressable fire alarm control panels and devices' },
+      { name: 'Control Panel', category: 'Controllers', description: 'Central control station and main logic controller' },
+      { name: 'Power Amplifier', category: 'Audio Systems', description: 'Commercial amplifier units for distributed audio' },
+      { name: 'Intercom Station', category: 'Intercom', description: 'Two-way duplex voice communications station' },
+      { name: 'Speaker Unit', category: 'Audio Systems', description: 'Flush mount and horn speakers' },
+      { name: 'Zone Module', category: 'Controllers', description: 'Addressable loop and zone distribution interface' },
+      { name: 'Sensors & Alarms', category: 'Safety Systems', description: 'Optical smoke, heat, and panic alarm devices' },
+      { name: 'IP PBX Gateway', category: 'Telephony', description: 'SIP telephony and hybrid VoIP gateway' },
+      { name: 'Access Terminal', category: 'Access Control', description: 'Biometric and RFID security terminal' },
+      { name: 'Network Switch', category: 'Networking', description: 'Managed Gigabit PoE+ Network Switch' },
     ];
 
     const results: any[] = [];
     for (const p of products) {
-      const existing = await this.prisma.product.findFirst({ where: { name: p.name, deletedAt: null } });
+      const existing = await this.prisma.product.findFirst({ where: { name: p.name, deletedAt: null, tenantId } });
       if (existing) {
         results.push({ ...existing, action: 'skipped' });
       } else {
-        const created = await this.prisma.product.create({ data: p });
+        const created = await this.prisma.product.create({ data: { ...p, tenantId } });
         results.push({ ...created, action: 'created' });
       }
     }
@@ -1410,12 +1485,13 @@ export class InventoryService {
   /**
    * Inventory dashboard counters — supplier count + reorder alerts
    */
-  async getInventoryDashboard() {
+  async getInventoryDashboard(user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const [totalSuppliers, totalProducts, skusRaw] = await Promise.all([
-      this.prisma.supplier.count({ where: { deletedAt: null, isActive: true } }),
-      this.prisma.product.count({ where: { deletedAt: null } }),
+      this.prisma.supplier.count({ where: { deletedAt: null, isActive: true, tenantId } }),
+      this.prisma.product.count({ where: { deletedAt: null, tenantId } }),
       this.prisma.sku.findMany({
-        where: { deletedAt: null },
+        where: { deletedAt: null, tenantId },
         include: {
           stockItems: true,
           preferredSupplier: { select: { id: true, name: true, phone: true } },
@@ -1470,17 +1546,28 @@ export class InventoryService {
     },
     user: ScopedUser,
   ) {
-    const supplier = await this.prisma.supplier.findUnique({ where: { id: supplierId } });
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const supplier = await this.prisma.supplier.findFirst({ where: { id: supplierId, tenantId } });
     if (!supplier) throw new NotFoundException(`Supplier ${supplierId} not found`);
 
-    const defaultWarehouse = await this.prisma.warehouse.findFirst({ where: { deletedAt: null }, orderBy: { createdAt: 'asc' } });
+    let defaultWarehouse = await this.prisma.warehouse.findFirst({ where: { deletedAt: null, tenantId }, orderBy: { createdAt: 'asc' } });
+    if (!defaultWarehouse) {
+      defaultWarehouse = await this.prisma.warehouse.create({
+        data: {
+          tenantId,
+          code: 'MAIN-01',
+          name: 'Main Warehouse',
+          city: 'Headquarters',
+        },
+      });
+    }
 
     let overallSubtotal = 0;
     let overallGst = 0;
     const createdMovements: any[] = [];
 
     for (const item of dto.items) {
-      const sku = await this.prisma.sku.findUnique({ where: { id: item.skuId } });
+      const sku = await this.prisma.sku.findFirst({ where: { id: item.skuId, tenantId } });
       if (!sku) continue;
 
       const qty = Math.round(Number(item.quantity));
@@ -1541,9 +1628,14 @@ export class InventoryService {
   /**
    * Get all stock movements for a specific supplier (purchase history)
    */
-  async getSupplierPurchases(supplierId: string) {
+  async getSupplierPurchases(supplierId: string, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const movements = await this.prisma.stockMovement.findMany({
-      where: { supplierId, type: 'inward' },
+      where: {
+        supplierId,
+        type: 'inward',
+        sku: { tenantId },
+      },
       include: {
         sku: { select: { id: true, skuCode: true, name: true, category: true } },
         performedBy: { select: { id: true, name: true } },
@@ -1554,11 +1646,11 @@ export class InventoryService {
     return movements;
   }
 
-
   /**
    * Create a new Project Stock Position
    */
-  async createProjectStockPosition(data: any) {
+  async createProjectStockPosition(data: any, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     if (!data.project || !data.project.trim()) {
       throw new BadRequestException('Project name is required');
     }
@@ -1568,16 +1660,20 @@ export class InventoryService {
 
     const formatted = this.computeProjectStockFields(data);
     return this.prisma.projectStockPosition.create({
-      data: formatted,
+      data: {
+        ...formatted,
+        tenantId,
+      },
     });
   }
 
   /**
    * Update an existing Project Stock Position
    */
-  async updateProjectStockPosition(id: string, data: any) {
-    const existing = await this.prisma.projectStockPosition.findUnique({
-      where: { id },
+  async updateProjectStockPosition(id: string, data: any, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const existing = await this.prisma.projectStockPosition.findFirst({
+      where: { id, tenantId },
     });
     if (!existing) {
       throw new NotFoundException(`Project stock position "${id}" not found`);
@@ -1595,9 +1691,10 @@ export class InventoryService {
   /**
    * Soft-delete a Project Stock Position
    */
-  async deleteProjectStockPosition(id: string) {
-    const existing = await this.prisma.projectStockPosition.findUnique({
-      where: { id },
+  async deleteProjectStockPosition(id: string, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const existing = await this.prisma.projectStockPosition.findFirst({
+      where: { id, tenantId },
     });
     if (!existing) {
       throw new NotFoundException(`Project stock position "${id}" not found`);
@@ -1612,7 +1709,8 @@ export class InventoryService {
   /**
    * Bulk import / replace Project Stock Positions
    */
-  async bulkImportProjectStockPositions(rows: any[]) {
+  async bulkImportProjectStockPositions(rows: any[], user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     if (!Array.isArray(rows) || rows.length === 0) {
       throw new BadRequestException('Rows array cannot be empty');
     }
@@ -1622,7 +1720,10 @@ export class InventoryService {
       if (!r.project && !r.itemCode) continue;
       const formatted = this.computeProjectStockFields(r);
       const row = await this.prisma.projectStockPosition.create({
-        data: formatted,
+        data: {
+          ...formatted,
+          tenantId,
+        },
       });
       created.push(row);
     }
@@ -1651,8 +1752,9 @@ export class InventoryService {
     },
     user: ScopedUser,
   ) {
-    const position = await this.prisma.projectStockPosition.findUnique({
-      where: { id: positionId },
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const position = await this.prisma.projectStockPosition.findFirst({
+      where: { id: positionId, tenantId },
     });
     if (!position) throw new NotFoundException('Project stock position not found');
 
@@ -1694,6 +1796,7 @@ export class InventoryService {
     // 2. Sync with SKU / Warehouse if exists
     const sku = await this.prisma.sku.findFirst({
       where: {
+        tenantId,
         OR: [
           { skuCode: position.itemCode },
           { name: position.itemCode },
@@ -1702,10 +1805,20 @@ export class InventoryService {
       },
     });
 
-    const defaultWarehouse = await this.prisma.warehouse.findFirst({
-      where: { deletedAt: null },
+    let defaultWarehouse = await this.prisma.warehouse.findFirst({
+      where: { deletedAt: null, tenantId },
       orderBy: { createdAt: 'asc' },
     });
+    if (!defaultWarehouse) {
+      defaultWarehouse = await this.prisma.warehouse.create({
+        data: {
+          tenantId,
+          code: 'MAIN-01',
+          name: 'Main Warehouse',
+          city: 'Headquarters',
+        },
+      });
+    }
 
     if (sku && defaultWarehouse) {
       // Create Inward StockMovement
@@ -1763,221 +1876,38 @@ export class InventoryService {
   }
 
   /**
-   * Seed authentic real-world engineering project BOM stock positions
+   * Clear all inventory data completely fresh for the tenant (SKUs, Stock Items, Movements, Transfers, Project Stock Positions)
    */
-  async seedInitialProjectStockPositions() {
-    const initialPositions = [
-      {
-        project: 'Bangalore Metro Phase-2 PA System',
-        reference: 'AMP-RACK-01',
-        quantity: 10,
-        itemCode: 'PA-AMP-240W',
-        partValue: '240W 100V RMS',
-        package: '2U 19-inch Rack',
-        unit: 'Nos',
-        bomQtyPerUnit: 2,
-        batchQty: 10,
-        openingStock: 30,
-        inflow: 0,
-        outflow: 8,
-        notes: 'Main concourse & platform distribution amplifiers',
-      },
-      {
-        project: 'Bangalore Metro Phase-2 PA System',
-        reference: 'SPK-CLG-01',
-        quantity: 10,
-        itemCode: 'PA-SPK-CLG-6W',
-        partValue: '6W 100V Fast Clamp',
-        package: 'Ceiling Flush Mount',
-        unit: 'Nos',
-        bomQtyPerUnit: 24,
-        batchQty: 10,
-        openingStock: 180,
-        inflow: 100,
-        outflow: 60,
-        notes: 'Underground ticketing concourse speakers',
-      },
-      {
-        project: 'Bangalore Metro Phase-2 PA System',
-        reference: 'SPK-HRN-01',
-        quantity: 10,
-        itemCode: 'PA-SPK-HRN-30W',
-        partValue: '30W Weatherproof IP66',
-        package: 'Aluminium Horn',
-        unit: 'Nos',
-        bomQtyPerUnit: 8,
-        batchQty: 10,
-        openingStock: 25,
-        inflow: 20,
-        outflow: 0,
-        notes: 'Open platform high-noise horn array (Shortage: PO placed)',
-      },
-      {
-        project: 'CyberTech IT Park Surveillance & Access Control',
-        reference: 'CCTV-CAM-EXT',
-        quantity: 4,
-        itemCode: 'CCTV-CAM-4MP-DOM',
-        partValue: '4MP IR 30m PoE H.265+',
-        package: 'Vandal Dome IP67',
-        unit: 'Nos',
-        bomQtyPerUnit: 16,
-        batchQty: 4,
-        openingStock: 45,
-        inflow: 25,
-        outflow: 10,
-        notes: 'Corridor and perimeter optical surveillance',
-      },
-      {
-        project: 'CyberTech IT Park Surveillance & Access Control',
-        reference: 'NVR-CORE-01',
-        quantity: 4,
-        itemCode: 'CCTV-NVR-16CH-4K',
-        partValue: '16CH 4K 160Mbps 16-PoE',
-        package: '1.5U Rack Mount',
-        unit: 'Nos',
-        bomQtyPerUnit: 1,
-        batchQty: 4,
-        openingStock: 6,
-        inflow: 0,
-        outflow: 2,
-        notes: 'Core surveillance recording servers',
-      },
-      {
-        project: 'CyberTech IT Park Surveillance & Access Control',
-        reference: 'ACS-FACE-01',
-        quantity: 4,
-        itemCode: 'ACS-BIO-FP-FACE',
-        partValue: 'Face + FP + RFID TCP/IP',
-        package: 'Wall Mount Touch',
-        unit: 'Nos',
-        bomQtyPerUnit: 6,
-        batchQty: 4,
-        openingStock: 12,
-        inflow: 0,
-        outflow: 0,
-        notes: 'Turnstile & server room access (Critical Shortage: 12 required)',
-      },
-      {
-        project: 'Aster Hospital Nurse Call & Talkback Integration',
-        reference: 'NCS-STN-ICU',
-        quantity: 2,
-        itemCode: 'NCS-PANEL-32',
-        partValue: '32-Bed Digital LCD Station',
-        package: 'Nurse Station Console',
-        unit: 'Nos',
-        bomQtyPerUnit: 2,
-        batchQty: 2,
-        openingStock: 5,
-        inflow: 0,
-        outflow: 1,
-        notes: 'ICU & Emergency ward central monitoring console',
-      },
-      {
-        project: 'Aster Hospital Nurse Call & Talkback Integration',
-        reference: 'NCS-BED-CALL',
-        quantity: 2,
-        itemCode: 'NCS-CALL-BED',
-        partValue: 'Silicone Pendant Handset',
-        package: 'Bedside RJ45 Jack',
-        unit: 'Nos',
-        bomQtyPerUnit: 32,
-        batchQty: 2,
-        openingStock: 50,
-        inflow: 30,
-        outflow: 10,
-        notes: 'Patient bedside emergency handsets',
-      },
-      {
-        project: 'Aster Hospital Nurse Call & Talkback Integration',
-        reference: 'TB-MASTER-01',
-        quantity: 2,
-        itemCode: 'TB-MST-10Z',
-        partValue: '10-Zone Duplex Intercom',
-        package: 'Desktop Gooseneck Mic',
-        unit: 'Nos',
-        bomQtyPerUnit: 1,
-        batchQty: 2,
-        openingStock: 6,
-        inflow: 0,
-        outflow: 0,
-        notes: 'Doctor on-call duplex intercom link',
-      },
-      {
-        project: 'Warehouse Fire & Panic Alarm Automation',
-        reference: 'FAS-PANEL-01',
-        quantity: 1,
-        itemCode: 'FAS-PNL-16Z',
-        partValue: '16-Zone Microprocessor Panel',
-        package: 'Mild Steel Wall Cabinet',
-        unit: 'Nos',
-        bomQtyPerUnit: 1,
-        batchQty: 1,
-        openingStock: 6,
-        inflow: 0,
-        outflow: 0,
-        notes: 'Central fire detection control panel',
-      },
-      {
-        project: 'Warehouse Fire & Panic Alarm Automation',
-        reference: 'FAS-SMOKE-OPT',
-        quantity: 1,
-        itemCode: 'FAS-DET-SMK-OPT',
-        partValue: 'Photoelectric 2-Wire 24V',
-        package: 'Standard Twist Base',
-        unit: 'Nos',
-        bomQtyPerUnit: 80,
-        batchQty: 1,
-        openingStock: 120,
-        inflow: 0,
-        outflow: 30,
-        notes: 'Aisle high-bay optical smoke detection',
-      },
-      {
-        project: 'Warehouse Fire & Panic Alarm Automation',
-        reference: 'PAS-SWITCH-01',
-        quantity: 1,
-        itemCode: 'PAS-BTN-HOLDUP',
-        partValue: 'Dual-Button Hold-up 24V',
-        package: 'Under-Desk Steel',
-        unit: 'Nos',
-        bomQtyPerUnit: 12,
-        batchQty: 1,
-        openingStock: 40,
-        inflow: 0,
-        outflow: 5,
-        notes: 'Security gate & loading dock holdup triggers',
-      },
-    ];
+  async clearAllInventory(user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
 
-    for (const pos of initialPositions) {
-      const formatted = this.computeProjectStockFields(pos);
-      await this.prisma.projectStockPosition.create({
-        data: formatted,
-      });
-    }
-  }
-
-  /**
-   * Clear all inventory data completely fresh (SKUs, Stock Items, Movements, Transfers, Project Stock Positions)
-   */
-  async clearAllInventory(user: any) {
     // 0. Trigger a fresh backup as a safety net
     await this.backupService.createBackup(user);
 
-    // 1. Delete stock positions
-    await this.prisma.projectStockPosition.deleteMany({});
+    // 1. Delete stock positions for this tenant
+    await this.prisma.projectStockPosition.deleteMany({ where: { tenantId } });
 
-    // 2. Delete stock transfers
-    await this.prisma.stockTransfer.deleteMany({});
+    // 2. Delete stock transfers for this tenant
+    await this.prisma.stockTransfer.deleteMany({ where: { tenantId } });
 
-    // 3. Delete stock movements
-    await this.prisma.stockMovement.deleteMany({});
+    // 3. Delete stock movements and items for SKUs belonging to this tenant
+    const tenantSkus = await this.prisma.sku.findMany({
+      where: { tenantId },
+      select: { id: true },
+    });
+    const tenantSkuIds = tenantSkus.map((s) => s.id);
 
-    // 4. Delete stock items
-    await this.prisma.stockItem.deleteMany({});
+    if (tenantSkuIds.length > 0) {
+      await this.prisma.stockMovement.deleteMany({
+        where: { skuId: { in: tenantSkuIds } },
+      });
 
-    // 5. Unlink SKUs from existing orders/invoices/quotations if any, or soft-delete unused
-    // Check if any order lines or invoice lines reference SKUs
+      await this.prisma.stockItem.deleteMany({
+        where: { skuId: { in: tenantSkuIds } },
+      });
+    }
+
+    // 4. Unlink SKUs from existing orders/invoices/quotations if any, or soft-delete unused
     const orderLines = await this.prisma.orderLine.findMany({ select: { skuId: true } });
     const invoiceLines = await this.prisma.invoiceLine.findMany({ select: { skuId: true } });
     const quoteLines = await this.prisma.quotationLine.findMany({ select: { skuId: true } });
@@ -1988,9 +1918,10 @@ export class InventoryService {
       ...quoteLines.map((l) => l.skuId).filter(Boolean) as string[],
     ]);
 
-    // Delete all SKUs not locked by orders
+    // Delete all SKUs not locked by orders for this tenant
     await this.prisma.sku.deleteMany({
       where: {
+        tenantId,
         id: { notIn: Array.from(referencedSkuIds) },
       },
     });
@@ -1998,6 +1929,7 @@ export class InventoryService {
     // For any SKUs locked by historical orders, mark them soft-deleted so inventory catalog is 100% clean
     await this.prisma.sku.updateMany({
       where: {
+        tenantId,
         id: { in: Array.from(referencedSkuIds) },
       },
       data: {
@@ -2035,9 +1967,10 @@ export class InventoryService {
     fs.writeFileSync(filePath, JSON.stringify(bills, null, 2), 'utf-8');
   }
 
-  async getPurchaseBills(params?: any) {
+  async getPurchaseBills(user: ScopedUser, params?: any) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const bills = this.readStoredPurchaseBills();
-    let result = [...bills];
+    let result = bills.filter((b) => !b.tenantId || b.tenantId === tenantId);
     if (params?.search) {
       const q = params.search.toLowerCase();
       result = result.filter(
@@ -2050,23 +1983,26 @@ export class InventoryService {
     return { data: result, total: result.length };
   }
 
-  async getPurchaseBill(id: string) {
+  async getPurchaseBill(id: string, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const bills = this.readStoredPurchaseBills();
-    const bill = bills.find((b) => b.id === id);
+    const bill = bills.find((b) => b.id === id && (!b.tenantId || b.tenantId === tenantId));
     if (!bill) throw new NotFoundException(`Purchase bill ${id} not found`);
     return bill;
   }
 
-  async createPurchaseBill(data: any, user: any) {
+  async createPurchaseBill(data: any, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const bills = this.readStoredPurchaseBills();
     const id = `BILL-${Date.now()}-${Math.round(Math.random() * 1000)}`;
 
     const newBill = {
       id,
+      tenantId,
       invoiceNumber: data.invoiceNumber || `INV-${Date.now().toString().slice(-6)}`,
-      vendorName: data.vendorName || 'JNC Electronics Supplier',
-      vendorGstin: data.vendorGstin || '33AAACJ1234F1Z5',
-      vendorAddress: data.vendorAddress || 'Chennai / Bengaluru Industrial Corridor',
+      vendorName: data.vendorName || 'Supplier / Vendor',
+      vendorGstin: data.vendorGstin || '',
+      vendorAddress: data.vendorAddress || '',
       invoiceDate: data.invoiceDate || new Date().toISOString().slice(0, 10),
       project: data.project || 'General Inventory',
       items: Array.isArray(data.items) ? data.items : [],
@@ -2081,7 +2017,7 @@ export class InventoryService {
       rawText: data.rawText || '',
       notes: data.notes || '',
       createdById: user?.id,
-      createdByName: user?.name || 'Administrator',
+      createdByName: (user as any)?.name || user?.employeeCode || 'Administrator',
       createdAt: new Date().toISOString(),
       softCopyData: data.softCopyData || null,
     };
@@ -2097,6 +2033,7 @@ export class InventoryService {
             // Find existing position or SKU to increase stock
             const existingPos = await this.prisma.projectStockPosition.findFirst({
               where: {
+                tenantId,
                 OR: [
                   { itemCode: item.skuCode },
                   { partValue: item.name },
@@ -2123,9 +2060,10 @@ export class InventoryService {
     return newBill;
   }
 
-  async deletePurchaseBill(id: string) {
+  async deletePurchaseBill(id: string, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     let bills = this.readStoredPurchaseBills();
-    const bill = bills.find((b) => b.id === id);
+    const bill = bills.find((b) => b.id === id && (!b.tenantId || b.tenantId === tenantId));
     if (!bill) throw new NotFoundException(`Purchase bill ${id} not found`);
     bills = bills.filter((b) => b.id !== id);
     this.writeStoredPurchaseBills(bills);
@@ -2177,7 +2115,7 @@ export class InventoryService {
         break;
       }
     }
-    if (!detectedVendor) detectedVendor = 'Ahuja Radios / JNC Supplier';
+    if (!detectedVendor) detectedVendor = 'Supplier / Vendor';
 
     // 5. Scan lines for item rows
     for (const line of lines) {
@@ -2209,34 +2147,17 @@ export class InventoryService {
       }
     }
 
-    const subtotal = detectedItems.reduce((s, it) => s + it.total, 0) || 5000;
+    const subtotal = detectedItems.reduce((s, it) => s + it.total, 0) || 0;
     const taxRate = 18;
     const totalTax = (subtotal * taxRate) / 100;
     const grandTotal = subtotal + totalTax;
 
     return {
       vendorName: detectedVendor,
-      vendorGstin: detectedGstin || '33AAACJ1234F1Z5',
+      vendorGstin: detectedGstin || '',
       invoiceNumber: detectedInvoiceNo || `INV-${Date.now().toString().slice(-6)}`,
       invoiceDate: detectedDate,
-      items: detectedItems.length > 0 ? detectedItems : [
-        {
-          name: '100nF/50V SMD Capacitor',
-          skuCode: 'ITM-100NF_50V_0805',
-          quantity: 100,
-          unit: 'Nos',
-          unitPrice: 0.60,
-          total: 60,
-        },
-        {
-          name: 'R5F104BCA Renesas 16-bit MCU',
-          skuCode: 'ITM-R5F104BCA_TQFP32',
-          quantity: 20,
-          unit: 'Nos',
-          unitPrice: 285.00,
-          total: 5700,
-        },
-      ],
+      items: detectedItems,
       subtotal,
       taxRate,
       cgst: totalTax / 2,
@@ -2282,6 +2203,7 @@ export class InventoryService {
     },
     user: ScopedUser,
   ) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     const { items, positionIds, skuIds, updates, rowUpdates } = body;
 
     let updatedCount = 0;
@@ -2302,8 +2224,8 @@ export class InventoryService {
           if (r.presentStock !== undefined) updateData.presentStock = Number(r.presentStock);
 
           if (Object.keys(updateData).length > 0) {
-            await tx.projectStockPosition.update({
-              where: { id: r.positionId },
+            await tx.projectStockPosition.updateMany({
+              where: { id: r.positionId, tenantId },
               data: updateData,
             });
             updatedCount++;
@@ -2321,8 +2243,8 @@ export class InventoryService {
           if (r.unit !== undefined) updateData.packageType = r.unit;
 
           if (Object.keys(updateData).length > 0) {
-            await tx.sku.update({
-              where: { id: r.skuId },
+            await tx.sku.updateMany({
+              where: { id: r.skuId, tenantId },
               data: updateData,
             });
           }
@@ -2395,7 +2317,7 @@ export class InventoryService {
       await this.prisma.$transaction(async (tx) => {
         if (uniquePosIds.length > 0 && Object.keys(posUpdateData).length > 0) {
           const res = await tx.projectStockPosition.updateMany({
-            where: { id: { in: uniquePosIds } },
+            where: { id: { in: uniquePosIds }, tenantId },
             data: posUpdateData,
           });
           updatedCount += res.count;
@@ -2403,7 +2325,7 @@ export class InventoryService {
 
         if (uniqueSkuIds.length > 0 && Object.keys(skuUpdateData).length > 0) {
           await tx.sku.updateMany({
-            where: { id: { in: uniqueSkuIds } },
+            where: { id: { in: uniqueSkuIds }, tenantId },
             data: skuUpdateData,
           });
         }

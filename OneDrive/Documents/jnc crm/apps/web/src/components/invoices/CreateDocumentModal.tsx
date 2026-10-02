@@ -474,7 +474,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                   type="text"
                   required
                   className="input text-xs font-mono"
-                  placeholder={isDC ? 'e.g. 024/26-27' : isCreditNote ? 'e.g. CN02/26-27' : isPO ? 'e.g. JNC_PO_02/26-27' : 'e.g. 002/26-27'}
+                  placeholder={isDC ? 'e.g. DC-001' : isCreditNote ? 'e.g. CN-001' : isPO ? 'e.g. PO-001' : 'e.g. INV-001'}
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
                 />
@@ -496,7 +496,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <input
                   type="text"
                   className="input text-xs"
-                  placeholder="e.g. Advance / 45 days / Immediately"
+                  placeholder="e.g. Advance / 30 days"
                   value={paymentTerms}
                   onChange={(e) => setPaymentTerms(e.target.value)}
                 />
@@ -507,7 +507,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <input
                   type="text"
                   className="input text-xs font-mono"
-                  placeholder="e.g. CHZ1HW00001/26 or GTS/PO/045/26-27"
+                  placeholder="e.g. PO-001"
                   value={buyerOrderNo}
                   onChange={(e) => setBuyerOrderNo(e.target.value)}
                 />
@@ -528,7 +528,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <input
                   type="text"
                   className="input text-xs"
-                  placeholder={isCreditNote ? 'e.g. 209/25-26 12-03-2026' : 'Optional internal ref'}
+                  placeholder={isCreditNote ? 'e.g. INV-001 01-01-2026' : 'Optional internal ref'}
                   value={referenceNo}
                   onChange={(e) => setReferenceNo(e.target.value)}
                 />
@@ -541,7 +541,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                     type="text"
                     required
                     className="input text-xs"
-                    placeholder="e.g. First Lot 6000 Mtr on 30-08-2026 and second Lot 1000."
+                    placeholder="Enter delivery schedule"
                     value={deliverySchedule}
                     onChange={(e) => setDeliverySchedule(e.target.value)}
                   />
@@ -659,7 +659,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                     <input
                       type="text"
                       className="input text-xs font-mono"
-                      placeholder="e.g. KARB2026083100192"
+                      placeholder="e.g. UTR-001"
                       value={advanceRef}
                       onChange={(e) => setAdvanceRef(e.target.value)}
                     />
@@ -682,7 +682,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                   type="text"
                   required
                   className="input text-xs"
-                  placeholder={isPO ? 'e.g. Varsha Cables Private Limited' : 'e.g. VK Engineering & Services / Tata Elxsi'}
+                  placeholder={isPO ? 'Enter vendor / supplier name' : 'Enter customer or company name'}
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                 />
@@ -693,7 +693,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <input
                   type="text"
                   className="input text-xs"
-                  placeholder="e.g. 9876543210"
+                  placeholder="Enter phone number"
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
                 />
@@ -704,7 +704,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <input
                   type="email"
                   className="input text-xs font-mono"
-                  placeholder="e.g. billing@customer.com"
+                  placeholder="billing@customer.com"
                   value={customerEmail}
                   onChange={(e) => setCustomerEmail(e.target.value)}
                 />
@@ -715,7 +715,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <input
                   type="text"
                   className="input text-xs font-mono uppercase"
-                  placeholder="e.g. 37BEFPC9729G1ZC / 33AAACT7872Q2ZM"
+                  placeholder="e.g. 29ABCDE1234F1Z5"
                   value={customerGstin}
                   onChange={(e) => setCustomerGstin(e.target.value.toUpperCase())}
                 />

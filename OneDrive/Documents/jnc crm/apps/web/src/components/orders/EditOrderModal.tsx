@@ -256,7 +256,7 @@ export default function EditOrderModal({
                       type="text"
                       required
                       className="input pl-9 text-xs"
-                      placeholder="e.g. Acme Network Solutions"
+                      placeholder="Enter customer or company name"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                     />
@@ -271,7 +271,7 @@ export default function EditOrderModal({
                       type="tel"
                       required
                       className="input pl-9 text-xs font-mono"
-                      placeholder="e.g. +91 9876543210"
+                      placeholder="Enter phone number"
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
                     />
@@ -285,7 +285,7 @@ export default function EditOrderModal({
                     <input
                       type="email"
                       className="input pl-9 text-xs font-mono"
-                      placeholder="e.g. procurement@acme.com"
+                      placeholder="billing@customer.com"
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
                     />
@@ -299,7 +299,7 @@ export default function EditOrderModal({
                     <input
                       type="text"
                       className="input pl-9 text-xs"
-                      placeholder="e.g. No 42, Industrial Area, Bangalore 560058"
+                      placeholder="Enter delivery or site address"
                       value={shippingAddress}
                       onChange={(e) => setShippingAddress(e.target.value)}
                     />
@@ -392,7 +392,7 @@ export default function EditOrderModal({
                             type="text"
                             required
                             className="input text-xs pl-2.5 pr-7 font-bold text-slate-950 dark:text-white"
-                            placeholder="Type or select product (e.g. Weatherproof Call Point / Amplifier)..."
+                            placeholder="Type or select product name / SKU..."
                             value={line.name}
                             onChange={(e) => handleNameChange(idx, e.target.value)}
                             list={`edit-sku-options-${idx}`}
@@ -489,7 +489,7 @@ export default function EditOrderModal({
               <textarea
                 rows={2}
                 className="input text-xs resize-none"
-                placeholder="e.g. Special packaging required, dispatch to Bangalore unit."
+                placeholder="Enter order remarks or terms..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />

@@ -868,7 +868,7 @@ export const SmartBillScannerModal: React.FC<SmartBillScannerModalProps> = ({
       const billData = {
         invoiceNumber: invoiceNumber.trim() || `INV-${Date.now().toString().slice(-6)}`,
         vendorName: vendorName.trim(),
-        vendorGstin: vendorGstin.trim() || '33AAACJ1234F1Z5',
+        vendorGstin: vendorGstin.trim() || '',
         invoiceDate,
         project: 'General Procurement',
         items,
@@ -884,8 +884,8 @@ export const SmartBillScannerModal: React.FC<SmartBillScannerModalProps> = ({
         notes,
         softCopyData: {
           generatedAt: new Date().toISOString(),
-          companyName: 'JNC Technologies & Automation Pvt Ltd',
-          companyGstin: '33AAACJ9876E1Z4',
+          companyName: '',
+          companyGstin: '',
           subtotal: Number(subtotal.toFixed(2)),
           taxMode,
           cgst: Number(effectiveCgst.toFixed(2)),
@@ -1082,7 +1082,7 @@ export const SmartBillScannerModal: React.FC<SmartBillScannerModalProps> = ({
                     required
                     value={vendorName}
                     onChange={(e) => setVendorName(e.target.value)}
-                    placeholder="e.g. Ahuja Radios / Bosch India"
+                    placeholder="Enter vendor or supplier name"
                     className="input text-xs font-bold"
                   />
                 </div>
@@ -1094,7 +1094,7 @@ export const SmartBillScannerModal: React.FC<SmartBillScannerModalProps> = ({
                     maxLength={15}
                     value={vendorGstin}
                     onChange={(e) => setVendorGstin(e.target.value.toUpperCase())}
-                    placeholder="e.g. 33AABCA8912K1Z9"
+                    placeholder="e.g. 29ABCDE1234F1Z5"
                     className="input text-xs font-mono uppercase"
                   />
                 </div>

@@ -56,7 +56,7 @@ export const RecordPurchaseModal: React.FC<RecordPurchaseModalProps> = ({
       setSupplierGstin('');
       setInvoiceNumber('');
       setInvoiceDate(new Date().toISOString().split('T')[0]);
-      setUnitRate(10);
+      setUnitRate(0);
       setTaxRate(18);
       setDocumentFile(null);
       setDocumentDataUrl('');
@@ -213,7 +213,7 @@ export const RecordPurchaseModal: React.FC<RecordPurchaseModalProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Ahuja Radios / DigiKey / Local Vendor"
+                    placeholder="Enter supplier or vendor name"
                     value={supplierName}
                     onChange={(e) => setSupplierName(e.target.value)}
                     className="input font-bold text-slate-950 dark:text-white"
@@ -225,7 +225,7 @@ export const RecordPurchaseModal: React.FC<RecordPurchaseModalProps> = ({
                   <input
                     type="text"
                     maxLength={15}
-                    placeholder="e.g. 29AAAAA0000A1Z5"
+                    placeholder="e.g. 29ABCDE1234F1Z5"
                     value={supplierGstin}
                     onChange={(e) => setSupplierGstin(e.target.value.toUpperCase())}
                     className="input uppercase font-mono"
@@ -239,7 +239,7 @@ export const RecordPurchaseModal: React.FC<RecordPurchaseModalProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder="e.g. INV-2026-8841"
+                    placeholder="e.g. INV-001"
                     value={invoiceNumber}
                     onChange={(e) => setInvoiceNumber(e.target.value)}
                     className="input font-mono font-bold"
@@ -411,7 +411,7 @@ export const RecordPurchaseModal: React.FC<RecordPurchaseModalProps> = ({
               <label className="label">Procurement Remarks / Notes</label>
               <textarea
                 rows={2}
-                placeholder="e.g. Received 10 units at Bangalore Store; verified against PO #104"
+                placeholder="Enter remarks or notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="input resize-none"

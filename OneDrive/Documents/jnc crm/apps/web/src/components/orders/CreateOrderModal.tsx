@@ -217,7 +217,7 @@ export default function CreateOrderModal({ isOpen, onClose, onOrderCreated }: Cr
                   <input
                     required
                     className="input pl-9 text-xs"
-                    placeholder="e.g. VK Engineering & Services"
+                    placeholder="Enter customer or company name"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                   />
@@ -231,7 +231,7 @@ export default function CreateOrderModal({ isOpen, onClose, onOrderCreated }: Cr
                   <input
                     required
                     className="input pl-9 text-xs font-mono"
-                    placeholder="e.g. +91 9845012345"
+                    placeholder="Enter phone number"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
                   />
@@ -247,7 +247,7 @@ export default function CreateOrderModal({ isOpen, onClose, onOrderCreated }: Cr
                   <input
                     type="email"
                     className="input pl-9 text-xs font-mono"
-                    placeholder="e.g. accounts@client.in"
+                    placeholder="billing@customer.com"
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
                   />
@@ -260,7 +260,7 @@ export default function CreateOrderModal({ isOpen, onClose, onOrderCreated }: Cr
                   <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
                     className="input pl-9 text-xs"
-                    placeholder="e.g. Visakhapatnam, Andhra Pradesh"
+                    placeholder="Enter delivery or site address"
                     value={shippingAddress}
                     onChange={(e) => setShippingAddress(e.target.value)}
                   />
@@ -316,7 +316,7 @@ export default function CreateOrderModal({ isOpen, onClose, onOrderCreated }: Cr
                             type="text"
                             required
                             className="input text-xs pl-2.5 pr-7 font-bold text-slate-950 dark:text-white"
-                            placeholder="Type or select product (e.g. Weatherproof Call Point / Amplifier)..."
+                            placeholder="Type or select product name / SKU..."
                             value={line.name}
                             onChange={(e) => handleNameChange(idx, e.target.value)}
                             list={`sku-options-${idx}`}
@@ -410,7 +410,7 @@ export default function CreateOrderModal({ isOpen, onClose, onOrderCreated }: Cr
               <textarea
                 rows={2}
                 className="input text-xs resize-none"
-                placeholder="e.g. Advance payment received. Deliver to Bangalore site by Friday."
+                placeholder="Enter order remarks or terms..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />

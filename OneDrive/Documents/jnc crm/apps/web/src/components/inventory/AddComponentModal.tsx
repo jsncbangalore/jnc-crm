@@ -160,7 +160,7 @@ export const AddComponentModal: React.FC<AddComponentModalProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. 240W Mixer Amplifier"
+                  placeholder="Enter component name"
                   value={componentName}
                   onChange={(e) => {
                     setComponentName(e.target.value);
@@ -180,7 +180,7 @@ export const AddComponentModal: React.FC<AddComponentModalProps> = ({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. PA-AMP-240W"
+                  placeholder="Enter SKU / Item Code"
                   value={skuCode}
                   onChange={(e) => setSkuCode(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -207,19 +207,14 @@ export const AddComponentModal: React.FC<AddComponentModalProps> = ({
                       {p}
                     </option>
                   ))}
-                  <option value="PA System Integration">PA System Integration</option>
-                  <option value="Talk Back & Intercom System">Talk Back & Intercom System</option>
-                  <option value="Fire Alarm & Safety Automation">
-                    Fire Alarm & Safety Automation
-                  </option>
-                  <option value="CCTV & Surveillance Network">CCTV & Surveillance Network</option>
+                  <option value="General Inventory">General Inventory</option>
                   <option value="__custom__">+ Add New Custom Project...</option>
                 </select>
                 {project === '__custom__' && (
                   <input
                     type="text"
                     required
-                    placeholder="Type project name..."
+                    placeholder="Enter project name..."
                     value={customProject}
                     onChange={(e) => setCustomProject(e.target.value)}
                     className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white mt-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -236,7 +231,7 @@ export const AddComponentModal: React.FC<AddComponentModalProps> = ({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Ahuja Radios, Honeywell India"
+                  placeholder="Enter supplier / brand"
                   value={supplierName}
                   onChange={(e) => setSupplierName(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"

@@ -35,7 +35,7 @@ export const CompanyComponentLibraryModal: React.FC<CompanyComponentLibraryModal
   onAddedSuccess,
 }) => {
   const [targetProject, setTargetProject] = useState<string>(
-    defaultProject && defaultProject !== 'all' ? defaultProject : (projectsList[0] || '2 CTBS- 20 Zone -Controller')
+    defaultProject && defaultProject !== 'all' ? defaultProject : (projectsList[0] || 'General Production')
   );
   const [customProject, setCustomProject] = useState<string>('');
   const [isNewProject, setIsNewProject] = useState<boolean>(false);
@@ -238,7 +238,7 @@ export const CompanyComponentLibraryModal: React.FC<CompanyComponentLibraryModal
               {isNewProject ? (
                 <input
                   type="text"
-                  placeholder="e.g. 2 CTBS- 20 Zone -Controller"
+                  placeholder="Enter project name..."
                   value={customProject}
                   onChange={(e) => setCustomProject(e.target.value)}
                   className="input text-xs w-full font-bold text-slate-950 dark:text-white border-crm-blue"
@@ -253,7 +253,7 @@ export const CompanyComponentLibraryModal: React.FC<CompanyComponentLibraryModal
                     <option key={p} value={p}>{p}</option>
                   ))}
                   {projectsList.length === 0 && (
-                    <option value="2 CTBS- 20 Zone -Controller">2 CTBS- 20 Zone -Controller</option>
+                    <option value="General Production">General Production</option>
                   )}
                 </select>
               )}
