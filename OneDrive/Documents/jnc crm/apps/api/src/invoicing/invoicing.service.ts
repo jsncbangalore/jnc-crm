@@ -124,7 +124,7 @@ export class InvoicingService {
     const customerGstin = customerCompany?.gstin || undefined;
 
     // Generate FY sequential number
-    const invoiceNumber = await this.generateFinancialYearInvoiceNumber();
+    const invoiceNumber = await this.generateFinancialYearInvoiceNumber(new Date(), undefined, user.tenantId);
 
     // Calculate line items with tax breakdown & snapshot HSN codes
     let subtotal = 0;
@@ -172,6 +172,7 @@ export class InvoicingService {
 
     const invoice = await this.prisma.invoice.create({
       data: {
+        tenantId: user.tenantId || (order as any).tenantId || 'default-tenant-id',
         invoiceNumber,
         orderId: order.id,
         companyId: customerCompany?.id || undefined,
@@ -252,7 +253,7 @@ export class InvoicingService {
    * - Proforma Invoice: 006/26-27 or PI/26-27/0001
    * - Delivery Challan: 024/26-27 or DC/26-27/0001
    */
-  async getNextDocumentNumber(docType: string = 'tax_invoice', customPrefix?: string): Promise<string> {
+  async getNextDocumentNumber(docType: string = 'tax_invoice', customPrefix?: string, user?: ScopedUser): Promise<string> {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
@@ -260,9 +261,11 @@ export class InvoicingService {
     const fyEnd = fyStart + 1;
     const fyCode = `${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}`;
 
+    const tenantId = user?.tenantId;
     const count = await this.prisma.invoice.count({
       where: {
         docType,
+        ...(tenantId ? { tenantId } : {}),
       },
     });
 
@@ -270,6 +273,25 @@ export class InvoicingService {
 
     if (customPrefix) {
       return `${customPrefix}/${seq}/${fyCode}`;
+    }
+
+    // Dynamic tenant prefix handling
+    if (tenantId && tenantId !== 'default-tenant-id') {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { invoicePrefix: true, code: true },
+      });
+      const tPrefix = tenant?.invoicePrefix || tenant?.code?.replace('JNC-', '') || 'INV';
+      if (docType === 'delivery_challan') {
+        return `DC/${tPrefix}/${seq}/${fyCode}`;
+      }
+      if (docType === 'proforma_invoice') {
+        return `PI/${tPrefix}/${seq}/${fyCode}`;
+      }
+      if (docType === 'credit_note') {
+        return `CN/${tPrefix}/${seq}/${fyCode}`;
+      }
+      return `${tPrefix}/${seq}/${fyCode}`;
     }
 
     if (docType === 'credit_note') {
@@ -339,7 +361,7 @@ export class InvoicingService {
 
     let invoiceNumber = dto.invoiceNumber?.trim();
     if (!invoiceNumber) {
-      invoiceNumber = await this.getNextDocumentNumber(docType);
+      invoiceNumber = await this.getNextDocumentNumber(docType, undefined, user);
     }
 
     // Ensure uniqueness
@@ -398,6 +420,7 @@ export class InvoicingService {
 
     const invoice = await this.prisma.invoice.create({
       data: {
+        tenantId: user.tenantId || 'default-tenant-id',
         invoiceNumber,
         docType,
         createdById: user.id,
@@ -683,8 +706,12 @@ export class InvoicingService {
     user: ScopedUser,
     query?: { page?: number; limit?: number; search?: string; status?: string; docType?: string },
   ) {
-    const isAdmin = user.role === 'super_admin' || user.role === 'admin' || user.role === 'sub_admin';
+    const isAdmin = user.role === 'platform_super_admin' || user.role === 'super_admin' || user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'sub_admin';
     const where: any = {};
+
+    if (user.tenantId && user.tenantId !== 'default-tenant-id') {
+      where.tenantId = user.tenantId;
+    }
 
     if (!isAdmin) {
       where.OR = [
@@ -1038,6 +1065,7 @@ export class InvoicingService {
 
     const paymentRecord = await this.prisma.paymentRecord.create({
       data: {
+        tenantId: user.tenantId || invoice.tenantId || 'default-tenant-id',
         invoiceId: invoice.id,
         orderId: invoice.orderId || undefined,
         amount,

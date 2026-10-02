@@ -46,15 +46,36 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('User authentication context required');
     }
 
-    // super_admin always bypasses BOTH role restrictions and team page restrictions
-    if (user.role === 'super_admin') {
+    // Platform super_admin and platform_super_admin bypass all role restrictions and team page restrictions
+    if (user.role === 'super_admin' || user.role === 'platform_super_admin') {
       return true;
     }
 
     // Check Role Hierarchy
     if (requiredRoles && requiredRoles.length > 0) {
-      const hasRole = requiredRoles.includes(user.role);
-      if (!hasRole) {
+      let isAuthorized = requiredRoles.includes(user.role);
+
+      if (!isAuthorized) {
+        // tenant_admin (Client Super Admin) has full control over all tenant operational features
+        if (user.role === 'tenant_admin') {
+          const isPlatformOnly = requiredRoles.every(
+            (r) => r === 'super_admin' || r === 'platform_super_admin',
+          );
+          if (!isPlatformOnly) {
+            isAuthorized = true;
+          }
+        } else if (user.role === 'admin') {
+          if (requiredRoles.some((r) => ['admin', 'sub_admin', 'employee'].includes(r))) {
+            isAuthorized = true;
+          }
+        } else if (user.role === 'sub_admin') {
+          if (requiredRoles.some((r) => ['sub_admin', 'employee'].includes(r))) {
+            isAuthorized = true;
+          }
+        }
+      }
+
+      if (!isAuthorized) {
         throw new ForbiddenException(`Access denied. Required roles: [${requiredRoles.join(', ')}]`);
       }
     }
