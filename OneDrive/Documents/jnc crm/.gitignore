@@ -17,9 +17,16 @@ build/
 
 # Environment variables & secrets
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 *.pem
+Super Admin.txt
+*.db
+*.db-journal
+*.db.enc
+backups/
+apps/api/backups/
+prisma/*.db
 
 # OS Files
 .DS_Store
