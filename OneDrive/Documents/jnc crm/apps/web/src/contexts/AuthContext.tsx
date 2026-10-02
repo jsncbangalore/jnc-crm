@@ -5,7 +5,7 @@ import { authApi } from '../services/api';
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (username: string, password: string, companyCode?: string) => Promise<User>;
+  login: (username: string, password: string, companyCode?: string) => Promise<User & { redirectPath?: string }>;
   logout: () => void;
   updateUser: (updatedFields: Partial<User>) => void;
   isAuthenticated: boolean;
@@ -31,13 +31,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
   const [isLoading, setIsLoading] = useState(false);
 
-  const login = async (username: string, password: string, companyCode?: string): Promise<User> => {
+  const login = async (username: string, password: string, companyCode?: string): Promise<User & { redirectPath?: string }> => {
     const { data } = await authApi.login(username, password, companyCode);
     localStorage.setItem('jnc_access_token', data.accessToken);
     localStorage.setItem('jnc_refresh_token', data.refreshToken);
     localStorage.setItem('jnc_user', JSON.stringify(data.user));
     setUser(data.user);
-    return data.user;
+    return { ...data.user, redirectPath: data.redirectPath };
   };
 
   const updateUser = (updatedFields: Partial<User>) => {

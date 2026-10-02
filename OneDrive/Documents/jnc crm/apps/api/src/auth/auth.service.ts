@@ -264,10 +264,43 @@ export class AuthService {
       });
     } catch (e) {}
 
+    const redirectPath = this.getRedirectPath(user);
+
     return {
       user,
+      redirectPath,
       ...tokens,
     };
+  }
+
+  getRedirectPath(user: any): string {
+    if (!user) return '/login';
+    switch (user.role) {
+      case 'platform_super_admin':
+        return '/platform/companies';
+      case 'super_admin':
+        return (!user.tenantId || user.tenantId === 'default-tenant-id') ? '/platform/companies' : '/';
+      case 'tenant_admin':
+      case 'admin':
+      case 'sub_admin':
+        return '/';
+      case 'employee':
+        return '/leads';
+      case 'developer':
+      case 'developer_lead':
+      case 'project_manager':
+        return '/daily-activities';
+      case 'store_manager':
+        return '/inventory';
+      case 'finance':
+      case 'accountant':
+        return '/invoices';
+      case 'client':
+      case 'customer':
+        return '/orders';
+      default:
+        return '/';
+    }
   }
 
   async changePassword(userId: string, currentPass: string, newPass: string) {
@@ -321,6 +354,7 @@ export class AuthService {
 
       return {
         user,
+        redirectPath: this.getRedirectPath(user),
         ...this.generateTokens(user),
       };
     } catch (e) {
@@ -329,11 +363,14 @@ export class AuthService {
   }
 
   private generateTokens(user: any) {
+    const resolvedTenantId = user.tenantId || (user.tenant ? user.tenant.id : 'default-tenant-id');
     const payload = {
       sub: user.id,
-      tenantId: user.tenantId || (user.tenant ? user.tenant.id : 'default-tenant-id'),
+      tenantId: resolvedTenantId,
+      org_id: resolvedTenantId,
       email: user.email,
       role: user.role,
+      employee_code: user.employeeCode,
       employeeCode: user.employeeCode,
     };
 

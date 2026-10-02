@@ -102,7 +102,7 @@ export default function LoginPage() {
         }, 1000);
       } else {
         // Direct Role-Based Redirect
-        const destination = getRoleRedirectPath(loggedInUser);
+        const destination = loggedInUser.redirectPath || getRoleRedirectPath(loggedInUser);
         navigate(destination);
       }
     } catch (err: any) {
@@ -123,7 +123,7 @@ export default function LoginPage() {
     setTimeout(() => {
       setLoading(false);
       if (pendingUser) {
-        const destination = getRoleRedirectPath(pendingUser);
+        const destination = (pendingUser as any).redirectPath || getRoleRedirectPath(pendingUser);
         navigate(destination);
       } else {
         navigate('/');
