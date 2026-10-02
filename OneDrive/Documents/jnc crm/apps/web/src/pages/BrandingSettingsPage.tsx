@@ -160,10 +160,36 @@ export default function BrandingSettingsPage() {
         companyLogoUrl: logoPreview || null,
       });
 
-      setSuccessMessage('Company Branding successfully updated! All UI headers, footers, and outgoing emails are now in sync.');
+      await brandingApi.updateProfile({
+        name: companyName.trim(),
+        phone: companyPhone.trim() || undefined,
+        logoUrl: logoPreview || null,
+        email: email.trim() || undefined,
+        address: address.trim() || undefined,
+        city: city.trim() || undefined,
+        state: state.trim() || undefined,
+        pincode: pincode.trim() || undefined,
+        website: website.trim() || undefined,
+        gstin: gstin.trim() || undefined,
+        pan: pan.trim() || undefined,
+        invoicePrefix: invoicePrefix.trim() || undefined,
+        lutBondNo: lutBondNo.trim() || undefined,
+        lutValidity: lutValidity.trim() || undefined,
+        bankName: bankName.trim() || undefined,
+        bankAccountNumber: bankAccountNumber.trim() || undefined,
+        bankIfsc: bankIfsc.trim() || undefined,
+        bankBranch: bankBranch.trim() || undefined,
+        bankUpi: bankUpi.trim() || undefined,
+        signatoryName: signatoryName.trim() || undefined,
+        signatoryDesignation: signatoryDesignation.trim() || undefined,
+        signatureUrl: signaturePreview || null,
+        stampUrl: stampPreview || null,
+      });
+
+      setSuccessMessage('Company Business Details & Invoicing Profile successfully updated! All tax invoices, headers, and documents are synchronized.');
       setTimeout(() => setSuccessMessage(''), 4000);
     } catch (err: any) {
-      setErrorMessage(err?.response?.data?.message || 'Failed to update branding settings.');
+      setErrorMessage(err?.response?.data?.message || 'Failed to update company profile settings.');
     } finally {
       setSaving(false);
     }

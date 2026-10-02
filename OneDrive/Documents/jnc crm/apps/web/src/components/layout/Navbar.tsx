@@ -636,10 +636,24 @@ export default function Navbar() {
                   </div>
 
                   {/* Company Scope */}
-                  <div className="px-2.5 py-1.5 mb-2 rounded-lg bg-slate-100/50 dark:bg-white/5 text-[11px] text-slate-600 dark:text-slate-400">
-                    <span>Workspace: </span>
-                    <strong className="text-slate-900 dark:text-white">{branding.companyDisplayName}</strong>
+                  <div className="px-2.5 py-1.5 mb-2 rounded-lg bg-slate-100/50 dark:bg-white/5 text-[11px] text-slate-600 dark:text-slate-400 flex items-center justify-between">
+                    <div>
+                      <span>Workspace: </span>
+                      <strong className="text-slate-900 dark:text-white">{branding.companyDisplayName}</strong>
+                    </div>
                   </div>
+
+                  {/* Company Business Details Link */}
+                  {isAdmin && (
+                    <NavLink
+                      to="/settings/branding"
+                      onClick={() => setProfileOpen(false)}
+                      className="w-full flex items-center gap-2 px-2.5 py-2 mb-1 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                    >
+                      <Building2 size={14} className="text-crm-teal" />
+                      <span>Company Profile & Details</span>
+                    </NavLink>
+                  )}
 
                   {/* Logout Session */}
                   <button
