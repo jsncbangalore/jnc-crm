@@ -272,11 +272,11 @@ export default function Navbar() {
   ).slice(0, 8);
 
   return (
-    <header ref={navRef} className="hidden lg:flex flex-col shrink-0 bg-white dark:bg-[#181B26] border-b border-slate-200 dark:border-[#2A3042] sticky top-0 z-40 select-none shadow-sm">
+    <header ref={navRef} className="hidden lg:flex flex-col shrink-0 bg-white dark:bg-[#181B26] border-b border-slate-200 dark:border-[#2A3042] sticky top-0 z-40 select-none shadow-sm overflow-visible">
       {/* ═══════════════════════════════════════════════════════════════════════
           TIER 1: SALESFORCE LIGHTNING GLOBAL UTILITY HEADER BAR (48px)
           ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="h-12 px-4 flex items-center justify-between gap-4 border-b border-slate-200/80 dark:border-[#2A3042]/80 bg-slate-50/60 dark:bg-[#141721]/60">
+      <div className="h-12 px-4 flex items-center justify-between gap-4 border-b border-slate-200/80 dark:border-[#2A3042]/80 bg-slate-50/60 dark:bg-[#141721]/60 overflow-visible">
         
         {/* Left: App Launcher 9-Dots & Company Branding */}
         <div className="flex items-center gap-3 shrink-0">
@@ -659,17 +659,17 @@ export default function Navbar() {
       {/* ═══════════════════════════════════════════════════════════════════════
           TIER 2: SALESFORCE LIGHTNING APP NAVIGATION TABS (40px)
           ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="h-10 px-4 flex items-center justify-between overflow-x-auto scrollbar-none bg-white dark:bg-[#181B26]">
+      <div className="h-10 px-4 flex items-center justify-between overflow-visible relative bg-white dark:bg-[#181B26]">
         
         {/* Left: App Title ("Sales" / "CRM") + Nav Tabs */}
-        <div className="flex items-center gap-1 h-full">
+        <div className="flex items-center gap-1 h-full overflow-visible">
           {/* Salesforce App Name */}
           <span className="text-xs font-black text-slate-900 dark:text-white mr-3 tracking-tight shrink-0 hidden xl:inline">
             Sales
           </span>
 
           {/* Tabs */}
-          <nav className="flex items-center h-full gap-0.5">
+          <nav className="flex items-center h-full gap-0.5 overflow-visible">
             {visibleNavItems.map((item) => {
               const isActive = location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to));
               const isDropdownOpen = activeTabDropdown === item.to;
@@ -705,37 +705,42 @@ export default function Navbar() {
                         }`}
                         title={`${item.label} Menu`}
                       >
-                        <ChevronDown size={11} className={`transition-transform duration-150 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={11} className={`transition-transform duration-150 ${isDropdownOpen ? 'rotate-180 text-crm-blue' : ''}`} />
                       </button>
                     )}
                   </div>
 
-                  {/* Tab Dropdown Popover */}
+                  {/* Tab Dropdown Popover - Elevated High Z-Index */}
                   <AnimatePresence>
                     {isDropdownOpen && item.subItems && (
                       <motion.div
-                        initial={{ opacity: 0, y: 4, scale: 0.97 }}
+                        initial={{ opacity: 0, y: 6, scale: 0.96 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 4, scale: 0.97 }}
-                        transition={{ duration: 0.12 }}
-                        className="absolute left-0 top-10 min-w-[200px] rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-1.5 z-50"
+                        exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute left-0 top-full mt-1 min-w-[240px] rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-2xl p-2 z-[100]"
                       >
-                        <p className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">{item.label} Actions</p>
-                        {item.subItems.map((sub, sIdx) => (
-                          <NavLink
-                            key={sIdx}
-                            to={sub.to}
-                            onClick={() => setActiveTabDropdown(null)}
-                            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
-                              sub.isAction
-                                ? 'font-bold text-crm-blue hover:bg-crm-blue/10'
-                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
-                            }`}
-                          >
-                            <span>{sub.label}</span>
-                            {sub.isAction && <Plus size={12} className="text-crm-blue" />}
-                          </NavLink>
-                        ))}
+                        <div className="flex items-center justify-between px-2.5 py-1 mb-1 border-b border-slate-100 dark:border-white/5">
+                          <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">{item.label} Actions</span>
+                          <span className="text-[9px] font-mono text-crm-blue dark:text-crm-teal font-semibold">Quick Menu</span>
+                        </div>
+                        <div className="space-y-0.5">
+                          {item.subItems.map((sub, sIdx) => (
+                            <NavLink
+                              key={sIdx}
+                              to={sub.to}
+                              onClick={() => setActiveTabDropdown(null)}
+                              className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all ${
+                                sub.isAction
+                                  ? 'font-bold bg-crm-blue/10 text-crm-blue hover:bg-crm-blue hover:text-white dark:bg-crm-blue/20 dark:hover:bg-crm-blue dark:text-white shadow-2xs'
+                                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
+                              }`}
+                            >
+                              <span>{sub.label}</span>
+                              {sub.isAction && <Plus size={13} className="shrink-0" />}
+                            </NavLink>
+                          ))}
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
