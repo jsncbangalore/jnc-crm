@@ -42,9 +42,10 @@ export class QuotationsService {
     private ordersService: OrdersService,
   ) {}
 
-  private async resolveSkuForLine(line: { skuId?: string; name?: string; unitPrice: number }, warehouseId?: string) {
+  private async resolveSkuForLine(line: { skuId?: string; name?: string; unitPrice: number }, user: ScopedUser, warehouseId?: string) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     if (line.skuId && line.skuId.trim()) {
-      const existing = await this.prisma.sku.findUnique({ where: { id: line.skuId } });
+      const existing = await this.prisma.sku.findFirst({ where: { id: line.skuId, tenantId } });
       if (existing) return existing;
     }
 
@@ -55,6 +56,7 @@ export class QuotationsService {
 
     let found = await this.prisma.sku.findFirst({
       where: {
+        tenantId,
         OR: [
           { skuCode: { equals: text } },
           { name: { equals: text } },
@@ -65,18 +67,19 @@ export class QuotationsService {
     if (found) return found;
 
     // Auto-create SKU
-    const count = await this.prisma.sku.count();
+    const count = await this.prisma.sku.count({ where: { tenantId } });
     const cleanPrefix = text.replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase() || 'PROD';
     const autoSkuCode = `${cleanPrefix}-${String(count + 1).padStart(4, '0')}`;
 
     let whId = warehouseId;
     if (!whId) {
-      const defaultWh = await this.prisma.warehouse.findFirst({ orderBy: { createdAt: 'asc' } });
+      const defaultWh = await this.prisma.warehouse.findFirst({ where: { tenantId }, orderBy: { createdAt: 'asc' } });
       whId = defaultWh?.id;
     }
 
     const created = await this.prisma.sku.create({
       data: {
+        tenantId,
         skuCode: autoSkuCode,
         name: text,
         category: 'Communication / PA System',
@@ -102,6 +105,7 @@ export class QuotationsService {
   }
 
   async create(dto: CreateQuotationDto, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     if (!dto.customerName || !dto.customerPhone) {
       throw new BadRequestException('Customer Name and Phone are required.');
     }
@@ -109,14 +113,14 @@ export class QuotationsService {
       throw new BadRequestException('At least 1 product line is required for quotation.');
     }
 
-    const count = await this.prisma.quotation.count();
+    const count = await this.prisma.quotation.count({ where: { tenantId } });
     const quoteNumber = `JNC-QT-${String(count + 1).padStart(5, '0')}`;
 
     const resolvedLines: any[] = [];
     let subtotal = 0;
 
     for (const l of dto.lines) {
-      const sku = await this.resolveSkuForLine(l);
+      const sku = await this.resolveSkuForLine(l, user);
       const qty = Number(l.quantity) || 1;
       const price = Number(l.unitPrice) || 0;
       const discount = Number(l.discount) || 0;
@@ -141,6 +145,7 @@ export class QuotationsService {
 
     const quotation = await this.prisma.quotation.create({
       data: {
+        tenantId,
         quoteNumber,
         leadId: dto.leadId,
         contactId: dto.contactId,
@@ -173,6 +178,7 @@ export class QuotationsService {
     }
 
     await this.auditService.log({
+      tenantId,
       actorId: user.id,
       actorName: user.employeeCode,
       action: 'CREATE',
@@ -185,7 +191,8 @@ export class QuotationsService {
   }
 
   async findAll(user: ScopedUser, query: { status?: string; search?: string; page?: number; limit?: number }) {
-    const where: any = { deletedAt: null };
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const where: any = { tenantId, deletedAt: null };
 
     if (query.status) where.status = query.status;
     if (query.search) {
@@ -222,8 +229,9 @@ export class QuotationsService {
   }
 
   async findOne(id: string, user: ScopedUser) {
-    const quotation = await this.prisma.quotation.findUnique({
-      where: { id },
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const quotation = await this.prisma.quotation.findFirst({
+      where: { id, tenantId },
       include: {
         lines: { include: { sku: true } },
         lead: true,

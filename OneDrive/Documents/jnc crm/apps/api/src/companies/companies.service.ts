@@ -7,6 +7,7 @@
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ScopedUser } from '../auth/scoping.service';
 
 export interface CreateCompanyDto {
   name: string;
@@ -23,9 +24,11 @@ export interface CreateCompanyDto {
 export class CompaniesService {
   constructor(private prisma: PrismaService) {}
 
-  async create(dto: CreateCompanyDto) {
+  async create(dto: CreateCompanyDto, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
     return this.prisma.company.create({
       data: {
+        tenantId,
         name: dto.name.trim(),
         gstin: dto.gstin?.trim() || null,
         industry: dto.industry?.trim() || null,
@@ -38,8 +41,9 @@ export class CompaniesService {
     });
   }
 
-  async findAll(query?: { search?: string }) {
-    const where: any = { deletedAt: null };
+  async findAll(user: ScopedUser, query?: { search?: string }) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const where: any = { tenantId, deletedAt: null };
     if (query?.search) {
       where.OR = [
         { name: { contains: query.search } },
@@ -64,9 +68,10 @@ export class CompaniesService {
     });
   }
 
-  async findOne(id: string) {
-    const company = await this.prisma.company.findUnique({
-      where: { id },
+  async findOne(id: string, user: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const company = await this.prisma.company.findFirst({
+      where: { id, tenantId },
       include: {
         contacts: {
           where: { deletedAt: null },
@@ -91,8 +96,8 @@ export class CompaniesService {
     return company;
   }
 
-  async update(id: string, dto: Partial<CreateCompanyDto>) {
-    await this.findOne(id);
+  async update(id: string, dto: Partial<CreateCompanyDto>, user: ScopedUser) {
+    await this.findOne(id, user);
     return this.prisma.company.update({
       where: { id },
       data: {
@@ -108,8 +113,8 @@ export class CompaniesService {
     });
   }
 
-  async delete(id: string) {
-    await this.findOne(id);
+  async delete(id: string, user: ScopedUser) {
+    await this.findOne(id, user);
     return this.prisma.company.update({
       where: { id },
       data: { deletedAt: new Date() },

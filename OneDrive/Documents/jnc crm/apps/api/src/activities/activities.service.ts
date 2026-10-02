@@ -17,11 +17,13 @@ export class ActivitiesService {
 
   async listProjects(user: ScopedUser) {
     this.requireProjectAccessRole(user);
+    const tenantId = user?.tenantId || 'default-tenant-id';
 
-    // Individual Developers see ONLY projects they are assigned to
+    // Individual Developers see ONLY projects they are assigned to within tenant
     if (user.role === 'developer') {
       return this.prisma.project.findMany({
         where: {
+          tenantId,
           assignments: {
             some: { userId: user.id },
           },
@@ -39,8 +41,9 @@ export class ActivitiesService {
       });
     }
 
-    // Super Admin, Admin, Project Manager, Developer Lead, Sub Admin see all projects
+    // Super Admin, Tenant Admin, Admin, Project Manager, Developer Lead, Sub Admin see all projects within tenant
     return this.prisma.project.findMany({
+      where: { tenantId },
       orderBy: { createdAt: 'desc' },
       include: {
         createdBy: { select: { id: true, name: true, employeeCode: true } },
@@ -56,8 +59,10 @@ export class ActivitiesService {
 
   async createProject(user: ScopedUser, dto: { name: string; description?: string; status?: string }) {
     this.requireProjectCreationRole(user);
+    const tenantId = user?.tenantId || 'default-tenant-id';
     return this.prisma.project.create({
       data: {
+        tenantId,
         name: dto.name.trim(),
         description: dto.description?.trim(),
         status: dto.status || 'active',
@@ -80,7 +85,7 @@ export class ActivitiesService {
     dto: { name?: string; description?: string; status?: string },
   ) {
     this.requireProjectCreationRole(user);
-    await this.findProjectOrFail(id);
+    await this.findProjectOrFail(id, user);
     return this.prisma.project.update({
       where: { id },
       data: {
@@ -101,7 +106,7 @@ export class ActivitiesService {
 
   async deleteProject(user: ScopedUser, id: string) {
     this.requireSuperAdminOrAdmin(user);
-    await this.findProjectOrFail(id);
+    await this.findProjectOrFail(id, user);
     return this.prisma.project.delete({ where: { id } });
   }
 
@@ -109,8 +114,10 @@ export class ActivitiesService {
 
   async getAssignableUsers(user: ScopedUser) {
     this.requireAssignmentRole(user);
+    const tenantId = user?.tenantId || 'default-tenant-id';
     return this.prisma.user.findMany({
       where: {
+        tenantId,
         role: { in: ['developer', 'developer_lead', 'project_manager'] },
         isActive: true,
         deletedAt: null,
@@ -128,7 +135,7 @@ export class ActivitiesService {
 
   async assignMembers(user: ScopedUser, projectId: string, memberIds: string[]) {
     this.requireAssignmentRole(user);
-    await this.findProjectOrFail(projectId);
+    await this.findProjectOrFail(projectId, user);
 
     // Delete existing assignments for this project
     await this.prisma.projectAssignment.deleteMany({
@@ -239,7 +246,9 @@ export class ActivitiesService {
 
   private requireProjectAccessRole(user: ScopedUser) {
     const allowed = [
+      'platform_super_admin',
       'super_admin',
+      'tenant_admin',
       'admin',
       'sub_admin',
       'project_manager',
@@ -252,27 +261,30 @@ export class ActivitiesService {
   }
 
   private requireProjectCreationRole(user: ScopedUser) {
-    const allowed = ['super_admin', 'admin', 'project_manager'];
+    const allowed = ['platform_super_admin', 'super_admin', 'tenant_admin', 'admin', 'project_manager'];
     if (!allowed.includes(user.role)) {
       throw new ForbiddenException('Only Project Managers and Admins can create or edit projects.');
     }
   }
 
   private requireAssignmentRole(user: ScopedUser) {
-    const allowed = ['super_admin', 'admin', 'developer_lead', 'project_manager'];
+    const allowed = ['platform_super_admin', 'super_admin', 'tenant_admin', 'admin', 'developer_lead', 'project_manager'];
     if (!allowed.includes(user.role)) {
       throw new ForbiddenException('Only Developer Leads, Project Managers, and Admins can assign developers.');
     }
   }
 
   private requireSuperAdminOrAdmin(user: ScopedUser) {
-    if (user.role !== 'super_admin' && user.role !== 'admin') {
+    if (user.role !== 'platform_super_admin' && user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
       throw new ForbiddenException('Only Super Admin or Admin can delete records.');
     }
   }
 
-  private async findProjectOrFail(id: string) {
-    const project = await this.prisma.project.findUnique({ where: { id } });
+  private async findProjectOrFail(id: string, user?: ScopedUser) {
+    const tenantId = user?.tenantId || 'default-tenant-id';
+    const project = await this.prisma.project.findFirst({
+      where: { id, tenantId },
+    });
     if (!project) throw new NotFoundException(`Project not found.`);
     return project;
   }

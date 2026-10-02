@@ -28,11 +28,14 @@ export class TeamsService {
   ) {}
 
   async findAll(creator: ScopedUser) {
-    if (creator.role !== 'super_admin' && creator.role !== 'admin') {
+    if (creator.role !== 'platform_super_admin' && creator.role !== 'super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
       throw new ForbiddenException('Access denied.');
     }
 
+    const tenantId = creator.tenantId || 'default-tenant-id';
+
     const teams = await this.prisma.team.findMany({
+      where: { tenantId },
       orderBy: { createdAt: 'desc' },
       include: {
         _count: {
@@ -49,18 +52,22 @@ export class TeamsService {
   }
 
   async createTeam(dto: CreateTeamDto, creator: ScopedUser) {
-    if (creator.role !== 'super_admin' && creator.role !== 'admin') {
+    if (creator.role !== 'platform_super_admin' && creator.role !== 'super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
       throw new ForbiddenException('Access denied.');
     }
 
+    const tenantId = creator.tenantId || 'default-tenant-id';
+
     const team = await this.prisma.team.create({
       data: {
+        tenantId,
         name: dto.name.trim(),
         allowedPages: JSON.stringify(dto.allowedPages || []),
       }
     });
 
     await this.auditService.log({
+      tenantId,
       actorId: creator.id,
       actorName: creator.employeeCode,
       action: 'CREATE',
@@ -73,11 +80,13 @@ export class TeamsService {
   }
 
   async updateTeam(id: string, dto: UpdateTeamDto, creator: ScopedUser) {
-    if (creator.role !== 'super_admin' && creator.role !== 'admin') {
+    if (creator.role !== 'platform_super_admin' && creator.role !== 'super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
       throw new ForbiddenException('Access denied.');
     }
 
-    const targetTeam = await this.prisma.team.findUnique({ where: { id } });
+    const tenantId = creator.tenantId || 'default-tenant-id';
+
+    const targetTeam = await this.prisma.team.findFirst({ where: { id, tenantId } });
     if (!targetTeam) throw new NotFoundException('Team not found');
 
     const updateData: any = {};
@@ -90,6 +99,7 @@ export class TeamsService {
     });
 
     await this.auditService.log({
+      tenantId,
       actorId: creator.id,
       actorName: creator.employeeCode,
       action: 'UPDATE',

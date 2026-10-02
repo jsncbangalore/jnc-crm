@@ -300,6 +300,7 @@ export class CustomObjectsService {
 
     const customObject = await this.prisma.customObject.create({
       data: {
+        tenantId: user.tenantId || 'default-tenant-id',
         apiName,
         label,
         pluralLabel,

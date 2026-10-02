@@ -151,26 +151,28 @@ export class AuthService {
 
     await this.checkAccountLockout(lower);
 
-    // Optional Tenant constraint if company code or subdomain is provided
+    // Strict Tenant constraint if company code or subdomain is provided
     let tenantFilter: any = {};
-    if (companyCode) {
+    if (companyCode && companyCode.trim()) {
+      const cleanCompanyCode = companyCode.trim();
       const tenant = await this.prisma.tenant.findFirst({
         where: {
+          deletedAt: null,
           OR: [
-            { code: { equals: companyCode.toUpperCase(), mode: 'insensitive' } },
-            { slug: { equals: companyCode.toLowerCase(), mode: 'insensitive' } },
+            { code: { equals: cleanCompanyCode.toUpperCase(), mode: 'insensitive' } },
+            { slug: { equals: cleanCompanyCode.toLowerCase(), mode: 'insensitive' } },
+            { id: { equals: cleanCompanyCode } },
           ],
         },
       });
-      if (tenant) {
-        tenantFilter = { tenantId: tenant.id };
+      if (!tenant) {
+        throw new UnauthorizedException(`Company code '${companyCode}' not found or inactive.`);
       }
+      tenantFilter = { tenantId: tenant.id };
     }
 
-    const isJncOrgSa = ['JNC-ORG-SA-001', 'JNC-ORG-SP-001', 'JNC-ORG-001', 'JNC-SA-001', 'JNC-ORG-AD-001'].includes(upper);
-
-    // Primary candidates matching username (email or employee code or known aliases)
-    let candidates = await this.prisma.user.findMany({
+    // Strict candidates matching exact email or exact employee code
+    const candidates = await this.prisma.user.findMany({
       include: {
         teamRef: { select: { id: true, name: true, allowedPages: true } },
         tenant: { select: { id: true, code: true, name: true, slug: true, status: true, logoUrl: true, currency: true } },
@@ -179,54 +181,14 @@ export class AuthService {
         ...tenantFilter,
         OR: [
           { email: { equals: lower, mode: 'insensitive' } },
-          { email: { equals: raw, mode: 'insensitive' } },
           { employeeCode: { equals: upper, mode: 'insensitive' } },
-          { employeeCode: { equals: raw, mode: 'insensitive' } },
-          { employeeCode: { contains: upper, mode: 'insensitive' } },
-          ...(isJncOrgSa
-            ? [
-                { employeeCode: 'JNC-SA-001' },
-                { email: { equals: 'jayarajjnc@gmail.com', mode: 'insensitive' } },
-                { role: 'super_admin' },
-                { role: 'platform_super_admin' },
-              ]
-            : []),
         ],
         deletedAt: null,
       },
       orderBy: [
-        { tenantId: 'desc' },
         { createdAt: 'desc' },
       ],
     });
-
-    // Fallback search if no candidates matched and username was entered as Tenant / Org Code
-    if (candidates.length === 0) {
-      const matchedTenant = await this.prisma.tenant.findFirst({
-        where: {
-          OR: [
-            { code: { equals: upper, mode: 'insensitive' } },
-            { slug: { equals: lower, mode: 'insensitive' } },
-            { id: { equals: raw, mode: 'insensitive' } },
-          ],
-        },
-      });
-
-      if (matchedTenant) {
-        candidates = await this.prisma.user.findMany({
-          include: {
-            teamRef: { select: { id: true, name: true, allowedPages: true } },
-            tenant: { select: { id: true, code: true, name: true, slug: true, status: true, logoUrl: true, currency: true } },
-          },
-          where: {
-            tenantId: matchedTenant.id,
-            role: { in: ['tenant_admin', 'super_admin', 'platform_super_admin', 'admin'] },
-            deletedAt: null,
-          },
-          orderBy: { createdAt: 'asc' },
-        });
-      }
-    }
 
     if (candidates.length === 0) {
       await this.recordFailedAttempt(lower, undefined, ipAddress);
@@ -261,16 +223,19 @@ export class AuthService {
     if (
       matchedUser.tenant &&
       matchedUser.tenant.status !== 'active' &&
-      matchedUser.role !== 'platform_super_admin' &&
-      matchedUser.role !== 'super_admin'
+      matchedUser.role !== 'platform_super_admin'
     ) {
-      throw new UnauthorizedException('Your company account is suspended or expired. Please contact platform support.');
+      throw new UnauthorizedException(`Your company account (${matchedUser.tenant.name || matchedUser.tenant.code}) is ${matchedUser.tenant.status}. Please contact platform support.`);
     }
 
     await this.resetFailedAttempts(lockKey, matchedUser.id);
 
     const { passwordHash, ...result } = matchedUser;
-    return result;
+    const resolvedTenantId = result.tenantId || (result.tenant ? result.tenant.id : 'default-tenant-id');
+    return {
+      ...result,
+      tenantId: resolvedTenantId,
+    };
   }
 
   async login(loginDto: LoginDto, ipAddress?: string) {
@@ -366,7 +331,7 @@ export class AuthService {
   private generateTokens(user: any) {
     const payload = {
       sub: user.id,
-      tenantId: user.tenantId,
+      tenantId: user.tenantId || (user.tenant ? user.tenant.id : 'default-tenant-id'),
       email: user.email,
       role: user.role,
       employeeCode: user.employeeCode,
