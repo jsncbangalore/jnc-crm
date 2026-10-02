@@ -10,11 +10,13 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { NotificationsService } from '../notifications/notifications.service';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 
 export interface CreateTenantDto {
   code: string;            // e.g. "VERTEX", "ACME"
@@ -60,11 +62,15 @@ export class PlatformService {
   ) {}
 
   /**
-   * List all tenant organizations (Platform Super Admin only)
+   * List all client tenant organizations (Platform Super Admin only).
+   * Excludes internal platform owner companies (isInternal = false).
    */
   async listTenants() {
     const tenants = await this.prisma.tenant.findMany({
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        isInternal: false,
+      },
       orderBy: { createdAt: 'desc' },
       include: {
         _count: {
@@ -126,6 +132,9 @@ export class PlatformService {
     });
 
     if (!tenant) throw new NotFoundException('Company tenant not found');
+    if (tenant.isInternal) {
+      throw new ForbiddenException('This is the platform owner company and cannot be managed here.');
+    }
     return tenant;
   }
 
@@ -134,9 +143,12 @@ export class PlatformService {
    */
   async createTenant(dto: CreateTenantDto) {
     const cleanCode = dto.code.trim().toUpperCase();
+    if (cleanCode === 'JNC' || cleanCode === 'JNC-ORG-001') {
+      throw new BadRequestException(`Cannot provision tenant with reserved internal code '${cleanCode}'`);
+    }
     const cleanSlug = (dto.slug || cleanCode.toLowerCase()).trim().replace(/[^a-z0-9-]/gi, '-');
 
-    // 1. Check uniqueness
+    // 1. Check uniqueness and reject internal codes
     const existing = await this.prisma.tenant.findFirst({
       where: {
         OR: [{ code: cleanCode }, { slug: cleanSlug }],
@@ -144,6 +156,9 @@ export class PlatformService {
     });
 
     if (existing) {
+      if (existing.isInternal) {
+        throw new BadRequestException(`Cannot use code '${cleanCode}' reserved for platform owner company`);
+      }
       throw new ConflictException(`Company with code '${cleanCode}' or slug '${cleanSlug}' already exists`);
     }
 
@@ -296,7 +311,7 @@ export class PlatformService {
           subject: `[JNC CRM] Welcome! Your CRM Workspace Access Credentials for ${result.tenant.name}`,
           html: emailHtml,
           text: `Hello ${result.adminUser.name},\n\nYour company's CRM workspace has been provisioned:\n\nCompany: ${result.tenant.name} (${result.tenant.code})\nUser ID: ${result.adminUser.employeeCode}\nEmail: ${result.adminUser.email}\nTemporary Password: ${tempPassword}\nLogin URL: ${loginUrl}\n\nPlease change your temporary password upon first login.`,
-          tenantId: 'default-tenant-id',
+          tenantId: result.tenant.id,
         });
         emailDispatched = true;
         emailStatusMessage = `Credentials email dispatched successfully to ${result.adminUser.email}`;
@@ -331,6 +346,9 @@ export class PlatformService {
       include: { users: true },
     });
     if (!tenant) throw new NotFoundException('Company tenant not found');
+    if (tenant.isInternal) {
+      throw new ForbiddenException('This is the platform owner company and cannot be managed here.');
+    }
 
     // Only allow updating basic company metadata, plan tier, users, and contact details
     // Invoicing, bank, and GST data are strictly restricted to tenant workspaces
@@ -362,14 +380,14 @@ export class PlatformService {
     // If tenant email or phone was updated, synchronize with primary Super Admin user
     if (email || phone) {
       const adminUser =
-        tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'super_admin' || u.role === 'admin') ||
+        tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'admin') ||
         tenant.users[0];
 
       if (adminUser) {
         await this.prisma.user.update({
           where: { id: adminUser.id },
           data: {
-            ...(email ? { email: email.trim() } : {}),
+            ...(email ? { email: email.trim().toLowerCase() } : {}),
             ...(phone ? { phone: phone.trim() } : {}),
           },
         });
@@ -383,8 +401,10 @@ export class PlatformService {
    * Delete / Soft Delete Tenant workspace
    */
   async deleteTenant(id: string) {
-    if (id === 'default-tenant-id') {
-      throw new BadRequestException('Primary system root company cannot be deleted');
+    const tenant = await this.prisma.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException('Company tenant not found');
+    if (tenant.isInternal) {
+      throw new ForbiddenException('This is the platform owner company and cannot be managed here.');
     }
 
     await this.prisma.tenant.update({
@@ -412,10 +432,13 @@ export class PlatformService {
     });
 
     if (!tenant) throw new NotFoundException('Company workspace not found');
+    if (tenant.isInternal) {
+      throw new ForbiddenException('This is the platform owner company and cannot be managed here.');
+    }
 
-    // Prefer tenant_admin or super_admin or first active user
+    // Prefer tenant_admin or admin or first active user
     const targetUser =
-      tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'super_admin' || u.role === 'admin') ||
+      tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'admin') ||
       tenant.users[0];
 
     if (!targetUser) {
@@ -433,7 +456,7 @@ export class PlatformService {
       impersonatedTenantCode: tenant.code,
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
 
     // Write audit log entry for impersonation
     try {
@@ -509,10 +532,13 @@ export class PlatformService {
     });
 
     if (!tenant) throw new NotFoundException('Company workspace not found');
+    if (tenant.isInternal) {
+      throw new ForbiddenException('This is the platform owner company and cannot be managed here.');
+    }
 
-    // Find primary admin/super admin user
+    // Find primary admin user
     const adminUser =
-      tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'super_admin' || u.role === 'admin') ||
+      tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'admin') ||
       tenant.users[0];
 
     if (!adminUser) {
@@ -520,19 +546,19 @@ export class PlatformService {
     }
 
     // Determine target email: dto.adminEmail > tenant.email > adminUser.email
-    const targetEmail = dto?.adminEmail?.trim() || tenant.email || adminUser.email;
+    const targetEmail = (dto?.adminEmail?.trim() || tenant.email || adminUser.email).trim().toLowerCase();
 
-    // Generate strong password if not supplied
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+    // Generate strong password (minimum 12 chars using crypto.randomInt)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*()_+';
     let generatedPass = '';
-    for (let i = 0; i < 10; i++) {
-      generatedPass += chars.charAt(Math.floor(Math.random() * chars.length));
+    for (let i = 0; i < 14; i++) {
+      generatedPass += chars.charAt(crypto.randomInt(0, chars.length));
     }
     const passwordToSet = dto?.newPassword?.trim() || generatedPass;
 
     const passwordHash = await bcrypt.hash(passwordToSet, 10);
 
-    // Update password, email, and unlock account in database
+    // Update password, email, increment tokenVersion (invalidates old tokens), and unlock account in database
     await this.prisma.user.update({
       where: { id: adminUser.id },
       data: {
@@ -540,8 +566,23 @@ export class PlatformService {
         passwordHash,
         mustResetPassword: true,
         isActive: true,
+        tokenVersion: { increment: 1 },
       },
     });
+
+    // Clear any lockout record
+    try {
+      await this.prisma.accountLockout.deleteMany({
+        where: {
+          OR: [
+            { identityKey: targetEmail },
+            { identityKey: `${targetEmail}:${tenant.id}` },
+            { identityKey: adminUser.email.toLowerCase() },
+            { identityKey: `${adminUser.email.toLowerCase()}:${tenant.id}` },
+          ],
+        },
+      });
+    } catch {}
 
     // Also synchronize tenant official email if changed
     if (targetEmail && targetEmail !== tenant.email) {
@@ -637,7 +678,7 @@ export class PlatformService {
           subject: `[JNC CRM] Super Admin Access Credentials for ${tenant.name}`,
           html: emailHtml,
           text: `Hello ${adminUser.name},\n\nYour Super Admin credentials for ${tenant.name} have been updated:\n\nCompany: ${tenant.name} (${tenant.code})\nUser ID: ${adminUser.employeeCode}\nEmail: ${adminUser.email}\nPassword: ${passwordToSet}\nLogin URL: ${loginUrl}\n\nPlease change your password after logging in.`,
-          tenantId: 'default-tenant-id',
+          tenantId: tenant.id,
         });
         emailDispatched = true;
         emailStatusMessage = `Credentials email sent successfully to ${adminUser.email}`;
@@ -665,6 +706,163 @@ export class PlatformService {
         name: tenant.name,
       },
       tempPassword: passwordToSet,
+    };
+  }
+
+  /**
+   * List all platform super administrators (tenantId is null)
+   */
+  async listPlatformAdmins() {
+    return this.prisma.user.findMany({
+      where: {
+        role: 'platform_super_admin',
+        tenantId: null,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        employeeCode: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        isActive: true,
+        lastLoginAt: true,
+        mustResetPassword: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /**
+   * Create a new platform super administrator account
+   */
+  async createPlatformAdmin(dto: { name: string; email: string; phone?: string }, actor?: any) {
+    const cleanEmail = dto.email.trim().toLowerCase();
+    const existing = await this.prisma.user.findFirst({
+      where: { email: cleanEmail },
+    });
+    if (existing) {
+      throw new ConflictException(`User with email '${cleanEmail}' already exists`);
+    }
+
+    const count = await this.prisma.user.count({
+      where: { role: 'platform_super_admin', tenantId: null },
+    });
+    const employeeCode = `PSA-${String(count + 1).padStart(3, '0')}`;
+
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*()_+';
+    let tempPassword = '';
+    for (let i = 0; i < 14; i++) {
+      tempPassword += chars.charAt(crypto.randomInt(0, chars.length));
+    }
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    const newUser = await this.prisma.user.create({
+      data: {
+        name: dto.name.trim(),
+        email: cleanEmail,
+        phone: dto.phone?.trim() || null,
+        employeeCode,
+        role: 'platform_super_admin',
+        tenantId: null,
+        passwordHash,
+        isActive: true,
+        mustResetPassword: true,
+      },
+      select: {
+        id: true,
+        employeeCode: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        isActive: true,
+        mustResetPassword: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      message: 'Platform administrator account created successfully',
+      user: newUser,
+      tempPassword,
+    };
+  }
+
+  /**
+   * Toggle active state for a platform administrator
+   */
+  async togglePlatformAdminActive(id: string, requestedState?: boolean) {
+    const target = await this.prisma.user.findFirst({
+      where: { id, role: 'platform_super_admin', tenantId: null },
+    });
+    if (!target) throw new NotFoundException('Platform administrator not found');
+
+    const nextState = requestedState !== undefined ? requestedState : !target.isActive;
+
+    if (!nextState) {
+      const activeCount = await this.prisma.user.count({
+        where: { role: 'platform_super_admin', tenantId: null, isActive: true },
+      });
+      if (activeCount <= 1) {
+        throw new BadRequestException('Cannot deactivate the last active Platform Administrator.');
+      }
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: {
+        isActive: nextState,
+        tokenVersion: { increment: 1 },
+      },
+      select: {
+        id: true,
+        employeeCode: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        isActive: true,
+      },
+    });
+
+    return {
+      message: `Platform administrator ${nextState ? 'activated' : 'deactivated'} successfully`,
+      user: updated,
+    };
+  }
+
+  /**
+   * Reset credentials for a platform administrator
+   */
+  async resetPlatformAdminUserPassword(id: string) {
+    const target = await this.prisma.user.findFirst({
+      where: { id, role: 'platform_super_admin', tenantId: null },
+    });
+    if (!target) throw new NotFoundException('Platform administrator not found');
+
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*()_+';
+    let tempPassword = '';
+    for (let i = 0; i < 14; i++) {
+      tempPassword += chars.charAt(crypto.randomInt(0, chars.length));
+    }
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        passwordHash,
+        mustResetPassword: true,
+        tokenVersion: { increment: 1 },
+      },
+    });
+
+    return {
+      message: `Password for platform administrator ${target.name} has been reset.`,
+      tempPassword,
+      user: target,
     };
   }
 }

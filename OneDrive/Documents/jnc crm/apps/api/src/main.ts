@@ -105,7 +105,7 @@ async function bootstrap() {
       if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.jsnc.co.in')) {
         callback(null, true);
       } else {
-        callback(null, true); // Fallback allow
+        callback(new Error('Origin not allowed by CORS'));
       }
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -116,7 +116,7 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3333;
   await app.listen(port);
-  console.log(`🚀 JNC-CRM API running at http://localhost:${port}/api/v1`);
+  console.log(`JNC-CRM API running at http://localhost:${port}/api/v1`);
 }
 
 bootstrap();

@@ -140,6 +140,10 @@ export const platformApi = {
   impersonateTenant: (id: string) => api.post(`/platform/tenants/${id}/impersonate`),
   resetAdminPassword: (id: string, data?: { newPassword?: string; sendEmail?: boolean; appUrl?: string; adminEmail?: string }) =>
     api.post(`/platform/tenants/${id}/reset-admin-password`, data || {}),
+  listAdmins: () => api.get('/platform/admins'),
+  createAdmin: (data: any) => api.post('/platform/admins', data),
+  toggleAdminActive: (id: string, isActive?: boolean) => api.patch(`/platform/admins/${id}/toggle-active`, { isActive }),
+  resetAdminUserPassword: (id: string) => api.post(`/platform/admins/${id}/reset-password`),
 };
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────

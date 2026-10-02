@@ -96,7 +96,7 @@ export default function PlatformCompaniesPage() {
       const { data } = await platformApi.listTenants();
       setTenants(data || []);
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Unable to connect to server. Please check your connection or refresh the page.';
+      const msg = err?.response?.data?.message || (err.response ? `Server Error (${err.response.status}): ${err.response.statusText || 'Failed to load companies'}` : 'Unable to connect to server. Please check your connection or refresh the page.');
       setLoadError(msg);
       showAlert('Error loading companies', msg, 'error');
     } finally {
@@ -233,7 +233,7 @@ export default function PlatformCompaniesPage() {
     try {
       const { data } = await platformApi.getTenant(tenant.id);
       const admin =
-        data.users?.find((u: any) => u.role === 'tenant_admin' || u.role === 'super_admin' || u.role === 'admin') ||
+        data.users?.find((u: any) => u.role === 'tenant_admin' || u.role === 'admin') ||
         data.users?.[0];
       const targetEmail = tenant.email || admin?.email || '';
       setResetAdminEmail(targetEmail);
@@ -315,8 +315,11 @@ export default function PlatformCompaniesPage() {
     setTimeout(() => setCopiedReset(false), 2500);
   };
 
+  // Filter list by client companies only (excluding internal platform owner)
+  const clientTenants = tenants.filter((t: any) => !t.isInternal && t.code !== 'JNC' && t.code !== 'JNC-ORG-001' && t.id !== 'default-tenant-id');
+
   // Filter list by search query and status
-  const filteredTenants = tenants.filter((t) => {
+  const filteredTenants = clientTenants.filter((t) => {
     const matchesSearch =
       search.trim() === '' ||
       t.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -327,10 +330,10 @@ export default function PlatformCompaniesPage() {
     return matchesSearch && matchesStatus;
   });
 
-  const totalCompaniesCount = tenants.length;
-  const activeWorkspacesCount = tenants.filter((t) => t.status === 'active').length;
-  const totalUserSeatsCount = tenants.reduce((sum, t) => sum + (t.maxUsers || 0), 0);
-  const suspendedCount = tenants.filter((t) => t.status === 'suspended').length;
+  const totalCompaniesCount = clientTenants.length;
+  const activeWorkspacesCount = clientTenants.filter((t) => t.status === 'active').length;
+  const totalUserSeatsCount = clientTenants.reduce((sum, t) => sum + (t.maxUsers || 0), 0);
+  const suspendedCount = clientTenants.filter((t) => t.status === 'suspended').length;
 
   return (
     <div className="space-y-6">
@@ -461,6 +464,38 @@ export default function PlatformCompaniesPage() {
                     >
                       <RefreshCw size={13} />
                       Retry
+                    </button>
+                  </td>
+                </tr>
+              ) : clientTenants.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center space-y-3">
+                    <p className="text-slate-500 dark:text-slate-400 font-medium text-sm">
+                      No client companies yet
+                    </p>
+                    <button
+                      onClick={() => {
+                        setForm({
+                          code: '',
+                          name: '',
+                          slug: '',
+                          planTier: 'standard',
+                          maxUsers: 10,
+                          adminName: '',
+                          adminEmail: '',
+                          adminPhone: '',
+                          adminPassword: '',
+                          city: 'Bengaluru',
+                          state: 'Karnataka',
+                          gstin: '',
+                          sendEmail: true,
+                        });
+                        setShowCreateModal(true);
+                      }}
+                      className="btn btn-primary text-xs inline-flex items-center gap-1.5"
+                    >
+                      <Plus size={14} />
+                      <span>Provision New Company</span>
                     </button>
                   </td>
                 </tr>
@@ -922,7 +957,7 @@ export default function PlatformCompaniesPage() {
                           </div>
 
                           <div className="flex items-center gap-2">
-                            {(u.role === 'tenant_admin' || u.role === 'super_admin' || u.role === 'admin') && (
+                            {(u.role === 'tenant_admin' || u.role === 'admin') && (
                               <button
                                 onClick={() => {
                                   setViewingTenant(null);

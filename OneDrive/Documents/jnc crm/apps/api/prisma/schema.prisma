@@ -53,6 +53,7 @@ model Tenant {
   stampUrl            String?
 
   isOnboarded         Boolean        @default(false)
+  isInternal          Boolean        @default(false)
 
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
@@ -106,6 +107,7 @@ model User {
   lastLoginAt         DateTime?
   failedLoginAttempts Int             @default(0)
   lockoutUntil        DateTime?
+  tokenVersion        Int             @default(0)
   createdById         String?
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt

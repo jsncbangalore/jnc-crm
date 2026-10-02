@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, RefreshCw, KeyRound, Power, X, Check, Copy } from 'lucide-react';
-import { usersApi } from '../services/api';
+import { platformApi } from '../services/api';
 import { User } from '../types';
 import { usePopup } from '../contexts/PopupContext';
 import { format } from 'date-fns';
@@ -39,10 +39,11 @@ export default function PlatformAdminsPage() {
   const fetchAdmins = async () => {
     try {
       setLoading(true);
-      const { data } = await usersApi.list({ role: 'platform_super_admin' });
-      setAdmins(data.items || data || []);
+      const { data } = await platformApi.listAdmins();
+      setAdmins(data || []);
     } catch (err: any) {
-      showAlert('Error', err?.response?.data?.message || 'Failed to load platform administrators', 'error');
+      const msg = err?.response?.data?.message || (err.response ? `Server Error (${err.response.status}): ${err.response.statusText || 'Failed to load platform administrators'}` : 'Unable to connect to server. Please check your network connection.');
+      showAlert('Error', msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -61,17 +62,17 @@ export default function PlatformAdminsPage() {
 
     setCreating(true);
     try {
-      const { data } = await usersApi.create({
+      const { data } = await platformApi.createAdmin({
         name: form.name.trim(),
         email: form.email.trim().toLowerCase(),
         phone: form.phone.trim(),
-        role: 'platform_super_admin',
       });
       setShowCreateModal(false);
       setCreatedResult(data);
       fetchAdmins();
     } catch (err: any) {
-      showAlert('Creation Failed', err?.response?.data?.message || 'Could not create platform admin', 'error');
+      const msg = err?.response?.data?.message || (err.response ? `Server Error (${err.response.status}): ${err.response.statusText || 'Could not create platform admin'}` : 'Unable to connect to server');
+      showAlert('Creation Failed', msg, 'error');
     } finally {
       setCreating(false);
     }
@@ -83,11 +84,12 @@ export default function PlatformAdminsPage() {
       `Are you sure you want to ${nextState ? 'activate' : 'deactivate'} ${admin.name}?`,
       async () => {
         try {
-          await usersApi.toggleActive(admin.id, nextState);
+          await platformApi.toggleAdminActive(admin.id, nextState);
           showAlert('Updated', `${admin.name} status updated.`, 'success');
           fetchAdmins();
         } catch (err: any) {
-          showAlert('Update Failed', err?.response?.data?.message || 'Could not update status', 'error');
+          const msg = err?.response?.data?.message || (err.response ? `Server Error (${err.response.status}): ${err.response.statusText || 'Could not update status'}` : 'Unable to connect to server');
+          showAlert('Update Failed', msg, 'error');
         }
       },
       `${nextState ? 'Activate' : 'Deactivate'} Administrator`,
@@ -100,11 +102,12 @@ export default function PlatformAdminsPage() {
       `Reset credentials for ${admin.name}? A new temporary password will be generated and dispatched.`,
       async () => {
         try {
-          const { data } = await usersApi.resetCredentials(admin.id);
+          const { data } = await platformApi.resetAdminUserPassword(admin.id);
           setCreatedResult({ user: admin, tempPassword: data.tempPassword });
           fetchAdmins();
         } catch (err: any) {
-          showAlert('Reset Failed', err?.response?.data?.message || 'Could not reset credentials', 'error');
+          const msg = err?.response?.data?.message || (err.response ? `Server Error (${err.response.status}): ${err.response.statusText || 'Could not reset credentials'}` : 'Unable to connect to server');
+          showAlert('Reset Failed', msg, 'error');
         }
       },
       'Reset Admin Credentials',

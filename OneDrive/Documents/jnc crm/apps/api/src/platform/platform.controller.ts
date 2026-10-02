@@ -10,6 +10,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Param,
   Body,
@@ -26,7 +27,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('platform/tenants')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('super_admin', 'platform_super_admin')
+@Roles('platform_super_admin')
 export class PlatformController {
   constructor(private readonly platformService: PlatformService) {}
 
@@ -72,6 +73,34 @@ export class PlatformController {
     @Body() dto: { newPassword?: string; adminEmail?: string; sendEmail?: boolean; appUrl?: string },
   ) {
     return this.platformService.resetTenantAdminPassword(id, dto);
+  }
+}
+
+@Controller('platform/admins')
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles('platform_super_admin')
+export class PlatformAdminsController {
+  constructor(private readonly platformService: PlatformService) {}
+
+  @Get()
+  async listPlatformAdmins() {
+    return this.platformService.listPlatformAdmins();
+  }
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  async createPlatformAdmin(@Body() dto: any, @CurrentUser() actor: any) {
+    return this.platformService.createPlatformAdmin(dto, actor);
+  }
+
+  @Patch(':id/toggle-active')
+  async toggleActive(@Param('id') id: string, @Body() body: { isActive?: boolean }) {
+    return this.platformService.togglePlatformAdminActive(id, body?.isActive);
+  }
+
+  @Post(':id/reset-password')
+  async resetPassword(@Param('id') id: string) {
+    return this.platformService.resetPlatformAdminUserPassword(id);
   }
 }
 
