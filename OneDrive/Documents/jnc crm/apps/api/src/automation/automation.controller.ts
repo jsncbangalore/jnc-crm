@@ -24,7 +24,7 @@ import { AutomationService } from './automation.service';
 
 @Controller('automation')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('super_admin', 'admin')
+@Roles('tenant_admin', 'admin')
 @PageAccess('automation')
 export class AutomationController {
   constructor(private automationService: AutomationService) {}

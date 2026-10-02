@@ -114,7 +114,7 @@ interface FormStep {
 
 export default function AutomationPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+  const isAdmin = user?.role === 'tenant_admin' || user?.role === 'admin';
 
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [metrics, setMetrics] = useState<any>({ totalRules: 0, activeRules: 0, pausedRules: 0, byActionType: {} });

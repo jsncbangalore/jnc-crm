@@ -3,7 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AppLayout from './components/layout/AppLayout';
 import TeamPageGuard from './components/layout/TeamPageGuard';
-import LoginPage, { getRoleRedirectPath } from './pages/LoginPage';
+import ForcePasswordResetPage from './pages/ForcePasswordResetPage';
+import { isPlatformOwner, getRoleRedirectPath } from './utils/roles';
+import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import LeadsPage from './pages/LeadsPage';
 import OrdersPage from './pages/OrdersPage';
@@ -27,7 +29,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { BrandingProvider } from './contexts/BrandingContext';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return (
@@ -50,16 +52,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user?.mustResetPassword) {
+    return <ForcePasswordResetPage />;
+  }
+
+  return <>{children}</>;
 }
 
 function PlatformOwnerGuard({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const isPlatformOwner =
-    user?.role === 'platform_super_admin' ||
-    (user?.role === 'super_admin' && (!user?.tenantId || user?.tenantId === 'default-tenant-id'));
-
-  if (!isPlatformOwner) {
+  if (!isPlatformOwner(user)) {
     return <Navigate to="/" replace />;
   }
   return <>{children}</>;
@@ -69,11 +75,7 @@ function RootLandingRoute() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
 
-  const isPlatformOwner =
-    user?.role === 'platform_super_admin' ||
-    (user?.role === 'super_admin' && (!user?.tenantId || user?.tenantId === 'default-tenant-id'));
-
-  if (isPlatformOwner) {
+  if (isPlatformOwner(user)) {
     return <Navigate to="/platform/companies" replace />;
   }
   if (['developer', 'developer_lead', 'project_manager'].includes(user?.role || '')) {
@@ -106,7 +108,7 @@ function AppRoutes() {
       >
         <Route index element={<TeamPageGuard pageKey="dashboard"><RootLandingRoute /></TeamPageGuard>} />
         <Route path="leads" element={<TeamPageGuard pageKey="leads"><LeadsPage /></TeamPageGuard>} />
-        <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="notifications" element={<TeamPageGuard pageKey="dashboard"><NotificationsPage /></TeamPageGuard>} />
         <Route path="orders" element={<TeamPageGuard pageKey="orders"><OrdersPage /></TeamPageGuard>} />
         <Route path="invoices" element={<TeamPageGuard pageKey="invoices"><InvoicesPage /></TeamPageGuard>} />
         <Route path="inventory" element={<TeamPageGuard pageKey="inventory"><InventoryPage /></TeamPageGuard>} />

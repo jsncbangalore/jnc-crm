@@ -53,49 +53,50 @@ export class NotificationsService {
     fromEmail: string;
     senderName: string;
   }> {
-    const targetTenantId = tenantId || 'default-tenant-id';
+    const targetTenantId = tenantId;
 
     // 1. Check if tenant has registered MailAccount in database
-    const mailAccount = await this.prisma.mailAccount.findFirst({
-      where: {
-        tenantId: targetTenantId,
-        isActive: true,
-        OR: [
-          { purpose: senderType === 'invoice' ? 'BILLING_INVOICES' : 'PRIMARY_ALERTS' },
-          { purpose: 'PRIMARY_ALERTS' },
-          { purpose: 'SALES_OUTBOUND' },
-        ],
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    if (targetTenantId) {
+      const mailAccount = await this.prisma.mailAccount.findFirst({
+        where: {
+          tenantId: targetTenantId,
+          isActive: true,
+          OR: [
+            { purpose: senderType === 'invoice' ? 'BILLING_INVOICES' : 'PRIMARY_ALERTS' },
+            { purpose: 'PRIMARY_ALERTS' },
+            { purpose: 'SALES_OUTBOUND' },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+      });
 
-    if (mailAccount) {
-      const cacheKey = `${mailAccount.id}_${mailAccount.smtpHost}_${mailAccount.smtpUser}`;
-      let transporter = this.transporterCache.get(cacheKey);
-      if (!transporter) {
-        transporter = nodemailer.createTransport({
-          host: mailAccount.smtpHost,
-          port: mailAccount.smtpPort,
-          secure: mailAccount.isSecure || mailAccount.smtpPort === 465,
-          auth: {
-            user: mailAccount.smtpUser,
-            pass: mailAccount.smtpPass,
-          },
-          tls: { rejectUnauthorized: false },
-        });
-        this.transporterCache.set(cacheKey, transporter);
+      if (mailAccount) {
+        const cacheKey = `${mailAccount.id}_${mailAccount.smtpHost}_${mailAccount.smtpUser}`;
+        let transporter = this.transporterCache.get(cacheKey);
+        if (!transporter) {
+          transporter = nodemailer.createTransport({
+            host: mailAccount.smtpHost,
+            port: mailAccount.smtpPort,
+            secure: mailAccount.isSecure || mailAccount.smtpPort === 465,
+            auth: {
+              user: mailAccount.smtpUser,
+              pass: mailAccount.smtpPass,
+            },
+            tls: { rejectUnauthorized: false },
+          });
+          this.transporterCache.set(cacheKey, transporter);
+        }
+
+        return {
+          transporter,
+          fromEmail: mailAccount.email,
+          senderName: mailAccount.senderName || mailAccount.name,
+        };
       }
-
-      return {
-        transporter,
-        fromEmail: mailAccount.email,
-        senderName: mailAccount.senderName || mailAccount.name,
-      };
     }
 
-    // 2. If it's the primary default tenant (JNC root company), allow fallback to env configuration
-    if (targetTenantId === 'default-tenant-id') {
-      const primaryUser = process.env.SMTP_USER || '';
+    // 2. Fallback to env configuration
+    const primaryUser = process.env.SMTP_USER || '';
       const primaryPass = process.env.SMTP_PASS || '';
 
       if (primaryUser && primaryPass) {
@@ -121,7 +122,6 @@ export class NotificationsService {
           senderName: 'JS Network Communication',
         };
       }
-    }
 
     // 3. For third-party customer tenants with no SMTP configured: return null
     return {
@@ -141,20 +141,21 @@ export class NotificationsService {
   }
 
   async getBranding(tenantId?: string): Promise<{ companyDisplayName: string; companyPhone: string; companyLogoUrl: string | null }> {
-    const targetTenantId = tenantId || 'default-tenant-id';
-    try {
-      const tenant = await this.prisma.tenant.findUnique({
-        where: { id: targetTenantId },
-        select: { name: true, phone: true, logoUrl: true },
-      });
-      if (tenant) {
-        return {
-          companyDisplayName: tenant.name || 'JNC CRM',
-          companyPhone: tenant.phone || '+91 9663421455',
-          companyLogoUrl: tenant.logoUrl || '/jnc-logo.jpg',
-        };
-      }
-    } catch {}
+    if (tenantId) {
+      try {
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { name: true, phone: true, logoUrl: true },
+        });
+        if (tenant) {
+          return {
+            companyDisplayName: tenant.name || 'JNC CRM',
+            companyPhone: tenant.phone || '+91 9663421455',
+            companyLogoUrl: tenant.logoUrl || '/jnc-logo.jpg',
+          };
+        }
+      } catch {}
+    }
 
     return {
       companyDisplayName: 'JS Network Communication',
@@ -163,8 +164,19 @@ export class NotificationsService {
     };
   }
 
+  private async resolveNotificationTenantId(tenantId?: string): Promise<string> {
+    if (tenantId && tenantId.trim()) return tenantId;
+    const jnc = await this.prisma.tenant.findFirst({
+      where: { code: 'JNC' },
+      select: { id: true },
+    });
+    if (jnc) return jnc.id;
+    const anyTenant = await this.prisma.tenant.findFirst({ select: { id: true } });
+    return anyTenant?.id || '';
+  }
+
   async sendEmail(options: SendEmailOptions) {
-    const tenantId = options.tenantId || 'default-tenant-id';
+    const tenantId = await this.resolveNotificationTenantId(options.tenantId);
     const isInvoice = options.senderType === 'invoice' || options.relatedEntityType === 'invoice';
     const branding = await this.getBranding(tenantId);
     
@@ -236,7 +248,7 @@ export class NotificationsService {
   }
 
   async createInAppTask(options: CreateInAppTaskOptions) {
-    const tenantId = options.tenantId || 'default-tenant-id';
+    const tenantId = options.tenantId || 'unassigned';
     this.logger.log(`[IN-APP TASK] Tenant: ${tenantId} | Lead: ${options.leadId} | Task: ${options.title} | User: ${options.userId || 'Unassigned'}`);
 
     try {

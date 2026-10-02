@@ -47,7 +47,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const ROLE_LABEL: Record<string, string> = {
-  super_admin: 'Super Admin',
+  tenant_admin: 'Company Admin',
   admin: 'Admin',
   project_manager: 'PM',
   developer_lead: 'Dev Lead',
@@ -59,8 +59,8 @@ export default function DailyActivitiesPage() {
   const { showAlert } = usePopup();
 
   // Role permissions
-  const canCreateProject = ['super_admin', 'admin', 'project_manager'].includes(user?.role || '');
-  const canAssignMembers = ['super_admin', 'admin', 'project_manager', 'developer_lead'].includes(user?.role || '');
+  const canCreateProject = ['tenant_admin', 'admin', 'project_manager'].includes(user?.role || '');
+  const canAssignMembers = ['tenant_admin', 'admin', 'project_manager', 'developer_lead'].includes(user?.role || '');
   const isIndividualDev = user?.role === 'developer';
 
   // ─── State ────────────────────────────────────────────────────────────────────
@@ -436,7 +436,7 @@ export default function DailyActivitiesPage() {
                         Edit
                       </button>
                     )}
-                    {(user?.role === 'super_admin' || user?.role === 'admin') && (
+                    {(user?.role === 'tenant_admin' || user?.role === 'admin') && (
                       <button
                         onClick={() => deleteProject(p)}
                         className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-slate-200 dark:border-[#2A3042] transition-colors"
@@ -534,7 +534,7 @@ export default function DailyActivitiesPage() {
                                 <Download size={13} />
                               </button>
                             )}
-                            {(user?.role === 'super_admin' || user?.role === 'admin') && (
+                            {(user?.role === 'tenant_admin' || user?.role === 'admin') && (
                               <button
                                 onClick={() => deleteLog(log)}
                                 className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"

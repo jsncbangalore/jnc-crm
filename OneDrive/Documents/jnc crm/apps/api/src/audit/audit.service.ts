@@ -38,7 +38,7 @@ export class AuditService {
     try {
       return await this.prisma.auditLog.create({
         data: {
-          tenantId: dto.tenantId || 'default-tenant-id',
+          tenantId: dto.tenantId || null,
           actorId: dto.actorId,
           actorName: dto.actorName,
           action: dto.action,

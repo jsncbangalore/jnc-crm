@@ -21,7 +21,7 @@ export class SuppliersController {
   constructor(private suppliersService: SuppliersService) {}
 
   @Post()
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   create(@Body() dto: CreateSupplierDto, @CurrentUser() user: ScopedUser) {
     return this.suppliersService.create(dto, user);
   }
@@ -44,7 +44,7 @@ export class SuppliersController {
   }
 
   @Patch(':id')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   update(
     @Param('id') id: string,
     @Body() dto: Partial<CreateSupplierDto>,
@@ -54,7 +54,7 @@ export class SuppliersController {
   }
 
   @Delete(':id')
-  @Roles('super_admin', 'admin')
+  @Roles('tenant_admin', 'admin')
   delete(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.suppliersService.delete(id, user);
   }

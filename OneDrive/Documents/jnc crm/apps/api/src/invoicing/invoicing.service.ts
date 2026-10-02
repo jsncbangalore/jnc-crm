@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
+import { requireTenantId } from '../common/tenant.util';
 import { JSNC_COMPANY_PROFILE, calculateGst, numberToIndianWords } from './invoice-config';
 import { generateInvoicePdfBuffer } from './pdf-generator';
 import { validateLutStatus } from './lut-validator';
@@ -52,7 +53,7 @@ export class InvoicingService {
     const fyEndDate = new Date(fyEndYear, 2, 31, 23, 59, 59, 999); // March 31st
 
     let cleanPrefix = prefix?.trim().toUpperCase();
-    if (!cleanPrefix && tenantId && tenantId !== 'default-tenant-id') {
+    if (!cleanPrefix && tenantId) {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
       if (tenant?.invoicePrefix) cleanPrefix = tenant.invoicePrefix.toUpperCase();
       else if (tenant?.code) cleanPrefix = tenant.code.toUpperCase();
@@ -66,7 +67,7 @@ export class InvoicingService {
         lte: fyEndDate,
       },
     };
-    if (tenantId && tenantId !== 'default-tenant-id') {
+    if (tenantId) {
       countWhere.tenantId = tenantId;
     }
 
@@ -172,7 +173,7 @@ export class InvoicingService {
 
     const invoice = await this.prisma.invoice.create({
       data: {
-        tenantId: user.tenantId || (order as any).tenantId || 'default-tenant-id',
+        tenantId: requireTenantId(user.tenantId || (order as any).tenantId),
         invoiceNumber,
         orderId: order.id,
         companyId: customerCompany?.id || undefined,
@@ -276,7 +277,7 @@ export class InvoicingService {
     }
 
     // Dynamic tenant prefix handling
-    if (tenantId && tenantId !== 'default-tenant-id') {
+    if (tenantId) {
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
         select: { invoicePrefix: true, code: true },
@@ -365,7 +366,7 @@ export class InvoicingService {
     }
 
     // Ensure uniqueness
-    const existing = await this.prisma.invoice.findFirst({ where: { invoiceNumber, tenantId: user.tenantId || 'default-tenant-id' } });
+    const existing = await this.prisma.invoice.findFirst({ where: { invoiceNumber, tenantId: requireTenantId(user) } });
     if (existing) {
       invoiceNumber = `${invoiceNumber}-${Date.now().toString().slice(-4)}`;
     }
@@ -420,7 +421,7 @@ export class InvoicingService {
 
     const invoice = await this.prisma.invoice.create({
       data: {
-        tenantId: user.tenantId || 'default-tenant-id',
+        tenantId: requireTenantId(user),
         invoiceNumber,
         docType,
         createdById: user.id,
@@ -706,11 +707,13 @@ export class InvoicingService {
     user: ScopedUser,
     query?: { page?: number; limit?: number; search?: string; status?: string; docType?: string },
   ) {
-    const isAdmin = user.role === 'platform_super_admin' || user.role === 'super_admin' || user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'sub_admin';
+    const isAdmin = user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'sub_admin';
     const where: any = {};
 
-    if (user.tenantId && user.tenantId !== 'default-tenant-id') {
+    if (user.tenantId) {
       where.tenantId = user.tenantId;
+    } else if (user.role !== 'platform_super_admin') {
+      where.tenantId = requireTenantId(user);
     }
 
     if (!isAdmin) {
@@ -785,7 +788,7 @@ export class InvoicingService {
         ? userOrTenantId
         : userOrTenantId?.tenantId;
 
-    if (tenantId && tenantId !== 'default-tenant-id') {
+    if (tenantId) {
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
       });
@@ -829,7 +832,7 @@ export class InvoicingService {
         ? userOrTenantId
         : userOrTenantId?.tenantId;
 
-    if (tenantId && tenantId !== 'default-tenant-id') {
+    if (tenantId) {
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
       });
@@ -881,92 +884,65 @@ export class InvoicingService {
       stampImage?: string | null;
     },
   ) {
-    if (user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
       throw new ForbiddenException('Only Administrators can modify Invoice Signatory and Stamp settings.');
     }
 
-    const tenantId = user.tenantId;
+    const tenantId = requireTenantId(user);
 
-    if (tenantId && tenantId !== 'default-tenant-id') {
-      await this.prisma.tenant.update({
-        where: { id: tenantId },
-        data: {
-          signatoryName: dto.signatoryName,
-          signatoryDesignation: dto.signatoryDesignation,
-          signatureUrl: dto.signatureImage,
-          stampUrl: dto.stampImage,
-        },
-      });
-
-      return {
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
         signatoryName: dto.signatoryName,
         signatoryDesignation: dto.signatoryDesignation,
-        signatureImage: dto.signatureImage,
-        stampImage: dto.stampImage,
-      };
-    }
-
-    const current = await this.getSignatorySettings(user);
-    const updatedConfig = {
-      signatoryName: dto.signatoryName ?? current.signatoryName,
-      signatoryDesignation: dto.signatoryDesignation ?? current.signatoryDesignation,
-      signatureImage: dto.signatureImage !== undefined ? dto.signatureImage : current.signatureImage,
-      stampImage: dto.stampImage !== undefined ? dto.stampImage : current.stampImage,
-    };
-
-    await this.prisma.systemSetting.upsert({
-      where: { key: 'invoice_signatory_config' },
-      create: {
-        key: 'invoice_signatory_config',
-        value: JSON.stringify(updatedConfig),
-      },
-      update: {
-        value: JSON.stringify(updatedConfig),
+        signatureUrl: dto.signatureImage,
+        stampUrl: dto.stampImage,
       },
     });
 
-    return updatedConfig;
+    return {
+      signatoryName: dto.signatoryName,
+      signatoryDesignation: dto.signatoryDesignation,
+      signatureImage: dto.signatureImage,
+      stampImage: dto.stampImage,
+    };
   }
 
   /**
    * Update Tenant Legal Company Invoicing Profile & Bank Details
    */
   async updateCompanyProfile(user: ScopedUser, dto: any) {
-    if (user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
       throw new ForbiddenException('Only Administrators can modify Company Profile and Invoicing settings.');
     }
 
-    const tenantId = user.tenantId;
-    if (tenantId && tenantId !== 'default-tenant-id') {
-      await this.prisma.tenant.update({
-        where: { id: tenantId },
-        data: {
-          name: dto.companyName || dto.name,
-          address: dto.address,
-          city: dto.city,
-          state: dto.state,
-          pincode: dto.pincode,
-          gstin: dto.gstin,
-          pan: dto.pan,
-          phone: dto.phone,
-          email: dto.email,
-          website: dto.website,
-          bankName: dto.bankName,
-          bankAccountNumber: dto.bankAccountNumber,
-          bankIfsc: dto.bankIfsc,
-          bankBranch: dto.bankBranch,
-          logoUrl: dto.logoUrl,
-          lutBondNo: dto.lutBondNo,
-          lutValidity: dto.lutValidity,
-          invoicePrefix: dto.invoicePrefix,
-          isOnboarded: true,
-        },
-      });
+    const tenantId = requireTenantId(user);
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        name: dto.companyName || dto.name,
+        address: dto.address,
+        city: dto.city,
+        state: dto.state,
+        pincode: dto.pincode,
+        gstin: dto.gstin,
+        pan: dto.pan,
+        phone: dto.phone,
+        email: dto.email,
+        website: dto.website,
+        bankName: dto.bankName,
+        bankAccountNumber: dto.bankAccountNumber,
+        bankIfsc: dto.bankIfsc,
+        bankBranch: dto.bankBranch,
+        logoUrl: dto.logoUrl,
+        lutBondNo: dto.lutBondNo,
+        lutValidity: dto.lutValidity,
+        invoicePrefix: dto.invoicePrefix,
+        isOnboarded: true,
+      },
+    });
 
-      return this.getCompanyProfile(tenantId);
-    }
-
-    return JSNC_COMPANY_PROFILE;
+    return this.getCompanyProfile(tenantId);
   }
 
   /**
@@ -1065,7 +1041,7 @@ export class InvoicingService {
 
     const paymentRecord = await this.prisma.paymentRecord.create({
       data: {
-        tenantId: user.tenantId || invoice.tenantId || 'default-tenant-id',
+        tenantId: requireTenantId(user.tenantId || invoice.tenantId),
         invoiceId: invoice.id,
         orderId: invoice.orderId || undefined,
         amount,
@@ -1154,7 +1130,7 @@ export class InvoicingService {
    * Void an invoice (Admin & Super Admin only)
    */
   async voidInvoice(id: string, reason: string, user: ScopedUser) {
-    if (user.role !== 'super_admin' && user.role !== 'admin') {
+    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
       throw new ForbiddenException('Only Administrators can void invoices.');
     }
 

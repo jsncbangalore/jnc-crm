@@ -9,6 +9,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { ScopingService } from '../auth/scoping.service';
+import { isPlatformOwner } from '../auth/roles';
 
 @Injectable()
 export class DashboardService {
@@ -27,9 +28,7 @@ export class DashboardService {
     const orderScope = this.scopingService.getOrderScope(user);
     const tenantScope = this.scopingService.getTenantScope(user);
 
-    const isPlatformOwner =
-      user.role === 'platform_super_admin' ||
-      (user.role === 'super_admin' && (!user.tenantId || user.tenantId === 'default-tenant-id'));
+    const platformOwner = isPlatformOwner(user);
 
     // ─── Platform Multi-Tenant Master Metrics (for Super Admin) ──────────────
     let platformMetrics: {
@@ -38,7 +37,7 @@ export class DashboardService {
       totalUsers: number;
     } | null = null;
 
-    if (isPlatformOwner) {
+    if (platformOwner) {
       const [totalCompanies, activeCompanies, totalUsers] = await Promise.all([
         this.prisma.tenant.count({ where: { deletedAt: null } }),
         this.prisma.tenant.count({ where: { status: 'active', deletedAt: null } }),
@@ -57,7 +56,7 @@ export class DashboardService {
       city: string | null;
     } | null = null;
 
-    if (user.tenantId && user.tenantId !== 'default-tenant-id') {
+    if (user.tenantId) {
       const tenantRecord = await this.prisma.tenant.findUnique({
         where: { id: user.tenantId },
         select: { id: true, code: true, name: true, isOnboarded: true, gstin: true, city: true },

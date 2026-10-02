@@ -8,8 +8,8 @@ import SupplierPurchaseModal from '../components/inventory/SupplierPurchaseModal
 
 export default function SuppliersPage() {
   const { user } = useAuth();
-  const canDelete = user?.role === 'super_admin' || user?.role === 'admin';
-  const canManage = user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
+  const canDelete = user?.role === 'tenant_admin' || user?.role === 'admin';
+  const canManage = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);

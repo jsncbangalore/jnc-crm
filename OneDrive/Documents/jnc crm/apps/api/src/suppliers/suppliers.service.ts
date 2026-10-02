@@ -8,6 +8,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
+import { requireTenantId } from '../common/tenant.util';
 
 export interface CreateSupplierDto {
   name: string;
@@ -26,7 +27,7 @@ export class SuppliersService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateSupplierDto, user?: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     return this.prisma.supplier.create({
       data: {
         tenantId,
@@ -44,7 +45,7 @@ export class SuppliersService {
   }
 
   async findAll(user?: ScopedUser, query: { search?: string; isActive?: boolean } = {}) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const where: any = { deletedAt: null, tenantId };
     if (query.isActive !== undefined) {
       where.isActive = query.isActive;
@@ -74,7 +75,7 @@ export class SuppliersService {
   }
 
   async findOne(id: string, user?: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const supplier = await this.prisma.supplier.findFirst({
       where: { id, tenantId },
       include: {
@@ -111,7 +112,7 @@ export class SuppliersService {
   }
 
   async countActiveSuppliers(user?: ScopedUser): Promise<number> {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     return this.prisma.supplier.count({
       where: {
         tenantId,

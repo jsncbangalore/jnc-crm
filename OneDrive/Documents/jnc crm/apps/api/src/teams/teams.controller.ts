@@ -29,19 +29,19 @@ export class TeamsController {
   constructor(private teamsService: TeamsService) {}
 
   @Get()
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async findAll(@CurrentUser() user: ScopedUser) {
     return this.teamsService.findAll(user);
   }
 
   @Post()
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async createTeam(@CurrentUser() user: ScopedUser, @Body() dto: CreateTeamDto) {
     return this.teamsService.createTeam(dto, user);
   }
 
   @Patch(':id')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async updateTeam(
     @CurrentUser() user: ScopedUser,
     @Param('id') id: string,

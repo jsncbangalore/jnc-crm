@@ -13,31 +13,47 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding JNC-CRM database...');
 
+  // ─── Tenant ─────────────────────────────────────────────────────────────
+  const jncTenant = await prisma.tenant.upsert({
+    where: { code: 'JNC' },
+    update: {},
+    create: {
+      code: 'JNC',
+      name: 'JS Network Communication',
+      slug: 'jnc',
+      status: 'active',
+      plan: 'enterprise',
+      maxUsers: 50,
+      currency: 'INR',
+    },
+  });
+  const defaultTenantId = jncTenant.id;
+
   // ─── Users ──────────────────────────────────────────────────────────────
   const hash = async (p: string) => bcrypt.hash(p, 10);
   const initialAdminPass = process.env.INITIAL_ADMIN_PASSWORD || 'Jnc#Boss' + Math.floor(1000 + Math.random() * 9000) + '!';
   const initialEmpPass = process.env.INITIAL_EMP_PASSWORD || 'Jnc#Emp' + Math.floor(1000 + Math.random() * 9000) + '!';
 
   const boss = await prisma.user.upsert({
-    where: { tenantId_employeeCode: { tenantId: 'default-tenant-id', employeeCode: 'JNC-SA-001' } },
-    update: { mustResetPassword: true },
+    where: { tenantId_employeeCode: { tenantId: defaultTenantId, employeeCode: 'JNC-SA-001' } },
+    update: { mustResetPassword: true, role: 'tenant_admin' },
     create: {
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       employeeCode: 'JNC-SA-001',
       name: 'JNC Network Owner',
       email: 'owner@jncnetwork.com',
       passwordHash: await hash(initialAdminPass),
-      role: 'super_admin',
+      role: 'tenant_admin',
       isActive: true,
       mustResetPassword: true,
     },
   });
 
   const admin = await prisma.user.upsert({
-    where: { tenantId_employeeCode: { tenantId: 'default-tenant-id', employeeCode: 'JNC-ADM-001' } },
+    where: { tenantId_employeeCode: { tenantId: defaultTenantId, employeeCode: 'JNC-ADM-001' } },
     update: { mustResetPassword: true },
     create: {
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       employeeCode: 'JNC-ADM-001',
       name: 'Rajesh Kumar (Admin)',
       email: 'admin@jncnetwork.com',
@@ -49,10 +65,10 @@ async function main() {
   });
 
   const emp1 = await prisma.user.upsert({
-    where: { tenantId_employeeCode: { tenantId: 'default-tenant-id', employeeCode: 'JNC-EMP-001' } },
+    where: { tenantId_employeeCode: { tenantId: defaultTenantId, employeeCode: 'JNC-EMP-001' } },
     update: { mustResetPassword: true },
     create: {
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       employeeCode: 'JNC-EMP-001',
       name: 'Priya Sharma',
       email: 'priya@jncnetwork.com',
@@ -65,10 +81,10 @@ async function main() {
   });
 
   const emp2 = await prisma.user.upsert({
-    where: { tenantId_employeeCode: { tenantId: 'default-tenant-id', employeeCode: 'JNC-EMP-002' } },
+    where: { tenantId_employeeCode: { tenantId: defaultTenantId, employeeCode: 'JNC-EMP-002' } },
     update: { mustResetPassword: true },
     create: {
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       employeeCode: 'JNC-EMP-002',
       name: 'Arjun Mehta',
       email: 'arjun@jncnetwork.com',
@@ -132,10 +148,10 @@ async function main() {
 
   // ─── Warehouse ───────────────────────────────────────────────────────────
   const wh1 = await prisma.warehouse.upsert({
-    where: { tenantId_code: { tenantId: 'default-tenant-id', code: 'BLR-MAIN' } },
+    where: { tenantId_code: { tenantId: defaultTenantId, code: 'BLR-MAIN' } },
     update: {},
     create: {
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       code: 'BLR-MAIN',
       name: 'Bengaluru Main Warehouse',
       address: '14, Electronics City Phase 1',
@@ -164,7 +180,7 @@ async function main() {
     update: {},
     create: {
       id: 'seed-product-1',
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       name: 'Microcontrollers',
       category: 'ICs & Semiconductors',
     },
@@ -175,7 +191,7 @@ async function main() {
     update: {},
     create: {
       id: 'seed-product-2',
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       name: 'Capacitors',
       category: 'Passive Components',
     },
@@ -186,17 +202,17 @@ async function main() {
     update: {},
     create: {
       id: 'seed-product-3',
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       name: 'Resistors',
       category: 'Passive Components',
     },
   });
 
   const sku1 = await prisma.sku.upsert({
-    where: { tenantId_skuCode: { tenantId: 'default-tenant-id', skuCode: 'ATM328P-PU' } },
+    where: { tenantId_skuCode: { tenantId: defaultTenantId, skuCode: 'ATM328P-PU' } },
     update: {},
     create: {
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       skuCode: 'ATM328P-PU',
       productId: prod1.id,
       name: 'ATmega328P-PU DIP28',
@@ -211,10 +227,10 @@ async function main() {
   });
 
   const sku2 = await prisma.sku.upsert({
-    where: { tenantId_skuCode: { tenantId: 'default-tenant-id', skuCode: 'ESP32-WROOM-32' } },
+    where: { tenantId_skuCode: { tenantId: defaultTenantId, skuCode: 'ESP32-WROOM-32' } },
     update: {},
     create: {
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       skuCode: 'ESP32-WROOM-32',
       productId: prod1.id,
       name: 'ESP32-WROOM-32 Wi-Fi+BT Module',
@@ -229,10 +245,10 @@ async function main() {
   });
 
   const sku3 = await prisma.sku.upsert({
-    where: { tenantId_skuCode: { tenantId: 'default-tenant-id', skuCode: 'CAP-100UF-25V' } },
+    where: { tenantId_skuCode: { tenantId: defaultTenantId, skuCode: 'CAP-100UF-25V' } },
     update: {},
     create: {
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       skuCode: 'CAP-100UF-25V',
       productId: prod2.id,
       name: '100µF 25V Electrolytic Capacitor',
@@ -247,10 +263,10 @@ async function main() {
   });
 
   const sku4 = await prisma.sku.upsert({
-    where: { tenantId_skuCode: { tenantId: 'default-tenant-id', skuCode: 'RES-10K-0805' } },
+    where: { tenantId_skuCode: { tenantId: defaultTenantId, skuCode: 'RES-10K-0805' } },
     update: {},
     create: {
-      tenantId: 'default-tenant-id',
+      tenantId: defaultTenantId,
       skuCode: 'RES-10K-0805',
       productId: prod3.id,
       name: '10kΩ 0805 SMD Resistor 1%',
@@ -350,13 +366,13 @@ async function main() {
 
   for (const leadData of leads) {
     const existing = await prisma.lead.findFirst({
-      where: { leadNumber: leadData.leadNumber, tenantId: 'default-tenant-id' },
+      where: { leadNumber: leadData.leadNumber, tenantId: defaultTenantId },
     });
     if (!existing) {
       await prisma.lead.create({
         data: {
           ...leadData,
-          tenantId: 'default-tenant-id',
+          tenantId: defaultTenantId,
         },
       });
     }

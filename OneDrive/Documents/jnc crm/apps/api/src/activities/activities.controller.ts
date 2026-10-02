@@ -22,7 +22,7 @@ import * as XLSX from 'xlsx';
 
 @Controller('activities')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('super_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer')
+@Roles('tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer')
 export class ActivitiesController {
   constructor(private readonly activitiesService: ActivitiesService) {}
 

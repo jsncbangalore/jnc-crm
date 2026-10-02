@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { AuditService } from '../audit/audit.service';
 import { OrdersService } from '../orders/orders.service';
+import { requireTenantId } from '../common/tenant.util';
 
 export interface CreateQuotationDto {
   leadId?: string;
@@ -43,7 +44,7 @@ export class QuotationsService {
   ) {}
 
   private async resolveSkuForLine(line: { skuId?: string; name?: string; unitPrice: number }, user: ScopedUser, warehouseId?: string) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     if (line.skuId && line.skuId.trim()) {
       const existing = await this.prisma.sku.findFirst({ where: { id: line.skuId, tenantId } });
       if (existing) return existing;
@@ -105,7 +106,7 @@ export class QuotationsService {
   }
 
   async create(dto: CreateQuotationDto, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     if (!dto.customerName || !dto.customerPhone) {
       throw new BadRequestException('Customer Name and Phone are required.');
     }
@@ -191,7 +192,7 @@ export class QuotationsService {
   }
 
   async findAll(user: ScopedUser, query: { status?: string; search?: string; page?: number; limit?: number }) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const where: any = { tenantId, deletedAt: null };
 
     if (query.status) where.status = query.status;
@@ -229,7 +230,7 @@ export class QuotationsService {
   }
 
   async findOne(id: string, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const quotation = await this.prisma.quotation.findFirst({
       where: { id, tenantId },
       include: {

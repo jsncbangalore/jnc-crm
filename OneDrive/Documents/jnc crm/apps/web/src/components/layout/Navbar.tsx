@@ -11,6 +11,7 @@ import {
   CheckCircle2, ArrowRight, ExternalLink, Sparkles, X, UserPlus,
   FilePlus, ShoppingBag, Box, UserCheck, HelpCircle, Layers, Bookmark
 } from 'lucide-react';
+import { isPlatformOwner as checkIsPlatformOwner } from '../../utils/roles';
 
 // ─── NAV ITEM INTERFACE ──────────────────────────────────────────────────────
 interface NavTabItem {
@@ -43,14 +44,14 @@ const clientOrgNavItems: NavTabItem[] = [
     to: '/',
     icon: LayoutDashboard,
     label: 'Home',
-    roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee', 'store_manager'],
+    roles: ['tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'],
     pageKey: 'dashboard',
   },
   {
     to: '/leads',
     icon: Users,
     label: 'Leads',
-    roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'],
+    roles: ['tenant_admin', 'admin', 'sub_admin', 'employee'],
     pageKey: 'leads',
     subItems: [
       { label: '+ New Lead', to: '/leads?action=create', isAction: true },
@@ -63,7 +64,7 @@ const clientOrgNavItems: NavTabItem[] = [
     to: '/orders',
     icon: ShoppingCart,
     label: 'Orders',
-    roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'],
+    roles: ['tenant_admin', 'admin', 'sub_admin', 'employee'],
     pageKey: 'orders',
     subItems: [
       { label: '+ Create Order', to: '/orders?action=create', isAction: true },
@@ -76,7 +77,7 @@ const clientOrgNavItems: NavTabItem[] = [
     to: '/invoices',
     icon: Receipt,
     label: 'Invoices',
-    roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'],
+    roles: ['tenant_admin', 'admin', 'sub_admin', 'employee'],
     pageKey: 'invoices',
     subItems: [
       { label: '+ Create Tax Invoice / Document', to: '/invoices?action=create', isAction: true },
@@ -89,7 +90,7 @@ const clientOrgNavItems: NavTabItem[] = [
     to: '/inventory',
     icon: Package,
     label: 'Inventory',
-    roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee', 'store_manager'],
+    roles: ['tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'],
     pageKey: 'inventory',
     subItems: [
       { label: '+ Add Component / SKU', to: '/inventory?action=create', isAction: true },
@@ -102,7 +103,7 @@ const clientOrgNavItems: NavTabItem[] = [
     to: '/suppliers',
     icon: Building2,
     label: 'Suppliers',
-    roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee', 'store_manager'],
+    roles: ['tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'],
     pageKey: 'suppliers',
     subItems: [
       { label: '+ Add Supplier', to: '/suppliers?action=create', isAction: true },
@@ -114,7 +115,7 @@ const clientOrgNavItems: NavTabItem[] = [
     to: '/shipments',
     icon: Truck,
     label: 'Shipments',
-    roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee', 'store_manager'],
+    roles: ['tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'],
     pageKey: 'shipments',
     subItems: [
       { label: '+ New Dispatch', to: '/shipments?action=create', isAction: true },
@@ -127,7 +128,7 @@ const clientOrgNavItems: NavTabItem[] = [
     to: '/quotations',
     icon: FileText,
     label: 'Quotations',
-    roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'employee'],
+    roles: ['tenant_admin', 'admin', 'sub_admin', 'employee'],
     pageKey: 'quotations',
     subItems: [
       { label: '+ New Quotation', to: '/quotations?action=create', isAction: true },
@@ -139,7 +140,7 @@ const clientOrgNavItems: NavTabItem[] = [
     to: '/daily-activities',
     icon: ClipboardList,
     label: 'Daily Activities',
-    roles: ['tenant_admin', 'super_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer'],
+    roles: ['tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer'],
     pageKey: 'daily_activities',
     subItems: [
       { label: "Today's Task Logs", to: '/daily-activities' },
@@ -150,7 +151,7 @@ const clientOrgNavItems: NavTabItem[] = [
     to: '/users',
     icon: Shield,
     label: 'Team & Users',
-    roles: ['tenant_admin', 'super_admin', 'admin'],
+    roles: ['tenant_admin', 'admin'],
     pageKey: 'users',
     subItems: [
       { label: '+ Add Team Member', to: '/users?action=create', isAction: true },
@@ -182,9 +183,7 @@ export default function Navbar() {
   const navRef = useRef<HTMLElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const isPlatformOwner =
-    user?.role === 'platform_super_admin' ||
-    (user?.role === 'super_admin' && (!user?.tenantId || user?.tenantId === 'default-tenant-id'));
+  const isPlatformOwner = checkIsPlatformOwner(user);
 
   const isAdmin = isPlatformOwner || user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
 

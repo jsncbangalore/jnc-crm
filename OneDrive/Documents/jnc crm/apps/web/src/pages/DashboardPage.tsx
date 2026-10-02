@@ -56,7 +56,7 @@ export default function DashboardPage() {
   }, []);
 
   // Display user's actual added name, fallback to email prefix or JNC role
-  const displayName = user?.name?.trim() || (user?.role === 'super_admin' ? 'JNC Network Owner' : user?.email?.split('@')[0] || 'Team Member');
+  const displayName = user?.name?.trim() || (user?.role === 'tenant_admin' ? 'Company Admin' : user?.email?.split('@')[0] || 'Team Member');
 
   // Feature 1: Chart type selection (Area Wave, Bar Stack, Precision Line)
   const [chartType, setChartType] = useState<ChartType>('area');

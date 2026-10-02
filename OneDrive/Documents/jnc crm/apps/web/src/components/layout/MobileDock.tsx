@@ -8,6 +8,8 @@ import {
   Package, Building2, Truck, FileText, Shield, Zap, Boxes, LogOut, Receipt, Sun, Moon, ClipboardList
 } from 'lucide-react';
 
+import { isPlatformOwner } from '../../utils/roles';
+
 const mobilePrimaryTabs = [
   { to: '/',              icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/leads',         icon: Users,           label: 'Leads' },
@@ -16,7 +18,7 @@ const mobilePrimaryTabs = [
 ];
 
 const mobileDrawerItems = [
-  { to: '/daily-activities', icon: ClipboardList, label: 'Daily Activities', desc: 'Project daily work log sheets & uploads', roles: ['super_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer'] },
+  { to: '/daily-activities', icon: ClipboardList, label: 'Daily Activities', desc: 'Project daily work log sheets & uploads', roles: ['tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer'] },
   { to: '/quotations',    icon: FileText,        label: 'Quotations', desc: 'Estimates & GST price quotes' },
   { to: '/inventory',     icon: Package,         label: 'Inventory',  desc: 'Stock counts & warehouse bins' },
   { to: '/shipments',     icon: Truck,           label: 'Shipments',  desc: 'Dispatch tracking & couriers' },
@@ -30,13 +32,11 @@ export default function MobileDock() {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const isPlatformOwner =
-    user?.role === 'platform_super_admin' ||
-    (user?.role === 'super_admin' && (!user?.tenantId || user?.tenantId === 'default-tenant-id'));
+  const isPlatform = isPlatformOwner(user);
 
-  const isAdmin = isPlatformOwner || user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
+  const isAdmin = isPlatform || user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
 
-  const visiblePrimaryTabs = isPlatformOwner
+  const visiblePrimaryTabs = isPlatform
     ? [
         { to: '/platform/companies', icon: Building2, label: 'Client Companies' },
         { to: '/platform/admins',    icon: Shield,    label: 'Platform Admins' },

@@ -26,7 +26,7 @@ export class LeadsController {
   constructor(private leadsService: LeadsService) {}
 
   @Post()
-  @Roles('super_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   async createLead(@Body() dto: CreateLeadDto, @CurrentUser() user: ScopedUser) {
     return this.leadsService.createLead(dto, user);
   }
@@ -92,7 +92,7 @@ Nexus Power Electronics,Siddharth Rao,9876543210,siddharth@nexuspower.in,IRFZ44N
   }
 
   @Post(':id/share')
-  @Roles('super_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   async shareLead(
     @Param('id') id: string,
     @Body('targetUserId') targetUserId: string,
@@ -109,7 +109,7 @@ Nexus Power Electronics,Siddharth Rao,9876543210,siddharth@nexuspower.in,IRFZ44N
    * 50MB file size limit + XLSX / CSV support
    */
   @Post('import-preview')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
@@ -150,7 +150,7 @@ Nexus Power Electronics,Siddharth Rao,9876543210,siddharth@nexuspower.in,IRFZ44N
    * Bulk JSON preview evaluation
    */
   @Post('import-preview-json')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async previewJson(
     @Body() body: { records: any[] },
     @CurrentUser() user: ScopedUser,
@@ -165,7 +165,7 @@ Nexus Power Electronics,Siddharth Rao,9876543210,siddharth@nexuspower.in,IRFZ44N
    * Bulk Commit approved rows
    */
   @Post('import-commit')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async commitImport(
     @Body() body: { records: any[] },
     @CurrentUser() user: ScopedUser,

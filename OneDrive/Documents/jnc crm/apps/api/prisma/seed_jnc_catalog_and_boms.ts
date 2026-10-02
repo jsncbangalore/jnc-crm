@@ -335,7 +335,22 @@ const BOMS_DATA = [
 ];
 
 async function main() {
-  console.log('🚀 Starting JNC Master Catalog & Project BOMs Ingestion...');
+  console.log('Starting JNC Master Catalog & Project BOMs Ingestion...');
+
+  const jncTenant = (await prisma.tenant.findFirst({
+    where: { OR: [{ code: 'JNC' }, { code: 'JNC-ORG-001' }] },
+  })) || (await prisma.tenant.create({
+    data: {
+      code: 'JNC',
+      name: 'JS Network Communication',
+      slug: 'jnc',
+      status: 'active',
+      plan: 'enterprise',
+      maxUsers: 50,
+      currency: 'INR',
+    },
+  }));
+  const defaultTenantId = jncTenant.id;
 
   // 1. Ensure Default Warehouse exists
   let warehouse = await prisma.warehouse.findFirst({ where: { code: 'BLR-MAIN' } });
@@ -371,7 +386,7 @@ async function main() {
     await prisma.sku.upsert({
       where: {
         tenantId_skuCode: {
-          tenantId: 'default-tenant-id',
+          tenantId: defaultTenantId,
           skuCode: s.skuCode,
         },
       },
@@ -385,7 +400,7 @@ async function main() {
         preferredSupplierId: supplier.id,
       },
       create: {
-        tenantId: 'default-tenant-id',
+        tenantId: defaultTenantId,
         skuCode: s.skuCode,
         name: s.name,
         packageType: s.packageType,
@@ -410,7 +425,7 @@ async function main() {
     for (const item of bom.items) {
       // Ensure SKU exists for this item
       let sku = await prisma.sku.findFirst({
-        where: { skuCode: item.itemCode, tenantId: 'default-tenant-id' },
+        where: { skuCode: item.itemCode, tenantId: defaultTenantId },
       });
       if (!sku) {
         sku = await prisma.sku.create({

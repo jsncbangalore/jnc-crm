@@ -15,7 +15,7 @@ import { CustomObject, CustomField, CustomFieldType } from '../types';
 export default function CustomObjectRecordsPage() {
   const { objectApiName } = useParams<{ objectApiName: string }>();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+  const isAdmin = user?.role === 'tenant_admin' || user?.role === 'admin';
 
   const [objectMeta, setObjectMeta] = useState<CustomObject | null>(null);
   const [fields, setFields] = useState<CustomField[]>([]);

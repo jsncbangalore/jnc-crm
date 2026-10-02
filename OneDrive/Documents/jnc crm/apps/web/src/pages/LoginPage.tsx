@@ -16,35 +16,8 @@ import { User } from '../types';
 
 const COMPANY_CODE_KEY = 'jnc_last_company_code';
 
-export function getRoleRedirectPath(user: User | null): string {
-  if (!user) return '/login';
-  switch (user.role) {
-    case 'platform_super_admin':
-      return '/platform/companies';
-    case 'super_admin':
-      return (!user.tenantId || user.tenantId === 'default-tenant-id') ? '/platform/companies' : '/';
-    case 'tenant_admin':
-    case 'admin':
-    case 'sub_admin':
-      return '/';
-    case 'employee':
-      return '/leads';
-    case 'developer':
-    case 'developer_lead':
-    case 'project_manager':
-      return '/daily-activities';
-    case 'store_manager':
-      return '/inventory';
-    case 'finance':
-    case 'accountant':
-      return '/invoices';
-    case 'client':
-    case 'customer':
-      return '/orders';
-    default:
-      return '/';
-  }
-}
+import { getRoleRedirectPath } from '../utils/roles';
+export { getRoleRedirectPath };
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -133,20 +106,22 @@ export default function LoginPage() {
             {/* Company Code */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Company Code{' '}
-                <span className="font-normal text-slate-400">(leave blank for platform access)</span>
+                Company Code
               </label>
               <div className="relative">
                 <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-[#0F1117] border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-crm-blue focus:border-transparent transition-all"
-                  placeholder="e.g. JNC-ORG-001  or  jnc"
+                  placeholder="e.g. JNC or your company code"
                   value={companyCode}
                   onChange={(e) => setCompanyCode(e.target.value)}
                   autoFocus
                 />
               </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Platform admin: leave company code empty.
+              </p>
             </div>
 
             {/* User ID / Email */}

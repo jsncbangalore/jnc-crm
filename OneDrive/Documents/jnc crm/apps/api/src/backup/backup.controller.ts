@@ -25,7 +25,7 @@ import { BackupService } from './backup.service';
 
 @Controller('system/backup')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('admin', 'super_admin')
+@Roles('platform_super_admin', 'tenant_admin', 'admin')
 export class BackupController {
   constructor(private readonly backupService: BackupService) {}
 

@@ -11,6 +11,7 @@ import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { CreateLeadDto, UpdateLeadStatusDto, CreateLeadActivityDto } from './dto/create-lead.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
+import { requireTenantId } from '../common/tenant.util';
 
 @Injectable()
 export class LeadsService {
@@ -61,7 +62,7 @@ export class LeadsService {
   }
 
   async createLead(dto: CreateLeadDto, actor?: ScopedUser) {
-    const tenantId = actor?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(actor);
     const normPhone = this.normalizePhone(dto.customerPhone);
 
     const existingLead = await this.prisma.lead.findFirst({
@@ -163,7 +164,7 @@ export class LeadsService {
   }
 
   async previewImport(records: any[], user: ScopedUser) {
-    const tenantId = user.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -336,7 +337,7 @@ export class LeadsService {
   }
 
   async findOne(id: string, user: ScopedUser) {
-    const tenantId = user.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const lead = await this.prisma.lead.findFirst({
       where: { id, tenantId, deletedAt: null },
       include: {
@@ -415,7 +416,7 @@ export class LeadsService {
     });
 
     await this.auditService.log({
-      tenantId: user.tenantId || 'default-tenant-id',
+      tenantId: requireTenantId(user),
       actorId: user.id,
       actorName: user.employeeCode,
       action: 'STATUS_CHANGE',
@@ -430,10 +431,10 @@ export class LeadsService {
 
   async addActivity(leadId: string, dto: CreateLeadActivityDto & { sendEmailToCustomer?: boolean }, user: ScopedUser) {
     const lead = await this.findOne(leadId, user);
-    const tenantId = user.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
 
     if (dto.type === 'email' && dto.sendEmailToCustomer && lead.customerEmail) {
-      if (user.role !== 'platform_super_admin' && user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+      if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
         throw new ForbiddenException('Only Administrators are authorized to send direct outward emails from the CRM.');
       }
       try {
@@ -486,7 +487,7 @@ export class LeadsService {
   }
 
   async commitImport(records: any[], user: ScopedUser) {
-    const tenantId = user.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const results = {
       totalRows: records.length,
       importedCount: 0,
@@ -607,7 +608,7 @@ export class LeadsService {
   }
 
   async shareLead(leadId: string, targetUserId: string, actor: ScopedUser) {
-    const tenantId = actor.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(actor);
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, tenantId },
     });
@@ -618,7 +619,6 @@ export class LeadsService {
 
     if (
       actor.role !== 'platform_super_admin' &&
-      actor.role !== 'super_admin' &&
       actor.role !== 'tenant_admin' &&
       actor.role !== 'admin' &&
       lead.assignedToId !== actor.id

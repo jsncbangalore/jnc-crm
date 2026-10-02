@@ -11,6 +11,7 @@ import { BackupService } from '../backup/backup.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { ScopingService } from '../auth/scoping.service';
 import { AuditService } from '../audit/audit.service';
+import { requireTenantId } from '../common/tenant.util';
 import * as Papa from 'papaparse';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -31,11 +32,11 @@ export class InventoryService {
     page?: number;
     limit?: number;
   }) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const page = Number(query.page) || 1;
     const limit = Number(query.limit) || 200;
     const skip = (page - 1) * limit;
-    const canSeeCostPrice = user.role === 'super_admin' || user.role === 'admin';
+    const canSeeCostPrice = user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin';
 
     // Build SKU filter scoped by tenant (never return soft-deleted SKUs)
     const skuWhere: any = { deletedAt: null, tenantId };
@@ -165,7 +166,7 @@ export class InventoryService {
   }
 
   async getReorderAlerts(user?: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const skus = await this.prisma.sku.findMany({
       where: { deletedAt: null, tenantId },
       include: {
@@ -185,7 +186,7 @@ export class InventoryService {
   }
 
   async getWarehouses(user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const where: any = { deletedAt: null, tenantId };
     const scope: any = this.scopingService.getInventoryScope(user);
     if (scope.warehouseId) {
@@ -203,7 +204,7 @@ export class InventoryService {
   }
 
   async createWarehouse(data: { name: string; code: string; address?: string; city?: string }, user?: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     return this.prisma.warehouse.create({
       data: {
         ...data,
@@ -213,8 +214,8 @@ export class InventoryService {
   }
 
   async getSkus(user: ScopedUser, search?: string) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
-    const canSeeCostPrice = user.role === 'super_admin' || user.role === 'admin';
+    const tenantId = requireTenantId(user);
+    const canSeeCostPrice = user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin';
     const skus = await this.prisma.sku.findMany({
       where: {
         deletedAt: null,
@@ -241,8 +242,8 @@ export class InventoryService {
   }
 
   async getSkuById(id: string, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
-    const canSeeCostPrice = user.role === 'super_admin' || user.role === 'admin';
+    const tenantId = requireTenantId(user);
+    const canSeeCostPrice = user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin';
     const sku = await this.prisma.sku.findFirst({
       where: { id, tenantId },
       include: {
@@ -339,7 +340,7 @@ export class InventoryService {
     },
     user: ScopedUser,
   ) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const sku = await this.prisma.sku.create({
       data: {
         tenantId,
@@ -401,7 +402,7 @@ export class InventoryService {
   }
 
   async updateSku(id: string, data: any, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const { quantityOnHand, reasonCode, supplierId: inputSupplierId, supplierName, ...skuData } = data;
 
     // Verify ownership
@@ -507,7 +508,7 @@ export class InventoryService {
    * Soft-delete a SKU — preserves historical Orders, Quotations & Movements
    */
   async deleteSku(id: string, user?: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     return this.prisma.sku.updateMany({
       where: { id, tenantId },
       data: { deletedAt: new Date() },
@@ -518,7 +519,7 @@ export class InventoryService {
    * Bulk soft-delete SKUs
    */
   async bulkDeleteSkus(ids: string[], user?: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const result = await this.prisma.sku.updateMany({
       where: { id: { in: ids }, tenantId },
       data: { deletedAt: new Date() },
@@ -533,7 +534,7 @@ export class InventoryService {
    * Bulk import / load inventory from spreadsheet rows (CSV or Excel)
    */
   async importSpreadsheet(records: any[], user: ScopedUser, defaultWarehouseCode = 'MAIN-01') {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const results = {
       totalRows: records.length,
       importedCount: 0,
@@ -837,7 +838,7 @@ export class InventoryService {
     },
     user: ScopedUser,
   ) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
 
     if (user.role === 'employee') {
       throw new ForbiddenException('Employees are not authorized to initiate stock transfers.');
@@ -947,7 +948,7 @@ export class InventoryService {
     user: ScopedUser,
     query?: { page?: number; limit?: number; status?: string; warehouseId?: string; search?: string },
   ) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const page = Number(query?.page) || 1;
     const limit = Number(query?.limit) || 50;
     const skip = (page - 1) * limit;
@@ -1006,7 +1007,7 @@ export class InventoryService {
    * 3. Sets Transfer status='completed' with receivedAt and receivedById.
    */
   async receiveTransfer(id: string, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     if (user.role === 'employee') {
       throw new ForbiddenException('Employees are not authorized to receive stock transfers.');
     }
@@ -1105,7 +1106,7 @@ export class InventoryService {
    * 3. Sets Transfer status='cancelled'.
    */
   async cancelTransfer(id: string, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     if (user.role === 'employee') {
       throw new ForbiddenException('Employees are not authorized to cancel stock transfers.');
     }
@@ -1198,7 +1199,7 @@ export class InventoryService {
    * Aggregates total in-transit stock figures across the system
    */
   async getInTransitSummary(user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const where: any = { status: 'in_transit', tenantId };
     if (user.role === 'sub_admin' && user.warehouseId) {
       where.OR = [
@@ -1228,7 +1229,7 @@ export class InventoryService {
     user: ScopedUser,
     query?: { warehouseId?: string; skuId?: string; type?: string; page?: number; limit?: number },
   ) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const page = Number(query?.page) || 1;
     const limit = Number(query?.limit) || 50;
     const skip = (page - 1) * limit;
@@ -1353,7 +1354,7 @@ export class InventoryService {
       shortageOnly?: boolean;
     },
   ) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const where: any = { deletedAt: null, tenantId };
 
     if (query?.project && query.project !== 'all') {
@@ -1407,7 +1408,7 @@ export class InventoryService {
    * Get KPI Metrics & Health Summary for Project-wise Stock Positions
    */
   async getProjectStockSummary(user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const items = await this.prisma.projectStockPosition.findMany({
       where: { deletedAt: null, tenantId },
     });
@@ -1439,7 +1440,7 @@ export class InventoryService {
    * Get all finished products (Product lines)
    */
   async getProducts(user?: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     return this.prisma.product.findMany({
       where: { deletedAt: null, tenantId },
       include: {
@@ -1456,7 +1457,7 @@ export class InventoryService {
    * Seed canonical product lines (idempotent upsert)
    */
   async seedFinishedProducts(user?: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const products = [
       { name: 'Control Panel', category: 'Controllers', description: 'Central control station and main logic controller' },
       { name: 'Power Amplifier', category: 'Audio Systems', description: 'Commercial amplifier units for distributed audio' },
@@ -1486,7 +1487,7 @@ export class InventoryService {
    * Inventory dashboard counters — supplier count + reorder alerts
    */
   async getInventoryDashboard(user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const [totalSuppliers, totalProducts, skusRaw] = await Promise.all([
       this.prisma.supplier.count({ where: { deletedAt: null, isActive: true, tenantId } }),
       this.prisma.product.count({ where: { deletedAt: null, tenantId } }),
@@ -1546,7 +1547,7 @@ export class InventoryService {
     },
     user: ScopedUser,
   ) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const supplier = await this.prisma.supplier.findFirst({ where: { id: supplierId, tenantId } });
     if (!supplier) throw new NotFoundException(`Supplier ${supplierId} not found`);
 
@@ -1629,7 +1630,7 @@ export class InventoryService {
    * Get all stock movements for a specific supplier (purchase history)
    */
   async getSupplierPurchases(supplierId: string, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const movements = await this.prisma.stockMovement.findMany({
       where: {
         supplierId,
@@ -1650,7 +1651,7 @@ export class InventoryService {
    * Create a new Project Stock Position
    */
   async createProjectStockPosition(data: any, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     if (!data.project || !data.project.trim()) {
       throw new BadRequestException('Project name is required');
     }
@@ -1671,7 +1672,7 @@ export class InventoryService {
    * Update an existing Project Stock Position
    */
   async updateProjectStockPosition(id: string, data: any, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const existing = await this.prisma.projectStockPosition.findFirst({
       where: { id, tenantId },
     });
@@ -1692,7 +1693,7 @@ export class InventoryService {
    * Soft-delete a Project Stock Position
    */
   async deleteProjectStockPosition(id: string, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const existing = await this.prisma.projectStockPosition.findFirst({
       where: { id, tenantId },
     });
@@ -1710,7 +1711,7 @@ export class InventoryService {
    * Bulk import / replace Project Stock Positions
    */
   async bulkImportProjectStockPositions(rows: any[], user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     if (!Array.isArray(rows) || rows.length === 0) {
       throw new BadRequestException('Rows array cannot be empty');
     }
@@ -1752,7 +1753,7 @@ export class InventoryService {
     },
     user: ScopedUser,
   ) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const position = await this.prisma.projectStockPosition.findFirst({
       where: { id: positionId, tenantId },
     });
@@ -1879,7 +1880,7 @@ export class InventoryService {
    * Clear all inventory data completely fresh for the tenant (SKUs, Stock Items, Movements, Transfers, Project Stock Positions)
    */
   async clearAllInventory(user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
 
     // 0. Trigger a fresh backup as a safety net
     await this.backupService.createBackup(user);
@@ -1968,7 +1969,7 @@ export class InventoryService {
   }
 
   async getPurchaseBills(user: ScopedUser, params?: any) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const bills = this.readStoredPurchaseBills();
     let result = bills.filter((b) => !b.tenantId || b.tenantId === tenantId);
     if (params?.search) {
@@ -1984,7 +1985,7 @@ export class InventoryService {
   }
 
   async getPurchaseBill(id: string, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const bills = this.readStoredPurchaseBills();
     const bill = bills.find((b) => b.id === id && (!b.tenantId || b.tenantId === tenantId));
     if (!bill) throw new NotFoundException(`Purchase bill ${id} not found`);
@@ -1992,7 +1993,7 @@ export class InventoryService {
   }
 
   async createPurchaseBill(data: any, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const bills = this.readStoredPurchaseBills();
     const id = `BILL-${Date.now()}-${Math.round(Math.random() * 1000)}`;
 
@@ -2061,7 +2062,7 @@ export class InventoryService {
   }
 
   async deletePurchaseBill(id: string, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     let bills = this.readStoredPurchaseBills();
     const bill = bills.find((b) => b.id === id && (!b.tenantId || b.tenantId === tenantId));
     if (!bill) throw new NotFoundException(`Purchase bill ${id} not found`);
@@ -2203,7 +2204,7 @@ export class InventoryService {
     },
     user: ScopedUser,
   ) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const { items, positionIds, skuIds, updates, rowUpdates } = body;
 
     let updatedCount = 0;

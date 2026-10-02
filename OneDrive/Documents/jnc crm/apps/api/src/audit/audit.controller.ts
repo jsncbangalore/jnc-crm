@@ -19,7 +19,7 @@ export class AuditController {
   constructor(private auditService: AuditService) {}
 
   @Get()
-  @Roles('super_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async getLogs(
     @Query('page') page?: number,
     @Query('limit') limit?: number,

@@ -29,13 +29,13 @@ export class CompaniesController {
   }
 
   @Post()
-  @Roles('super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   async createCompany(@Body() dto: CreateCompanyDto, @CurrentUser() user: ScopedUser) {
     return this.companiesService.create(dto, user);
   }
 
   @Patch(':id')
-  @Roles('super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   async updateCompany(
     @Param('id') id: string,
     @Body() dto: Partial<CreateCompanyDto>,
@@ -45,7 +45,7 @@ export class CompaniesController {
   }
 
   @Delete(':id')
-  @Roles('super_admin', 'tenant_admin', 'admin')
+  @Roles('tenant_admin', 'admin')
   async deleteCompany(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.companiesService.delete(id, user);
   }

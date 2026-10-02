@@ -64,8 +64,8 @@ export interface BuyListItem {
 
 export default function InventoryPage() {
   const { user } = useAuth();
-  const canDelete = user?.role === 'super_admin' || user?.role === 'admin';
-  const canManage = user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
+  const canDelete = user?.role === 'tenant_admin' || user?.role === 'admin';
+  const canManage = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
 
   // Active View Tab: 'master_stock' | 'buy_list' | 'bills_hub'
   const [activeTab, setActiveTab] = useState<'master_stock' | 'buy_list' | 'bills_hub'>('master_stock');
@@ -773,14 +773,14 @@ export default function InventoryPage() {
                 </>
               )}
 
-              {user?.role === 'super_admin' && (
+              {user?.role === 'tenant_admin' && (
                 <button
                   onClick={() => {
                     setWipeConfirmText('');
                     setShowClearModal(true);
                   }}
                   className="btn bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-500/30 text-xs px-3 py-2 font-bold gap-1 shadow-sm"
-                  title="Super Admin Only"
+                  title="Tenant Admin Only"
                 >
                   <Trash2 size={13} /> Wipe Data
                 </button>

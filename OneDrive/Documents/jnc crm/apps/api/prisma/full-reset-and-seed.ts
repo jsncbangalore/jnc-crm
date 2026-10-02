@@ -66,9 +66,8 @@ async function main() {
   console.log('🏢 [2/4] Seeding isolated organizations (Tenants)...');
   const org1 = await prisma.tenant.create({
     data: {
-      id: 'default-tenant-id',
-      code: 'JNC-ORG-001',
-      name: 'JNC Network Communication',
+      code: 'JNC',
+      name: 'JS Network Communication',
       slug: 'jnc',
       status: 'active',
       planTier: 'enterprise',

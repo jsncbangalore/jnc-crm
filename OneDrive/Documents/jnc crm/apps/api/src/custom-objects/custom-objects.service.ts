@@ -8,6 +8,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
+import { requireTenantId } from '../common/tenant.util';
 
 const ALLOWED_FIELD_TYPES = [
   'text',
@@ -287,9 +288,11 @@ export class CustomObjectsService {
       throw new BadRequestException('Object Label is required');
     }
 
+    const tenantId = requireTenantId(user);
+
     // Check for existing CustomObject with same API Name
     const existing = await this.prisma.customObject.findFirst({
-      where: { apiName, tenantId: user.tenantId || 'default-tenant-id' },
+      where: { apiName, tenantId },
     });
     if (existing) {
       throw new ConflictException(`A custom object with API Name "${apiName}" already exists.`);
@@ -300,7 +303,7 @@ export class CustomObjectsService {
 
     const customObject = await this.prisma.customObject.create({
       data: {
-        tenantId: user.tenantId || 'default-tenant-id',
+        tenantId,
         apiName,
         label,
         pluralLabel,

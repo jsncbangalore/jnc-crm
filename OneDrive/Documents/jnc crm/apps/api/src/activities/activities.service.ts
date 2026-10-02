@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
+import { requireTenantId } from '../common/tenant.util';
 
 @Injectable()
 export class ActivitiesService {
@@ -17,7 +18,7 @@ export class ActivitiesService {
 
   async listProjects(user: ScopedUser) {
     this.requireProjectAccessRole(user);
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
 
     // Individual Developers see ONLY projects they are assigned to within tenant
     if (user.role === 'developer') {
@@ -59,7 +60,7 @@ export class ActivitiesService {
 
   async createProject(user: ScopedUser, dto: { name: string; description?: string; status?: string }) {
     this.requireProjectCreationRole(user);
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     return this.prisma.project.create({
       data: {
         tenantId,
@@ -114,7 +115,7 @@ export class ActivitiesService {
 
   async getAssignableUsers(user: ScopedUser) {
     this.requireAssignmentRole(user);
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     return this.prisma.user.findMany({
       where: {
         tenantId,
@@ -247,7 +248,6 @@ export class ActivitiesService {
   private requireProjectAccessRole(user: ScopedUser) {
     const allowed = [
       'platform_super_admin',
-      'super_admin',
       'tenant_admin',
       'admin',
       'sub_admin',
@@ -261,27 +261,27 @@ export class ActivitiesService {
   }
 
   private requireProjectCreationRole(user: ScopedUser) {
-    const allowed = ['platform_super_admin', 'super_admin', 'tenant_admin', 'admin', 'project_manager'];
+    const allowed = ['platform_super_admin', 'tenant_admin', 'admin', 'project_manager'];
     if (!allowed.includes(user.role)) {
       throw new ForbiddenException('Only Project Managers and Admins can create or edit projects.');
     }
   }
 
   private requireAssignmentRole(user: ScopedUser) {
-    const allowed = ['platform_super_admin', 'super_admin', 'tenant_admin', 'admin', 'developer_lead', 'project_manager'];
+    const allowed = ['platform_super_admin', 'tenant_admin', 'admin', 'developer_lead', 'project_manager'];
     if (!allowed.includes(user.role)) {
       throw new ForbiddenException('Only Developer Leads, Project Managers, and Admins can assign developers.');
     }
   }
 
   private requireSuperAdminOrAdmin(user: ScopedUser) {
-    if (user.role !== 'platform_super_admin' && user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
-      throw new ForbiddenException('Only Super Admin or Admin can delete records.');
+    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+      throw new ForbiddenException('Only Tenant Admin or Admin can delete records.');
     }
   }
 
   private async findProjectOrFail(id: string, user?: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const project = await this.prisma.project.findFirst({
       where: { id, tenantId },
     });

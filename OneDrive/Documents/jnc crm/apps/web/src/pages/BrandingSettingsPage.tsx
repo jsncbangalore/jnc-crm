@@ -14,7 +14,7 @@ export default function BrandingSettingsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const isAdmin = user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'tenant_admin' || user?.role === 'platform_super_admin';
+  const isAdmin = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'platform_super_admin';
 
   const [companyName, setCompanyName] = useState(branding.companyDisplayName);
   const [companyPhone, setCompanyPhone] = useState(branding.companyPhone);

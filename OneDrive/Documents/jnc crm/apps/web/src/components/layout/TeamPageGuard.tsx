@@ -9,6 +9,8 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
+import { isPlatformOwner } from '../../utils/roles';
+
 /** Maps a pageKey to its route path so we never redirect blindly to "/" */
 const PAGE_KEY_TO_ROUTE: Record<string, string> = {
   dashboard: '/',
@@ -25,9 +27,6 @@ const PAGE_KEY_TO_ROUTE: Record<string, string> = {
   daily_activities: '/daily-activities',
 };
 
-/** Roles that bypass all team-page restrictions */
-const ADMIN_ROLES = new Set(['platform_super_admin', 'super_admin', 'tenant_admin', 'admin', 'sub_admin']);
-
 /** Roles restricted to a specific page */
 const ROLE_ONLY_PAGE: Record<string, string> = {
   project_manager: 'daily_activities',
@@ -39,8 +38,13 @@ const ROLE_ONLY_PAGE: Record<string, string> = {
 export default function TeamPageGuard({ pageKey, children }: { pageKey: string; children: React.ReactNode }) {
   const { user } = useAuth();
 
-  // Admin roles bypass team page guards entirely
-  if (ADMIN_ROLES.has(user?.role || '')) {
+  // Platform owner without tenant cannot open company CRM pages; redirect to platform hub
+  if (isPlatformOwner(user)) {
+    return <Navigate to="/platform/companies" replace />;
+  }
+
+  // Tenant admin and sub-admin roles bypass team module restrictions
+  if (user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin') {
     return <>{children}</>;
   }
 

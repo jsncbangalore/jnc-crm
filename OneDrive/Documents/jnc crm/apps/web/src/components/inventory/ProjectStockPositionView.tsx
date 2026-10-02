@@ -17,8 +17,8 @@ import { CompanyComponentLibraryModal } from './CompanyComponentLibraryModal';
 
 export default function ProjectStockPositionView() {
   const { user } = useAuth();
-  const canManage = user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
-  const canDelete = user?.role === 'super_admin' || user?.role === 'admin';
+  const canManage = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin' || user?.role === 'platform_super_admin';
+  const canDelete = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'platform_super_admin';
 
   const [positions, setPositions] = useState<ProjectStockPosition[]>([]);
   const [projectsList, setProjectsList] = useState<string[]>([]);

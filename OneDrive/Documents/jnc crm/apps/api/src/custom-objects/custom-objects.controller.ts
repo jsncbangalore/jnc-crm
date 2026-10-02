@@ -26,7 +26,7 @@ import { CustomObjectsService } from './custom-objects.service';
 
 @Controller('custom-objects')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('super_admin', 'admin')
+@Roles('tenant_admin', 'admin')
 @PageAccess('custom_objects')
 export class CustomObjectsController {
   constructor(private customObjectsService: CustomObjectsService) {}

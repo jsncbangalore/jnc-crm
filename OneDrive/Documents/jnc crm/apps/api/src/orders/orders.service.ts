@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
+import { requireTenantId } from '../common/tenant.util';
 
 export interface CreateOrderDto {
   quotationId?: string;
@@ -49,7 +50,7 @@ export class OrdersService {
     user: ScopedUser,
     warehouseId?: string,
   ) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     if (line.skuId && line.skuId.trim()) {
       const existing = await this.prisma.sku.findFirst({ where: { id: line.skuId, tenantId } });
       if (existing) return existing;
@@ -118,7 +119,7 @@ export class OrdersService {
   }
 
   async createOrder(dto: CreateOrderDto, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const count = await this.prisma.order.count({ where: { tenantId } });
     const orderNumber = `ORD-${String(count + 1).padStart(5, '0')}`;
 

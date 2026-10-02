@@ -43,7 +43,7 @@ export class SettingsController {
    */
   @Post('branding')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('super_admin', 'admin', 'tenant_admin')
+  @Roles('tenant_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   async updateBranding(
     @Body()
@@ -63,7 +63,7 @@ export class SettingsController {
    */
   @Get('company-profile')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('super_admin', 'admin', 'tenant_admin')
+  @Roles('tenant_admin', 'admin')
   async getCompanyProfile(@CurrentUser() user: ScopedUser) {
     return this.settingsService.getCompanyProfile(user);
   }
@@ -74,7 +74,7 @@ export class SettingsController {
    */
   @Post('company-profile')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('super_admin', 'admin', 'tenant_admin')
+  @Roles('tenant_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   async updateCompanyProfile(
     @Body() body: any,
@@ -87,14 +87,14 @@ export class SettingsController {
 
   @Get('mail-accounts')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('super_admin')
+  @Roles('platform_super_admin', 'tenant_admin')
   async getMailAccounts(@CurrentUser() user: ScopedUser) {
     return this.settingsService.getMailAccounts(user);
   }
 
   @Post('mail-accounts')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('super_admin')
+  @Roles('platform_super_admin', 'tenant_admin')
   async createMailAccount(
     @Body()
     body: {
@@ -115,7 +115,7 @@ export class SettingsController {
 
   @Put('mail-accounts/:id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('super_admin')
+  @Roles('platform_super_admin', 'tenant_admin')
   async updateMailAccount(
     @Param('id') id: string,
     @Body()
@@ -138,7 +138,7 @@ export class SettingsController {
 
   @Delete('mail-accounts/:id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('super_admin')
+  @Roles('platform_super_admin', 'tenant_admin')
   async deleteMailAccount(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.settingsService.deleteMailAccount(user, id);
   }

@@ -9,6 +9,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { AuditService } from '../audit/audit.service';
+import { requireTenantId } from '../common/tenant.util';
 
 export interface CreateTeamDto {
   name: string;
@@ -28,11 +29,11 @@ export class TeamsService {
   ) {}
 
   async findAll(creator: ScopedUser) {
-    if (creator.role !== 'platform_super_admin' && creator.role !== 'super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
+    if (creator.role !== 'platform_super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
       throw new ForbiddenException('Access denied.');
     }
 
-    const tenantId = creator.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(creator);
 
     const teams = await this.prisma.team.findMany({
       where: { tenantId },
@@ -52,11 +53,11 @@ export class TeamsService {
   }
 
   async createTeam(dto: CreateTeamDto, creator: ScopedUser) {
-    if (creator.role !== 'platform_super_admin' && creator.role !== 'super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
+    if (creator.role !== 'platform_super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
       throw new ForbiddenException('Access denied.');
     }
 
-    const tenantId = creator.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(creator);
 
     const team = await this.prisma.team.create({
       data: {
@@ -80,11 +81,11 @@ export class TeamsService {
   }
 
   async updateTeam(id: string, dto: UpdateTeamDto, creator: ScopedUser) {
-    if (creator.role !== 'platform_super_admin' && creator.role !== 'super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
+    if (creator.role !== 'platform_super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
       throw new ForbiddenException('Access denied.');
     }
 
-    const tenantId = creator.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(creator);
 
     const targetTeam = await this.prisma.team.findFirst({ where: { id, tenantId } });
     if (!targetTeam) throw new NotFoundException('Team not found');

@@ -34,7 +34,7 @@ export class InvoicingController {
   }
 
   @Get('generate-number')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async getNextNumber(
     @CurrentUser() user: ScopedUser,
     @Query('docType') docType?: string,
@@ -45,7 +45,7 @@ export class InvoicingController {
   }
 
   @Post('create-direct')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async createDirect(
     @Body() body: any,
     @CurrentUser() user: ScopedUser,
@@ -59,7 +59,7 @@ export class InvoicingController {
   }
 
   @Post('company-profile')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async updateCompanyProfile(
     @Body() body: any,
     @CurrentUser() user: ScopedUser,
@@ -73,7 +73,7 @@ export class InvoicingController {
   }
 
   @Post('settings/company-profile')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async updateSettingsCompanyProfile(
     @Body() body: any,
     @CurrentUser() user: ScopedUser,
@@ -87,7 +87,7 @@ export class InvoicingController {
   }
 
   @Post('settings/signatory')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async updateSignatorySettings(
     @Body() body: {
       signatoryName?: string;
@@ -122,7 +122,7 @@ export class InvoicingController {
   }
 
   @Post('order/:orderId/generate')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async generateFromOrder(
     @Param('orderId') orderId: string,
     @Body() body: { paymentTerms?: string; dueDate?: string; notes?: string },
@@ -132,7 +132,7 @@ export class InvoicingController {
   }
 
   @Patch(':id')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async updateInvoice(
     @Param('id') id: string,
     @Body() body: any,
@@ -142,7 +142,7 @@ export class InvoicingController {
   }
 
   @Patch(':id/void')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async voidInvoice(
     @Param('id') id: string,
     @Body('reason') reason: string,
@@ -152,7 +152,7 @@ export class InvoicingController {
   }
 
   @Post(':id/payments')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async recordPayment(
     @Param('id') id: string,
     @Body() body: {

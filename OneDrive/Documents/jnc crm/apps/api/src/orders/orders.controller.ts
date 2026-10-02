@@ -21,7 +21,7 @@ export class OrdersController {
   constructor(private ordersService: OrdersService) {}
 
   @Post()
-  @Roles('super_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   create(@Body() dto: CreateOrderDto, @CurrentUser() user: ScopedUser) {
     return this.ordersService.createOrder(dto, user);
   }
@@ -43,7 +43,7 @@ export class OrdersController {
   }
 
   @Patch(':id')
-  @Roles('super_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   updateOrder(
     @Param('id') id: string,
     @Body() dto: Partial<CreateOrderDto> & { paymentStatus?: string },
@@ -53,7 +53,7 @@ export class OrdersController {
   }
 
   @Post(':id/payments')
-  @Roles('super_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   recordPayment(
     @Param('id') id: string,
     @Body() body: {
@@ -70,7 +70,7 @@ export class OrdersController {
   }
 
   @Patch(':id/status')
-  @Roles('super_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
@@ -80,7 +80,7 @@ export class OrdersController {
   }
 
   @Get('shipments/list')
-  @Roles('super_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   listShipments(
     @CurrentUser() user: ScopedUser,
     @Query('status') status?: string,
@@ -92,13 +92,13 @@ export class OrdersController {
   }
 
   @Post('shipments')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   createShipment(@Body() dto: CreateShipmentDto, @CurrentUser() user: ScopedUser) {
     return this.ordersService.createShipment(dto, user);
   }
 
   @Patch('shipments/:id/status')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   updateShipmentStatus(
     @Param('id') id: string,
     @Body() body: { status: string },

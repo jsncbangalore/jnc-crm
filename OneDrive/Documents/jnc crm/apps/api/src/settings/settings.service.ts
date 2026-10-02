@@ -8,6 +8,7 @@
 import { Injectable, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
+import { requireTenantId } from '../common/tenant.util';
 
 export interface CompanyBrandingConfig {
   companyDisplayName: string;
@@ -31,12 +32,20 @@ export class SettingsService {
    * Retrieve company branding for a specific tenant or user context
    */
   async getBranding(tenantId?: string): Promise<CompanyBrandingConfig> {
-    const targetTenantId = tenantId || 'default-tenant-id';
     try {
-      const tenant = await this.prisma.tenant.findUnique({
-        where: { id: targetTenantId },
-        select: { name: true, phone: true, logoUrl: true },
-      });
+      let tenant = null;
+      if (tenantId) {
+        tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { name: true, phone: true, logoUrl: true },
+        });
+      } else {
+        tenant = await this.prisma.tenant.findFirst({
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          select: { name: true, phone: true, logoUrl: true },
+        });
+      }
 
       if (tenant) {
         return {
@@ -67,7 +76,7 @@ export class SettingsService {
     }
     const tenantId = user.tenantId;
 
-    if (user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+    if (user.role !== 'tenant_admin' && user.role !== 'admin') {
       throw new ForbiddenException('Only Administrators are authorized to modify Company Branding settings.');
     }
 
@@ -119,7 +128,7 @@ export class SettingsService {
     }
     const tenantId = user.tenantId;
 
-    if (user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+    if (user.role !== 'tenant_admin' && user.role !== 'admin') {
       throw new ForbiddenException('Only Administrators can update Company Invoicing & Tax Profile.');
     }
 
@@ -160,9 +169,9 @@ export class SettingsService {
   // --- TENANT-SCOPED ISOLATED MAIL ACCOUNTS ---
 
   async getMailAccounts(user: ScopedUser) {
-    const tenantId = user.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
 
-    if (user.role !== 'platform_super_admin' && user.role !== 'super_admin' && user.role !== 'tenant_admin') {
+    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin') {
       throw new ForbiddenException('Only Company Administrators can access Mail Account settings.');
     }
 
@@ -201,9 +210,9 @@ export class SettingsService {
       purpose?: string;
     },
   ) {
-    const tenantId = user.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
 
-    if (user.role !== 'platform_super_admin' && user.role !== 'super_admin' && user.role !== 'tenant_admin') {
+    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin') {
       throw new ForbiddenException('Only Company Administrators can configure Mail Accounts.');
     }
 
@@ -240,9 +249,9 @@ export class SettingsService {
       isActive?: boolean;
     },
   ) {
-    const tenantId = user.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
 
-    if (user.role !== 'platform_super_admin' && user.role !== 'super_admin' && user.role !== 'tenant_admin') {
+    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin') {
       throw new ForbiddenException('Only Company Administrators can modify Mail Accounts.');
     }
 
@@ -269,9 +278,9 @@ export class SettingsService {
   }
 
   async deleteMailAccount(user: ScopedUser, id: string) {
-    const tenantId = user.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
 
-    if (user.role !== 'platform_super_admin' && user.role !== 'super_admin' && user.role !== 'tenant_admin') {
+    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin') {
       throw new ForbiddenException('Only Company Administrators can delete Mail Accounts.');
     }
 

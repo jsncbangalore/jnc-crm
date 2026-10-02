@@ -46,7 +46,7 @@ export class InventoryController {
   }
 
   @Post('movements')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   recordMovement(@Body() data: any, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.recordMovement(data, user);
   }
@@ -64,7 +64,7 @@ export class InventoryController {
   }
 
   @Get('reorder-alerts')
-  @Roles('super_admin', 'admin')
+  @Roles('tenant_admin', 'admin')
   getReorderAlerts(@CurrentUser() user: ScopedUser) {
     return this.inventoryService.getReorderAlerts(user);
   }
@@ -75,7 +75,7 @@ export class InventoryController {
   }
 
   @Post('warehouses')
-  @Roles('super_admin', 'admin')
+  @Roles('tenant_admin', 'admin')
   createWarehouse(
     @Body() data: { name: string; code: string; address?: string; city?: string },
     @CurrentUser() user: ScopedUser,
@@ -94,25 +94,25 @@ export class InventoryController {
   }
 
   @Post('skus')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   createSku(@Body() data: any, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.createSku(data, user);
   }
 
   @Patch('skus/:id')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   updateSku(@Param('id') id: string, @Body() data: any, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.updateSku(id, data, user);
   }
 
   @Delete('skus/:id')
-  @Roles('super_admin', 'admin')
+  @Roles('tenant_admin', 'admin')
   deleteSku(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.deleteSku(id, user);
   }
 
   @Post('skus/bulk-delete')
-  @Roles('super_admin', 'admin')
+  @Roles('tenant_admin', 'admin')
   bulkDeleteSkus(@Body() body: { ids: string[] }, @CurrentUser() user: ScopedUser) {
     if (!body.ids || !Array.isArray(body.ids)) {
       throw new BadRequestException('ids array is required');
@@ -124,7 +124,7 @@ export class InventoryController {
    * Raw Multipart File Upload for Excel (.xlsx/.xls) or CSV with 50MB limit
    */
   @Post('import-csv')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 50 * 1024 * 1024 }, // 50MB multipart limit
@@ -260,7 +260,7 @@ export class InventoryController {
   }
 
   @Post('import-json')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async importJson(
     @Body() body: { records: any[]; warehouseCode?: string },
     @CurrentUser() user: ScopedUser,
@@ -305,7 +305,7 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
   // ─── Stock Transfers Endpoints ──────────────────────────────────────────────
 
   @Post('transfers')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async initiateTransfer(
     @Body() body: { skuId: string; sourceWarehouseId: string; destinationWarehouseId: string; quantity: number; notes?: string },
     @CurrentUser() user: ScopedUser,
@@ -331,13 +331,13 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
   }
 
   @Patch('transfers/:id/receive')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async receiveTransfer(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.receiveTransfer(id, user);
   }
 
   @Patch('transfers/:id/cancel')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async cancelTransfer(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.cancelTransfer(id, user);
   }
@@ -366,13 +366,13 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
   }
 
   @Post('project-stock')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async createProjectStock(@Body() data: any, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.createProjectStockPosition(data, user);
   }
 
   @Patch('project-stock/:id')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async updateProjectStock(
     @Param('id') id: string,
     @Body() data: any,
@@ -382,7 +382,7 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
   }
 
   @Post('project-stock/:id/purchase')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async recordProjectStockPurchase(
     @Param('id') id: string,
     @Body() body: {
@@ -402,13 +402,13 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
   }
 
   @Delete('project-stock/:id')
-  @Roles('super_admin', 'admin')
+  @Roles('tenant_admin', 'admin')
   async deleteProjectStock(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.deleteProjectStockPosition(id, user);
   }
 
   @Post('project-stock/bulk')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async bulkImportProjectStock(@Body() body: { rows: any[] }, @CurrentUser() user: ScopedUser) {
     if (!body.rows || !Array.isArray(body.rows)) {
       throw new BadRequestException('Invalid payload: rows array required');
@@ -417,7 +417,7 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
   }
 
   @Delete('clear-all')
-  @Roles('super_admin')
+  @Roles('tenant_admin')
   async clearAllInventory(@CurrentUser() user: ScopedUser) {
     return this.inventoryService.clearAllInventory(user);
   }
@@ -444,7 +444,7 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   }
 
   @Post('seed-products')
-  @Roles('super_admin', 'admin')
+  @Roles('tenant_admin', 'admin')
   async seedProducts(@CurrentUser() user: ScopedUser) {
     return this.inventoryService.seedFinishedProducts(user);
   }
@@ -459,7 +459,7 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   // ─── Purchase Document Upload ────────────────────────────────────────────────
 
   @Post('purchase-documents/upload')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: multer.diskStorage({
@@ -496,7 +496,7 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   }
 
   @Post('suppliers/:supplierId/purchase')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async recordSupplierPurchase(
     @Param('supplierId') supplierId: string,
     @Body() body: {
@@ -530,13 +530,13 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   }
 
   @Post('purchase-bills')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async createPurchaseBill(@Body() body: any, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.createPurchaseBill(body, user);
   }
 
   @Delete('purchase-bills/:id')
-  @Roles('super_admin', 'admin')
+  @Roles('tenant_admin', 'admin')
   async deletePurchaseBill(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.deletePurchaseBill(id, user);
   }
@@ -549,7 +549,7 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   // ─── High-Speed Bulk Component Editing ──────────────────────────────────────
 
   @Post('bulk-edit')
-  @Roles('super_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   async bulkEditComponents(@Body() body: any, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.bulkEditComponents(body, user);
   }

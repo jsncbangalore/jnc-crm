@@ -531,7 +531,7 @@ export class AutomationService implements OnModuleInit {
         let recipientEmail = config.to;
         if (!recipientEmail) {
           if (config.recipient === 'admin') {
-            const admin = await this.prisma.user.findFirst({ where: { role: 'super_admin', isActive: true } });
+            const admin = await this.prisma.user.findFirst({ where: { role: { in: ['tenant_admin', 'admin'] }, isActive: true } });
             recipientEmail = admin?.email || 'admin@jsnc.co.in';
           } else if (config.recipient === 'assigned_employee') {
             if (context.assignedToId) {
@@ -575,7 +575,7 @@ export class AutomationService implements OnModuleInit {
           let assigneeId = config.assigneeId || config.user_id || config.userId;
           if (!assigneeId) {
             if (config.recipient === 'admin') {
-              const admin = await this.prisma.user.findFirst({ where: { role: 'super_admin', isActive: true } });
+              const admin = await this.prisma.user.findFirst({ where: { role: { in: ['tenant_admin', 'admin'] }, isActive: true } });
               assigneeId = admin?.id;
             } else {
               assigneeId = context.assignedToId;
@@ -847,7 +847,7 @@ export class AutomationService implements OnModuleInit {
     }
 
     const admins = await this.prisma.user.findMany({
-      where: { role: { in: ['super_admin', 'admin'] }, isActive: true },
+      where: { role: { in: ['tenant_admin', 'admin'] }, isActive: true },
       select: { email: true, name: true },
     });
 

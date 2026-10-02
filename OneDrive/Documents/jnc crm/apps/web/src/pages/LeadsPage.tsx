@@ -87,7 +87,7 @@ const SAMPLE_LEADS = [
 export default function LeadsPage() {
   const { user } = useAuth();
   const { showAlert } = usePopup();
-  const canImport = user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
+  const canImport = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
 
   const [activeTab, setActiveTab] = useState<'pipeline' | 'client-directory' | 'lead-setup'>('pipeline');
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -212,7 +212,7 @@ export default function LeadsPage() {
 
   // Fetch Sales Reps for filter dropdown
   useEffect(() => {
-    if (user?.role === 'super_admin' || user?.role === 'admin') {
+    if (user?.role === 'tenant_admin' || user?.role === 'admin') {
       usersApi.list({ role: 'employee' }).then((res) => {
         setEmployees(res.data.items || []);
       }).catch(() => {});
@@ -1320,7 +1320,7 @@ export default function LeadsPage() {
 
                   {activityType === 'email' && (
                     <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-100 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042] text-xs">
-                      {user?.role === 'super_admin' ? (
+                      {(user?.role === 'tenant_admin' || user?.role === 'admin') ? (
                         <label className="flex items-center gap-2 cursor-pointer text-slate-700 dark:text-slate-300 font-medium">
                           <input
                             type="checkbox"
@@ -1332,7 +1332,7 @@ export default function LeadsPage() {
                         </label>
                       ) : (
                         <span className="text-slate-600 dark:text-slate-400 italic">
-                          Outbound emailing is authorized for <strong>Super Admin</strong> only. This note will be recorded internally.
+                          Outbound emailing is authorized for <strong>Company Admin</strong> only. This note will be recorded internally.
                         </span>
                       )}
                       <span className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">From: {user?.email || 'System Email Account'}</span>
@@ -1342,10 +1342,10 @@ export default function LeadsPage() {
                   <div className="flex justify-end">
                     <button
                       type="submit"
-                      disabled={submittingActivity || (activityType === 'email' && user?.role === 'super_admin' && sendDirectEmail && !selectedLead.customerEmail)}
+                      disabled={submittingActivity || (activityType === 'email' && (user?.role === 'tenant_admin' || user?.role === 'admin') && sendDirectEmail && !selectedLead.customerEmail)}
                       className="btn-primary text-xs gap-1.5 px-4 shadow-glow-blue font-bold"
                     >
-                      <Send size={13} /> {submittingActivity ? 'Saving...' : (activityType === 'email' && user?.role === 'super_admin' && sendDirectEmail) ? 'Send Email to Client' : 'Add Note to Timeline'}
+                      <Send size={13} /> {submittingActivity ? 'Saving...' : (activityType === 'email' && (user?.role === 'tenant_admin' || user?.role === 'admin') && sendDirectEmail) ? 'Send Email to Client' : 'Add Note to Timeline'}
                     </button>
                   </div>
                 </form>

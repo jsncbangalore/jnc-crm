@@ -72,7 +72,7 @@ export function numberToIndianWords(amount: number): string {
 
 export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEditInvoice }: InvoiceModalProps) {
   const { user } = useAuth();
-  const canAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+  const canAdmin = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'platform_super_admin';
 
   // Single Source of Truth Company Profile
   const [companyProfile, setCompanyProfile] = useState<CompanyInvoiceProfile | null>(

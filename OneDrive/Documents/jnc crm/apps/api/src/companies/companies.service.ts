@@ -8,6 +8,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
+import { requireTenantId } from '../common/tenant.util';
 
 export interface CreateCompanyDto {
   name: string;
@@ -25,7 +26,7 @@ export class CompaniesService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateCompanyDto, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     return this.prisma.company.create({
       data: {
         tenantId,
@@ -42,7 +43,7 @@ export class CompaniesService {
   }
 
   async findAll(user: ScopedUser, query?: { search?: string }) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const where: any = { tenantId, deletedAt: null };
     if (query?.search) {
       where.OR = [
@@ -69,7 +70,7 @@ export class CompaniesService {
   }
 
   async findOne(id: string, user: ScopedUser) {
-    const tenantId = user?.tenantId || 'default-tenant-id';
+    const tenantId = requireTenantId(user);
     const company = await this.prisma.company.findFirst({
       where: { id, tenantId },
       include: {

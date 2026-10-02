@@ -30,7 +30,7 @@ export default function ObjectManagerPage() {
   const { objectId } = useParams<{ objectId?: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+  const isAdmin = user?.role === 'tenant_admin' || user?.role === 'admin';
 
   // Object list state
   const [standardObjects, setStandardObjects] = useState<any[]>([]);

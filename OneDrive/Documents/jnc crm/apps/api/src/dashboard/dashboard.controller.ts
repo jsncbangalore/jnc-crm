@@ -8,12 +8,13 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { PageAccess } from '../auth/page-access.decorator';
 import { AuthGuard } from '@nestjs/passport';
+import { RolesGuard } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { DashboardService } from './dashboard.service';
 
 @Controller('dashboard')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), RolesGuard)
 @PageAccess('dashboard')
 export class DashboardController {
   constructor(private dashboardService: DashboardService) {}

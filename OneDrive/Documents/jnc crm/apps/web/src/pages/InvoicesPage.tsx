@@ -16,7 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function InvoicesPage() {
   const { user } = useAuth();
-  const canAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+  const canAdmin = user?.role === 'tenant_admin' || user?.role === 'admin';
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
