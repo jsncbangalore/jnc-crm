@@ -11,7 +11,6 @@ export default function LoginPage() {
   const { isDark, toggleTheme } = useTheme();
   const { branding } = useBranding();
   const navigate = useNavigate();
-  const [companyCode, setCompanyCode] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -22,7 +21,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const loggedInUser = await login(username, password, companyCode.trim() || undefined);
+      const loggedInUser = await login(username, password);
       const isPlatformOwner =
         loggedInUser?.role === 'platform_super_admin' ||
         (loggedInUser?.role === 'super_admin' && (!loggedInUser?.tenantId || loggedInUser?.tenantId === 'default-tenant-id'));
@@ -85,14 +84,9 @@ export default function LoginPage() {
         </div>
 
         <div className="card shadow-xl dark:shadow-2xl">
-          <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100 dark:border-white/5">
-            <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">Sign In to CRM</h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">JNC Platform & Client Workspaces</p>
-            </div>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-crm-blue/10 text-crm-blue dark:text-crm-blue-light border border-crm-blue/20">
-              SaaS Multi-Org
-            </span>
+          <div className="mb-5 pb-3 border-b border-slate-100 dark:border-white/5">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Sign In to CRM</h2>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Enter your credentials to access your workspace</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -120,21 +114,6 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-              />
-            </div>
-
-            {/* Optional Company Code Field (Auto-detected if left empty) */}
-            <div className="pt-1">
-              <div className="flex items-center justify-between text-xs mb-1.5">
-                <span className="text-slate-500 dark:text-slate-400">Organization / Company Code</span>
-                <span className="text-[11px] text-slate-400 font-medium">Optional</span>
-              </div>
-              <input
-                type="text"
-                className="input uppercase font-mono tracking-wider text-xs bg-slate-50/50 dark:bg-black/20"
-                placeholder="Enter company code (Optional)"
-                value={companyCode}
-                onChange={(e) => setCompanyCode(e.target.value)}
               />
             </div>
 
