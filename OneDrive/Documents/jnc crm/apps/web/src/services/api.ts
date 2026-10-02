@@ -29,27 +29,88 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Single-flight token refresh — queues concurrent 401s and replays them after one refresh
+let _refreshing: Promise<string> | null = null;
+type QueueEntry = { resolve: (token: string) => void; reject: (e: unknown) => void };
+const _refreshQueue: QueueEntry[] = [];
+
+function _flushQueue(token: string | null, error?: unknown) {
+  _refreshQueue.forEach((entry) => {
+    if (token) entry.resolve(token);
+    else entry.reject(error);
+  });
+  _refreshQueue.length = 0;
+}
+
+// Auth endpoints that must never trigger a refresh redirect
+const AUTH_BYPASS_URLS = ['/auth/login', '/auth/refresh'];
+
 // Auto-refresh on 401
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
     const original = err.config;
+    const url: string = original?.url || '';
+
+    // Never intercept auth endpoints — let the caller receive the raw error
+    if (AUTH_BYPASS_URLS.some((p) => url.includes(p))) {
+      return Promise.reject(err);
+    }
+
     if (err.response?.status === 401 && !original._retry) {
       original._retry = true;
+
+      if (_refreshing) {
+        // Another refresh is already in-flight — queue this request
+        return new Promise<string>((resolve, reject) => {
+          _refreshQueue.push({ resolve, reject });
+        }).then((newToken) => {
+          original.headers.Authorization = `Bearer ${newToken}`;
+          return api(original);
+        });
+      }
+
+      const storedRefresh = localStorage.getItem('jnc_refresh_token');
+      if (!storedRefresh) {
+        if (window.location.pathname !== '/login') {
+          localStorage.removeItem('jnc_access_token');
+          localStorage.removeItem('jnc_user');
+          window.location.href = '/login';
+        }
+        return Promise.reject(err);
+      }
+
+      _refreshing = (async () => {
+        try {
+          const refreshUrl = `${getApiBaseUrl()}/auth/refresh`;
+          const { data } = await axios.post(refreshUrl, { refreshToken: storedRefresh });
+          localStorage.setItem('jnc_access_token', data.accessToken);
+          localStorage.setItem('jnc_refresh_token', data.refreshToken);
+          if (data.user) {
+            localStorage.setItem('jnc_user', JSON.stringify(data.user));
+          }
+          _flushQueue(data.accessToken);
+          return data.accessToken as string;
+        } catch (refreshErr) {
+          _flushQueue(null, refreshErr);
+          localStorage.removeItem('jnc_access_token');
+          localStorage.removeItem('jnc_refresh_token');
+          localStorage.removeItem('jnc_user');
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+          throw refreshErr;
+        } finally {
+          _refreshing = null;
+        }
+      })();
+
       try {
-        const refreshToken = localStorage.getItem('jnc_refresh_token');
-        if (!refreshToken) throw new Error('No refresh token');
-        const refreshUrl = `${getApiBaseUrl()}/auth/refresh`;
-        const { data } = await axios.post(refreshUrl, { refreshToken });
-        localStorage.setItem('jnc_access_token', data.accessToken);
-        localStorage.setItem('jnc_refresh_token', data.refreshToken);
-        original.headers.Authorization = `Bearer ${data.accessToken}`;
+        const newToken = await _refreshing;
+        original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
       } catch {
-        localStorage.removeItem('jnc_access_token');
-        localStorage.removeItem('jnc_refresh_token');
-        localStorage.removeItem('jnc_user');
-        window.location.href = '/login';
+        return Promise.reject(err);
       }
     }
     return Promise.reject(err);

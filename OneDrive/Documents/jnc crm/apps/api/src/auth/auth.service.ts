@@ -79,7 +79,7 @@ export class AuthService {
         try {
           await this.prisma.auditLog.create({
             data: {
-              tenantId: user.tenantId || 'default-tenant-id',
+              tenantId: user.tenantId || null,
               actorId: user.id,
               actorName: user.name || lockKey,
               action: 'LOGIN_LOCKOUT',
@@ -149,10 +149,10 @@ export class AuthService {
     const lower = raw.toLowerCase();
     const upper = raw.toUpperCase();
 
-    await this.checkAccountLockout(lower);
-
-    // Strict Tenant constraint if company code or subdomain is provided
+    // Resolve tenant filter from companyCode (if provided)
     let tenantFilter: any = {};
+    let resolvedTenantId: string | null = null;
+
     if (companyCode && companyCode.trim()) {
       const cleanCompanyCode = companyCode.trim();
       const tenant = await this.prisma.tenant.findFirst({
@@ -166,12 +166,19 @@ export class AuthService {
         },
       });
       if (!tenant) {
-        throw new UnauthorizedException(`Company code '${companyCode}' not found or inactive.`);
+        throw new UnauthorizedException(`Company '${companyCode}' not found.`);
       }
       tenantFilter = { tenantId: tenant.id };
+      resolvedTenantId = tenant.id;
     }
 
-    // Strict candidates matching exact email or exact employee code
+    // Lockout key scoped to tenant so one company cannot lock out another's user
+    const lockKey = resolvedTenantId ? `${lower}:${resolvedTenantId}` : lower;
+
+    // ── CHECK LOCKOUT BEFORE TOUCHING THE PASSWORD ──────────────────────────
+    await this.checkAccountLockout(lockKey);
+
+    // Find matching candidates (email or employee code)
     const candidates = await this.prisma.user.findMany({
       include: {
         teamRef: { select: { id: true, name: true, allowedPages: true } },
@@ -185,17 +192,24 @@ export class AuthService {
         ],
         deletedAt: null,
       },
-      orderBy: [
-        { createdAt: 'desc' },
-      ],
+      orderBy: [{ createdAt: 'desc' }],
     });
 
     if (candidates.length === 0) {
-      await this.recordFailedAttempt(lower, undefined, ipAddress);
-      throw new UnauthorizedException('Invalid credentials. User not found.');
+      await this.recordFailedAttempt(lockKey, undefined, ipAddress);
+      throw new UnauthorizedException('Invalid credentials.');
     }
 
-    // Iterate through matching candidates to find the one whose password matches
+    // If no companyCode was provided and users from multiple tenants match → require it
+    // Exception: platform_super_admin has tenantId = null, so they always get exactly one match (or we check after)
+    if (!companyCode || !companyCode.trim()) {
+      const tenantIds = new Set(candidates.map((c) => c.tenantId ?? '__platform__'));
+      if (tenantIds.size > 1) {
+        throw new BadRequestException('Multiple companies found for this identifier. Please provide your Company Code.');
+      }
+    }
+
+    // Iterate through candidates to find the one whose password matches
     let matchedUser: any = null;
     for (const candidate of candidates) {
       if (candidate.passwordHash) {
@@ -208,13 +222,20 @@ export class AuthService {
     }
 
     if (!matchedUser) {
-      const lockKey = candidates[0].email ? candidates[0].email.toLowerCase() : lower;
-      await this.recordFailedAttempt(lockKey, candidates[0], ipAddress);
-      throw new UnauthorizedException('Invalid credentials. Incorrect password.');
+      // Record failure against the first candidate (or lock key)
+      const firstUser = candidates[0];
+      const userLockKey = firstUser.tenantId
+        ? `${(firstUser.email || lower).toLowerCase()}:${firstUser.tenantId}`
+        : (firstUser.email || lower).toLowerCase();
+      await this.recordFailedAttempt(userLockKey, firstUser, ipAddress);
+      throw new UnauthorizedException('Invalid credentials.');
     }
 
-    const lockKey = matchedUser.email ? matchedUser.email.toLowerCase() : lower;
-    await this.checkAccountLockout(lockKey, matchedUser);
+    // Re-check lockout using the matched user's actual key
+    const matchedLockKey = matchedUser.tenantId
+      ? `${(matchedUser.email || lower).toLowerCase()}:${matchedUser.tenantId}`
+      : (matchedUser.email || lower).toLowerCase();
+    await this.checkAccountLockout(matchedLockKey, matchedUser);
 
     if (!matchedUser.isActive) {
       throw new UnauthorizedException('This account has been deactivated. Please contact your company administrator.');
@@ -228,13 +249,12 @@ export class AuthService {
       throw new UnauthorizedException(`Your company account (${matchedUser.tenant.name || matchedUser.tenant.code}) is ${matchedUser.tenant.status}. Please contact platform support.`);
     }
 
-    await this.resetFailedAttempts(lockKey, matchedUser.id);
+    await this.resetFailedAttempts(matchedLockKey, matchedUser.id);
 
     const { passwordHash, ...result } = matchedUser;
-    const resolvedTenantId = result.tenantId || (result.tenant ? result.tenant.id : 'default-tenant-id');
     return {
       ...result,
-      tenantId: resolvedTenantId,
+      tenantId: result.tenantId ?? (result.tenant ? result.tenant.id : null),
     };
   }
 
@@ -252,7 +272,7 @@ export class AuthService {
     try {
       await this.prisma.auditLog.create({
         data: {
-          tenantId: user.tenantId || 'default-tenant-id',
+          tenantId: user.tenantId || null,
           actorId: user.id,
           actorName: user.name,
           action: 'LOGIN',
@@ -363,11 +383,11 @@ export class AuthService {
   }
 
   private generateTokens(user: any) {
-    const resolvedTenantId = user.tenantId || (user.tenant ? user.tenant.id : 'default-tenant-id');
+    const tenantId = user.tenantId ?? (user.tenant ? user.tenant.id : null);
     const payload = {
       sub: user.id,
-      tenantId: resolvedTenantId,
-      org_id: resolvedTenantId,
+      tenantId,
+      org_id: tenantId,
       email: user.email,
       role: user.role,
       employee_code: user.employeeCode,

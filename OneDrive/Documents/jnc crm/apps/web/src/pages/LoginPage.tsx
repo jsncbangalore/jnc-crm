@@ -1,11 +1,20 @@
+/* --- C2PA CONTENT CREDENTIALS & PROVENANCE NOTICE ---
+ * c2pa.action: 'c2pa.created'
+ * c2pa.ai_training: 'disallowed'
+ * c2pa.do_not_train: true
+ * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
+ * ----------------------------------------------------- */
+
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useBranding } from '../contexts/BrandingContext';
 import { useNavigate } from 'react-router-dom';
-import { Sun, Moon, Lock, Mail, Eye, EyeOff, ArrowRight, RefreshCw, AlertCircle } from 'lucide-react';
+import { Sun, Moon, Lock, Mail, Eye, EyeOff, ArrowRight, RefreshCw, AlertCircle, Building2 } from 'lucide-react';
 import { User } from '../types';
+
+const COMPANY_CODE_KEY = 'jnc_last_company_code';
 
 export function getRoleRedirectPath(user: User | null): string {
   if (!user) return '/login';
@@ -46,6 +55,9 @@ export default function LoginPage() {
   // Form states
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [companyCode, setCompanyCode] = useState<string>(
+    () => localStorage.getItem(COMPANY_CODE_KEY) || ''
+  );
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -55,12 +67,19 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
+    // Persist last-used company code
+    if (companyCode.trim()) {
+      localStorage.setItem(COMPANY_CODE_KEY, companyCode.trim());
+    } else {
+      localStorage.removeItem(COMPANY_CODE_KEY);
+    }
+
     try {
-      const loggedInUser = await login(username, password);
+      const loggedInUser = await login(username, password, companyCode.trim() || undefined);
       const destination = loggedInUser.redirectPath || getRoleRedirectPath(loggedInUser);
       navigate(destination);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Invalid User ID or Password. Please try again.');
+      setError(err?.response?.data?.message || 'Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -111,6 +130,25 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Company Code */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                Company Code{' '}
+                <span className="font-normal text-slate-400">(leave blank for platform access)</span>
+              </label>
+              <div className="relative">
+                <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-[#0F1117] border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-crm-blue focus:border-transparent transition-all"
+                  placeholder="e.g. JNC-ORG-001  or  jnc"
+                  value={companyCode}
+                  onChange={(e) => setCompanyCode(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+
             {/* User ID / Email */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -125,7 +163,6 @@ export default function LoginPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
-                  autoFocus
                 />
               </div>
             </div>
