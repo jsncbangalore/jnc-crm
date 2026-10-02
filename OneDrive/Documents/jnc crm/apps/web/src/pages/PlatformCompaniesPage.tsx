@@ -3,9 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Plus, Users, Shield, CheckCircle2, AlertTriangle,
   Search, ExternalLink, RefreshCw, KeyRound, Globe, Mail, Phone,
-  ChevronRight, X, Copy, Check, Power, Settings, Lock, Sparkles, Send
+  ChevronRight, X, Copy, Check, Power, Settings, Lock, Sparkles, Send,
+  Landmark, Receipt, FileText, MapPin, Save, UserCheck, Image, Briefcase
 } from 'lucide-react';
-import { platformApi } from '../services/api';
+import { platformApi, brandingApi } from '../services/api';
 import { Tenant } from '../types';
 import { usePopup } from '../contexts/PopupContext';
 import { format } from 'date-fns';
@@ -16,6 +17,38 @@ export default function PlatformCompaniesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+
+  // Tab State
+  const [activeTab, setActiveTab] = useState<'companies' | 'master_org'>('companies');
+
+  // Master Organization Profile State
+  const [orgProfile, setOrgProfile] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    city: '',
+    state: 'Karnataka',
+    pincode: '',
+    website: '',
+    gstin: '',
+    pan: '',
+    invoicePrefix: 'JNC-INV',
+    lutBondNo: '',
+    lutValidity: '',
+    bankName: '',
+    bankAccountNumber: '',
+    bankIfsc: '',
+    bankBranch: '',
+    bankUpi: '',
+    signatoryName: '',
+    signatoryDesignation: '',
+    logoUrl: '',
+    signatureUrl: '',
+    stampUrl: '',
+  });
+  const [savingOrgProfile, setSavingOrgProfile] = useState(false);
+  const [loadingOrgProfile, setLoadingOrgProfile] = useState(false);
 
   // Create Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -92,6 +125,57 @@ export default function PlatformCompaniesPage() {
     }
   };
 
+  const fetchOrgProfile = async () => {
+    try {
+      setLoadingOrgProfile(true);
+      const { data } = await brandingApi.getProfile();
+      if (data) {
+        setOrgProfile({
+          name: data.name || '',
+          phone: data.phone || '',
+          email: data.email || '',
+          address: data.address || '',
+          city: data.city || '',
+          state: data.state || 'Karnataka',
+          pincode: data.pincode || '',
+          website: data.website || '',
+          gstin: data.gstin || '',
+          pan: data.pan || '',
+          invoicePrefix: data.invoicePrefix || 'JNC-INV',
+          lutBondNo: data.lutBondNo || '',
+          lutValidity: data.lutValidity || '',
+          bankName: data.bankName || '',
+          bankAccountNumber: data.bankAccountNumber || '',
+          bankIfsc: data.bankIfsc || '',
+          bankBranch: data.bankBranch || '',
+          bankUpi: data.bankUpi || '',
+          signatoryName: data.signatoryName || '',
+          signatoryDesignation: data.signatoryDesignation || '',
+          logoUrl: data.logoUrl || '',
+          signatureUrl: data.signatureUrl || '',
+          stampUrl: data.stampUrl || '',
+        });
+      }
+    } catch {
+      // fallback
+    } finally {
+      setLoadingOrgProfile(false);
+    }
+  };
+
+  const handleSaveOrgProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingOrgProfile(true);
+    try {
+      await brandingApi.updateProfile(orgProfile);
+      showAlert('Master Organization Updated', 'Your organization profile, invoicing details, and GST/banking configurations have been successfully saved.', 'success');
+    } catch (err: any) {
+      showAlert('Save Failed', err?.response?.data?.message || 'Could not save organization profile', 'error');
+    } finally {
+      setSavingOrgProfile(false);
+    }
+  };
+
   const handleViewTenantUsers = async (tenantId: string) => {
     try {
       setLoadingTenantDetail(true);
@@ -106,6 +190,7 @@ export default function PlatformCompaniesPage() {
 
   useEffect(() => {
     fetchTenants();
+    fetchOrgProfile();
   }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -300,7 +385,9 @@ export default function PlatformCompaniesPage() {
     setTimeout(() => setCopiedReset(false), 2500);
   };
 
-  const filtered = tenants.filter((t) => {
+  const clientTenants = tenants.filter((t) => t.id !== 'default-tenant-id' && t.code !== 'JNC-ORG-001');
+
+  const filtered = clientTenants.filter((t) => {
     const matchesSearch =
       !search ||
       t.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -321,39 +408,79 @@ export default function PlatformCompaniesPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-                Company Workspaces (Multi-Tenant SaaS)
+                Organization & Tenant Management
               </h1>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Provision isolated customer companies, allocate user licenses, and create Tenant Admin credentials.
+                Manage Master Organization details and provision isolated Multi-Tenant client CRM workspaces.
               </p>
             </div>
           </div>
         </div>
 
+        {activeTab === 'companies' && (
+          <button
+            onClick={() => {
+              setForm({
+                code: '',
+                name: '',
+                slug: '',
+                planTier: 'standard',
+                maxUsers: 10,
+                adminName: '',
+                adminEmail: '',
+                adminPhone: '',
+                adminPassword: '',
+                city: 'Bengaluru',
+                state: 'Karnataka',
+                gstin: '',
+              });
+              setShowCreateModal(true);
+            }}
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <Plus size={16} />
+            <span>Provision New Company</span>
+          </button>
+        )}
+      </div>
+
+      {/* Tabs Navigation */}
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-[#2A3042] pb-2">
         <button
-          onClick={() => {
-            setForm({
-              code: '',
-              name: '',
-              slug: '',
-              planTier: 'standard',
-              maxUsers: 10,
-              adminName: '',
-              adminEmail: '',
-              adminPhone: '',
-              adminPassword: '',
-              city: 'Bengaluru',
-              state: 'Karnataka',
-              gstin: '',
-            });
-            setShowCreateModal(true);
-          }}
-          className="btn btn-primary flex items-center gap-2"
+          onClick={() => setActiveTab('companies')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs transition-all ${
+            activeTab === 'companies'
+              ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+          }`}
         >
-          <Plus size={16} />
-          <span>Provision New Company</span>
+          <Building2 size={16} />
+          <span>Client Companies Hub (Tenants)</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+            activeTab === 'companies' ? 'bg-purple-700 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+          }`}>
+            {clientTenants.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('master_org')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs transition-all ${
+            activeTab === 'master_org'
+              ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+          }`}
+        >
+          <Landmark size={16} />
+          <span>Master Organization Profile (JSNC)</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+            Internal Master
+          </span>
         </button>
       </div>
+
+      {activeTab === 'companies' ? (
+        <div className="space-y-6">
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -585,8 +712,383 @@ export default function PlatformCompaniesPage() {
           </table>
         </div>
       </div>
+    </div>
+  ) : (
+    /* Tab 2: Master Organization & Invoicing Profile */
+    <div className="space-y-6">
+      {/* Organization Info Banner */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-900/10 via-indigo-900/10 to-blue-900/10 border border-purple-200 dark:border-purple-800/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-purple-600 text-white font-black text-xl flex items-center justify-center shadow-lg shadow-purple-500/20">
+            JNC
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                {orgProfile.name || 'JSNC Network & Power Solutions'}
+              </h2>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-300 dark:border-purple-800">
+                Master Organization
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Internal Core Entity • Code: <span className="font-mono font-semibold text-purple-600 dark:text-purple-400">JNC-ORG-001</span>. Used across all platform invoices, quotations, and banking dispatches.
+            </p>
+          </div>
+        </div>
 
-      {/* Provision New Company Modal */}
+        <button
+          onClick={fetchOrgProfile}
+          className="btn btn-secondary text-xs flex items-center gap-1.5 shrink-0"
+          disabled={loadingOrgProfile}
+        >
+          <RefreshCw size={13} className={loadingOrgProfile ? 'animate-spin' : ''} />
+          <span>Reload Profile</span>
+        </button>
+      </div>
+
+      <form onSubmit={handleSaveOrgProfile} className="space-y-6">
+        {/* Grid for settings cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Card 1: Master Business Info */}
+          <div className="card p-5 space-y-4">
+            <div className="flex items-center gap-2 font-bold text-sm text-slate-900 dark:text-white border-b border-slate-200 dark:border-[#2A3042] pb-3">
+              <Briefcase size={18} className="text-purple-600" />
+              <span>Master Business Information</span>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="label">Company / Legal Name *</label>
+                <input
+                  type="text"
+                  className="input text-xs"
+                  value={orgProfile.name}
+                  onChange={(e) => setOrgProfile({ ...orgProfile, name: e.target.value })}
+                  placeholder="e.g. JSNC Network & Power Solutions"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Official Contact Email *</label>
+                  <input
+                    type="email"
+                    className="input text-xs"
+                    value={orgProfile.email}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, email: e.target.value })}
+                    placeholder="e.g. contact@jsnc.in"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label">Official Phone Number *</label>
+                  <input
+                    type="text"
+                    className="input text-xs"
+                    value={orgProfile.phone}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, phone: e.target.value })}
+                    placeholder="e.g. +91 9876543210"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Official Website</label>
+                <input
+                  type="url"
+                  className="input text-xs"
+                  value={orgProfile.website}
+                  onChange={(e) => setOrgProfile({ ...orgProfile, website: e.target.value })}
+                  placeholder="e.g. https://www.jsnc.in"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Registered Office Address */}
+          <div className="card p-5 space-y-4">
+            <div className="flex items-center gap-2 font-bold text-sm text-slate-900 dark:text-white border-b border-slate-200 dark:border-[#2A3042] pb-3">
+              <MapPin size={18} className="text-indigo-600" />
+              <span>Head Office & Registered Location</span>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="label">Registered Street Address *</label>
+                <textarea
+                  rows={2}
+                  className="input text-xs resize-none"
+                  value={orgProfile.address}
+                  onChange={(e) => setOrgProfile({ ...orgProfile, address: e.target.value })}
+                  placeholder="e.g. #12, 1st Cross, Tech Park Road, Electronic City"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="label">City *</label>
+                  <input
+                    type="text"
+                    className="input text-xs"
+                    value={orgProfile.city}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, city: e.target.value })}
+                    placeholder="e.g. Bengaluru"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label">State *</label>
+                  <input
+                    type="text"
+                    className="input text-xs"
+                    value={orgProfile.state}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, state: e.target.value })}
+                    placeholder="e.g. Karnataka"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label">PIN Code *</label>
+                  <input
+                    type="text"
+                    className="input text-xs"
+                    value={orgProfile.pincode}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, pincode: e.target.value })}
+                    placeholder="e.g. 560100"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Legal, GST & Invoicing Settings */}
+          <div className="card p-5 space-y-4">
+            <div className="flex items-center gap-2 font-bold text-sm text-slate-900 dark:text-white border-b border-slate-200 dark:border-[#2A3042] pb-3">
+              <Receipt size={18} className="text-emerald-600" />
+              <span>Legal, Tax & Invoicing Defaults</span>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="label">GSTIN Number</label>
+                  <input
+                    type="text"
+                    className="input text-xs uppercase font-mono"
+                    value={orgProfile.gstin}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, gstin: e.target.value.toUpperCase() })}
+                    placeholder="e.g. 29ABCDE1234F1Z5"
+                  />
+                </div>
+                <div>
+                  <label className="label">PAN Number</label>
+                  <input
+                    type="text"
+                    className="input text-xs uppercase font-mono"
+                    value={orgProfile.pan}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, pan: e.target.value.toUpperCase() })}
+                    placeholder="e.g. ABCDE1234F"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="label">Invoice Prefix</label>
+                  <input
+                    type="text"
+                    className="input text-xs uppercase font-mono"
+                    value={orgProfile.invoicePrefix}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, invoicePrefix: e.target.value.toUpperCase() })}
+                    placeholder="e.g. JNC-INV"
+                  />
+                </div>
+                <div>
+                  <label className="label">LUT / Bond No.</label>
+                  <input
+                    type="text"
+                    className="input text-xs"
+                    value={orgProfile.lutBondNo}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, lutBondNo: e.target.value })}
+                    placeholder="e.g. LUT/2026-27/001"
+                  />
+                </div>
+                <div>
+                  <label className="label">LUT Validity</label>
+                  <input
+                    type="text"
+                    className="input text-xs"
+                    value={orgProfile.lutValidity}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, lutValidity: e.target.value })}
+                    placeholder="e.g. 31-03-2027"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: Settlement & Banking Details */}
+          <div className="card p-5 space-y-4">
+            <div className="flex items-center gap-2 font-bold text-sm text-slate-900 dark:text-white border-b border-slate-200 dark:border-[#2A3042] pb-3">
+              <Landmark size={18} className="text-blue-600" />
+              <span>Settlement & Bank Details</span>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Bank Name</label>
+                  <input
+                    type="text"
+                    className="input text-xs"
+                    value={orgProfile.bankName}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, bankName: e.target.value })}
+                    placeholder="e.g. HDFC Bank Ltd"
+                  />
+                </div>
+                <div>
+                  <label className="label">Account Number</label>
+                  <input
+                    type="text"
+                    className="input text-xs font-mono"
+                    value={orgProfile.bankAccountNumber}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, bankAccountNumber: e.target.value })}
+                    placeholder="e.g. 50200012345678"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="label">IFSC Code</label>
+                  <input
+                    type="text"
+                    className="input text-xs uppercase font-mono"
+                    value={orgProfile.bankIfsc}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, bankIfsc: e.target.value.toUpperCase() })}
+                    placeholder="e.g. HDFC0001234"
+                  />
+                </div>
+                <div>
+                  <label className="label">Branch Name</label>
+                  <input
+                    type="text"
+                    className="input text-xs"
+                    value={orgProfile.bankBranch}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, bankBranch: e.target.value })}
+                    placeholder="e.g. Electronic City Branch"
+                  />
+                </div>
+                <div>
+                  <label className="label">UPI ID / VPA</label>
+                  <input
+                    type="text"
+                    className="input text-xs font-mono"
+                    value={orgProfile.bankUpi}
+                    onChange={(e) => setOrgProfile({ ...orgProfile, bankUpi: e.target.value })}
+                    placeholder="e.g. jsnc@upi"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 5: Authorized Signatory & Official Assets */}
+          <div className="card p-5 space-y-4 lg:col-span-2">
+            <div className="flex items-center gap-2 font-bold text-sm text-slate-900 dark:text-white border-b border-slate-200 dark:border-[#2A3042] pb-3">
+              <UserCheck size={18} className="text-amber-600" />
+              <span>Authorized Signatory & Document Assets</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div>
+                <label className="label">Signatory Full Name</label>
+                <input
+                  type="text"
+                  className="input text-xs"
+                  value={orgProfile.signatoryName}
+                  onChange={(e) => setOrgProfile({ ...orgProfile, signatoryName: e.target.value })}
+                  placeholder="e.g. Jayaraj (Managing Director)"
+                />
+              </div>
+
+              <div>
+                <label className="label">Signatory Designation</label>
+                <input
+                  type="text"
+                  className="input text-xs"
+                  value={orgProfile.signatoryDesignation}
+                  onChange={(e) => setOrgProfile({ ...orgProfile, signatoryDesignation: e.target.value })}
+                  placeholder="e.g. Authorized Signatory / Director"
+                />
+              </div>
+
+              <div>
+                <label className="label">Official Logo URL</label>
+                <input
+                  type="text"
+                  className="input text-xs font-mono"
+                  value={orgProfile.logoUrl}
+                  onChange={(e) => setOrgProfile({ ...orgProfile, logoUrl: e.target.value })}
+                  placeholder="e.g. https://... or /logo.png"
+                />
+              </div>
+
+              <div>
+                <label className="label">Digital Signature Image URL</label>
+                <input
+                  type="text"
+                  className="input text-xs font-mono"
+                  value={orgProfile.signatureUrl}
+                  onChange={(e) => setOrgProfile({ ...orgProfile, signatureUrl: e.target.value })}
+                  placeholder="e.g. https://... or /signature.png"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="label">Official Stamp / Seal Image URL</label>
+                <input
+                  type="text"
+                  className="input text-xs font-mono"
+                  value={orgProfile.stampUrl}
+                  onChange={(e) => setOrgProfile({ ...orgProfile, stampUrl: e.target.value })}
+                  placeholder="e.g. https://... or /stamp.png"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Save Bar */}
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button
+            type="submit"
+            disabled={savingOrgProfile}
+            className="btn btn-primary flex items-center gap-2 px-6 py-2.5 shadow-lg shadow-purple-600/20"
+          >
+            {savingOrgProfile ? (
+              <>
+                <RefreshCw size={16} className="animate-spin" />
+                <span>Saving Organization Profile...</span>
+              </>
+            ) : (
+              <>
+                <Save size={16} />
+                <span>Save Master Organization Profile</span>
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </div>
+  )}
+
+  {/* Provision New Company Modal */}
       <AnimatePresence>
         {showCreateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
