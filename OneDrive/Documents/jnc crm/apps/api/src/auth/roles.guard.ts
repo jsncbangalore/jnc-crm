@@ -27,7 +27,15 @@ export class RolesGuard implements CanActivate {
     ]);
 
     const req = context.switchToHttp().getRequest();
-    const { user } = req;
+    const user = req.user;
+    if (!user) {
+      throw new ForbiddenException('User authentication context required');
+    }
+
+    // Platform super_admin and platform_super_admin bypass all role restrictions and team page restrictions
+    if (user.role === 'super_admin' || user.role === 'platform_super_admin') {
+      return true;
+    }
 
     if (user && user.mustResetPassword) {
       const path = req.path || req.url || '';
@@ -44,15 +52,6 @@ export class RolesGuard implements CanActivate {
           'Password reset required: You must change your temporary password before modifying CRM resources.',
         );
       }
-    }
-
-    if (!user) {
-      throw new ForbiddenException('User authentication context required');
-    }
-
-    // Platform super_admin and platform_super_admin bypass all role restrictions and team page restrictions
-    if (user.role === 'super_admin' || user.role === 'platform_super_admin') {
-      return true;
     }
 
     // Check Role Hierarchy
