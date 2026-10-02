@@ -5,12 +5,14 @@ import {
   MessageSquare, X, Smartphone, FileSpreadsheet, Download, AlertTriangle,
   CheckCircle2, RefreshCw, Phone, Mail, Building2, MapPin, Tag, Clock,
   Calendar, User, DollarSign, Filter, Flame, ChevronRight, ChevronLeft,
-  ChevronsLeft, ChevronsRight, Edit3, Trash2, Activity, FileText, Send, CheckCircle, HelpCircle, ArrowRight
+  ChevronsLeft, ChevronsRight, Edit3, Trash2, Activity, FileText, Send, CheckCircle, HelpCircle, ArrowRight,
+  Sliders, Settings, Zap
 } from 'lucide-react';
 import { leadsApi, usersApi } from '../services/api';
 import { Lead, LeadStatus, LeadSource, User as UserType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { usePopup } from '../contexts/PopupContext';
+import LeadSetupModal from '../components/leads/LeadSetupModal';
 import { format, formatDistanceToNow, isToday } from 'date-fns';
 import Papa from 'papaparse';
 
@@ -154,6 +156,10 @@ export default function LeadsPage() {
   const [activityType, setActivityType] = useState<'call' | 'note' | 'email' | 'meeting'>('call');
   const [sendDirectEmail, setSendDirectEmail] = useState(true);
   const [submittingActivity, setSubmittingActivity] = useState(false);
+
+  // Lead Setup & Real-time Flow Controller Modal
+  const [leadSetupModalOpen, setLeadSetupModalOpen] = useState(false);
+  const [leadSetupInitialTab, setLeadSetupInitialTab] = useState<'indiamart' | 'website' | 'whatsapp' | 'routing' | 'pipeline'>('indiamart');
 
   // Web-to-Lead Share Modal
   const [showShareModal, setShowShareModal] = useState(false);
@@ -454,52 +460,96 @@ export default function LeadsPage() {
 
           <div className="h-10 w-[1px] bg-[#2A3042] hidden sm:block" />
 
-          {/* Source Breakdown Pills */}
+          {/* Source Breakdown Interactive Pills */}
           <div className="flex items-center gap-2 flex-wrap">
             {/* IndiaMART */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2E5EFF]/15 text-[#2E5EFF] border border-[#2E5EFF]/30 text-xs font-bold">
+            <button
+              onClick={() => {
+                setLeadSetupInitialTab('indiamart');
+                setLeadSetupModalOpen(true);
+              }}
+              title="Click to configure IndiaMART Webhook & Live API sync"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2E5EFF]/15 hover:bg-[#2E5EFF]/25 text-[#2E5EFF] border border-[#2E5EFF]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
+            >
               <span className="w-2 h-2 rounded-full bg-[#2E5EFF]" />
               <span>IndiaMART</span>
               <span className="px-1.5 py-0.2 rounded-full bg-[#2E5EFF]/20 font-mono text-[11px]">
                 {sourceCountsToday.indiamart}
               </span>
-            </div>
+            </button>
 
             {/* Website */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-[#1E2230] text-[#60A5FA] border border-[#3B82F6]/30 text-xs font-bold">
+            <button
+              onClick={() => {
+                setLeadSetupInitialTab('website');
+                setLeadSetupModalOpen(true);
+              }}
+              title="Click to configure Website Inquiry Form & Embed Widget"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-blue-50 dark:bg-[#1E2230] dark:hover:bg-[#262C3E] text-[#60A5FA] border border-[#3B82F6]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
+            >
               <Globe size={13} className="text-[#60A5FA]" />
               <span>Website</span>
               <span className="px-1.5 py-0.2 rounded-full bg-blue-500/20 font-mono text-[11px]">
                 {sourceCountsToday.web}
               </span>
-            </div>
+            </button>
 
             {/* WhatsApp */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366]/15 text-[#25D366] border border-[#25D366]/30 text-xs font-bold">
+            <button
+              onClick={() => {
+                setLeadSetupInitialTab('whatsapp');
+                setLeadSetupModalOpen(true);
+              }}
+              title="Click to configure Meta WhatsApp Cloud API Webhook"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] border border-[#25D366]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
+            >
               <MessageSquare size={13} />
               <span>WhatsApp</span>
               <span className="px-1.5 py-0.2 rounded-full bg-[#25D366]/20 font-mono text-[11px]">
                 {sourceCountsToday.whatsapp}
               </span>
-            </div>
+            </button>
 
-            {/* Manual */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#9AA0B4]/15 text-[#9AA0B4] border border-[#9AA0B4]/30 text-xs font-bold">
+            {/* Manual / Routing */}
+            <button
+              onClick={() => {
+                setLeadSetupInitialTab('routing');
+                setLeadSetupModalOpen(true);
+              }}
+              title="Click to configure Sales Auto-Assignment & SLA Routing"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#9AA0B4]/15 hover:bg-[#9AA0B4]/25 text-[#9AA0B4] border border-[#9AA0B4]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
+            >
               <User size={13} />
               <span>Manual / Import</span>
               <span className="px-1.5 py-0.2 rounded-full bg-[#9AA0B4]/20 font-mono text-[11px]">
                 {sourceCountsToday.manual}
               </span>
-            </div>
+            </button>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Lead Setup & Real-time Flow Controller Button */}
+          <button
+            onClick={() => {
+              setLeadSetupInitialTab('routing');
+              setLeadSetupModalOpen(true);
+            }}
+            className="btn bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-white/10 text-xs gap-1.5 shadow-sm font-bold"
+            title="Configure Lead Capture Channels, Routing Rules & SLA"
+          >
+            <Sliders size={14} className="text-crm-blue" />
+            <span>Lead Setup & Flow</span>
+          </button>
+
           {/* Web-to-Lead Link */}
           <button
-            onClick={() => setShowShareModal(true)}
-            className="btn bg-crm-teal/15 hover:bg-crm-teal/25 text-crm-teal border border-crm-teal/30 text-xs gap-1.5 shadow-glow-teal"
+            onClick={() => {
+              setLeadSetupInitialTab('website');
+              setLeadSetupModalOpen(true);
+            }}
+            className="btn bg-crm-teal/15 hover:bg-crm-teal/25 text-crm-teal border border-crm-teal/30 text-xs gap-1.5 shadow-glow-teal font-bold"
           >
             <Link2 size={14} /> Web-to-Lead Link
           </button>
@@ -511,7 +561,7 @@ export default function LeadsPage() {
                 setShowImportModal(true);
                 setImportResult(null);
               }}
-              className="btn bg-crm-violet hover:bg-crm-violet-hover text-white text-xs gap-1.5 shadow-glow-violet"
+              className="btn bg-crm-violet hover:bg-crm-violet-hover text-white text-xs gap-1.5 shadow-glow-violet font-bold"
             >
               <FileSpreadsheet size={14} /> Import Leads
             </button>
@@ -520,7 +570,7 @@ export default function LeadsPage() {
           {/* New Lead */}
           <button
             onClick={() => setShowAddModal(true)}
-            className="btn-primary text-xs gap-1.5 shadow-glow-blue"
+            className="btn-primary text-xs gap-1.5 shadow-glow-blue font-bold"
           >
             <Plus size={15} /> New Lead
           </button>
@@ -1907,6 +1957,14 @@ export default function LeadsPage() {
             </motion.div>
           </div>
         )}
+
+        {/* Lead Setup & Real-time Flow Controller Modal */}
+        <LeadSetupModal
+          isOpen={leadSetupModalOpen}
+          onClose={() => setLeadSetupModalOpen(false)}
+          initialTab={leadSetupInitialTab}
+          onLeadCreated={fetchLeads}
+        />
       </AnimatePresence>
     </div>
   );
