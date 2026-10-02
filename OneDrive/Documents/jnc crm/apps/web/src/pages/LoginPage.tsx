@@ -97,17 +97,17 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label text-xs">Username, Employee Code or Email</label>
+              <label className="label text-xs">User ID, Employee Code, or Email</label>
               <input
                 type="text"
                 className="input text-xs"
-                placeholder="e.g. JNC-ORG-SA-001, JNC-XXX-SA-001, or Jayarajjnc@gmail.com"
+                placeholder="Enter User ID, Employee Code, or Email"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
               />
               <p className="text-[10px] text-slate-400 mt-1">
-                Works for both JNC Parent Org and Client Organization members.
+                Sign in with your assigned company credentials or registered email.
               </p>
             </div>
 
@@ -123,20 +123,20 @@ export default function LoginPage() {
               />
             </div>
 
-                {/* Optional Company Code Field (Auto-detected if left empty) */}
-                <div className="pt-1">
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="text-slate-500 dark:text-slate-400">Organization / Company Code</span>
-                    <span className="text-[11px] text-slate-400 font-medium">Auto-detected</span>
-                  </div>
-                  <input
-                    type="text"
-                    className="input uppercase font-mono tracking-wider text-xs bg-slate-50/50 dark:bg-black/20"
-                    placeholder="e.g. JNC, ACME, VERTEX (Optional)"
-                    value={companyCode}
-                    onChange={(e) => setCompanyCode(e.target.value)}
-                  />
-                </div>
+            {/* Optional Company Code Field (Auto-detected if left empty) */}
+            <div className="pt-1">
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span className="text-slate-500 dark:text-slate-400">Organization / Company Code</span>
+                <span className="text-[11px] text-slate-400 font-medium">Optional</span>
+              </div>
+              <input
+                type="text"
+                className="input uppercase font-mono tracking-wider text-xs bg-slate-50/50 dark:bg-black/20"
+                placeholder="Enter company code (Optional)"
+                value={companyCode}
+                onChange={(e) => setCompanyCode(e.target.value)}
+              />
+            </div>
 
                 {error && (
                   <motion.div
