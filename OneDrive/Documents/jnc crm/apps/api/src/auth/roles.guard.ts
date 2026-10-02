@@ -31,13 +31,17 @@ export class RolesGuard implements CanActivate {
 
     if (user && user.mustResetPassword) {
       const path = req.path || req.url || '';
-      if (
-        !path.includes('/auth/change-password') &&
-        !path.includes('/auth/me') &&
-        !path.includes('/auth/refresh')
-      ) {
+      const method = (req.method || 'GET').toUpperCase();
+      const isAuthRoute =
+        path.includes('/auth/change-password') ||
+        path.includes('/auth/me') ||
+        path.includes('/auth/refresh') ||
+        path.includes('/auth/profile');
+      const isReadOnly = ['GET', 'HEAD', 'OPTIONS'].includes(method);
+
+      if (!isAuthRoute && !isReadOnly) {
         throw new ForbiddenException(
-          'Password reset required: You must change your temporary password before accessing CRM resources.',
+          'Password reset required: You must change your temporary password before modifying CRM resources.',
         );
       }
     }

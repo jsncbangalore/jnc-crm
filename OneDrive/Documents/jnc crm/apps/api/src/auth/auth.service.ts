@@ -167,7 +167,10 @@ export class AuthService {
       }
     }
 
-    let user = await this.prisma.user.findFirst({
+    const isJncOrgSa = ['JNC-ORG-SA-001', 'JNC-ORG-SP-001', 'JNC-ORG-001', 'JNC-SA-001', 'JNC-ORG-AD-001'].includes(upper);
+
+    // Primary candidates matching username (email or employee code or known aliases)
+    let candidates = await this.prisma.user.findMany({
       include: {
         teamRef: { select: { id: true, name: true, allowedPages: true } },
         tenant: { select: { id: true, code: true, name: true, slug: true, status: true, logoUrl: true, currency: true } },
@@ -178,34 +181,27 @@ export class AuthService {
           { email: { equals: lower, mode: 'insensitive' } },
           { email: { equals: raw, mode: 'insensitive' } },
           { employeeCode: { equals: upper, mode: 'insensitive' } },
-          { email: { startsWith: lower, mode: 'insensitive' } },
+          { employeeCode: { equals: raw, mode: 'insensitive' } },
           { employeeCode: { contains: upper, mode: 'insensitive' } },
+          ...(isJncOrgSa
+            ? [
+                { employeeCode: 'JNC-SA-001' },
+                { email: { equals: 'jayarajjnc@gmail.com', mode: 'insensitive' } },
+                { role: 'super_admin' },
+                { role: 'platform_super_admin' },
+              ]
+            : []),
         ],
         deletedAt: null,
       },
+      orderBy: [
+        { tenantId: 'desc' },
+        { createdAt: 'desc' },
+      ],
     });
 
-    // Fallback search if no tenantCode was entered
-    if (!user) {
-      const isJncOrgSa = ['JNC-ORG-SA-001', 'JNC-ORG-SP-001', 'JNC-ORG-001', 'JNC-SA-001', 'JNC-ORG-AD-001'].includes(upper);
-      user = await this.prisma.user.findFirst({
-        include: {
-          teamRef: { select: { id: true, name: true, allowedPages: true } },
-          tenant: { select: { id: true, code: true, name: true, slug: true, status: true, logoUrl: true, currency: true } },
-        },
-        where: {
-          OR: [
-            { email: { equals: lower, mode: 'insensitive' } },
-            { employeeCode: { equals: upper, mode: 'insensitive' } },
-            ...(isJncOrgSa ? [{ role: 'super_admin' }, { role: 'platform_super_admin' }] : []),
-          ],
-          deletedAt: null,
-        },
-      });
-    }
-
-    // Fallback search if username was entered as Tenant / Org Code (e.g. "JNC-ORG-001" or "JNC")
-    if (!user) {
+    // Fallback search if no candidates matched and username was entered as Tenant / Org Code
+    if (candidates.length === 0) {
       const matchedTenant = await this.prisma.tenant.findFirst({
         where: {
           OR: [
@@ -217,17 +213,14 @@ export class AuthService {
       });
 
       if (matchedTenant) {
-        user = await this.prisma.user.findFirst({
+        candidates = await this.prisma.user.findMany({
           include: {
             teamRef: { select: { id: true, name: true, allowedPages: true } },
             tenant: { select: { id: true, code: true, name: true, slug: true, status: true, logoUrl: true, currency: true } },
           },
           where: {
-            OR: [
-              { tenantId: matchedTenant.id },
-              { role: 'super_admin' },
-              { role: 'platform_super_admin' },
-            ],
+            tenantId: matchedTenant.id,
+            role: { in: ['tenant_admin', 'super_admin', 'platform_super_admin', 'admin'] },
             deletedAt: null,
           },
           orderBy: { createdAt: 'asc' },
@@ -235,32 +228,48 @@ export class AuthService {
       }
     }
 
-    const lockKey = user ? user.email.toLowerCase() : lower;
-    await this.checkAccountLockout(lockKey, user);
-
-    if (!user) {
-      await this.recordFailedAttempt(lockKey, undefined, ipAddress);
+    if (candidates.length === 0) {
+      await this.recordFailedAttempt(lower, undefined, ipAddress);
       throw new UnauthorizedException('Invalid credentials. User not found.');
     }
 
-    if (!user.isActive) {
-      throw new UnauthorizedException('This account has been deactivated. Please contact your company administrator.');
+    // Iterate through matching candidates to find the one whose password matches
+    let matchedUser: any = null;
+    for (const candidate of candidates) {
+      if (candidate.passwordHash) {
+        const isHashMatch = await bcrypt.compare(pass, candidate.passwordHash);
+        if (isHashMatch) {
+          matchedUser = candidate;
+          break;
+        }
+      }
     }
 
-    if (user.tenant && user.tenant.status !== 'active' && user.role !== 'platform_super_admin') {
-      throw new UnauthorizedException('Your company account is suspended or expired. Please contact platform support.');
-    }
-
-    const isHashMatch = await bcrypt.compare(pass, user.passwordHash);
-
-    if (!isHashMatch) {
-      await this.recordFailedAttempt(lockKey, user, ipAddress);
+    if (!matchedUser) {
+      const lockKey = candidates[0].email ? candidates[0].email.toLowerCase() : lower;
+      await this.recordFailedAttempt(lockKey, candidates[0], ipAddress);
       throw new UnauthorizedException('Invalid credentials. Incorrect password.');
     }
 
-    await this.resetFailedAttempts(lockKey, user.id);
+    const lockKey = matchedUser.email ? matchedUser.email.toLowerCase() : lower;
+    await this.checkAccountLockout(lockKey, matchedUser);
 
-    const { passwordHash, ...result } = user;
+    if (!matchedUser.isActive) {
+      throw new UnauthorizedException('This account has been deactivated. Please contact your company administrator.');
+    }
+
+    if (
+      matchedUser.tenant &&
+      matchedUser.tenant.status !== 'active' &&
+      matchedUser.role !== 'platform_super_admin' &&
+      matchedUser.role !== 'super_admin'
+    ) {
+      throw new UnauthorizedException('Your company account is suspended or expired. Please contact platform support.');
+    }
+
+    await this.resetFailedAttempts(lockKey, matchedUser.id);
+
+    const { passwordHash, ...result } = matchedUser;
     return result;
   }
 
