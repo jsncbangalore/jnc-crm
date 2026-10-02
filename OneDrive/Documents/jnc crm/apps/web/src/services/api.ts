@@ -77,6 +77,8 @@ export const platformApi = {
   updateTenant: (id: string, data: any) => api.put(`/platform/tenants/${id}`, data),
   deleteTenant: (id: string) => api.delete(`/platform/tenants/${id}`),
   impersonateTenant: (id: string) => api.post(`/platform/tenants/${id}/impersonate`),
+  resetAdminPassword: (id: string, data?: { newPassword?: string; sendEmail?: boolean; appUrl?: string }) =>
+    api.post(`/platform/tenants/${id}/reset-admin-password`, data || {}),
 };
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────

@@ -58,4 +58,13 @@ export class PlatformController {
   async impersonateTenant(@Param('id') id: string) {
     return this.platformService.impersonateTenant(id);
   }
+
+  @Post(':id/reset-admin-password')
+  async resetTenantAdminPassword(
+    @Param('id') id: string,
+    @Body() dto: { newPassword?: string; sendEmail?: boolean; appUrl?: string },
+  ) {
+    return this.platformService.resetTenantAdminPassword(id, dto);
+  }
 }
+

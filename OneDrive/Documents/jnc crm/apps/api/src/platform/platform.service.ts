@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
+import { NotificationsService } from '../notifications/notifications.service';
 import * as bcrypt from 'bcryptjs';
 
 export interface CreateTenantDto {
@@ -53,6 +54,7 @@ export class PlatformService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -317,4 +319,169 @@ export class PlatformService {
       },
     };
   }
+
+  /**
+   * Reset the Super Admin / Tenant Admin password for a client company
+   * and optionally send them an official credentials email with user ID & login link.
+   */
+  async resetTenantAdminPassword(
+    tenantId: string,
+    dto?: { newPassword?: string; sendEmail?: boolean; appUrl?: string },
+  ) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: {
+        users: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!tenant) throw new NotFoundException('Company workspace not found');
+
+    // Find primary admin/super admin user
+    const adminUser =
+      tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'super_admin' || u.role === 'admin') ||
+      tenant.users[0];
+
+    if (!adminUser) {
+      throw new BadRequestException('No active user accounts found in this company workspace to reset.');
+    }
+
+    // Generate strong password if not supplied
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+    let generatedPass = '';
+    for (let i = 0; i < 10; i++) {
+      generatedPass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    const passwordToSet = dto?.newPassword?.trim() || generatedPass;
+
+    const passwordHash = await bcrypt.hash(passwordToSet, 10);
+
+    // Update password in database and unlock account
+    await this.prisma.user.update({
+      where: { id: adminUser.id },
+      data: {
+        passwordHash,
+        mustResetPassword: true,
+        isActive: true,
+      },
+    });
+
+    let emailDispatched = false;
+    let emailStatusMessage = 'Email not requested';
+
+    if (dto?.sendEmail !== false) {
+      const loginUrl = dto?.appUrl || process.env.APP_URL || 'http://localhost:5173/login';
+
+      const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
+    .card { max-width: 580px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { background: #0f172a; padding: 24px; text-align: center; color: #ffffff; }
+    .header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.025em; }
+    .header p { margin: 4px 0 0; font-size: 13px; color: #94a3b8; }
+    .body { padding: 28px; }
+    .creds-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 18px; margin: 20px 0; }
+    .table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .table td { padding: 8px 4px; vertical-align: middle; }
+    .label { width: 140px; color: #64748b; font-weight: 600; }
+    .val { color: #0f172a; font-weight: 600; }
+    .code-badge { font-family: monospace; font-size: 15px; font-weight: 700; color: #2563eb; }
+    .pass-badge { font-family: monospace; font-size: 16px; font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 4px 10px; border-radius: 6px; display: inline-block; }
+    .btn-container { text-align: center; margin: 28px 0 10px; }
+    .btn { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); }
+    .footer { border-top: 1px solid #f1f5f9; padding: 16px 28px; text-align: center; font-size: 12px; color: #94a3b8; background: #fafafa; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>Company CRM Access Credentials</h1>
+      <p>Super Admin Access for ${tenant.name}</p>
+    </div>
+    <div class="body">
+      <p>Hello <strong>${adminUser.name}</strong>,</p>
+      <p>The Super Admin credentials for your company's CRM workspace have been reset. Below are your updated access details to sign in to your dedicated environment:</p>
+      
+      <div class="creds-box">
+        <table class="table">
+          <tr>
+            <td class="label">Company:</td>
+            <td class="val">${tenant.name} (${tenant.code})</td>
+          </tr>
+          <tr>
+            <td class="label">User ID / Code:</td>
+            <td><span class="code-badge">${adminUser.employeeCode}</span></td>
+          </tr>
+          <tr>
+            <td class="label">Login Email:</td>
+            <td class="val font-mono">${adminUser.email}</td>
+          </tr>
+          <tr>
+            <td class="label">New Password:</td>
+            <td><span class="pass-badge">${passwordToSet}</span></td>
+          </tr>
+          <tr>
+            <td class="label">Access Role:</td>
+            <td class="val">Company Super Admin</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="btn-container">
+        <a href="${loginUrl}" class="btn">Login to Company CRM</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p style="margin: 0 0 4px;">For security, please change your password after logging in.</p>
+      <p style="margin: 0;">JNC CRM Multi-Tenant Cloud Platform</p>
+    </div>
+  </div>
+</body>
+</html>
+      `;
+
+      try {
+        await this.notificationsService.sendEmail({
+          to: adminUser.email,
+          subject: `[JNC CRM] Super Admin Access Credentials for ${tenant.name}`,
+          html: emailHtml,
+          text: `Hello ${adminUser.name},\n\nYour Super Admin credentials for ${tenant.name} have been updated:\n\nCompany: ${tenant.name} (${tenant.code})\nUser ID: ${adminUser.employeeCode}\nEmail: ${adminUser.email}\nPassword: ${passwordToSet}\nLogin URL: ${loginUrl}\n\nPlease change your password after logging in.`,
+          tenantId: 'default-tenant-id',
+        });
+        emailDispatched = true;
+        emailStatusMessage = `Credentials email sent successfully to ${adminUser.email}`;
+      } catch (err: any) {
+        emailDispatched = false;
+        emailStatusMessage = `Password updated, but email sending failed: ${err?.message || 'SMTP error'}`;
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Super Admin password reset successfully',
+      emailDispatched,
+      emailStatusMessage,
+      adminUser: {
+        id: adminUser.id,
+        employeeCode: adminUser.employeeCode,
+        name: adminUser.name,
+        email: adminUser.email,
+        role: adminUser.role,
+      },
+      tenant: {
+        id: tenant.id,
+        code: tenant.code,
+        name: tenant.name,
+      },
+      tempPassword: passwordToSet,
+    };
+  }
 }
+

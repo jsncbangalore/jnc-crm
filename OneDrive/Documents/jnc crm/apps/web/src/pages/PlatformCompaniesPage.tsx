@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Plus, Users, Shield, CheckCircle2, AlertTriangle,
   Search, ExternalLink, RefreshCw, KeyRound, Globe, Mail, Phone,
-  ChevronRight, X, Copy, Check, Power, Settings
+  ChevronRight, X, Copy, Check, Power, Settings, Lock, Sparkles, Send
 } from 'lucide-react';
 import { platformApi } from '../services/api';
 import { Tenant } from '../types';
@@ -63,6 +63,21 @@ export default function PlatformCompaniesPage() {
     newAdminPassword: '',
   });
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Dedicated Reset Super Admin Credentials Modal State
+  const [resetModalTenant, setResetModalTenant] = useState<Tenant | null>(null);
+  const [resetAdminDetail, setResetAdminDetail] = useState<{
+    employeeCode: string;
+    name: string;
+    email: string;
+    role?: string;
+  } | null>(null);
+  const [loadingResetAdmin, setLoadingResetAdmin] = useState(false);
+  const [resetCustomPassword, setResetCustomPassword] = useState('');
+  const [resetSendEmail, setResetSendEmail] = useState(true);
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [resetSuccessResult, setResetSuccessResult] = useState<any | null>(null);
+  const [copiedReset, setCopiedReset] = useState(false);
 
   const fetchTenants = async () => {
     try {
@@ -189,6 +204,94 @@ export default function PlatformCompaniesPage() {
       'Enter Company Workspace (Support Mode)',
       'Enter Workspace'
     );
+  };
+
+  const handleOpenResetPasswordModal = async (tenant: Tenant) => {
+    setResetModalTenant(tenant);
+    setResetSuccessResult(null);
+    setResetCustomPassword('');
+    setResetSendEmail(true);
+    setLoadingResetAdmin(true);
+
+    try {
+      const { data } = await platformApi.getTenant(tenant.id);
+      const admin =
+        data.users?.find((u: any) => u.role === 'tenant_admin' || u.role === 'super_admin' || u.role === 'admin') ||
+        data.users?.[0];
+      if (admin) {
+        setResetAdminDetail({
+          employeeCode: admin.employeeCode,
+          name: admin.name,
+          email: admin.email,
+          role: admin.role,
+        });
+      } else {
+        const fallbackCode = tenant.code.startsWith('JNC-') ? `${tenant.code}-SA-001` : `JNC-${tenant.code}-SA-001`;
+        setResetAdminDetail({
+          employeeCode: fallbackCode,
+          name: `${tenant.name} Super Admin`,
+          email: tenant.email || 'admin@client.com',
+          role: 'tenant_admin',
+        });
+      }
+    } catch {
+      const fallbackCode = tenant.code.startsWith('JNC-') ? `${tenant.code}-SA-001` : `JNC-${tenant.code}-SA-001`;
+      setResetAdminDetail({
+        employeeCode: fallbackCode,
+        name: `${tenant.name} Super Admin`,
+        email: tenant.email || 'admin@client.com',
+        role: 'tenant_admin',
+      });
+    } finally {
+      setLoadingResetAdmin(false);
+    }
+  };
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789#@!';
+    let pass = '';
+    for (let i = 0; i < 10; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setResetCustomPassword(pass);
+  };
+
+  const handleExecuteResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetModalTenant) return;
+
+    setResettingPassword(true);
+    try {
+      const { data } = await platformApi.resetAdminPassword(resetModalTenant.id, {
+        newPassword: resetCustomPassword.trim() || undefined,
+        sendEmail: resetSendEmail,
+        appUrl: window.location.origin + '/login',
+      });
+      setResetSuccessResult(data);
+      fetchTenants();
+    } catch (err: any) {
+      showAlert('Password Reset Failed', err?.response?.data?.message || 'Could not reset credentials', 'error');
+    } finally {
+      setResettingPassword(false);
+    }
+  };
+
+  const handleCopyResetCredentials = () => {
+    if (!resetSuccessResult) return;
+    const text = [
+      `--- JNC CRM Super Admin Access Credentials ---`,
+      `Company: ${resetSuccessResult.tenant?.name || resetModalTenant?.name} (${resetSuccessResult.tenant?.code || resetModalTenant?.code})`,
+      `Super Admin ID: ${resetSuccessResult.adminUser?.employeeCode}`,
+      `Login Email: ${resetSuccessResult.adminUser?.email}`,
+      `New Password: ${resetSuccessResult.tempPassword}`,
+      `Login Portal: ${window.location.origin}/login`,
+      `Role: Company Super Admin`,
+      `Note: Please change password upon first login.`,
+    ].join('\n');
+
+    navigator.clipboard.writeText(text);
+    setCopiedReset(true);
+    setTimeout(() => setCopiedReset(false), 2500);
   };
 
   const filtered = tenants.filter((t) => {
@@ -433,6 +536,14 @@ export default function PlatformCompaniesPage() {
                         >
                           <KeyRound size={13} className="text-amber-600 dark:text-amber-400" />
                           <span>Login As</span>
+                        </button>
+                        <button
+                          onClick={() => handleOpenResetPasswordModal(tenant)}
+                          className="btn px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 border border-indigo-500/30 flex items-center gap-1 shadow-sm"
+                          title="Reset Super Admin Password & Dispatch Email Credentials"
+                        >
+                          <Lock size={13} className="text-indigo-600 dark:text-indigo-400" />
+                          <span>Reset Password</span>
                         </button>
                         <button
                           onClick={() => handleViewTenantUsers(tenant.id)}
@@ -815,6 +926,19 @@ export default function PlatformCompaniesPage() {
                           </div>
 
                           <div className="flex items-center gap-2">
+                            {(u.role === 'tenant_admin' || u.role === 'super_admin' || u.role === 'admin') && (
+                              <button
+                                onClick={() => {
+                                  setViewingTenant(null);
+                                  handleOpenResetPasswordModal(viewingTenant);
+                                }}
+                                className="btn px-2 py-1 text-[11px] font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 rounded-lg flex items-center gap-1"
+                                title="Reset Super Admin Password & Dispatch Email"
+                              >
+                                <KeyRound size={12} />
+                                <span>Reset Password</span>
+                              </button>
+                            )}
                             <span className="capitalize px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
                               {u.role.replace('_', ' ')}
                             </span>
@@ -961,6 +1085,206 @@ export default function PlatformCompaniesPage() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Reset Super Admin Credentials & Email Modal */}
+      <AnimatePresence>
+        {resetModalTenant && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230]">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                    <Lock size={18} />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-slate-900 dark:text-white text-base">
+                      Reset Super Admin Password
+                    </h2>
+                    <div className="text-[11px] text-slate-500">
+                      Target Workspace: <span className="font-semibold text-slate-800 dark:text-slate-200">{resetModalTenant.name}</span> ({resetModalTenant.code})
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setResetModalTenant(null);
+                    setResetSuccessResult(null);
+                  }}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-white/5"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              {resetSuccessResult ? (
+                /* Success View */
+                <div className="p-6 space-y-4">
+                  <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300">
+                    <div className="flex items-center gap-2 font-bold text-sm">
+                      <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span>Password Reset Completed</span>
+                    </div>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
+                      {resetSuccessResult.emailDispatched
+                        ? `Official credentials email dispatched to ${resetSuccessResult.adminUser?.email}`
+                        : `Credentials updated in database.`}
+                    </p>
+                  </div>
+
+                  {/* Credentials Card */}
+                  <div className="bg-slate-50 dark:bg-[#1E2230] p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-2.5 text-xs">
+                    <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800">
+                      <span className="text-slate-500">Company:</span>
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {resetSuccessResult.tenant?.name} ({resetSuccessResult.tenant?.code})
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800">
+                      <span className="text-slate-500">Super Admin User ID:</span>
+                      <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                        {resetSuccessResult.adminUser?.employeeCode}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800">
+                      <span className="text-slate-500">Login Email:</span>
+                      <span className="font-mono text-slate-800 dark:text-slate-200">
+                        {resetSuccessResult.adminUser?.email}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800">
+                      <span className="text-slate-500 font-semibold">New Temporary Password:</span>
+                      <span className="font-mono font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-2.5 py-0.5 rounded border border-rose-200 dark:border-rose-800 text-sm select-all">
+                        {resetSuccessResult.tempPassword}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-slate-500">Login Portal:</span>
+                      <span className="font-mono text-[11px] text-indigo-600 dark:text-indigo-400">
+                        {window.location.origin}/login
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      onClick={handleCopyResetCredentials}
+                      className="btn flex-1 bg-slate-900 dark:bg-slate-800 text-white hover:bg-slate-800 flex items-center justify-center gap-1.5 text-xs py-2.5"
+                    >
+                      {copiedReset ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                      <span>{copiedReset ? 'Credentials Copied!' : 'Copy All Credentials'}</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setResetModalTenant(null);
+                        setResetSuccessResult(null);
+                      }}
+                      className="btn btn-secondary text-xs py-2.5 px-4"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Form View */
+                <form onSubmit={handleExecuteResetPassword} className="p-5 space-y-4">
+                  {/* Super Admin Info Card */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-[#1E2230] rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-1.5 text-xs">
+                    <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                      <span>Target Super Admin Account:</span>
+                      <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-bold">
+                        {loadingResetAdmin ? 'Loading...' : resetAdminDetail?.employeeCode || 'Super Admin'}
+                      </span>
+                    </div>
+                    <div className="text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                      <Mail size={13} className="text-slate-400" />
+                      <span>{loadingResetAdmin ? 'Fetching email...' : resetAdminDetail?.email || 'No email registered'}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-1">
+                      Resetting this password will only affect this company's Super Admin account. Other employees and organizations remain unaffected.
+                    </p>
+                  </div>
+
+                  {/* New Password Input */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="label mb-0">New Password</label>
+                      <button
+                        type="button"
+                        onClick={generateRandomPassword}
+                        className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold"
+                      >
+                        <Sparkles size={12} />
+                        <span>Generate Random Strong Password</span>
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      className="input text-xs font-mono"
+                      placeholder="Leave blank to auto-generate a secure temporary password"
+                      value={resetCustomPassword}
+                      onChange={(e) => setResetCustomPassword(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Send Email Checkbox */}
+                  <div className="p-3 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      id="resetSendEmailCheck"
+                      checked={resetSendEmail}
+                      onChange={(e) => setResetSendEmail(e.target.checked)}
+                      className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label htmlFor="resetSendEmailCheck" className="text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                      <span className="font-semibold block text-slate-900 dark:text-white">
+                        Send Official Credentials Email
+                      </span>
+                      <span className="text-[11px] text-slate-500 block mt-0.5">
+                        Dispatches an email containing the Company Code, User ID ({resetAdminDetail?.employeeCode || 'Super Admin'}), New Password, and Direct Login URL to <strong>{resetAdminDetail?.email || 'Admin Email'}</strong>.
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-[#2A3042]">
+                    <button
+                      type="button"
+                      onClick={() => setResetModalTenant(null)}
+                      className="btn btn-secondary text-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={resettingPassword || loadingResetAdmin}
+                      className="btn btn-primary text-xs flex items-center gap-1.5"
+                    >
+                      {resettingPassword ? (
+                        <>
+                          <RefreshCw size={14} className="animate-spin" />
+                          <span>Resetting & Sending...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send size={13} />
+                          <span>Reset & Send Credentials</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
             </motion.div>
           </div>
         )}
