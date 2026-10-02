@@ -393,16 +393,7 @@ export default function PlatformCompaniesPage() {
   };
 
   const clientTenants = tenants.filter((t) => t.id !== 'default-tenant-id' && t.code !== 'JNC-ORG-001');
-
-  const filtered = clientTenants.filter((t) => {
-    const matchesSearch =
-      !search ||
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.code.toLowerCase().includes(search.toLowerCase()) ||
-      t.email?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = !statusFilter || t.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filtered = clientTenants;
 
   return (
     <div className="space-y-6">
@@ -440,6 +431,7 @@ export default function PlatformCompaniesPage() {
                 city: 'Bengaluru',
                 state: 'Karnataka',
                 gstin: '',
+                sendEmail: true,
               });
               setShowCreateModal(true);
             }}
@@ -452,128 +444,49 @@ export default function PlatformCompaniesPage() {
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-[#2A3042] pb-2">
-        <button
-          onClick={() => setActiveTab('companies')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs transition-all ${
-            activeTab === 'companies'
-              ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <Building2 size={16} />
-          <span>Client Companies Hub (Tenants)</span>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-            activeTab === 'companies' ? 'bg-purple-700 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-          }`}>
-            {clientTenants.length}
-          </span>
-        </button>
+      <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2A3042] pb-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTab('companies')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs transition-all ${
+              activeTab === 'companies'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+            }`}
+          >
+            <Building2 size={16} />
+            <span>Client Companies Hub</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('master_org')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs transition-all ${
-            activeTab === 'master_org'
-              ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
-              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
-          }`}
-        >
-          <Landmark size={16} />
-          <span>Master Organization Profile (JSNC)</span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30">
-            Internal Master
-          </span>
-        </button>
+          <button
+            onClick={() => setActiveTab('master_org')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs transition-all ${
+              activeTab === 'master_org'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+            }`}
+          >
+            <Landmark size={16} />
+            <span>Master Organization Profile (JSNC)</span>
+          </button>
+        </div>
+
+        {activeTab === 'companies' && (
+          <button
+            onClick={fetchTenants}
+            className="btn btn-secondary text-xs flex items-center gap-1.5"
+            title="Refresh workspaces"
+          >
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            <span>Refresh</span>
+          </button>
+        )}
       </div>
 
       {activeTab === 'companies' ? (
-        <div className="space-y-6">
-
-      {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="card p-4 flex items-center justify-between">
-          <div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Companies</div>
-            <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{tenants.length}</div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
-            <Building2 size={20} />
-          </div>
-        </div>
-
-        <div className="card p-4 flex items-center justify-between">
-          <div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Workspaces</div>
-            <div className="text-2xl font-bold text-emerald-600 mt-1">
-              {tenants.filter((t) => t.status === 'active').length}
-            </div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
-            <CheckCircle2 size={20} />
-          </div>
-        </div>
-
-        <div className="card p-4 flex items-center justify-between">
-          <div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total User Seats</div>
-            <div className="text-2xl font-bold text-indigo-600 mt-1">
-              {tenants.reduce((acc, t) => acc + (t.maxUsers || 0), 0)}
-            </div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold">
-            <Users size={20} />
-          </div>
-        </div>
-
-        <div className="card p-4 flex items-center justify-between">
-          <div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Suspended</div>
-            <div className="text-2xl font-bold text-rose-600 mt-1">
-              {tenants.filter((t) => t.status === 'suspended').length}
-            </div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center font-bold">
-            <AlertTriangle size={20} />
-          </div>
-        </div>
-      </div>
-
-      {/* Filter Bar */}
-      <div className="card p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative flex-1 w-full">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            className="input pl-10 w-full text-xs"
-            placeholder="Search by company name, org code (e.g. VERTEX, JNC), or email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <select
-            className="input text-xs w-full sm:w-40"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">All Statuses</option>
-            <option value="active">Active</option>
-            <option value="suspended">Suspended</option>
-          </select>
-
-          <button
-            onClick={fetchTenants}
-            className="btn btn-secondary p-2.5 shrink-0"
-            title="Refresh list"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-        </div>
-      </div>
-
-      {/* Company List Table */}
-      <div className="card overflow-hidden p-0">
+        <div className="space-y-4">
+          {/* Company List Table */}
+          <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-[#1E2230] border-b border-slate-200 dark:border-[#2A3042] text-slate-600 dark:text-slate-300 font-semibold uppercase tracking-wider">
