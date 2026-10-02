@@ -87,14 +87,18 @@ export default function PlatformCompaniesPage() {
   const [resettingPassword, setResettingPassword] = useState(false);
   const [resetSuccessResult, setResetSuccessResult] = useState<any | null>(null);
   const [copiedReset, setCopiedReset] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchTenants = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const { data } = await platformApi.listTenants();
       setTenants(data || []);
     } catch (err: any) {
-      showAlert('Error loading companies', err?.response?.data?.message || 'Failed to fetch customer companies', 'error');
+      const msg = err?.response?.data?.message || 'Unable to connect to server. Please check your connection or refresh the page.';
+      setLoadError(msg);
+      showAlert('Error loading companies', msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -445,6 +449,19 @@ export default function PlatformCompaniesPage() {
                   <td colSpan={6} className="py-12 text-center text-slate-400">
                     <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-crm-blue" />
                     Loading companies...
+                  </td>
+                </tr>
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center">
+                    <p className="text-rose-500 font-medium text-xs mb-3">{loadError}</p>
+                    <button
+                      onClick={fetchTenants}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-crm-blue text-white rounded-lg hover:bg-crm-blue/90"
+                    >
+                      <RefreshCw size={13} />
+                      Retry
+                    </button>
                   </td>
                 </tr>
               ) : filteredTenants.length === 0 ? (
