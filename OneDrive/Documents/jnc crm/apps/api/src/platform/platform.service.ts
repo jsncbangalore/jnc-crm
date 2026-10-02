@@ -220,7 +220,10 @@ export class PlatformService {
    * Update Tenant configuration or status (suspend / activate)
    */
   async updateTenant(id: string, dto: UpdateTenantDto) {
-    const tenant = await this.prisma.tenant.findUnique({ where: { id } });
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id },
+      include: { users: true },
+    });
     if (!tenant) throw new NotFoundException('Company tenant not found');
 
     const updated = await this.prisma.tenant.update({
@@ -229,6 +232,23 @@ export class PlatformService {
         ...dto,
       },
     });
+
+    // If tenant email or phone was updated, synchronize with primary Super Admin user
+    if (dto.email || dto.phone) {
+      const adminUser =
+        tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'super_admin' || u.role === 'admin') ||
+        tenant.users[0];
+
+      if (adminUser) {
+        await this.prisma.user.update({
+          where: { id: adminUser.id },
+          data: {
+            ...(dto.email ? { email: dto.email.trim() } : {}),
+            ...(dto.phone ? { phone: dto.phone.trim() } : {}),
+          },
+        });
+      }
+    }
 
     return updated;
   }
@@ -326,7 +346,7 @@ export class PlatformService {
    */
   async resetTenantAdminPassword(
     tenantId: string,
-    dto?: { newPassword?: string; sendEmail?: boolean; appUrl?: string },
+    dto?: { newPassword?: string; adminEmail?: string; sendEmail?: boolean; appUrl?: string },
   ) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -349,6 +369,9 @@ export class PlatformService {
       throw new BadRequestException('No active user accounts found in this company workspace to reset.');
     }
 
+    // Determine target email: dto.adminEmail > tenant.email > adminUser.email
+    const targetEmail = dto?.adminEmail?.trim() || tenant.email || adminUser.email;
+
     // Generate strong password if not supplied
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
     let generatedPass = '';
@@ -359,15 +382,26 @@ export class PlatformService {
 
     const passwordHash = await bcrypt.hash(passwordToSet, 10);
 
-    // Update password in database and unlock account
+    // Update password, email, and unlock account in database
     await this.prisma.user.update({
       where: { id: adminUser.id },
       data: {
+        email: targetEmail,
         passwordHash,
         mustResetPassword: true,
         isActive: true,
       },
     });
+
+    // Also synchronize tenant official email if changed
+    if (targetEmail && targetEmail !== tenant.email) {
+      await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: { email: targetEmail },
+      });
+    }
+
+    adminUser.email = targetEmail;
 
     let emailDispatched = false;
     let emailStatusMessage = 'Email not requested';

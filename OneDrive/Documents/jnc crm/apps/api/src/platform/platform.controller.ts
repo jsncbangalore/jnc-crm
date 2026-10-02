@@ -62,7 +62,7 @@ export class PlatformController {
   @Post(':id/reset-admin-password')
   async resetTenantAdminPassword(
     @Param('id') id: string,
-    @Body() dto: { newPassword?: string; sendEmail?: boolean; appUrl?: string },
+    @Body() dto: { newPassword?: string; adminEmail?: string; sendEmail?: boolean; appUrl?: string },
   ) {
     return this.platformService.resetTenantAdminPassword(id, dto);
   }

@@ -72,6 +72,7 @@ export default function PlatformCompaniesPage() {
     email: string;
     role?: string;
   } | null>(null);
+  const [resetAdminEmail, setResetAdminEmail] = useState('');
   const [loadingResetAdmin, setLoadingResetAdmin] = useState(false);
   const [resetCustomPassword, setResetCustomPassword] = useState('');
   const [resetSendEmail, setResetSendEmail] = useState(true);
@@ -212,17 +213,20 @@ export default function PlatformCompaniesPage() {
     setResetCustomPassword('');
     setResetSendEmail(true);
     setLoadingResetAdmin(true);
+    setResetAdminEmail(tenant.email || '');
 
     try {
       const { data } = await platformApi.getTenant(tenant.id);
       const admin =
         data.users?.find((u: any) => u.role === 'tenant_admin' || u.role === 'super_admin' || u.role === 'admin') ||
         data.users?.[0];
+      const targetEmail = tenant.email || admin?.email || '';
+      setResetAdminEmail(targetEmail);
       if (admin) {
         setResetAdminDetail({
           employeeCode: admin.employeeCode,
           name: admin.name,
-          email: admin.email,
+          email: targetEmail,
           role: admin.role,
         });
       } else {
@@ -230,7 +234,7 @@ export default function PlatformCompaniesPage() {
         setResetAdminDetail({
           employeeCode: fallbackCode,
           name: `${tenant.name} Super Admin`,
-          email: tenant.email || 'admin@client.com',
+          email: targetEmail || 'admin@client.com',
           role: 'tenant_admin',
         });
       }
@@ -242,6 +246,7 @@ export default function PlatformCompaniesPage() {
         email: tenant.email || 'admin@client.com',
         role: 'tenant_admin',
       });
+      setResetAdminEmail(tenant.email || '');
     } finally {
       setLoadingResetAdmin(false);
     }
@@ -264,6 +269,7 @@ export default function PlatformCompaniesPage() {
     try {
       const { data } = await platformApi.resetAdminPassword(resetModalTenant.id, {
         newPassword: resetCustomPassword.trim() || undefined,
+        adminEmail: resetAdminEmail.trim() || undefined,
         sendEmail: resetSendEmail,
         appUrl: window.location.origin + '/login',
       });
@@ -1198,19 +1204,34 @@ export default function PlatformCompaniesPage() {
               ) : (
                 /* Form View */
                 <form onSubmit={handleExecuteResetPassword} className="p-5 space-y-4">
-                  {/* Super Admin Info Card */}
-                  <div className="p-3.5 bg-slate-50 dark:bg-[#1E2230] rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-1.5 text-xs">
+                  {/* Super Admin Info Card & Editable Email */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-[#1E2230] rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-3 text-xs">
                     <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
                       <span>Target Super Admin Account:</span>
                       <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-bold">
                         {loadingResetAdmin ? 'Loading...' : resetAdminDetail?.employeeCode || 'Super Admin'}
                       </span>
                     </div>
-                    <div className="text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-                      <Mail size={13} className="text-slate-400" />
-                      <span>{loadingResetAdmin ? 'Fetching email...' : resetAdminDetail?.email || 'No email registered'}</span>
+
+                    <div>
+                      <label className="label text-xs mb-1 text-slate-700 dark:text-slate-300 font-semibold flex items-center gap-1.5">
+                        <Mail size={13} className="text-slate-400" />
+                        <span>Super Admin Destination Email (Login & Email Dispatch)</span>
+                      </label>
+                      <input
+                        type="email"
+                        className="input text-xs font-mono"
+                        placeholder="e.g. admin@company.com"
+                        value={resetAdminEmail}
+                        onChange={(e) => setResetAdminEmail(e.target.value)}
+                        required
+                      />
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        Updates the login email in the database and delivers the reset credentials here.
+                      </p>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-1">
+
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-0.5 border-t border-slate-200/60 dark:border-slate-800">
                       Resetting this password will only affect this company's Super Admin account. Other employees and organizations remain unaffected.
                     </p>
                   </div>
@@ -1251,7 +1272,7 @@ export default function PlatformCompaniesPage() {
                         Send Official Credentials Email
                       </span>
                       <span className="text-[11px] text-slate-500 block mt-0.5">
-                        Dispatches an email containing the Company Code, User ID ({resetAdminDetail?.employeeCode || 'Super Admin'}), New Password, and Direct Login URL to <strong>{resetAdminDetail?.email || 'Admin Email'}</strong>.
+                        Dispatches an email containing the Company Code, User ID ({resetAdminDetail?.employeeCode || 'Super Admin'}), New Password, and Direct Login URL to <strong>{resetAdminEmail || 'Admin Email'}</strong>.
                       </span>
                     </label>
                   </div>
