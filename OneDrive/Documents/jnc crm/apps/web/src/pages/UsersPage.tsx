@@ -10,6 +10,7 @@ import { User, Role } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import TeamsTab from './TeamsTab';
+import { ROLE_RANKS, ROLE_LABELS, getAllowedAssignableRoles, isPlatformOwner } from '../utils/roles';
 
 const safeFormatDate = (dateVal: any, formatStr = 'dd MMM yyyy, HH:mm') => {
   if (!dateVal) return null;
@@ -24,9 +25,11 @@ const safeFormatDate = (dateVal: any, formatStr = 'dd MMM yyyy, HH:mm') => {
 
 export default function UsersPage() {
   const { user: currentUser, updateUser } = useAuth();
-  const isSuperAdmin = currentUser?.role === 'super_admin';
+  const isPlatform = isPlatformOwner(currentUser);
+  const isTenantAdmin = currentUser?.role === 'tenant_admin';
   const isAdmin = currentUser?.role === 'admin';
-  const canManageUsers = isSuperAdmin || isAdmin;
+  const canManageUsers = isPlatform || isTenantAdmin || isAdmin;
+  const assignableRoles = getAllowedAssignableRoles(currentUser?.role);
 
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,9 +46,9 @@ export default function UsersPage() {
     name: '',
     email: '',
     phone: '',
-    role: (isSuperAdmin ? 'employee' : 'employee') as 'admin' | 'sub_admin' | 'employee',
+    role: (assignableRoles[0] || 'employee') as Role,
     teamId: '',
-    warehouseId: 'BLR-MAIN',
+    warehouseId: '',
   });
 
   // Credential Fallback Display Modal State
@@ -298,23 +301,23 @@ export default function UsersPage() {
     });
   };
 
-  // Handle Delete User (Super Admin protected)
+  // Handle Delete User (Role Hierarchy protected)
   const handleDeleteUser = (targetUser: User) => {
-    if (targetUser.role === 'super_admin') {
-      setAlertDialog({
-        isOpen: true,
-        title: 'Action Blocked',
-        message: 'Security Policy: Super Administrator accounts cannot be deleted.',
-        variant: 'error',
-      });
-      return;
-    }
-
     if (targetUser.id === currentUser?.id) {
       setAlertDialog({
         isOpen: true,
         title: 'Action Blocked',
         message: 'You cannot delete your own account.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    if (!isPlatform && (ROLE_RANKS[currentUser?.role || ''] || 0) <= (ROLE_RANKS[targetUser.role] || 0)) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Action Blocked',
+        message: 'Security Policy: You can only delete users whose role rank is strictly below your own.',
         variant: 'error',
       });
       return;
@@ -377,7 +380,7 @@ export default function UsersPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {activeTab === 'users' && isSuperAdmin && (
+          {activeTab === 'users' && (isPlatform || isTenantAdmin) && (
             <button
               onClick={handleForceResetAll}
               disabled={actionLoadingId === 'all'}
@@ -448,9 +451,9 @@ export default function UsersPage() {
                 onChange={(e) => setRoleFilter(e.target.value)}
               >
                 <option value="">All Roles</option>
-                {isSuperAdmin && <option value="admin">Admin</option>}
-                <option value="sub_admin">Sub-Admin</option>
-                <option value="employee">Sales Employee</option>
+                {Object.entries(ROLE_LABELS).map(([rKey, rLabel]) => (
+                  <option key={rKey} value={rKey}>{rLabel}</option>
+                ))}
               </select>
 
               <select
@@ -487,10 +490,22 @@ export default function UsersPage() {
               <tbody>
                 {users.map((u, i) => {
                   const isCurrentUser = u.id === currentUser?.id;
+                  const myRank = ROLE_RANKS[currentUser?.role || ''] || 0;
+                  const targetRank = ROLE_RANKS[u.role] || 0;
+                  const isStrictlyHigher = isPlatform || myRank > targetRank;
+                  const canActOnUser = isStrictlyHigher;
+                  const canEditUser = isCurrentUser || isStrictlyHigher;
+                  const canDeleteUser = !isCurrentUser && isStrictlyHigher;
+
                   const roleBadgeColors: Record<string, string> = {
-                    super_admin: 'bg-red-500/10 dark:bg-crm-coral/15 text-red-600 dark:text-crm-coral border-red-500/20 dark:border-crm-coral/30',
+                    platform_super_admin: 'bg-purple-500/10 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/20 dark:border-purple-500/30',
+                    tenant_admin: 'bg-red-500/10 dark:bg-crm-coral/15 text-red-600 dark:text-crm-coral border-red-500/20 dark:border-crm-coral/30',
                     admin: 'bg-crm-blue/10 dark:bg-crm-blue/15 text-crm-blue dark:text-crm-blue border-crm-blue/20 dark:border-crm-blue/30',
-                    sub_admin: 'bg-purple-500/10 dark:bg-crm-violet/15 text-purple-600 dark:text-crm-violet-light border-purple-500/20 dark:border-crm-violet/30',
+                    sub_admin: 'bg-indigo-500/10 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/20 dark:border-indigo-500/30',
+                    store_manager: 'bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20 dark:border-amber-500/30',
+                    project_manager: 'bg-cyan-500/10 dark:bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border-cyan-500/20 dark:border-cyan-500/30',
+                    developer_lead: 'bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/20 dark:border-blue-500/30',
+                    developer: 'bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/20 dark:border-sky-500/30',
                     employee: 'bg-teal-500/10 dark:bg-crm-teal/15 text-teal-600 dark:text-crm-teal border-teal-500/20 dark:border-crm-teal/30',
                   };
 
@@ -536,19 +551,7 @@ export default function UsersPage() {
                           }`}
                         >
                           <Shield size={11} />
-                          {u.role === 'super_admin'
-                            ? 'Super Admin'
-                            : u.role === 'admin'
-                            ? 'Admin'
-                            : u.role === 'sub_admin'
-                            ? 'Sub-Admin'
-                            : u.role === 'project_manager'
-                            ? 'Project Manager'
-                            : u.role === 'developer_lead'
-                            ? 'Developer Lead'
-                            : u.role === 'developer'
-                            ? 'Developer'
-                            : 'Sales Rep'}
+                          {ROLE_LABELS[u.role] || u.role}
                         </span>
                       </td>
 
@@ -607,8 +610,8 @@ export default function UsersPage() {
                           {/* Reset Credentials Action */}
                           <button
                             onClick={() => handleResetCredentials(u)}
-                            disabled={actionLoadingId === u.id || (!isSuperAdmin && u.role === 'super_admin')}
-                            className="p-1.5 rounded hover:bg-amber-500/10 dark:hover:bg-crm-amber/20 text-slate-400 hover:text-amber-600 dark:hover:text-crm-amber transition-colors"
+                            disabled={actionLoadingId === u.id || !canActOnUser}
+                            className="p-1.5 rounded hover:bg-amber-500/10 dark:hover:bg-crm-amber/20 text-slate-400 hover:text-amber-600 dark:hover:text-crm-amber transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             title="Regenerate & Email Temporary Password"
                           >
                             <KeyRound size={14} className={actionLoadingId === u.id ? 'animate-spin' : ''} />
@@ -617,8 +620,8 @@ export default function UsersPage() {
                           {/* Edit User Action */}
                           <button
                             onClick={() => setEditingUser(u)}
-                            disabled={!isSuperAdmin && (u.role === 'super_admin' || (u.role === 'admin' && u.id !== currentUser?.id))}
-                            className="p-1.5 rounded hover:bg-crm-blue/10 dark:hover:bg-crm-blue/20 text-slate-400 hover:text-crm-blue transition-colors"
+                            disabled={!canEditUser}
+                            className="p-1.5 rounded hover:bg-crm-blue/10 dark:hover:bg-crm-blue/20 text-slate-400 hover:text-crm-blue transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             title="Edit User Details & Role"
                           >
                             <Edit3 size={14} />
@@ -628,8 +631,8 @@ export default function UsersPage() {
                           {!isCurrentUser && (
                             <button
                               onClick={() => handleToggleActive(u)}
-                              disabled={actionLoadingId === u.id || (!isSuperAdmin && (u.role === 'super_admin' || u.role === 'admin'))}
-                              className={`p-1.5 rounded transition-colors ${
+                              disabled={actionLoadingId === u.id || !canActOnUser}
+                              className={`p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                                 u.isActive
                                   ? 'hover:bg-amber-500/10 dark:hover:bg-amber-500/20 text-slate-400 hover:text-amber-600 dark:hover:text-crm-amber'
                                   : 'hover:bg-green-500/10 dark:hover:bg-green-500/20 text-slate-400 hover:text-green-600 dark:hover:text-green-400'
@@ -640,12 +643,12 @@ export default function UsersPage() {
                             </button>
                           )}
 
-                          {/* Delete User Action (Never allowed for Super Admin or Own Account) */}
-                          {u.role !== 'super_admin' && !isCurrentUser && (
+                          {/* Delete User Action */}
+                          {canDeleteUser && (
                             <button
                               onClick={() => handleDeleteUser(u)}
-                              disabled={actionLoadingId === u.id || (!isSuperAdmin && u.role === 'admin')}
-                              className="p-1.5 rounded hover:bg-red-500/10 dark:hover:bg-red-500/20 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                              disabled={actionLoadingId === u.id}
+                              className="p-1.5 rounded hover:bg-red-500/10 dark:hover:bg-red-500/20 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               title="Delete User Account"
                             >
                               <Trash2 size={14} />
@@ -729,20 +732,16 @@ export default function UsersPage() {
                     onChange={(e) =>
                       setCreateForm({
                         ...createForm,
-                        role: e.target.value as 'admin' | 'sub_admin' | 'employee',
+                        role: e.target.value as Role,
                       })
                     }
                     required
                   >
-                    {/* Super Admin can create Admin, Sub-Admin, Employee, Developer */}
-                    {isSuperAdmin && (
-                      <option value="admin">Administrator (Full Sales & Inventory Control)</option>
-                    )}
-                    <option value="sub_admin">Sub-Admin (Warehouse / Stock Manager)</option>
-                    <option value="employee">Sales Employee (Lead & Order Processing)</option>
-                    <option value="project_manager">Project Manager (Creates Projects & Views All Reports)</option>
-                    <option value="developer_lead">Developer Lead (Assigns Developers & Views All Reports)</option>
-                    <option value="developer">Developer (Assigned Projects & Own Reports Only)</option>
+                    {assignableRoles.map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r] || r}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -920,24 +919,25 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                {/* Role selection restricted by creator */}
+                {/* Role selection restricted by hierarchy */}
                 <div>
                   <label className="label">Role</label>
                   <select
                     className="input text-xs font-medium"
                     value={editingUser.role}
                     onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as Role })}
-                    disabled={editingUser.role === 'super_admin'}
+                    disabled={editingUser.id === currentUser?.id || (!isPlatform && (ROLE_RANKS[currentUser?.role || ''] || 0) <= (ROLE_RANKS[editingUser.role] || 0))}
                   >
-                    {editingUser.role === 'super_admin' && (
-                      <option value="super_admin">Super Administrator (System Owner)</option>
+                    {!assignableRoles.includes(editingUser.role) && (
+                      <option value={editingUser.role}>
+                        {ROLE_LABELS[editingUser.role] || editingUser.role}
+                      </option>
                     )}
-                    {isSuperAdmin && <option value="admin">Administrator</option>}
-                    <option value="sub_admin">Sub-Admin (Warehouse / Stock)</option>
-                    <option value="employee">Sales Employee</option>
-                    <option value="project_manager">Project Manager (Creates Projects & Views All Reports)</option>
-                    <option value="developer_lead">Developer Lead (Assigns Developers & Views All Reports)</option>
-                    <option value="developer">Developer (Assigned Projects & Own Reports Only)</option>
+                    {assignableRoles.map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r] || r}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

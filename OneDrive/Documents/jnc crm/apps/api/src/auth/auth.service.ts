@@ -10,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RefreshTokenDto } from './dto/login.dto';
+import { getRoleRedirectPath } from './roles';
 
 @Injectable()
 export class AuthService {
@@ -294,33 +295,7 @@ export class AuthService {
   }
 
   getRedirectPath(user: any): string {
-    if (!user) return '/login';
-    switch (user.role) {
-      case 'platform_super_admin':
-        return '/platform/companies';
-      case 'super_admin':
-        return (!user.tenantId || user.tenantId === 'default-tenant-id') ? '/platform/companies' : '/';
-      case 'tenant_admin':
-      case 'admin':
-      case 'sub_admin':
-        return '/';
-      case 'employee':
-        return '/leads';
-      case 'developer':
-      case 'developer_lead':
-      case 'project_manager':
-        return '/daily-activities';
-      case 'store_manager':
-        return '/inventory';
-      case 'finance':
-      case 'accountant':
-        return '/invoices';
-      case 'client':
-      case 'customer':
-        return '/orders';
-      default:
-        return '/';
-    }
+    return getRoleRedirectPath(user);
   }
 
   async changePassword(userId: string, currentPass: string, newPass: string) {
@@ -339,7 +314,11 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(newPass, 10);
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash, mustResetPassword: false },
+      data: {
+        passwordHash,
+        mustResetPassword: false,
+        tokenVersion: { increment: 1 },
+      },
     });
 
     return { message: 'Password updated successfully' };
@@ -351,8 +330,8 @@ export class AuthService {
         secret: process.env.JWT_REFRESH_SECRET,
       });
 
-      const user = await this.prisma.user.findUnique({
-        where: { id: payload.sub },
+      const user = await this.prisma.user.findFirst({
+        where: { id: payload.sub, deletedAt: null },
         select: {
           id: true,
           tenantId: true,
@@ -364,12 +343,22 @@ export class AuthService {
           teamRef: { select: { id: true, name: true, allowedPages: true } },
           warehouseId: true,
           isActive: true,
-          tenant: { select: { id: true, code: true, name: true, slug: true, status: true, logoUrl: true, currency: true } },
+          mustResetPassword: true,
+          tokenVersion: true,
+          tenant: { select: { id: true, code: true, name: true, slug: true, status: true, logoUrl: true, currency: true, deletedAt: true } },
         },
       });
 
       if (!user || !user.isActive) {
-        throw new UnauthorizedException('Invalid refresh token');
+        throw new UnauthorizedException('Invalid or deactivated account');
+      }
+
+      if (payload.tokenVersion !== undefined && payload.tokenVersion !== user.tokenVersion) {
+        throw new UnauthorizedException('Refresh token revoked');
+      }
+
+      if (user.tenant && (user.tenant.status !== 'active' || user.tenant.deletedAt !== null) && user.role !== 'platform_super_admin') {
+        throw new UnauthorizedException('Tenant is suspended or deactivated');
       }
 
       return {
@@ -392,6 +381,7 @@ export class AuthService {
       role: user.role,
       employee_code: user.employeeCode,
       employeeCode: user.employeeCode,
+      tokenVersion: user.tokenVersion ?? 0,
     };
 
     const accessToken = this.jwtService.sign(payload, {

@@ -23,7 +23,9 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
-import { UsersService, CreateUserDto, UpdateUserDto } from './users.service';
+import { UsersService } from './users.service';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('users')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -32,7 +34,7 @@ export class UsersController {
   constructor(private usersService: UsersService) {}
 
   @Get()
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async findAll(
     @CurrentUser() user: ScopedUser,
     @Query('search') search?: string,
@@ -43,19 +45,19 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async findOne(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
     return this.usersService.findOne(id, user);
   }
 
   @Post()
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async createUser(@CurrentUser() user: ScopedUser, @Body() dto: CreateUserDto) {
     return this.usersService.createUser(dto, user);
   }
 
   @Patch(':id')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async updateUser(
     @CurrentUser() user: ScopedUser,
     @Param('id') id: string,
@@ -65,13 +67,13 @@ export class UsersController {
   }
 
   @Post(':id/reset-credentials')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async resetCredentials(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
     return this.usersService.resetCredentials(id, user);
   }
 
   @Patch(':id/toggle-active')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async toggleActive(
     @CurrentUser() user: ScopedUser,
     @Param('id') id: string,
@@ -80,7 +82,7 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @Roles('platform_super_admin', 'super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async deleteUser(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
     return this.usersService.deleteUser(id, user);
   }

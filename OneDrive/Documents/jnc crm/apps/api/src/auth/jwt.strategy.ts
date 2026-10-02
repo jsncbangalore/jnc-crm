@@ -21,8 +21,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
+    const user = await this.prisma.user.findFirst({
+      where: { id: payload.sub, deletedAt: null },
       select: {
         id: true,
         tenantId: true,
@@ -35,6 +35,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         warehouseId: true,
         isActive: true,
         mustResetPassword: true,
+        tokenVersion: true,
         tenant: {
           select: {
             id: true,
@@ -44,6 +45,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             status: true,
             logoUrl: true,
             currency: true,
+            deletedAt: true,
           },
         },
       },
@@ -53,7 +55,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User account is invalid or deactivated');
     }
 
-    if (user.tenant && user.tenant.status !== 'active' && user.role !== 'platform_super_admin') {
+    if (payload.tokenVersion !== undefined && payload.tokenVersion !== user.tokenVersion) {
+      throw new UnauthorizedException('Session expired due to password or credential reset. Please log in again.');
+    }
+
+    if (user.tenant && (user.tenant.status !== 'active' || user.tenant.deletedAt !== null) && user.role !== 'platform_super_admin') {
       throw new UnauthorizedException('Your company account is suspended or expired. Please contact support.');
     }
 

@@ -32,26 +32,37 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('User authentication context required');
     }
 
-    // Platform super_admin and platform_super_admin bypass all role restrictions and team page restrictions
-    if (user.role === 'super_admin' || user.role === 'platform_super_admin') {
-      return true;
-    }
-
     if (user && user.mustResetPassword) {
       const path = req.path || req.url || '';
-      const method = (req.method || 'GET').toUpperCase();
-      const isAuthRoute =
-        path.includes('/auth/change-password') ||
-        path.includes('/auth/me') ||
-        path.includes('/auth/refresh') ||
-        path.includes('/auth/profile');
-      const isReadOnly = ['GET', 'HEAD', 'OPTIONS'].includes(method);
+      const isAuthRoute = path.includes('/auth/') || path.startsWith('/api/v1/auth/');
 
-      if (!isAuthRoute && !isReadOnly) {
+      if (!isAuthRoute) {
         throw new ForbiddenException(
-          'Password reset required: You must change your temporary password before modifying CRM resources.',
+          'Password reset required: You must change your temporary password before accessing CRM resources.',
         );
       }
+    }
+
+    // Platform super_admin:
+    // When tenantId is null (not impersonating), they are strictly restricted to platform operations.
+    // They are forbidden from accessing tenant operational endpoints (leads, orders, invoices, inventory, etc.).
+    if (user.role === 'platform_super_admin' && !user.tenantId) {
+      if (requiredRoles && requiredRoles.includes('platform_super_admin')) {
+        return true;
+      }
+      if (requiredPage || (requiredRoles && requiredRoles.length > 0)) {
+        throw new ForbiddenException(
+          'Platform administrators cannot access company workspace resources directly. Impersonate a client company to view their data.',
+        );
+      }
+      const path = req.path || req.url || '';
+      if (path.includes('/platform/') || path.includes('/auth/')) {
+        return true;
+      }
+
+      throw new ForbiddenException(
+        'Platform administrators cannot access company workspace resources directly. Impersonate a client company to view their data.',
+      );
     }
 
     // Check Role Hierarchy
@@ -61,9 +72,7 @@ export class RolesGuard implements CanActivate {
       if (!isAuthorized) {
         // tenant_admin (Client Super Admin) has full control over all tenant operational features
         if (user.role === 'tenant_admin') {
-          const isPlatformOnly = requiredRoles.every(
-            (r) => r === 'super_admin' || r === 'platform_super_admin',
-          );
+          const isPlatformOnly = requiredRoles.every((r) => r === 'platform_super_admin');
           if (!isPlatformOnly) {
             isAuthorized = true;
           }

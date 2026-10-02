@@ -6,6 +6,7 @@
  * ----------------------------------------------------- */
 
 import { Injectable, ForbiddenException } from '@nestjs/common';
+import { requireTenantId } from '../common/tenant.util';
 
 export interface ScopedUser {
   id: string;
@@ -27,14 +28,16 @@ export interface ScopedUser {
 export class ScopingService {
   /**
    * Enforces strict Tenant Isolation.
-   * Platform Super Admin can query across all if desired, but default is scoped.
+   * Platform administrators must impersonate a tenant to access tenant-scoped records.
    */
   getTenantScope(user: ScopedUser) {
     if (user.role === 'platform_super_admin' && !user.tenantId) {
-      return {}; // Global platform oversight
+      throw new ForbiddenException(
+        'Platform administrators cannot access company workspace resources directly. Impersonate a client company to view their data.',
+      );
     }
     return {
-      tenantId: user.tenantId || 'default-tenant-id',
+      tenantId: requireTenantId(user),
     };
   }
 
@@ -44,7 +47,7 @@ export class ScopingService {
   getLeadScope(user: ScopedUser) {
     const tenantFilter = this.getTenantScope(user);
 
-    if (user.role === 'platform_super_admin' || user.role === 'super_admin' || user.role === 'tenant_admin' || user.role === 'admin') {
+    if (user.role === 'tenant_admin' || user.role === 'admin') {
       return { ...tenantFilter };
     }
 
@@ -78,7 +81,7 @@ export class ScopingService {
   getOrderScope(user: ScopedUser) {
     const tenantFilter = this.getTenantScope(user);
 
-    if (user.role === 'platform_super_admin' || user.role === 'super_admin' || user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'sub_admin') {
+    if (user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'sub_admin') {
       return { ...tenantFilter };
     }
 
@@ -102,7 +105,7 @@ export class ScopingService {
   getInventoryScope(user: ScopedUser) {
     const tenantFilter = this.getTenantScope(user);
 
-    if (user.role === 'platform_super_admin' || user.role === 'super_admin' || user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'store_manager') {
+    if (user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'store_manager') {
       return { ...tenantFilter };
     }
 
