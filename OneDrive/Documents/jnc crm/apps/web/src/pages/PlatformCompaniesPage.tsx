@@ -820,7 +820,8 @@ export default function PlatformCompaniesPage() {
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   onClick={() => {
-                    const text = `Company: ${createdResult.tenant.name}\nCompany Code: ${createdResult.tenant.code}\nLogin URL: http://localhost:5173/login\nAdmin Username: ${createdResult.adminUser.employeeCode}\nAdmin Email: ${createdResult.adminUser.email}\nTemporary Password: ${createdResult.adminUser.tempPassword}`;
+                    const loginUrl = typeof window !== 'undefined' ? `${window.location.origin}/login` : '/login';
+                    const text = `Company: ${createdResult.tenant.name}\nCompany Code: ${createdResult.tenant.code}\nLogin URL: ${loginUrl}\nAdmin Username: ${createdResult.adminUser.employeeCode}\nAdmin Email: ${createdResult.adminUser.email}\nTemporary Password: ${createdResult.adminUser.tempPassword}`;
                     navigator.clipboard.writeText(text);
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2500);
