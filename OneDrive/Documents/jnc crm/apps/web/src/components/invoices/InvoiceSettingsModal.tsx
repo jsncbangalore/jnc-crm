@@ -12,8 +12,8 @@ interface InvoiceSettingsModalProps {
 
 export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: InvoiceSettingsModalProps) {
   const [settings, setSettings] = useState<SignatorySettings>({
-    signatoryName: 'Mr. Jayaraj H S',
-    signatoryDesignation: 'Proprietor',
+    signatoryName: '',
+    signatoryDesignation: '',
     signatureImage: null,
     stampImage: null,
   });
@@ -37,8 +37,8 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
       const { data } = await invoicesApi.getSignatorySettings();
       if (data) {
         setSettings({
-          signatoryName: data.signatoryName || 'Mr. Jayaraj H S',
-          signatoryDesignation: data.signatoryDesignation || 'Proprietor',
+          signatoryName: data.signatoryName || '',
+          signatoryDesignation: data.signatoryDesignation || '',
           signatureImage: data.signatureImage || null,
           stampImage: data.stampImage || null,
         });
@@ -139,7 +139,7 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
                 <label className="label">Signatory Name *</label>
                 <input
                   className="input text-xs"
-                  placeholder="e.g. Santhosh Kumar / Rajesh Kumar"
+                  placeholder="Enter signatory name"
                   value={settings.signatoryName}
                   onChange={(e) => setSettings({ ...settings, signatoryName: e.target.value })}
                 />
@@ -149,7 +149,7 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
                 <label className="label">Designation / Role *</label>
                 <input
                   className="input text-xs"
-                  placeholder="e.g. Authorized Signatory / Managing Director"
+                  placeholder="Enter designation / role"
                   value={settings.signatoryDesignation}
                   onChange={(e) => setSettings({ ...settings, signatoryDesignation: e.target.value })}
                 />

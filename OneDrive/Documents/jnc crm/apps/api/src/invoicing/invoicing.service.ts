@@ -850,8 +850,8 @@ export class InvoicingService {
 
     if (!setting) {
       return {
-        signatoryName: 'Mr. Jayaraj H S',
-        signatoryDesignation: 'Proprietor',
+        signatoryName: '',
+        signatoryDesignation: '',
         signatureImage: null,
         stampImage: null,
       };
@@ -861,8 +861,8 @@ export class InvoicingService {
       return JSON.parse(setting.value);
     } catch {
       return {
-        signatoryName: 'Mr. Jayaraj H S',
-        signatoryDesignation: 'Proprietor',
+        signatoryName: '',
+        signatoryDesignation: '',
         signatureImage: null,
         stampImage: null,
       };

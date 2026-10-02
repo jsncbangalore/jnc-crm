@@ -263,7 +263,7 @@ export default function BrandingSettingsPage() {
                 <input
                   type="text"
                   className="input text-xs pl-8"
-                  placeholder="e.g. JS Network Communication"
+                  placeholder="Enter company display name"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   required
@@ -281,7 +281,7 @@ export default function BrandingSettingsPage() {
                 <input
                   type="text"
                   className="input text-xs pl-8 font-mono"
-                  placeholder="e.g. +91 9663421455 / +91 9964219891"
+                  placeholder="Enter company phone number"
                   value={companyPhone}
                   onChange={(e) => setCompanyPhone(e.target.value)}
                 />
@@ -391,7 +391,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs"
-                placeholder="e.g. No 18/19, 2nd Floor, Coconut Avenue"
+                placeholder="Enter registered business address"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
               />
@@ -403,7 +403,7 @@ export default function BrandingSettingsPage() {
                 <input
                   type="text"
                   className="input text-xs"
-                  placeholder="e.g. Bengaluru"
+                  placeholder="Enter city"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
                 />
@@ -413,7 +413,7 @@ export default function BrandingSettingsPage() {
                 <input
                   type="text"
                   className="input text-xs"
-                  placeholder="e.g. Karnataka"
+                  placeholder="Enter state"
                   value={state}
                   onChange={(e) => setState(e.target.value)}
                 />
@@ -423,7 +423,7 @@ export default function BrandingSettingsPage() {
                 <input
                   type="text"
                   className="input text-xs font-mono"
-                  placeholder="e.g. 560076"
+                  placeholder="Enter PIN code"
                   value={pincode}
                   onChange={(e) => setPincode(e.target.value)}
                 />
@@ -437,7 +437,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs uppercase font-mono"
-                placeholder="29AZWPJ2622A1ZD"
+                placeholder="Enter 15-digit GSTIN"
                 value={gstin}
                 onChange={(e) => setGstin(e.target.value.toUpperCase())}
               />
@@ -448,7 +448,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs uppercase font-mono"
-                placeholder="AZWPJ2622A"
+                placeholder="Enter 10-digit PAN"
                 value={pan}
                 onChange={(e) => setPan(e.target.value.toUpperCase())}
               />
@@ -459,7 +459,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs uppercase font-mono"
-                placeholder="e.g. JNC, VTX, INV"
+                placeholder="Enter invoice prefix (e.g. INV)"
                 value={invoicePrefix}
                 onChange={(e) => setInvoicePrefix(e.target.value.toUpperCase())}
               />
@@ -472,7 +472,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="email"
                 className="input text-xs"
-                placeholder="billing@yourcompany.com"
+                placeholder="Enter billing email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -483,7 +483,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs"
-                placeholder="https://yourcompany.com"
+                placeholder="Enter website URL"
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
               />
@@ -509,7 +509,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs"
-                placeholder="e.g. Karnataka Bank / HDFC"
+                placeholder="Enter bank name"
                 value={bankName}
                 onChange={(e) => setBankName(e.target.value)}
               />
@@ -520,7 +520,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs font-mono"
-                placeholder="e.g. 9222000100091501"
+                placeholder="Enter account number"
                 value={bankAccountNumber}
                 onChange={(e) => setBankAccountNumber(e.target.value)}
               />
@@ -531,7 +531,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs uppercase font-mono"
-                placeholder="e.g. KARB0000922"
+                placeholder="Enter IFSC code"
                 value={bankIfsc}
                 onChange={(e) => setBankIfsc(e.target.value.toUpperCase())}
               />
@@ -544,7 +544,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs"
-                placeholder="e.g. JP Nagar 7th Phase, Bengaluru"
+                placeholder="Enter branch name"
                 value={bankBranch}
                 onChange={(e) => setBankBranch(e.target.value)}
               />
@@ -555,7 +555,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs font-mono"
-                placeholder="e.g. yourcompany@okaxis"
+                placeholder="Enter UPI ID (optional)"
                 value={bankUpi}
                 onChange={(e) => setBankUpi(e.target.value)}
               />
@@ -581,7 +581,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs"
-                placeholder="e.g. Mr. Jayaraj H S / John Doe"
+                placeholder="Enter signatory full name"
                 value={signatoryName}
                 onChange={(e) => setSignatoryName(e.target.value)}
               />
@@ -592,7 +592,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs"
-                placeholder="e.g. Proprietor / Managing Director"
+                placeholder="Enter designation / title"
                 value={signatoryDesignation}
                 onChange={(e) => setSignatoryDesignation(e.target.value)}
               />
