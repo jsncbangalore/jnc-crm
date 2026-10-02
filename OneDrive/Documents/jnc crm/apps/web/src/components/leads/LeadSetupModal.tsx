@@ -4,7 +4,7 @@ import {
   X, Sliders, Globe, MessageSquare, Link2, Copy, Check, ExternalLink,
   ShieldCheck, Zap, Users, ArrowRight, Bell, Clock, RefreshCw, Send,
   CheckCircle2, Sparkles, Building2, Smartphone, FileCode2, Play,
-  Settings, CheckSquare, Layers, AlertCircle
+  Settings, CheckSquare, Layers, AlertCircle, Flame, Plus
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePopup } from '../../contexts/PopupContext';
@@ -17,6 +17,11 @@ export interface LeadSetupViewProps {
   onNavigateToPipeline?: () => void;
   isModal?: boolean;
   onClose?: () => void;
+  todayCount?: number;
+  pipelineCount?: number;
+  sourceCountsToday?: { indiamart: number; web: number; whatsapp: number; manual: number };
+  onOpenAddLead?: () => void;
+  onOpenShareModal?: () => void;
 }
 
 export function LeadSetupView({
@@ -25,6 +30,11 @@ export function LeadSetupView({
   onNavigateToPipeline,
   isModal = false,
   onClose,
+  todayCount = 0,
+  pipelineCount = 0,
+  sourceCountsToday = { indiamart: 0, web: 0, whatsapp: 0, manual: 0 },
+  onOpenAddLead,
+  onOpenShareModal,
 }: LeadSetupViewProps) {
   const { user } = useAuth();
   const { showAlert } = usePopup();
@@ -158,8 +168,118 @@ export function LeadSetupView({
         </div>
       </div>
 
-        {/* ─── LIVE STATUS BAR ──────────────────────────────────────────────── */}
-        <div className="px-6 py-2.5 bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-teal-50/70 dark:from-blue-950/30 dark:via-indigo-950/20 dark:to-teal-950/30 border-b border-slate-200 dark:border-[#2A3042] flex items-center justify-between gap-3 text-xs shrink-0 flex-wrap">
+      {/* ─── LEADS TODAY & INBOUND CHANNELS METRIC BAR ────────────────────── */}
+      <div className="px-6 py-4 bg-slate-50/90 dark:bg-[#151824] border-b border-slate-200 dark:border-[#2A3042] flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-5 flex-wrap">
+          {/* Animated Counter */}
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-[#2E5EFF]/15 border border-[#2E5EFF]/30 flex items-center justify-center text-[#2E5EFF] shadow-glow-blue">
+              <Flame size={22} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Leads Captured Today</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-slate-950 dark:text-white tabular-nums tracking-tight">
+                  {todayCount}
+                </span>
+                <span className="text-xs text-slate-500 font-mono">({pipelineCount} in pipeline)</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-8 w-[1px] bg-slate-200 dark:bg-[#2A3042] hidden sm:block" />
+
+          {/* Source Breakdown Interactive Channel Switchers */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* IndiaMART */}
+            <button
+              onClick={() => setActiveTab('indiamart')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02] ${
+                activeTab === 'indiamart'
+                  ? 'bg-[#2E5EFF] text-white shadow-glow-blue'
+                  : 'bg-[#2E5EFF]/15 hover:bg-[#2E5EFF]/25 text-[#2E5EFF] border border-[#2E5EFF]/30'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${activeTab === 'indiamart' ? 'bg-white' : 'bg-[#2E5EFF]'}`} />
+              <span>IndiaMART</span>
+              <span className={`px-1.5 py-0.2 rounded-full font-mono text-[11px] ${activeTab === 'indiamart' ? 'bg-white/20' : 'bg-[#2E5EFF]/20'}`}>
+                {sourceCountsToday.indiamart}
+              </span>
+            </button>
+
+            {/* Website */}
+            <button
+              onClick={() => setActiveTab('website')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02] ${
+                activeTab === 'website'
+                  ? 'bg-crm-teal text-white shadow-glow-teal'
+                  : 'bg-crm-teal/15 hover:bg-crm-teal/25 text-crm-teal border border-crm-teal/30'
+              }`}
+            >
+              <Globe size={13} />
+              <span>Website</span>
+              <span className={`px-1.5 py-0.2 rounded-full font-mono text-[11px] ${activeTab === 'website' ? 'bg-white/20' : 'bg-crm-teal/20'}`}>
+                {sourceCountsToday.web}
+              </span>
+            </button>
+
+            {/* WhatsApp */}
+            <button
+              onClick={() => setActiveTab('whatsapp')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02] ${
+                activeTab === 'whatsapp'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] border border-[#25D366]/30'
+              }`}
+            >
+              <MessageSquare size={13} />
+              <span>WhatsApp</span>
+              <span className={`px-1.5 py-0.2 rounded-full font-mono text-[11px] ${activeTab === 'whatsapp' ? 'bg-white/20' : 'bg-[#25D366]/20'}`}>
+                {sourceCountsToday.whatsapp}
+              </span>
+            </button>
+
+            {/* Manual / Routing */}
+            <button
+              onClick={() => setActiveTab('routing')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02] ${
+                activeTab === 'routing'
+                  ? 'bg-crm-violet text-white shadow-glow-violet'
+                  : 'bg-[#9AA0B4]/15 hover:bg-[#9AA0B4]/25 text-[#9AA0B4] border border-[#9AA0B4]/30'
+              }`}
+            >
+              <Users size={13} />
+              <span>Sales Routing</span>
+              <span className={`px-1.5 py-0.2 rounded-full font-mono text-[11px] ${activeTab === 'routing' ? 'bg-white/20' : 'bg-[#9AA0B4]/20'}`}>
+                {sourceCountsToday.manual}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Action Buttons Inside Lead Setup */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {onOpenShareModal && (
+            <button
+              onClick={onOpenShareModal}
+              className="btn bg-crm-teal/15 hover:bg-crm-teal/25 text-crm-teal border border-crm-teal/30 text-xs gap-1.5 font-bold"
+            >
+              <Link2 size={13} /> Web-to-Lead Link
+            </button>
+          )}
+          {onOpenAddLead && (
+            <button
+              onClick={onOpenAddLead}
+              className="btn-primary text-xs gap-1.5 font-bold shadow-glow-blue"
+            >
+              <Plus size={14} /> New Lead
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ─── LIVE STATUS BAR ──────────────────────────────────────────────── */}
+      <div className="px-6 py-2.5 bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-teal-50/70 dark:from-blue-950/30 dark:via-indigo-950/20 dark:to-teal-950/30 border-b border-slate-200 dark:border-[#2A3042] flex items-center justify-between gap-3 text-xs shrink-0 flex-wrap">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-semibold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />

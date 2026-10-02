@@ -434,135 +434,9 @@ export default function LeadsPage() {
 
   return (
     <div className="space-y-5">
-      {/* ─── TOP BAR: Leads Today Counter & Source Split Pills ──────────────── */}
-      <div className="p-5 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] flex items-center justify-between flex-wrap gap-4 shadow-xl">
-        <div className="flex items-center gap-5 flex-wrap">
-          {/* Animated Counter */}
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-[#2E5EFF]/15 border border-[#2E5EFF]/30 flex items-center justify-center text-[#2E5EFF] shadow-glow-blue">
-              <Flame size={24} />
-            </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Leads Captured Today</p>
-              <div className="flex items-baseline gap-2">
-                <motion.span
-                  key={todayLeads.length}
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="text-3xl font-black text-slate-950 dark:text-white tabular-nums tracking-tight"
-                >
-                  {todayLeads.length}
-                </motion.span>
-                <span className="text-xs text-slate-500 font-mono">({leads.length} in pipeline)</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="h-10 w-[1px] bg-[#2A3042] hidden sm:block" />
-
-          {/* Source Breakdown Interactive Pills */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* IndiaMART */}
-            <button
-              onClick={() => {
-                setLeadSetupInitialTab('indiamart');
-                setActiveTab('lead-setup');
-              }}
-              title="Click to view IndiaMART Webhook & Live API sync inside Leads page"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2E5EFF]/15 hover:bg-[#2E5EFF]/25 text-[#2E5EFF] border border-[#2E5EFF]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
-            >
-              <span className="w-2 h-2 rounded-full bg-[#2E5EFF]" />
-              <span>IndiaMART</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-[#2E5EFF]/20 font-mono text-[11px]">
-                {sourceCountsToday.indiamart}
-              </span>
-            </button>
-
-            {/* Website */}
-            <button
-              onClick={() => {
-                setLeadSetupInitialTab('website');
-                setActiveTab('lead-setup');
-              }}
-              title="Click to view Website Inquiry Form & Embed Widget inside Leads page"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-blue-50 dark:bg-[#1E2230] dark:hover:bg-[#262C3E] text-[#60A5FA] border border-[#3B82F6]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
-            >
-              <Globe size={13} className="text-[#60A5FA]" />
-              <span>Website</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-blue-500/20 font-mono text-[11px]">
-                {sourceCountsToday.web}
-              </span>
-            </button>
-
-            {/* WhatsApp */}
-            <button
-              onClick={() => {
-                setLeadSetupInitialTab('whatsapp');
-                setActiveTab('lead-setup');
-              }}
-              title="Click to view Meta WhatsApp Cloud API Webhook inside Leads page"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] border border-[#25D366]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
-            >
-              <MessageSquare size={13} />
-              <span>WhatsApp</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-[#25D366]/20 font-mono text-[11px]">
-                {sourceCountsToday.whatsapp}
-              </span>
-            </button>
-
-            {/* Manual / Routing */}
-            <button
-              onClick={() => {
-                setLeadSetupInitialTab('routing');
-                setActiveTab('lead-setup');
-              }}
-              title="Click to configure Sales Auto-Assignment & SLA Routing"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#9AA0B4]/15 hover:bg-[#9AA0B4]/25 text-[#9AA0B4] border border-[#9AA0B4]/30 text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
-            >
-              <User size={13} />
-              <span>Manual / Import</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-[#9AA0B4]/20 font-mono text-[11px]">
-                {sourceCountsToday.manual}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Web-to-Lead Link */}
-          <button
-            onClick={() => setShowShareModal(true)}
-            className="btn bg-crm-teal/15 hover:bg-crm-teal/25 text-crm-teal border border-crm-teal/30 text-xs gap-1.5 shadow-glow-teal font-bold"
-          >
-            <Link2 size={14} /> Web-to-Lead Link
-          </button>
-
-          {/* Bulk Import (Gated) */}
-          {canImport && (
-            <button
-              onClick={() => {
-                setShowImportModal(true);
-                setImportResult(null);
-              }}
-              className="btn bg-crm-violet hover:bg-crm-violet-hover text-white text-xs gap-1.5 shadow-glow-violet font-bold"
-            >
-              <FileSpreadsheet size={14} /> Import Leads
-            </button>
-          )}
-
-          {/* New Lead */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="btn-primary text-xs gap-1.5 shadow-glow-blue font-bold"
-          >
-            <Plus size={15} /> New Lead
-          </button>
-        </div>
-      </div>
-
-      {/* ─── TAB NAVIGATION: Pipeline Board vs Client Directory vs Lead Setup ──────── */}
+      {/* ─── TAB NAVIGATION & UPPER RIGHT ACTIONS ─────────────────────────── */}
       <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2A3042] pb-1 gap-4 flex-wrap">
+        {/* Left: Primary View Tabs */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setActiveTab('pipeline')}
@@ -601,8 +475,9 @@ export default function LeadsPage() {
           </button>
         </div>
 
-        {activeTab === 'client-directory' && (
-          <div className="flex items-center gap-2">
+        {/* Right Upper Corner: Actions & Setup Icon */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {activeTab === 'client-directory' && (
             <button
               onClick={() => {
                 const csvContent = 'data:text/csv;charset=utf-8,' + [
@@ -632,13 +507,48 @@ export default function LeadsPage() {
                 link.click();
                 document.body.removeChild(link);
               }}
-              className="btn bg-emerald-600 hover:bg-emerald-500 text-white text-xs gap-1.5 shadow-sm"
+              className="btn bg-emerald-600 hover:bg-emerald-500 text-white text-xs gap-1.5 shadow-sm font-bold"
               title="Export all client directory data to CSV"
             >
-              <Download size={13} /> Export Client Data (CSV)
+              <Download size={13} /> Export (CSV)
             </button>
-          </div>
-        )}
+          )}
+
+          {/* Bulk Import (Gated) */}
+          {canImport && (
+            <button
+              onClick={() => {
+                setShowImportModal(true);
+                setImportResult(null);
+              }}
+              className="btn bg-crm-violet hover:bg-crm-violet-hover text-white text-xs gap-1.5 shadow-glow-violet font-bold"
+            >
+              <FileSpreadsheet size={14} /> Import Leads
+            </button>
+          )}
+
+          {/* New Lead */}
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="btn-primary text-xs gap-1.5 shadow-glow-blue font-bold"
+          >
+            <Plus size={14} /> New Lead
+          </button>
+
+          {/* Setup & Flow Quick Controller Icon Button */}
+          <button
+            onClick={() => setActiveTab(activeTab === 'lead-setup' ? 'pipeline' : 'lead-setup')}
+            className={`p-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+              activeTab === 'lead-setup'
+                ? 'bg-crm-teal text-white border-crm-teal shadow-glow-teal'
+                : 'bg-white dark:bg-[#181B26] hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-[#2A3042]'
+            }`}
+            title="Lead Setup, Inbound Webhook Channels & Real-time Flow Controller"
+          >
+            <Sliders size={15} className={activeTab === 'lead-setup' ? 'text-white' : 'text-crm-teal'} />
+            <span className="hidden md:inline font-bold">Setup & Flow</span>
+          </button>
+        </div>
       </div>
 
       {/* ─── CONTROLS: Search, Filter Chips, & View Toggle (Pipeline & Directory) ─── */}
@@ -851,8 +761,13 @@ export default function LeadsPage() {
       {activeTab === 'lead-setup' && (
         <LeadSetupView
           initialTab={leadSetupInitialTab}
+          todayCount={todayLeads.length}
+          pipelineCount={leads.length}
+          sourceCountsToday={sourceCountsToday}
           onLeadCreated={fetchLeads}
           onNavigateToPipeline={() => setActiveTab('pipeline')}
+          onOpenAddLead={() => setShowAddModal(true)}
+          onOpenShareModal={() => setShowShareModal(true)}
         />
       )}
 
