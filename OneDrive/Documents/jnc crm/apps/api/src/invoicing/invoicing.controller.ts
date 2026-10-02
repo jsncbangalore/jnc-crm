@@ -53,22 +53,40 @@ export class InvoicingController {
   }
 
   @Get('company-profile')
-  async getCompanyProfile() {
-    return this.invoicingService.getCompanyProfile();
+  async getCompanyProfile(@CurrentUser() user: ScopedUser) {
+    return this.invoicingService.getCompanyProfile(user);
+  }
+
+  @Post('company-profile')
+  @Roles('super_admin', 'tenant_admin', 'admin')
+  async updateCompanyProfile(
+    @Body() body: any,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.invoicingService.updateCompanyProfile(user, body);
   }
 
   @Get('settings/company-profile')
-  async getSettingsCompanyProfile() {
-    return this.invoicingService.getCompanyProfile();
+  async getSettingsCompanyProfile(@CurrentUser() user: ScopedUser) {
+    return this.invoicingService.getCompanyProfile(user);
+  }
+
+  @Post('settings/company-profile')
+  @Roles('super_admin', 'tenant_admin', 'admin')
+  async updateSettingsCompanyProfile(
+    @Body() body: any,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.invoicingService.updateCompanyProfile(user, body);
   }
 
   @Get('settings/signatory')
-  async getSignatorySettings() {
-    return this.invoicingService.getSignatorySettings();
+  async getSignatorySettings(@CurrentUser() user: ScopedUser) {
+    return this.invoicingService.getSignatorySettings(user);
   }
 
   @Post('settings/signatory')
-  @Roles('super_admin', 'admin')
+  @Roles('super_admin', 'tenant_admin', 'admin')
   async updateSignatorySettings(
     @Body() body: {
       signatoryName?: string;

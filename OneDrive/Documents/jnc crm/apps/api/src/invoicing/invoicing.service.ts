@@ -27,10 +27,10 @@ export class InvoicingService {
 
   /**
    * Generates sequential Invoice Number per Indian Financial Year (April - March)
-   * Format: JNC/26-27/0001
+   * Format: JNC/26-27/0001 or [PREFIX]/26-27/0001
    * Numbers are NEVER reused even if voided.
    */
-  async generateFinancialYearInvoiceNumber(date: Date = new Date()): Promise<string> {
+  async generateFinancialYearInvoiceNumber(date: Date = new Date(), prefix?: string, tenantId?: string): Promise<string> {
     const year = date.getFullYear();
     const month = date.getMonth(); // 0-indexed (0 = Jan, 3 = Apr, 11 = Dec)
 
@@ -51,18 +51,31 @@ export class InvoicingService {
     const fyStartDate = new Date(fyStartYear, 3, 1, 0, 0, 0, 0); // April 1st
     const fyEndDate = new Date(fyEndYear, 2, 31, 23, 59, 59, 999); // March 31st
 
-    // Count all invoices created in this financial year (including voided ones)
-    const countInFy = await this.prisma.invoice.count({
-      where: {
-        createdAt: {
-          gte: fyStartDate,
-          lte: fyEndDate,
-        },
+    let cleanPrefix = prefix?.trim().toUpperCase();
+    if (!cleanPrefix && tenantId && tenantId !== 'default-tenant-id') {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+      if (tenant?.invoicePrefix) cleanPrefix = tenant.invoicePrefix.toUpperCase();
+      else if (tenant?.code) cleanPrefix = tenant.code.toUpperCase();
+    }
+    if (!cleanPrefix) cleanPrefix = 'JNC';
+
+    // Count all invoices created in this financial year for this tenant
+    const countWhere: any = {
+      createdAt: {
+        gte: fyStartDate,
+        lte: fyEndDate,
       },
+    };
+    if (tenantId && tenantId !== 'default-tenant-id') {
+      countWhere.tenantId = tenantId;
+    }
+
+    const countInFy = await this.prisma.invoice.count({
+      where: countWhere,
     });
 
     const sequenceNumber = String(countInFy + 1).padStart(4, '0');
-    return `JNC/${fyCode}/${sequenceNumber}`;
+    return `${cleanPrefix}/${fyCode}/${sequenceNumber}`;
   }
 
   /**
@@ -739,14 +752,71 @@ export class InvoicingService {
   /**
    * Retrieve Single Source of Truth Company Invoice Profile
    */
-  getCompanyProfile() {
+  async getCompanyProfile(userOrTenantId?: ScopedUser | string) {
+    const tenantId =
+      typeof userOrTenantId === 'string'
+        ? userOrTenantId
+        : userOrTenantId?.tenantId;
+
+    if (tenantId && tenantId !== 'default-tenant-id') {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+      });
+
+      if (tenant) {
+        return {
+          companyName: tenant.name,
+          tradeName: tenant.name,
+          address: tenant.address || 'Registered Office Address',
+          city: tenant.city || 'Bengaluru',
+          state: tenant.state || 'Karnataka',
+          pincode: tenant.pincode || '560001',
+          gstin: tenant.gstin || '29AAAAA0000A1Z5',
+          pan: tenant.pan || (tenant.gstin && tenant.gstin.length >= 12 ? tenant.gstin.substring(2, 12) : 'AAAAA0000A'),
+          phone: tenant.phone || '',
+          email: tenant.email || '',
+          website: tenant.website || '',
+          bankName: tenant.bankName || 'HDFC Bank',
+          bankAccountNumber: tenant.bankAccountNumber || '',
+          bankIfsc: tenant.bankIfsc || '',
+          bankBranch: tenant.bankBranch || '',
+          bankAccountHolder: tenant.name,
+          lutBondNo: tenant.lutBondNo || 'AD290525013648T',
+          lutValidity: tenant.lutValidity || 'From : 10/05/2025 To: 09/05/2026',
+          logoUrl: tenant.logoUrl || null,
+          invoicePrefix: tenant.invoicePrefix || 'INV',
+          isOnboarded: tenant.isOnboarded || false,
+        };
+      }
+    }
+
     return JSNC_COMPANY_PROFILE;
   }
 
   /**
    * Retrieve Signatory Settings (Signature & Stamp)
    */
-  async getSignatorySettings() {
+  async getSignatorySettings(userOrTenantId?: ScopedUser | string) {
+    const tenantId =
+      typeof userOrTenantId === 'string'
+        ? userOrTenantId
+        : userOrTenantId?.tenantId;
+
+    if (tenantId && tenantId !== 'default-tenant-id') {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+      });
+
+      if (tenant) {
+        return {
+          signatoryName: tenant.signatoryName || `${tenant.name} Authorized Signatory`,
+          signatoryDesignation: tenant.signatoryDesignation || 'Proprietor / Director',
+          signatureImage: tenant.signatureUrl || null,
+          stampImage: tenant.stampUrl || null,
+        };
+      }
+    }
+
     const setting = await this.prisma.systemSetting.findUnique({
       where: { key: 'invoice_signatory_config' },
     });
@@ -784,11 +854,32 @@ export class InvoicingService {
       stampImage?: string | null;
     },
   ) {
-    if (user.role !== 'super_admin' && user.role !== 'admin') {
+    if (user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
       throw new ForbiddenException('Only Administrators can modify Invoice Signatory and Stamp settings.');
     }
 
-    const current = await this.getSignatorySettings();
+    const tenantId = user.tenantId;
+
+    if (tenantId && tenantId !== 'default-tenant-id') {
+      await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: {
+          signatoryName: dto.signatoryName,
+          signatoryDesignation: dto.signatoryDesignation,
+          signatureUrl: dto.signatureImage,
+          stampUrl: dto.stampImage,
+        },
+      });
+
+      return {
+        signatoryName: dto.signatoryName,
+        signatoryDesignation: dto.signatoryDesignation,
+        signatureImage: dto.signatureImage,
+        stampImage: dto.stampImage,
+      };
+    }
+
+    const current = await this.getSignatorySettings(user);
     const updatedConfig = {
       signatoryName: dto.signatoryName ?? current.signatoryName,
       signatoryDesignation: dto.signatoryDesignation ?? current.signatoryDesignation,
@@ -808,6 +899,47 @@ export class InvoicingService {
     });
 
     return updatedConfig;
+  }
+
+  /**
+   * Update Tenant Legal Company Invoicing Profile & Bank Details
+   */
+  async updateCompanyProfile(user: ScopedUser, dto: any) {
+    if (user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+      throw new ForbiddenException('Only Administrators can modify Company Profile and Invoicing settings.');
+    }
+
+    const tenantId = user.tenantId;
+    if (tenantId && tenantId !== 'default-tenant-id') {
+      await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: {
+          name: dto.companyName || dto.name,
+          address: dto.address,
+          city: dto.city,
+          state: dto.state,
+          pincode: dto.pincode,
+          gstin: dto.gstin,
+          pan: dto.pan,
+          phone: dto.phone,
+          email: dto.email,
+          website: dto.website,
+          bankName: dto.bankName,
+          bankAccountNumber: dto.bankAccountNumber,
+          bankIfsc: dto.bankIfsc,
+          bankBranch: dto.bankBranch,
+          logoUrl: dto.logoUrl,
+          lutBondNo: dto.lutBondNo,
+          lutValidity: dto.lutValidity,
+          invoicePrefix: dto.invoicePrefix,
+          isOnboarded: true,
+        },
+      });
+
+      return this.getCompanyProfile(tenantId);
+    }
+
+    return JSNC_COMPANY_PROFILE;
   }
 
   /**
@@ -856,13 +988,15 @@ export class InvoicingService {
       invoice.customerEmail ||
       null;
 
-    const signatorySettings = await this.getSignatorySettings();
+    const targetTenantId = invoice.tenantId || user.tenantId;
+    const signatorySettings = await this.getSignatorySettings(targetTenantId);
+    const companyProfile = await this.getCompanyProfile(targetTenantId);
 
     return {
       ...invoice,
       defaultBillingEmail,
       signatorySettings,
-      companyProfile: JSNC_COMPANY_PROFILE,
+      companyProfile,
     };
   }
 
@@ -1069,6 +1203,7 @@ export class InvoicingService {
 
     const buffer = await generateInvoicePdfBuffer(invoice, {
       templateType: activeDocType,
+      companyProfile: invoice.companyProfile,
       signatorySettings: invoice.signatorySettings,
     });
 
@@ -1126,6 +1261,7 @@ export class InvoicingService {
     // Generate authentic Vector PDF buffer
     const pdfBuffer = await generateInvoicePdfBuffer(invoice, {
       templateType: activeDocType,
+      companyProfile: invoice.companyProfile,
       signatorySettings: invoice.signatorySettings,
     });
 
@@ -1139,15 +1275,17 @@ export class InvoicingService {
     const pdfFileName = `${cleanDocTitle}_${invoice.invoiceNumber.replace(/[\/\\]/g, '_')}.pdf`;
 
     // Dynamic Company Branding
-    const branding = await this.notificationsService.getBranding();
+    const rawBranding: any = invoice.companyProfile || (await this.notificationsService.getBranding(invoice.tenantId));
+    const companyDisplayName = rawBranding?.companyName || rawBranding?.companyDisplayName || 'JNC CRM';
+    const companyPhone = rawBranding?.phone || rawBranding?.companyPhone || '';
 
     // Clean, elegant, professional email body (NO raw code, NO huge duplicate copies)
     const emailHtml = `
       <div style="font-family: Arial, Helvetica, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff; color: #1e293b;">
-        <h2 style="color: #1e40af; margin-top: 0; margin-bottom: 6px;">${branding.companyDisplayName}</h2>
+        <h2 style="color: #1e40af; margin-top: 0; margin-bottom: 6px;">${companyDisplayName}</h2>
         <p style="font-size: 14px; margin-bottom: 12px;">Dear <strong>${invoice.customerName}</strong>,</p>
         <p style="font-size: 13px; color: #334155; line-height: 1.5; margin-bottom: 16px;">
-          Please find attached your official <strong>${documentTitle} (${invoice.invoiceNumber})</strong> from ${branding.companyDisplayName}.
+          Please find attached your official <strong>${documentTitle} (${invoice.invoiceNumber})</strong> from ${companyDisplayName}.
         </p>
 
         <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 16px; margin-bottom: 16px; font-size: 12.5px;">
@@ -1191,10 +1329,10 @@ export class InvoicingService {
 
         <p style="font-size: 13px; font-weight: 600; color: #0f172a; margin-bottom: 4px;">
           Warm regards,<br />
-          <strong>${branding.companyDisplayName}</strong>
+          <strong>${companyDisplayName}</strong>
         </p>
         <p style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
-          ${branding.companyPhone ? `Phone: ${branding.companyPhone} • ` : ''}Official Commercial Billing
+          ${companyPhone ? `Phone: ${companyPhone} • ` : ''}Official Commercial Billing
         </p>
       </div>
     `;
@@ -1202,7 +1340,7 @@ export class InvoicingService {
     // Send email with attached binary PDF
     await this.notificationsService.sendEmail({
       to: targetRecipient,
-      subject: `${documentTitle} ${invoice.invoiceNumber} from ${branding.companyDisplayName}`,
+      subject: `${documentTitle} ${invoice.invoiceNumber} from ${companyDisplayName}`,
       html: emailHtml,
       attachments: [
         {

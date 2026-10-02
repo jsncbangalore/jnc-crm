@@ -12,6 +12,27 @@ import { JSNC_COMPANY_PROFILE, numberToIndianWords } from './invoice-config';
 
 export interface PdfDocumentOptions {
   templateType?: string;
+  companyProfile?: {
+    companyName?: string;
+    tradeName?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    gstin?: string;
+    pan?: string;
+    phone?: string;
+    email?: string;
+    website?: string;
+    bankName?: string;
+    bankAccountNumber?: string;
+    bankIfsc?: string;
+    bankBranch?: string;
+    bankAccountHolder?: string;
+    lutBondNo?: string;
+    lutValidity?: string;
+    logoUrl?: string | null;
+  };
   signatorySettings?: {
     signatoryName?: string;
     signatoryDesignation?: string;
@@ -33,6 +54,26 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
       doc.on('data', (chunk: any) => buffers.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', (err: any) => reject(err));
+
+      // Resolve Dynamic Tenant Profile & Signatory Settings
+      const profile = options?.companyProfile || invoice.companyProfile || JSNC_COMPANY_PROFILE;
+      const companyName = profile.companyName || 'JS Network Communication';
+      const companyAddress = profile.address || 'No, 18/19, 2nd Floor, Coconut Avenue, 3rd cross, 8th Phase JP Nagar, Bangalore 76.';
+      const companyCity = profile.city || 'Bengaluru';
+      const companyState = profile.state || 'Karnataka';
+      const companyPincode = profile.pincode || '560076';
+      const companyGstin = profile.gstin || '29AZWPJ2622A1ZD';
+      const companyEmail = profile.email || 'Info@jsnc.co.in';
+      const companyPhone = profile.phone || '+91 9663421455 / 9964219891';
+
+      const bankName = profile.bankName || 'Karnataka Bank';
+      const bankAccountNo = profile.bankAccountNumber || '9222000100091501';
+      const bankIfsc = profile.bankIfsc || 'KARB0000922';
+      const bankBranch = profile.bankBranch || 'J P Nagar 7th Phase';
+      const bankHolder = profile.bankAccountHolder || companyName;
+
+      const signatoryName = options?.signatorySettings?.signatoryName || profile.signatoryName || 'Authorized Signatory';
+      const signatoryDesignation = options?.signatorySettings?.signatoryDesignation || profile.signatoryDesignation || 'Proprietor';
 
       const docType = options?.templateType || invoice.docType || 'tax_invoice';
       const isPO = docType === 'purchase_order';
@@ -64,19 +105,49 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         return `${day}/${month}/${year}`;
       };
 
-      // Resolve official Logo Path
-      let logoPath = '';
-      const possibleLogoPaths = [
-        path.join(process.cwd(), 'apps/web/public/jnc-logo.jpg'),
-        path.join(process.cwd(), 'public/jnc-logo.jpg'),
-        path.join(process.cwd(), '../web/public/jnc-logo.jpg'),
-        path.join(process.cwd(), '../../apps/web/public/jnc-logo.jpg'),
-      ];
-      for (const p of possibleLogoPaths) {
-        if (fs.existsSync(p)) {
-          logoPath = p;
-          break;
+      // Resolve official Logo (Tenant uploaded logo, base64 data URI, or disk fallback)
+      let resolvedLogo: any = null;
+      if (profile.logoUrl) {
+        if (profile.logoUrl.startsWith('data:image/')) {
+          try {
+            const b64Data = profile.logoUrl.split(',')[1];
+            if (b64Data) resolvedLogo = Buffer.from(b64Data, 'base64');
+          } catch (e) {}
+        } else if (fs.existsSync(profile.logoUrl)) {
+          resolvedLogo = profile.logoUrl;
         }
+      }
+
+      if (!resolvedLogo) {
+        const possibleLogoPaths = [
+          path.join(process.cwd(), 'apps/web/public/jnc-logo.jpg'),
+          path.join(process.cwd(), 'public/jnc-logo.jpg'),
+          path.join(process.cwd(), '../web/public/jnc-logo.jpg'),
+          path.join(process.cwd(), '../../apps/web/public/jnc-logo.jpg'),
+        ];
+        for (const p of possibleLogoPaths) {
+          if (fs.existsSync(p)) {
+            resolvedLogo = p;
+            break;
+          }
+        }
+      }
+
+      // Resolve Stamp & Signature Images if provided
+      let resolvedStamp: any = null;
+      if (options?.signatorySettings?.stampImage?.startsWith('data:image/')) {
+        try {
+          const b64 = options.signatorySettings.stampImage.split(',')[1];
+          if (b64) resolvedStamp = Buffer.from(b64, 'base64');
+        } catch (e) {}
+      }
+
+      let resolvedSignature: any = null;
+      if (options?.signatorySettings?.signatureImage?.startsWith('data:image/')) {
+        try {
+          const b64 = options.signatorySettings.signatureImage.split(',')[1];
+          if (b64) resolvedSignature = Buffer.from(b64, 'base64');
+        } catch (e) {}
       }
 
       // ════════════════════════════════════════════════════════════════════════
@@ -88,9 +159,9 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         const targetPageBottomY = 820;
 
         // Top Header: Centered Logo & Company Details
-        if (logoPath) {
+        if (resolvedLogo) {
           try {
-            doc.image(logoPath, startX + pageWidth / 2 - 35, currentY, { height: 26 });
+            doc.image(resolvedLogo, startX + pageWidth / 2 - 35, currentY, { height: 26 });
             currentY += 30;
           } catch (e) {
             currentY += 4;
@@ -101,19 +172,19 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           .font('Helvetica-Bold')
           .fontSize(11)
           .fillColor('#000000')
-          .text(JSNC_COMPANY_PROFILE.companyName.toUpperCase(), startX, currentY, { width: pageWidth, align: 'center' });
+          .text(companyName.toUpperCase(), startX, currentY, { width: pageWidth, align: 'center' });
         currentY += 14;
 
         doc
           .font('Helvetica')
           .fontSize(7.5)
-          .text(`Address :No, 18/19, 2nd Floor, Coconut Avenue, 3rd cross, 8th Phase JP Nagar, Bangalore 76.`, startX, currentY, { width: pageWidth, align: 'center' });
+          .text(`Address : ${companyAddress}, ${companyCity}, ${companyState} ${companyPincode}`, startX, currentY, { width: pageWidth, align: 'center' });
         currentY += 10;
 
         doc
           .font('Helvetica')
           .fontSize(7.5)
-          .text(`Contact No: +91 9663421455 / 9964219891, E-mail: ${JSNC_COMPANY_PROFILE.email || 'Jayaraj@Jsnc.co.in'}`, startX, currentY, { width: pageWidth, align: 'center' });
+          .text(`Contact No: ${companyPhone}, E-mail: ${companyEmail}`, startX, currentY, { width: pageWidth, align: 'center' });
         currentY += 12;
 
         // Title Bar
@@ -266,9 +337,9 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
 
         const deliveryAddr = invoice.deliveryAddress || 'Exide Energy Solutions Limited, Plot No: 28P, 29 to 46, 47P, 50P, 51 to 66 & 67, Hi-tech Defence & Aerospace Park, Phase II, Devanahalli, Channarayapatna, Bangaluru Rural, Karnataka – 562135.';
         const deliverySched = invoice.deliverySchedule || 'First Lot 6000 Mtr on 30-08-2026 and second Lot 1000.';
-        const billingAddr = invoice.billingAddress || JSNC_COMPANY_PROFILE.companyName;
+        const billingAddr = invoice.billingAddress || companyName;
         const paymentTerm = invoice.paymentTerms || 'Advance';
-        const gstin = JSNC_COMPANY_PROFILE.gstin || '29AZWPJ2622A1ZD';
+        const gstin = companyGstin;
 
         const terms = [
           `1. Delivery Address : ${deliveryAddr}`,
@@ -285,16 +356,16 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
 
         // Signatory Footer
         currentY = Math.max(currentY + 10, targetPageBottomY - 45);
-        if (logoPath) {
+        if (resolvedLogo) {
           try {
-            doc.image(logoPath, startX + 6, currentY + 8, { height: 18 });
+            doc.image(resolvedLogo, startX + 6, currentY + 8, { height: 18 });
           } catch (e) {}
         }
 
         doc
           .font('Helvetica-Bold')
           .fontSize(8)
-          .text(`For ${JSNC_COMPANY_PROFILE.companyName}`, midX, currentY, { width: pageWidth / 2 - 6, align: 'right' });
+          .text(`For ${companyName}`, midX, currentY, { width: pageWidth / 2 - 6, align: 'right' });
 
         doc
           .font('Helvetica-Bold')
@@ -376,9 +447,9 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
 
       // Left Column: Logo & Company Profile
       let compY = currentY + 4;
-      if (logoPath) {
+      if (resolvedLogo) {
         try {
-          doc.image(logoPath, startX + 6, compY, { height: 24 });
+          doc.image(resolvedLogo, startX + 6, compY, { height: 24 });
           compY += 28;
         } catch (e) {
           // ignore logo error
@@ -388,24 +459,24 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
       doc
         .font('Helvetica-Bold')
         .fontSize(9)
-        .text('JS Network Communication', startX + 6, compY, { width: pageWidth / 2 - 12 });
+        .text(companyName, startX + 6, compY, { width: pageWidth / 2 - 12 });
       compY += 11;
 
       doc
         .font('Helvetica')
         .fontSize(7)
         .lineGap(1)
-        .text('No, 18/19, 2nd Floor, Coconut Avenue,\n3rd cross, 8th Phase JP Nagar, Bangalore 76.', startX + 6, compY);
+        .text(`${companyAddress},\n${companyCity}, ${companyState} - ${companyPincode}`, startX + 6, compY);
       compY += 17;
 
-      doc.font('Helvetica-Bold').fontSize(7).text('GST IN : 29AZWPJ2622A1ZD.', startX + 6, compY);
+      doc.font('Helvetica-Bold').fontSize(7).text(`GST IN : ${companyGstin}`, startX + 6, compY);
       compY += 9;
 
       doc
         .font('Helvetica')
         .fontSize(6.5)
         .lineGap(1)
-        .text('MSME UDYAM Reg No: UDYAM-KR-03-0292006.\nState Name : Karnataka, Code - 29 | Email : Info@Jsnc.co.in', startX + 6, compY);
+        .text(`State Name : ${companyState} | Email : ${companyEmail}`, startX + 6, compY);
 
       // Right Column: Invoice / DC Metadata grid
       const colRightW = pageWidth / 2;
@@ -480,10 +551,10 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         doc
           .font('Helvetica-Bold')
           .fontSize(7)
-          .text(`LUT/Bond No : ${invoice.lutBondNo || JSNC_COMPANY_PROFILE.lutBondNo}`, midX + 5, currentY + metaRowH * 3 + 3)
+          .text(`LUT/Bond No : ${invoice.lutBondNo || profile.lutBondNo || 'AD290525013648T'}`, midX + 5, currentY + metaRowH * 3 + 3)
           .font('Helvetica')
           .fontSize(6.5)
-          .text(isSez ? (invoice.lutValidity || JSNC_COMPANY_PROFILE.lutValidity) : '', midX + 5, currentY + metaRowH * 3 + 13);
+          .text(isSez ? (invoice.lutValidity || profile.lutValidity || 'From : 10/05/2025 To: 09/05/2026') : '', midX + 5, currentY + metaRowH * 3 + 13);
       }
 
       currentY += headerBoxHeight;
@@ -870,16 +941,16 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
       doc.rect(startX, currentY, pageWidth, declBoxH).stroke('#000000');
       doc.moveTo(midX, currentY).lineTo(midX, currentY + declBoxH).stroke('#000000');
 
-      // Left: Declaration (Exact 5-point wording across all documents)
+      // Left: Declaration (Dynamic with company name)
       const declarationTitle = 'Declaration:';
       const declarationText =
         '1. Any complaints should be reported within 2days on receipt\n' +
         'of material after which no complaint will be entertained.\n' +
-        '2.Goods once sold will not be exchanged or taken back.\n' +
-        '3.Payment should be made strictly as per terms mentioned.\n' +
-        '4.If non payment as per terms agreed, JS network communication\n' +
+        '2. Goods once sold will not be exchanged or taken back.\n' +
+        '3. Payment should be made strictly as per terms mentioned.\n' +
+        `4. If non payment as per terms agreed, ${companyName}\n` +
         'will have rights to seize the materials & take back.\n' +
-        '5.Advance amount will not be refunded for any\n' +
+        '5. Advance amount will not be refunded for any\n' +
         'circumstances.';
 
       doc
@@ -901,10 +972,10 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           .fontSize(6.5)
           .lineGap(1)
           .text(
-            "A/C Holder's Name : JS Network Communication\n" +
-            "Bank Name : Karnataka Bank\n" +
-            "A/c No : 9222000100091501\n" +
-            "Branch & IFS Code : J P Nagar 7th Phase & KARB0000922",
+            `A/C Holder's Name : ${bankHolder}\n` +
+            `Bank Name : ${bankName}\n` +
+            `A/c No : ${bankAccountNo}\n` +
+            `Branch & IFS Code : ${bankBranch} & ${bankIfsc}`,
             midX + 6,
             currentY + 13
           );
@@ -918,7 +989,21 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
       doc
         .font('Helvetica-Bold')
         .fontSize(7)
-        .text('FOR JS Network Communication', midX + 6, sigBoxY + 4, { width: pageWidth / 2 - 12, align: 'right' });
+        .text(`FOR ${companyName}`, midX + 6, sigBoxY + 4, { width: pageWidth / 2 - 12, align: 'right' });
+
+      // Render Stamp if present
+      if (resolvedStamp) {
+        try {
+          doc.image(resolvedStamp, rightX - 110, sigBoxY + 6, { height: 26 });
+        } catch (e) {}
+      }
+
+      // Render Signature if present
+      if (resolvedSignature) {
+        try {
+          doc.image(resolvedSignature, rightX - 55, sigBoxY + 10, { height: 18 });
+        } catch (e) {}
+      }
 
       doc
         .font('Helvetica')
