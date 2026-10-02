@@ -38,8 +38,8 @@ export default function MobileDock() {
 
   const visiblePrimaryTabs = isPlatformOwner
     ? [
-        { to: '/platform/companies', icon: Building2, label: 'Companies' },
-        { to: '/users',              icon: Shield,    label: 'Global Users' },
+        { to: '/platform/companies', icon: Building2, label: 'Client Companies' },
+        { to: '/platform/admins',    icon: Shield,    label: 'Platform Admins' },
       ]
     : mobilePrimaryTabs;
 

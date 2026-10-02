@@ -16,11 +16,13 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { PlatformService, CreateTenantDto, UpdateTenantDto } from './platform.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('platform/tenants')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -55,8 +57,13 @@ export class PlatformController {
   }
 
   @Post(':id/impersonate')
-  async impersonateTenant(@Param('id') id: string) {
-    return this.platformService.impersonateTenant(id);
+  async impersonateTenant(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Req() req: any,
+  ) {
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.impersonateTenant(id, user, ip);
   }
 
   @Post(':id/reset-admin-password')

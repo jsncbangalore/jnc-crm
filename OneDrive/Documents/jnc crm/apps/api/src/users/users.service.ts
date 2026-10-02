@@ -17,7 +17,7 @@ export interface CreateUserDto {
   name: string;
   email: string;
   phone: string;
-  role: 'tenant_admin' | 'admin' | 'sub_admin' | 'employee' | 'store_manager' | 'project_manager' | 'developer_lead' | 'developer';
+  role: 'platform_super_admin' | 'tenant_admin' | 'admin' | 'sub_admin' | 'employee' | 'store_manager' | 'project_manager' | 'developer_lead' | 'developer';
   teamId?: string;
   warehouseId?: string;
 }
@@ -25,7 +25,7 @@ export interface CreateUserDto {
 export interface UpdateUserDto {
   name?: string;
   phone?: string;
-  role?: 'tenant_admin' | 'admin' | 'sub_admin' | 'employee' | 'store_manager' | 'project_manager' | 'developer_lead' | 'developer';
+  role?: 'platform_super_admin' | 'tenant_admin' | 'admin' | 'sub_admin' | 'employee' | 'store_manager' | 'project_manager' | 'developer_lead' | 'developer';
   teamId?: string;
   warehouseId?: string;
   isActive?: boolean;
@@ -41,11 +41,21 @@ export class UsersService {
     private auditService: AuditService,
   ) {}
 
-  async generateEmployeeCode(tenantId: string, role: string): Promise<string> {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { code: true },
-    });
+  async generateEmployeeCode(tenantId: string | null, role: string): Promise<string> {
+    if (role === 'platform_super_admin') {
+      const count = await this.prisma.user.count({
+        where: { role: 'platform_super_admin' },
+      });
+      const sequence = String(count + 1).padStart(3, '0');
+      return `PSA-${sequence}`;
+    }
+
+    const tenant = tenantId
+      ? await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { code: true },
+        })
+      : null;
     let orgPrefix = tenant?.code || 'JNC-ORG';
     if (orgPrefix === 'JNC-ORG-001' || orgPrefix === 'default-tenant-id' || orgPrefix === 'JNC') {
       orgPrefix = 'JNC-ORG';
@@ -54,7 +64,6 @@ export class UsersService {
     }
 
     const prefixMap: Record<string, string> = {
-      platform_super_admin: `${orgPrefix}-SA`,
       super_admin: `${orgPrefix}-SA`,
       tenant_admin: `${orgPrefix}-AD`,
       admin: `${orgPrefix}-AD`,
@@ -89,6 +98,57 @@ export class UsersService {
   }
 
   async createUser(dto: CreateUserDto, creator: ScopedUser) {
+    if (dto.role === 'platform_super_admin') {
+      if (creator.role !== 'platform_super_admin') {
+        throw new ForbiddenException('Only Platform Super Admins can create platform administrators.');
+      }
+      const emailClean = dto.email.trim().toLowerCase();
+      const existing = await this.prisma.user.findFirst({
+        where: { email: emailClean, deletedAt: null },
+      });
+      if (existing) {
+        throw new BadRequestException(`A user with email "${dto.email}" already exists.`);
+      }
+
+      const employeeCode = await this.generateEmployeeCode(null, 'platform_super_admin');
+      const tempPassword = this.generateTempPassword();
+      const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+      const newUser = await this.prisma.user.create({
+        data: {
+          tenantId: null,
+          employeeCode,
+          name: dto.name.trim(),
+          email: emailClean,
+          phone: dto.phone?.trim() || null,
+          passwordHash,
+          role: 'platform_super_admin',
+          isActive: true,
+          mustResetPassword: true,
+          createdById: creator.id,
+        },
+        select: {
+          id: true,
+          tenantId: true,
+          employeeCode: true,
+          name: true,
+          email: true,
+          phone: true,
+          role: true,
+          isActive: true,
+          mustResetPassword: true,
+          lastLoginAt: true,
+          createdAt: true,
+        },
+      });
+
+      return {
+        user: newUser,
+        tempPassword,
+        message: 'Platform administrator account created successfully.',
+      };
+    }
+
     const tenantId = creator.tenantId || 'default-tenant-id';
 
     if (creator.role !== 'platform_super_admin' && creator.role !== 'super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
@@ -196,13 +256,20 @@ export class UsersService {
   }
 
   async findAll(creator: ScopedUser, query?: { search?: string; role?: string; isActive?: string }) {
-    const tenantId = creator.tenantId || 'default-tenant-id';
-
     if (creator.role !== 'platform_super_admin' && creator.role !== 'super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
       throw new ForbiddenException('Access denied: User management is restricted to Administrators.');
     }
 
-    const where: any = { tenantId, deletedAt: null };
+    const isPlatformOwner = creator.role === 'platform_super_admin';
+    const where: any = { deletedAt: null };
+
+    if (!isPlatformOwner) {
+      where.tenantId = creator.tenantId || 'default-tenant-id';
+    } else {
+      if (query?.role === 'platform_super_admin') {
+        where.role = 'platform_super_admin';
+      }
+    }
 
     if (query?.search) {
       where.AND = [
@@ -250,9 +317,13 @@ export class UsersService {
   }
 
   async findOne(id: string, creator: ScopedUser) {
-    const tenantId = creator.tenantId || 'default-tenant-id';
+    const where: any =
+      creator.role === 'platform_super_admin'
+        ? { id, deletedAt: null }
+        : { id, tenantId: creator.tenantId || 'default-tenant-id', deletedAt: null };
+
     const user = await this.prisma.user.findFirst({
-      where: { id, tenantId, deletedAt: null },
+      where,
       select: {
         id: true,
         tenantId: true,
@@ -276,13 +347,16 @@ export class UsersService {
   }
 
   async updateUser(id: string, dto: UpdateUserDto, modifier: ScopedUser) {
-    const tenantId = modifier.tenantId || 'default-tenant-id';
-
     if (modifier.role !== 'platform_super_admin' && modifier.role !== 'super_admin' && modifier.role !== 'tenant_admin' && modifier.role !== 'admin') {
       throw new ForbiddenException('Only Administrators can edit users.');
     }
 
-    const user = await this.prisma.user.findFirst({ where: { id, tenantId, deletedAt: null } });
+    const where: any =
+      modifier.role === 'platform_super_admin'
+        ? { id, deletedAt: null }
+        : { id, tenantId: modifier.tenantId || 'default-tenant-id', deletedAt: null };
+
+    const user = await this.prisma.user.findFirst({ where });
     if (!user) throw new NotFoundException('User not found in your company');
 
     const updated = await this.prisma.user.update({
@@ -317,8 +391,12 @@ export class UsersService {
   }
 
   async resetCredentials(id: string, modifier: ScopedUser) {
-    const tenantId = modifier.tenantId || 'default-tenant-id';
-    const user = await this.prisma.user.findFirst({ where: { id, tenantId, deletedAt: null } });
+    const where: any =
+      modifier.role === 'platform_super_admin'
+        ? { id, deletedAt: null }
+        : { id, tenantId: modifier.tenantId || 'default-tenant-id', deletedAt: null };
+
+    const user = await this.prisma.user.findFirst({ where });
     if (!user) throw new NotFoundException('User not found in your company');
 
     const tempPassword = this.generateTempPassword();
@@ -341,8 +419,12 @@ export class UsersService {
   }
 
   async toggleActive(id: string, modifier: ScopedUser) {
-    const tenantId = modifier.tenantId || 'default-tenant-id';
-    const user = await this.prisma.user.findFirst({ where: { id, tenantId, deletedAt: null } });
+    const where: any =
+      modifier.role === 'platform_super_admin'
+        ? { id, deletedAt: null }
+        : { id, tenantId: modifier.tenantId || 'default-tenant-id', deletedAt: null };
+
+    const user = await this.prisma.user.findFirst({ where });
     if (!user) throw new NotFoundException('User not found in your company');
 
     if (user.id === modifier.id) {
@@ -358,8 +440,12 @@ export class UsersService {
   }
 
   async deleteUser(id: string, modifier: ScopedUser) {
-    const tenantId = modifier.tenantId || 'default-tenant-id';
-    const user = await this.prisma.user.findFirst({ where: { id, tenantId, deletedAt: null } });
+    const where: any =
+      modifier.role === 'platform_super_admin'
+        ? { id, deletedAt: null }
+        : { id, tenantId: modifier.tenantId || 'default-tenant-id', deletedAt: null };
+
+    const user = await this.prisma.user.findFirst({ where });
     if (!user) throw new NotFoundException('User not found in your company');
 
     if (user.id === modifier.id) {

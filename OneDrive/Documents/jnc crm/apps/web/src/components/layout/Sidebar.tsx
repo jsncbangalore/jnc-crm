@@ -10,8 +10,8 @@ import {
 
 // ─── PLATFORM OWNER MASTER NAVIGATION ─────────────────────────────────────────
 const platformMasterNavItems = [
-  { to: '/platform/companies', icon: Building2, label: 'Companies Hub' },
-  { to: '/users',              icon: Shield,    label: 'Global Users' },
+  { to: '/platform/companies', icon: Building2, label: 'Client Companies' },
+  { to: '/platform/admins',    icon: Shield,    label: 'Platform Admins' },
 ];
 
 // ─── CLIENT ORGANIZATION CRM NAVIGATION ──────────────────────────────────────
@@ -39,6 +39,7 @@ const colorForPath: Record<string, string> = {
   '/quotations':        'text-amber-600 dark:text-crm-amber-light',
   '/users':             'text-blue-600 dark:text-crm-blue-light',
   '/platform/companies':'text-indigo-600 dark:text-indigo-400',
+  '/platform/admins':   'text-purple-600 dark:text-purple-400',
   '/automation':        'text-rose-600 dark:text-crm-coral',
   '/daily-activities':  'text-emerald-600 dark:text-emerald-400',
 };
@@ -90,7 +91,7 @@ export default function Sidebar() {
             </div>
             {isPlatformOwner ? (
               <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider block">
-                Platform Master
+                Platform Admin
               </span>
             ) : branding.companyPhone ? (
               <span className="text-[10px] text-slate-500 font-mono leading-tight block truncate">

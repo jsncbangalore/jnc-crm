@@ -21,6 +21,7 @@ import BrandingSettingsPage from './pages/BrandingSettingsPage';
 import DailyActivitiesPage from './pages/DailyActivitiesPage';
 import NotificationsPage from './pages/NotificationsPage';
 import PlatformCompaniesPage from './pages/PlatformCompaniesPage';
+import PlatformAdminsPage from './pages/PlatformAdminsPage';
 import { PopupProvider } from './contexts/PopupContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { BrandingProvider } from './contexts/BrandingContext';
@@ -114,6 +115,7 @@ function AppRoutes() {
         <Route path="quotations" element={<TeamPageGuard pageKey="quotations"><QuotationsPage /></TeamPageGuard>} />
         <Route path="users" element={<TeamPageGuard pageKey="users"><UsersPage /></TeamPageGuard>} />
         <Route path="platform/companies" element={<PlatformOwnerGuard><PlatformCompaniesPage /></PlatformOwnerGuard>} />
+        <Route path="platform/admins" element={<PlatformOwnerGuard><PlatformAdminsPage /></PlatformOwnerGuard>} />
         <Route path="settings/branding" element={<TeamPageGuard pageKey="users"><BrandingSettingsPage /></TeamPageGuard>} />
         <Route path="automation" element={<TeamPageGuard pageKey="automation"><AutomationPage /></TeamPageGuard>} />
         <Route path="setup/objects" element={<TeamPageGuard pageKey="custom_objects"><ObjectManagerPage /></TeamPageGuard>} />

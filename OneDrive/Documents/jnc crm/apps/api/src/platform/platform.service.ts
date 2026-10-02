@@ -79,7 +79,10 @@ export class PlatformService {
       },
     });
 
-    return tenants;
+    return tenants.map((tenant) => ({
+      ...tenant,
+      isPlatformOwnerTenant: false,
+    }));
   }
 
   /**
@@ -329,15 +332,35 @@ export class PlatformService {
     });
     if (!tenant) throw new NotFoundException('Company tenant not found');
 
+    // Only allow updating basic company metadata, plan tier, users, and contact details
+    // Invoicing, bank, and GST data are strictly restricted to tenant workspaces
+    const {
+      name,
+      status,
+      planTier,
+      maxUsers,
+      phone,
+      email,
+      invoicePrefix,
+      logoUrl,
+    } = dto;
+
     const updated = await this.prisma.tenant.update({
       where: { id },
       data: {
-        ...dto,
+        ...(name !== undefined ? { name: name.trim() } : {}),
+        ...(status !== undefined ? { status } : {}),
+        ...(planTier !== undefined ? { planTier } : {}),
+        ...(maxUsers !== undefined ? { maxUsers: Number(maxUsers) } : {}),
+        ...(phone !== undefined ? { phone: phone?.trim() } : {}),
+        ...(email !== undefined ? { email: email?.trim() } : {}),
+        ...(invoicePrefix !== undefined ? { invoicePrefix: invoicePrefix?.trim() } : {}),
+        ...(logoUrl !== undefined ? { logoUrl } : {}),
       },
     });
 
     // If tenant email or phone was updated, synchronize with primary Super Admin user
-    if (dto.email || dto.phone) {
+    if (email || phone) {
       const adminUser =
         tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'super_admin' || u.role === 'admin') ||
         tenant.users[0];
@@ -346,8 +369,8 @@ export class PlatformService {
         await this.prisma.user.update({
           where: { id: adminUser.id },
           data: {
-            ...(dto.email ? { email: dto.email.trim() } : {}),
-            ...(dto.phone ? { phone: dto.phone.trim() } : {}),
+            ...(email ? { email: email.trim() } : {}),
+            ...(phone ? { phone: phone.trim() } : {}),
           },
         });
       }
@@ -376,7 +399,7 @@ export class PlatformService {
    * Support Impersonation ("Login-As-Org Admin")
    * Allows Platform Super Admin to switch context into a subscriber org.
    */
-  async impersonateTenant(id: string) {
+  async impersonateTenant(id: string, actor?: any, ipAddress?: string) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id },
       include: {
@@ -411,6 +434,30 @@ export class PlatformService {
     };
 
     const accessToken = this.jwtService.sign(payload);
+
+    // Write audit log entry for impersonation
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: tenant.id,
+          actorId: actor?.sub || actor?.id || 'platform-admin',
+          actorName: actor?.name || 'Platform Administrator',
+          action: 'IMPERSONATION_START',
+          entityName: 'Tenant',
+          entityId: tenant.id,
+          afterState: JSON.stringify({
+            impersonatedUserId: targetUser.id,
+            impersonatedUserEmail: targetUser.email,
+            impersonatedRole: targetUser.role,
+            tenantCode: tenant.code,
+            tenantName: tenant.name,
+          }),
+          ipAddress: ipAddress || '127.0.0.1',
+        },
+      });
+    } catch {
+      // Non-blocking audit log
+    }
 
     return {
       accessToken,

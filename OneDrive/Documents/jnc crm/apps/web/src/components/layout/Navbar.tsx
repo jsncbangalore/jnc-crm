@@ -22,27 +22,19 @@ interface NavTabItem {
   subItems?: { label: string; to: string; isAction?: boolean }[];
 }
 
-// ─── PLATFORM OWNER MASTER NAVIGATION ─────────────────────────────────────────
+// ─── PLATFORM OWNER NAVIGATION ─────────────────────────────────────────
 const platformMasterNavItems: NavTabItem[] = [
   {
     to: '/platform/companies',
     icon: Building2,
-    label: 'Companies Hub',
+    label: 'Client Companies',
     pageKey: 'companies',
-    subItems: [
-      { label: 'All Registered Companies', to: '/platform/companies' },
-      { label: '+ Add New Company Tenant', to: '/platform/companies?action=create', isAction: true },
-    ],
   },
   {
-    to: '/users',
+    to: '/platform/admins',
     icon: Shield,
-    label: 'Global Users',
+    label: 'Platform Admins',
     pageKey: 'users',
-    subItems: [
-      { label: 'All Platform Users', to: '/users' },
-      { label: '+ Add Global User', to: '/users?action=create', isAction: true },
-    ],
   },
 ];
 
@@ -354,187 +346,195 @@ export default function Navbar() {
                 {branding.companyDisplayName}
               </span>
               <span className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
-                {isPlatformOwner ? 'Master Platform' : 'Enterprise CRM Portal'}
+                {isPlatformOwner ? 'Platform Admin' : 'Enterprise CRM Portal'}
               </span>
             </div>
           </NavLink>
         </div>
 
-        {/* Center: Global Lightning Search Bar */}
-        <div className="flex-1 max-w-xl relative">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search Leads, Orders, Invoices, Items... (Ctrl+K)"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              className="w-full h-8 pl-8 pr-16 rounded-lg bg-white dark:bg-[#1E2230] border border-slate-300/80 dark:border-[#2A3042] text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:border-crm-blue focus:ring-1 focus:ring-crm-blue shadow-2xs transition-all"
-            />
-            <kbd className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-slate-400 bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded">
-              ⌘K
-            </kbd>
-          </div>
+        {/* Center: Global Search Bar (Hidden for Platform Owner) */}
+        {!isPlatformOwner ? (
+          <div className="flex-1 max-w-xl relative">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search Leads, Orders, Invoices, Items... (Ctrl+K)"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                className="w-full h-8 pl-8 pr-16 rounded-lg bg-white dark:bg-[#1E2230] border border-slate-300/80 dark:border-[#2A3042] text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:border-crm-blue focus:ring-1 focus:ring-crm-blue shadow-2xs transition-all"
+              />
+              <kbd className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-slate-400 bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded">
+                ⌘K
+              </kbd>
+            </div>
 
-          {/* Search Dropdown / Command Palette */}
-          <AnimatePresence>
-            {searchFocused && (
-              <motion.div
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 4 }}
-                className="absolute top-10 left-0 right-0 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-2 z-50 overflow-hidden"
-              >
-                <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-2 py-1">
-                  {searchQuery ? `Matching Results for "${searchQuery}"` : 'Quick Jump / Navigation'}
-                </div>
-                <div className="space-y-0.5 mt-1 max-h-60 overflow-y-auto">
-                  {searchResults.map((res, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        navigate(res.to);
-                        setSearchFocused(false);
-                      }}
-                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs text-slate-700 dark:text-slate-200 hover:bg-crm-blue/10 hover:text-crm-blue dark:hover:bg-white/5 transition-colors text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Sparkles size={12} className="text-crm-blue shrink-0" />
-                        <span>{res.title}</span>
+            {/* Search Dropdown / Command Palette */}
+            <AnimatePresence>
+              {searchFocused && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  className="absolute top-10 left-0 right-0 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-2 z-50 overflow-hidden"
+                >
+                  <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-2 py-1">
+                    {searchQuery ? `Matching Results for "${searchQuery}"` : 'Quick Jump / Navigation'}
+                  </div>
+                  <div className="space-y-0.5 mt-1 max-h-60 overflow-y-auto">
+                    {searchResults.map((res, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          navigate(res.to);
+                          setSearchFocused(false);
+                        }}
+                        className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs text-slate-700 dark:text-slate-200 hover:bg-crm-blue/10 hover:text-crm-blue dark:hover:bg-white/5 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Sparkles size={12} className="text-crm-blue shrink-0" />
+                          <span>{res.title}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono">{res.category}</span>
+                      </button>
+                    ))}
+                    {searchResults.length === 0 && (
+                      <div className="p-4 text-center text-xs text-slate-400">
+                        No matching records found. Press Enter to search on page.
                       </div>
-                      <span className="text-[10px] text-slate-400 font-mono">{res.category}</span>
-                    </button>
-                  ))}
-                  {searchResults.length === 0 && (
-                    <div className="p-4 text-center text-xs text-slate-400">
-                      No matching records found. Press Enter to search on page.
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        ) : (
+          <div className="flex-1" />
+        )}
 
-        {/* Right: Global Utility Actions (⭐, ➕, ⚙️, 🔔, ☀️/🌙, 👤) */}
+        {/* Right: Global Utility Actions */}
         <div className="flex items-center gap-1.5 shrink-0">
           
-          {/* Favorites Star Dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                setFavoritesOpen(!favoritesOpen);
-                setQuickCreateOpen(false);
-                setSetupOpen(false);
-                setProfileOpen(false);
-                setAppLauncherOpen(false);
-              }}
-              title="Favorites & Bookmarks"
-              className={`h-8 px-2 rounded-lg flex items-center gap-1 border transition-all text-xs font-semibold ${
-                favoritesOpen
-                  ? 'bg-amber-500/10 border-amber-500/40 text-amber-500'
-                  : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-white/5'
-              }`}
-            >
-              <Star size={14} className="fill-amber-400 text-amber-500" />
-              <ChevronDown size={11} className={`transition-transform duration-200 ${favoritesOpen ? 'rotate-180' : ''}`} />
-            </button>
+          {/* Favorites Star Dropdown (Tenant Only) */}
+          {!isPlatformOwner && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setFavoritesOpen(!favoritesOpen);
+                  setQuickCreateOpen(false);
+                  setSetupOpen(false);
+                  setProfileOpen(false);
+                  setAppLauncherOpen(false);
+                }}
+                title="Favorites & Bookmarks"
+                className={`h-8 px-2 rounded-lg flex items-center gap-1 border transition-all text-xs font-semibold ${
+                  favoritesOpen
+                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-500'
+                    : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-white/5'
+                }`}
+              >
+                <Star size={14} className="fill-amber-400 text-amber-500" />
+                <ChevronDown size={11} className={`transition-transform duration-200 ${favoritesOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-            <AnimatePresence>
-              {favoritesOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                  className="absolute right-0 mt-2 w-56 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-1.5 z-50"
-                >
-                  <p className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pinned Favorites</p>
-                  <NavLink to="/invoices" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                    <Receipt size={13} className="text-emerald-500" />
-                    <span>Invoices & Billing</span>
-                  </NavLink>
-                  <NavLink to="/leads" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                    <Users size={13} className="text-crm-blue" />
-                    <span>Active Leads Pipeline</span>
-                  </NavLink>
-                  <NavLink to="/orders" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                    <ShoppingCart size={13} className="text-amber-500" />
-                    <span>Production Orders</span>
-                  </NavLink>
-                  <NavLink to="/inventory" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                    <Package size={13} className="text-crm-violet" />
-                    <span>Component Stock Positions</span>
-                  </NavLink>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Global Quick Create ➕ Button */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                setQuickCreateOpen(!quickCreateOpen);
-                setFavoritesOpen(false);
-                setSetupOpen(false);
-                setProfileOpen(false);
-                setAppLauncherOpen(false);
-              }}
-              title="Global Quick Create (+)"
-              className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold transition-all ${
-                quickCreateOpen
-                  ? 'bg-crm-blue text-white shadow-sm'
-                  : 'bg-crm-blue/10 dark:bg-crm-blue/20 text-crm-blue hover:bg-crm-blue hover:text-white'
-              }`}
-            >
-              <Plus size={16} />
-            </button>
-
-            <AnimatePresence>
-              {quickCreateOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                  className="absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-2 z-50 space-y-1"
-                >
-                  <p className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quick Actions</p>
-                  <NavLink to="/invoices?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-emerald-500/10 text-slate-800 dark:text-slate-200 hover:text-emerald-600 transition-colors">
-                    <Receipt size={14} className="text-emerald-500" />
-                    <span>New Tax Invoice</span>
-                  </NavLink>
-                  <NavLink to="/leads?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-crm-blue/10 text-slate-800 dark:text-slate-200 hover:text-crm-blue transition-colors">
-                    <Users size={14} className="text-crm-blue" />
-                    <span>New Lead / Customer</span>
-                  </NavLink>
-                  <NavLink to="/orders?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-amber-500/10 text-slate-800 dark:text-slate-200 hover:text-amber-600 transition-colors">
-                    <ShoppingCart size={14} className="text-amber-500" />
-                    <span>New Customer Order</span>
-                  </NavLink>
-                  <NavLink to="/quotations?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-indigo-500/10 text-slate-800 dark:text-slate-200 hover:text-indigo-600 transition-colors">
-                    <FileText size={14} className="text-indigo-500" />
-                    <span>New Quotation</span>
-                  </NavLink>
-                  <NavLink to="/inventory?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-purple-500/10 text-slate-800 dark:text-slate-200 hover:text-purple-600 transition-colors">
-                    <Package size={14} className="text-purple-500" />
-                    <span>Add Inventory Component</span>
-                  </NavLink>
-                  {isAdmin && (
-                    <NavLink to="/users?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-blue-500/10 text-slate-800 dark:text-slate-200 hover:text-blue-600 transition-colors border-t border-slate-100 dark:border-white/5 pt-2">
-                      <UserPlus size={14} className="text-blue-500" />
-                      <span>Add Team Member</span>
+              <AnimatePresence>
+                {favoritesOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                    className="absolute right-0 mt-2 w-56 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-1.5 z-50"
+                  >
+                    <p className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pinned Favorites</p>
+                    <NavLink to="/invoices" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
+                      <Receipt size={13} className="text-emerald-500" />
+                      <span>Invoices & Billing</span>
                     </NavLink>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                    <NavLink to="/leads" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
+                      <Users size={13} className="text-crm-blue" />
+                      <span>Active Leads Pipeline</span>
+                    </NavLink>
+                    <NavLink to="/orders" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
+                      <ShoppingCart size={13} className="text-amber-500" />
+                      <span>Production Orders</span>
+                    </NavLink>
+                    <NavLink to="/inventory" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
+                      <Package size={13} className="text-crm-violet" />
+                      <span>Component Stock Positions</span>
+                    </NavLink>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
 
-          {/* Setup / Configuration Gear ⚙️ */}
+          {/* Global Quick Create Button (Tenant Only) */}
+          {!isPlatformOwner && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickCreateOpen(!quickCreateOpen);
+                  setFavoritesOpen(false);
+                  setSetupOpen(false);
+                  setProfileOpen(false);
+                  setAppLauncherOpen(false);
+                }}
+                title="Global Quick Create (+)"
+                className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold transition-all ${
+                  quickCreateOpen
+                    ? 'bg-crm-blue text-white shadow-sm'
+                    : 'bg-crm-blue/10 dark:bg-crm-blue/20 text-crm-blue hover:bg-crm-blue hover:text-white'
+                }`}
+              >
+                <Plus size={16} />
+              </button>
+
+              <AnimatePresence>
+                {quickCreateOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                    className="absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-2 z-50 space-y-1"
+                  >
+                    <p className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quick Actions</p>
+                    <NavLink to="/invoices?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-emerald-500/10 text-slate-800 dark:text-slate-200 hover:text-emerald-600 transition-colors">
+                      <Receipt size={14} className="text-emerald-500" />
+                      <span>New Tax Invoice</span>
+                    </NavLink>
+                    <NavLink to="/leads?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-crm-blue/10 text-slate-800 dark:text-slate-200 hover:text-crm-blue transition-colors">
+                      <Users size={14} className="text-crm-blue" />
+                      <span>New Lead / Customer</span>
+                    </NavLink>
+                    <NavLink to="/orders?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-amber-500/10 text-slate-800 dark:text-slate-200 hover:text-amber-600 transition-colors">
+                      <ShoppingCart size={14} className="text-amber-500" />
+                      <span>New Customer Order</span>
+                    </NavLink>
+                    <NavLink to="/quotations?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-indigo-500/10 text-slate-800 dark:text-slate-200 hover:text-indigo-600 transition-colors">
+                      <FileText size={14} className="text-indigo-500" />
+                      <span>New Quotation</span>
+                    </NavLink>
+                    <NavLink to="/inventory?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-purple-500/10 text-slate-800 dark:text-slate-200 hover:text-purple-600 transition-colors">
+                      <Package size={14} className="text-purple-500" />
+                      <span>Add Inventory Component</span>
+                    </NavLink>
+                    {isAdmin && (
+                      <NavLink to="/users?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-blue-500/10 text-slate-800 dark:text-slate-200 hover:text-blue-600 transition-colors border-t border-slate-100 dark:border-white/5 pt-2">
+                        <UserPlus size={14} className="text-blue-500" />
+                        <span>Add Team Member</span>
+                      </NavLink>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Setup / Configuration Gear */}
           <div className="relative">
             <button
               type="button"
@@ -565,25 +565,34 @@ export default function Navbar() {
                 >
                   <p className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Setup & Settings</p>
                   {isPlatformOwner ? (
-                    <NavLink to="/platform/companies" onClick={() => setSetupOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-indigo-500/10 text-indigo-600 font-semibold">
-                      <Building2 size={13} />
-                      <span>Companies Master Hub</span>
-                    </NavLink>
-                  ) : null}
-                  <NavLink to="/settings/branding" onClick={() => setSetupOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                    <Building2 size={13} className="text-crm-teal" />
-                    <span>Company Branding & GST</span>
-                  </NavLink>
-                  <NavLink to="/users" onClick={() => setSetupOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                    <Shield size={13} className="text-crm-blue" />
-                    <span>Team & Role Permissions</span>
-                  </NavLink>
+                    <>
+                      <NavLink to="/platform/companies" onClick={() => setSetupOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
+                        <Building2 size={13} className="text-crm-blue" />
+                        <span>Client Companies</span>
+                      </NavLink>
+                      <NavLink to="/platform/admins" onClick={() => setSetupOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
+                        <Shield size={13} className="text-purple-600" />
+                        <span>Platform Admins</span>
+                      </NavLink>
+                    </>
+                  ) : (
+                    <>
+                      <NavLink to="/settings/branding" onClick={() => setSetupOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
+                        <Building2 size={13} className="text-crm-teal" />
+                        <span>Company Branding & GST</span>
+                      </NavLink>
+                      <NavLink to="/users" onClick={() => setSetupOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
+                        <Shield size={13} className="text-crm-blue" />
+                        <span>Team & Role Permissions</span>
+                      </NavLink>
+                    </>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
-          {/* Theme Switcher ☀️ / 🌙 */}
+          {/* Theme Switcher */}
           <button
             type="button"
             onClick={toggleTheme}
@@ -593,7 +602,7 @@ export default function Navbar() {
             {isDark ? <Sun size={16} className="text-amber-400" /> : <Moon size={16} className="text-indigo-600" />}
           </button>
 
-          {/* User Profile Avatar with Slide Drawer 👤 */}
+          {/* User Profile Avatar with Slide Drawer */}
           <div className="relative">
             <button
               type="button"
@@ -639,12 +648,12 @@ export default function Navbar() {
                   <div className="px-2.5 py-1.5 mb-2 rounded-lg bg-slate-100/50 dark:bg-white/5 text-[11px] text-slate-600 dark:text-slate-400 flex items-center justify-between">
                     <div>
                       <span>Workspace: </span>
-                      <strong className="text-slate-900 dark:text-white">{branding.companyDisplayName}</strong>
+                      <strong className="text-slate-900 dark:text-white">{isPlatformOwner ? 'Platform Administration' : branding.companyDisplayName}</strong>
                     </div>
                   </div>
 
-                  {/* Company Business Details Link */}
-                  {isAdmin && (
+                  {/* Company Business Details Link (Tenant Only) */}
+                  {!isPlatformOwner && isAdmin && (
                     <NavLink
                       to="/settings/branding"
                       onClick={() => setProfileOpen(false)}
@@ -764,7 +773,7 @@ export default function Navbar() {
           </nav>
         </div>
 
-        {/* Right: Personalize Tabs Icon (✏️) */}
+        {/* Right: Personalize Tabs Icon */}
         <div className="flex items-center gap-2 shrink-0 pl-2">
           <button
             type="button"

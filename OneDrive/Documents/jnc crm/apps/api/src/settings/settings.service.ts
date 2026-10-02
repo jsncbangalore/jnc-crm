@@ -62,9 +62,12 @@ export class SettingsService {
       companyLogoUrl?: string | null;
     },
   ): Promise<CompanyBrandingConfig> {
-    const tenantId = user.tenantId || 'default-tenant-id';
+    if (!user.tenantId) {
+      throw new ForbiddenException('Platform administrator cannot modify company branding from the platform console.');
+    }
+    const tenantId = user.tenantId;
 
-    if (user.role !== 'platform_super_admin' && user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+    if (user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
       throw new ForbiddenException('Only Administrators are authorized to modify Company Branding settings.');
     }
 
@@ -92,7 +95,10 @@ export class SettingsService {
    * Get full company invoicing & tax profile for tenant
    */
   async getCompanyProfile(user: ScopedUser) {
-    const tenantId = user.tenantId || 'default-tenant-id';
+    if (!user.tenantId) {
+      throw new ForbiddenException('Platform administrator cannot access tenant invoicing, banking, or tax profiles from the platform console.');
+    }
+    const tenantId = user.tenantId;
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
     });
@@ -108,9 +114,12 @@ export class SettingsService {
    * Update full company invoicing & tax profile for tenant
    */
   async updateCompanyProfile(user: ScopedUser, dto: any) {
-    const tenantId = user.tenantId || 'default-tenant-id';
+    if (!user.tenantId) {
+      throw new ForbiddenException('Platform administrator cannot update tenant invoicing, banking, or tax profiles from the platform console.');
+    }
+    const tenantId = user.tenantId;
 
-    if (user.role !== 'platform_super_admin' && user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+    if (user.role !== 'super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
       throw new ForbiddenException('Only Administrators can update Company Invoicing & Tax Profile.');
     }
 
