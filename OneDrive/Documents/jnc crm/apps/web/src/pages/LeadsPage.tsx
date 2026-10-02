@@ -530,29 +530,9 @@ export default function LeadsPage() {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Lead Setup & Real-time Flow Controller Button */}
-          <button
-            onClick={() => {
-              setLeadSetupInitialTab('routing');
-              setActiveTab('lead-setup');
-            }}
-            className={`btn text-xs gap-1.5 shadow-sm font-bold transition-all ${
-              activeTab === 'lead-setup'
-                ? 'bg-crm-blue text-white shadow-glow-blue border-crm-blue'
-                : 'bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-white/10'
-            }`}
-            title="Configure Lead Capture Channels, Routing Rules & SLA in page"
-          >
-            <Sliders size={14} className={activeTab === 'lead-setup' ? 'text-white' : 'text-crm-blue'} />
-            <span>Lead Setup & Flow</span>
-          </button>
-
           {/* Web-to-Lead Link */}
           <button
-            onClick={() => {
-              setLeadSetupInitialTab('website');
-              setActiveTab('lead-setup');
-            }}
+            onClick={() => setShowShareModal(true)}
             className="btn bg-crm-teal/15 hover:bg-crm-teal/25 text-crm-teal border border-crm-teal/30 text-xs gap-1.5 shadow-glow-teal font-bold"
           >
             <Link2 size={14} /> Web-to-Lead Link
