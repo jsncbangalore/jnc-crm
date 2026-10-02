@@ -33,7 +33,18 @@ export default function MobileDock() {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const isAdmin = user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
+  const isPlatformOwner =
+    user?.role === 'platform_super_admin' ||
+    (user?.role === 'super_admin' && (!user?.tenantId || user?.tenantId === 'default-tenant-id'));
+
+  const isAdmin = isPlatformOwner || user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
+
+  const visiblePrimaryTabs = isPlatformOwner
+    ? [
+        { to: '/platform/companies', icon: Building2, label: 'Companies' },
+        { to: '/users',              icon: Shield,    label: 'Global Users' },
+      ]
+    : mobilePrimaryTabs;
 
   // Check if active route is one of the drawer items
   const isDrawerRouteActive = mobileDrawerItems.some((item) => location.pathname.startsWith(item.to));
@@ -42,11 +53,11 @@ export default function MobileDock() {
     <>
       {/* ─── NATIVE MOBILE BOTTOM DOCK (Visible on screens < 1024px) ────────── */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-[#181B26]/95 backdrop-blur-lg border-t border-slate-200 dark:border-[#2A3042] px-2 py-1.5 flex items-center justify-around shadow-2xl safe-area-bottom transition-colors duration-150">
-        {mobilePrimaryTabs.map(({ to, icon: Icon, label }) => (
+        {visiblePrimaryTabs.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
-            end={to === '/'}
+            end={to === '/' || to === '/platform/companies'}
             className={({ isActive }) =>
               `relative flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all duration-200 ${
                 isActive
