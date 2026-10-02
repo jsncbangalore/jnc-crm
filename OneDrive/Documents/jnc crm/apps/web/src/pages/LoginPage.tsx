@@ -76,7 +76,7 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{branding.companyDisplayName}</h1>
           <p className="font-comeitiye text-xl text-crm-blue dark:text-crm-blue-light mt-1 tracking-wide">
-            Precision in Security, PA & Power Systems
+            Enterprise Operations & Inventory Management
           </p>
           {branding.companyPhone && (
             <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5 font-mono">Contact: {branding.companyPhone}</p>

@@ -689,7 +689,7 @@ export default function UsersPage() {
                   <label className="label">Full Name *</label>
                   <input
                     className="input text-xs"
-                    placeholder="e.g. Ramesh Chandra"
+                    placeholder="Enter full name"
                     value={createForm.name}
                     onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
                     required
@@ -702,7 +702,7 @@ export default function UsersPage() {
                     <input
                       type="email"
                       className="input text-xs"
-                      placeholder="e.g. ramesh@jsnc.co.in"
+                      placeholder="user@company.com"
                       value={createForm.email}
                       onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
                       required
@@ -712,7 +712,7 @@ export default function UsersPage() {
                     <label className="label">Phone Number *</label>
                     <input
                       className="input text-xs font-mono"
-                      placeholder="e.g. 9845012345"
+                      placeholder="Enter phone number"
                       value={createForm.phone}
                       onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
                       required
@@ -762,7 +762,7 @@ export default function UsersPage() {
                       value={createForm.warehouseId}
                       onChange={(e) => setCreateForm({ ...createForm, warehouseId: e.target.value })}
                     >
-                      <option value="BLR-MAIN">BLR-MAIN (Bengaluru Hub)</option>
+                      <option value="MAIN-01">MAIN-01 (Headquarters)</option>
                     </select>
                   </div>
                 </div>
@@ -772,7 +772,7 @@ export default function UsersPage() {
                     <CheckCircle2 size={13} className="text-crm-teal" /> Automatic Credential Provisioning:
                   </p>
                   <p className="text-[11px] leading-relaxed">
-                    An employee code will be automatically generated (e.g. <code>JNC-EMP-xxx</code>) alongside a cryptographically secure temporary password. Credentials will be securely dispatched to the user's email address.
+                    An employee code will be automatically generated alongside a cryptographically secure temporary password. Credentials will be securely dispatched to the user's email address.
                   </p>
                 </div>
 

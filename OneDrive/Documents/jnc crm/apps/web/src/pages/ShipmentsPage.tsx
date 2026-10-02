@@ -332,7 +332,7 @@ export default function ShipmentsPage() {
                     <label className="label">Courier Partner *</label>
                     <input
                       className="input text-xs"
-                      placeholder="e.g. DTDC Express, Blue Dart, VRL"
+                      placeholder="Enter courier partner name"
                       value={courierName}
                       onChange={(e) => setCourierName(e.target.value)}
                       required
@@ -342,7 +342,7 @@ export default function ShipmentsPage() {
                     <label className="label">AWB / Tracking Number *</label>
                     <input
                       className="input text-xs font-mono"
-                      placeholder="e.g. D12345678"
+                      placeholder="e.g. TRK-001"
                       value={trackingNumber}
                       onChange={(e) => setTrackingNumber(e.target.value)}
                       required
@@ -355,7 +355,7 @@ export default function ShipmentsPage() {
                   <input
                     type="url"
                     className="input text-xs font-mono"
-                    placeholder="https://track.dtdc.com/..."
+                    placeholder="https://track.courier.com/..."
                     value={trackingUrl}
                     onChange={(e) => setTrackingUrl(e.target.value)}
                   />
@@ -365,7 +365,7 @@ export default function ShipmentsPage() {
                   <label className="label">Dispatch Notes</label>
                   <textarea
                     className="input text-xs w-full min-h-[60px] resize-none"
-                    placeholder="Box count, vehicle number, driver contact..."
+                    placeholder="Enter dispatch notes or delivery instructions..."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                   />

@@ -583,7 +583,7 @@ export default function QuotationsPage() {
                     <label className="label">Customer Name *</label>
                     <input
                       className="input text-xs"
-                      placeholder="e.g. Anand Kumar"
+                      placeholder="Enter customer name"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
                       required
@@ -593,7 +593,7 @@ export default function QuotationsPage() {
                     <label className="label">Mobile Number *</label>
                     <input
                       className="input text-xs font-mono"
-                      placeholder="e.g. 9845012345"
+                      placeholder="Enter phone number"
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
                       required
@@ -603,7 +603,7 @@ export default function QuotationsPage() {
                     <label className="label">Company / Organization</label>
                     <input
                       className="input text-xs"
-                      placeholder="e.g. Prime Electronics"
+                      placeholder="Enter company name"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                     />
@@ -616,7 +616,7 @@ export default function QuotationsPage() {
                     <input
                       type="email"
                       className="input text-xs"
-                      placeholder="e.g. anand@prime.com"
+                      placeholder="contact@company.com"
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
                     />
@@ -625,7 +625,7 @@ export default function QuotationsPage() {
                     <label className="label">Delivery Location / City</label>
                     <input
                       className="input text-xs"
-                      placeholder="e.g. Bengaluru"
+                      placeholder="Enter city or location"
                       value={shippingAddress}
                       onChange={(e) => setShippingAddress(e.target.value)}
                     />

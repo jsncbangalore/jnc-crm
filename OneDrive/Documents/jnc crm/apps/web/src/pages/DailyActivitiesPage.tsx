@@ -579,7 +579,7 @@ export default function DailyActivitiesPage() {
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Project Name *</label>
                   <input
                     className="input text-sm w-full"
-                    placeholder="e.g. Mobile App Redesign"
+                    placeholder="Enter project name"
                     value={projectForm.name}
                     onChange={e => setProjectForm(f => ({ ...f, name: e.target.value }))}
                   />
@@ -725,7 +725,7 @@ export default function DailyActivitiesPage() {
                   <textarea
                     className="input text-sm w-full resize-none"
                     rows={3}
-                    placeholder="Write what you worked on today (e.g. Completed site visit at Koramangala, updated 5 client records...)"
+                    placeholder="Write what you worked on today (e.g. Completed milestone tasks, updated client records...)"
                     value={uploadSummary}
                     onChange={e => setUploadSummary(e.target.value)}
                   />

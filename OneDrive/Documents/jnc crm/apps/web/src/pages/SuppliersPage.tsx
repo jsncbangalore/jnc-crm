@@ -365,7 +365,7 @@ export default function SuppliersPage() {
                   <label className="label">Company / Supplier Name *</label>
                   <input
                     className="input text-xs"
-                    placeholder="e.g. Mouser Electronics India Pvt Ltd"
+                    placeholder="Enter supplier or vendor name"
                     value={newSupplier.name}
                     onChange={(e) => setNewSupplier({ ...newSupplier, name: e.target.value })}
                     required
@@ -377,7 +377,7 @@ export default function SuppliersPage() {
                     <label className="label">Contact Person</label>
                     <input
                       className="input text-xs"
-                      placeholder="e.g. Ramesh Kumar"
+                      placeholder="Enter contact person"
                       value={newSupplier.contactPerson}
                       onChange={(e) =>
                         setNewSupplier({ ...newSupplier, contactPerson: e.target.value })
@@ -388,7 +388,7 @@ export default function SuppliersPage() {
                     <label className="label">Phone Number</label>
                     <input
                       className="input text-xs"
-                      placeholder="e.g. +91 98450 12345"
+                      placeholder="Enter phone number"
                       value={newSupplier.phone}
                       onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
                     />
@@ -401,7 +401,7 @@ export default function SuppliersPage() {
                     <input
                       type="email"
                       className="input text-xs"
-                      placeholder="e.g. sales@vendor.in"
+                      placeholder="sales@vendor.com"
                       value={newSupplier.email}
                       onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })}
                     />
@@ -410,7 +410,7 @@ export default function SuppliersPage() {
                     <label className="label">GSTIN / Tax ID</label>
                     <input
                       className="input text-xs font-mono"
-                      placeholder="e.g. 29AAAAA0000A1Z5"
+                      placeholder="e.g. 29ABCDE1234F1Z5"
                       value={newSupplier.gstin}
                       onChange={(e) => setNewSupplier({ ...newSupplier, gstin: e.target.value })}
                     />
@@ -422,7 +422,7 @@ export default function SuppliersPage() {
                     <label className="label">City / Location</label>
                     <input
                       className="input text-xs"
-                      placeholder="e.g. Bengaluru, Karnataka"
+                      placeholder="Enter city or location"
                       value={newSupplier.city}
                       onChange={(e) => setNewSupplier({ ...newSupplier, city: e.target.value })}
                     />
@@ -448,7 +448,7 @@ export default function SuppliersPage() {
                   <label className="label">Full Address / Warehouse Location</label>
                   <input
                     className="input text-xs"
-                    placeholder="e.g. Plot No 42, Electronic City Phase 1"
+                    placeholder="Enter street address"
                     value={newSupplier.address}
                     onChange={(e) => setNewSupplier({ ...newSupplier, address: e.target.value })}
                   />

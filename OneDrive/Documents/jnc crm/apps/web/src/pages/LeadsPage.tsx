@@ -75,13 +75,11 @@ export const PIPELINE_COLUMNS: ColumnDef[] = [
   },
 ];
 
-// Sample Trade Show leads for import demo
+// Sample leads template for import demo
 const SAMPLE_LEADS = [
-  { company_name: 'Apex Robotics Pvt Ltd', contact_name: 'Rajesh Sharma', phone: '9845012345', email: 'rajesh@apexrobotics.in', product_interest: 'PA System 240W Commercial Amplifier', city: 'Bengaluru', estimated_value: 75000, urgency: 'urgent' },
-  { company_name: 'Quantron Automation', contact_name: 'Pooja Patel', phone: '9820055443', email: 'pooja@quantron.com', product_interest: '16-Zone Microprocessor Fire Alarm Control Panel', city: 'Pune', estimated_value: 45000, urgency: 'standard' },
-  { company_name: 'Voltrix Embedded Solutions', contact_name: 'Anand Verma', phone: '9811122334', email: 'anand@voltrix.in', product_interest: '10-Zone Master Intercom Talk Back Control Station', city: 'Hyderabad', estimated_value: 28000, urgency: 'planning' },
-  { company_name: 'Nexus Security & Power', contact_name: 'Siddharth Rao', phone: '9876543210', email: 'siddharth@nexuspower.in', product_interest: '4MP IR Turret Dome IP Camera PoE (20 pcs)', city: 'Chennai', estimated_value: 120000, urgency: 'urgent' },
-  { company_name: 'Silicon Medical Systems', contact_name: 'Meera Iyer', phone: '9844001122', email: 'meera@siliconkraft.com', product_interest: '32-Bed Digital Nurse Call Station Display', city: 'Bengaluru', estimated_value: 85000, urgency: 'standard' },
+  { company_name: 'Acme Enterprise Ltd', contact_name: 'Sample Contact 1', phone: '9845012345', email: 'contact@acme.com', product_interest: 'Commercial Sound Equipment', city: 'Metropolis', estimated_value: 50000, urgency: 'urgent' },
+  { company_name: 'Global Technologies', contact_name: 'Sample Contact 2', phone: '9820055443', email: 'info@globaltech.com', product_interest: 'Control Panels & Hardware', city: 'City Center', estimated_value: 45000, urgency: 'standard' },
+  { company_name: 'Pioneer Automation', contact_name: 'Sample Contact 3', phone: '9811122334', email: 'orders@pioneer.com', product_interest: 'Intercom System Stations', city: 'North District', estimated_value: 28000, urgency: 'planning' },
 ];
 
 export default function LeadsPage() {
@@ -1474,7 +1472,7 @@ export default function LeadsPage() {
                     <label className="label">Contact Name *</label>
                     <input
                       className="input text-xs"
-                      placeholder="e.g. Suresh Reddy"
+                      placeholder="Enter contact name"
                       value={newLead.customerName}
                       onChange={(e) => setNewLead({ ...newLead, customerName: e.target.value })}
                       required
@@ -1484,7 +1482,7 @@ export default function LeadsPage() {
                     <label className="label">Mobile Number *</label>
                     <input
                       className="input text-xs font-mono"
-                      placeholder="e.g. 9845012345"
+                      placeholder="Enter phone number"
                       value={newLead.customerPhone}
                       onChange={(e) => setNewLead({ ...newLead, customerPhone: e.target.value })}
                       required
@@ -1497,7 +1495,7 @@ export default function LeadsPage() {
                     <label className="label">Company Name</label>
                     <input
                       className="input text-xs"
-                      placeholder="e.g. Prime Circuits Ltd"
+                      placeholder="Enter company name"
                       value={newLead.companyName}
                       onChange={(e) => setNewLead({ ...newLead, companyName: e.target.value })}
                     />
@@ -1507,7 +1505,7 @@ export default function LeadsPage() {
                     <input
                       type="email"
                       className="input text-xs"
-                      placeholder="e.g. suresh@prime.com"
+                      placeholder="contact@company.com"
                       value={newLead.customerEmail}
                       onChange={(e) => setNewLead({ ...newLead, customerEmail: e.target.value })}
                     />
@@ -1519,7 +1517,7 @@ export default function LeadsPage() {
                     <label className="label">System Category</label>
                     <input
                       className="input text-xs"
-                      placeholder="e.g. Fire Alarm System, PA System"
+                      placeholder="Enter category or system type"
                       value={newLead.productCategory}
                       onChange={(e) => setNewLead({ ...newLead, productCategory: e.target.value })}
                     />
@@ -1529,7 +1527,7 @@ export default function LeadsPage() {
                     <input
                       type="number"
                       className="input text-xs"
-                      placeholder="50000"
+                      placeholder="0.00"
                       value={newLead.estimatedValue || ''}
                       onChange={(e) =>
                         setNewLead({ ...newLead, estimatedValue: parseFloat(e.target.value) || 0 })
@@ -1555,7 +1553,7 @@ export default function LeadsPage() {
                     <label className="label">City / Location</label>
                     <input
                       className="input text-xs"
-                      placeholder="e.g. Bengaluru, Karnataka"
+                      placeholder="Enter city or location"
                       value={newLead.city}
                       onChange={(e) => setNewLead({ ...newLead, city: e.target.value })}
                     />
@@ -1566,7 +1564,7 @@ export default function LeadsPage() {
                   <label className="label">Requirement Notes</label>
                   <textarea
                     className="input text-xs w-full min-h-[60px] resize-none"
-                    placeholder="Specific product models, zone counts, cable lengths..."
+                    placeholder="Enter notes or requirement specifications..."
                     value={newLead.queryMessage}
                     onChange={(e) => setNewLead({ ...newLead, queryMessage: e.target.value })}
                   />
