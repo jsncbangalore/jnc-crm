@@ -379,18 +379,18 @@ export class LeadsService {
     const lead = await this.findOne(id, user);
 
     const oldStatus = lead.status;
-    const updated = await this.prisma.lead.update({
-      where: { id },
+    const tenantId = requireTenantId(user);
+    const updateRes = await this.prisma.lead.updateMany({
+      where: { id, tenantId, deletedAt: null },
       data: {
         status: dto.status,
         lostReason: dto.status === 'lost' ? dto.lostReason : null,
       },
-      include: {
-        assignedTo: {
-          select: { id: true, name: true, employeeCode: true, email: true },
-        },
-      },
     });
+    if (updateRes.count === 0) {
+      throw new NotFoundException('Lead not found');
+    }
+    const updated = await this.findOne(id, user);
 
     await this.prisma.statusHistory.create({
       data: {

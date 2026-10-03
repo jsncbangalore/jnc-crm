@@ -11,7 +11,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
-import { CompaniesService, CreateCompanyDto } from './companies.service';
+import { CompaniesService, CreateCompanyDto, CreateContactDto } from './companies.service';
 
 @Controller('companies')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -48,5 +48,15 @@ export class CompaniesController {
   @Roles('tenant_admin', 'admin')
   async deleteCompany(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.companiesService.delete(id, user);
+  }
+
+  @Post(':id/contacts')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
+  async addContact(
+    @Param('id') id: string,
+    @Body() dto: CreateContactDto,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.companiesService.addContact(id, dto, user);
   }
 }

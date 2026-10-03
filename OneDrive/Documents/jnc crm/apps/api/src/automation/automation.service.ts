@@ -336,15 +336,12 @@ export class AutomationService implements OnModuleInit {
       updateData.actionPayloadJson = stepsToCreate[0].config;
     }
 
-    const updated = await this.prisma.automationRule.update({
-      where: { id },
+    const tenantId = requireTenantId(user);
+    await this.prisma.automationRule.updateMany({
+      where: { id, tenantId },
       data: updateData,
-      include: {
-        steps: {
-          orderBy: { stepOrder: 'asc' },
-        },
-      },
     });
+    const updated = await this.getRuleById(user, id);
 
     this.logger.log(`Updated automation rule: "${updated.name}" [ID: ${id}]`);
     return updated;
@@ -354,18 +351,15 @@ export class AutomationService implements OnModuleInit {
    * Toggle rule active/inactive state
    */
   async toggleRuleActive(user: ScopedUser, id: string, targetActive?: boolean) {
+    const tenantId = requireTenantId(user);
     const existing = await this.getRuleById(user, id);
     const newActiveState = targetActive !== undefined ? targetActive : !existing.isActive;
 
-    const updated = await this.prisma.automationRule.update({
-      where: { id },
+    await this.prisma.automationRule.updateMany({
+      where: { id, tenantId },
       data: { isActive: newActiveState },
-      include: {
-        steps: {
-          orderBy: { stepOrder: 'asc' },
-        },
-      },
     });
+    const updated = await this.getRuleById(user, id);
 
     this.logger.log(`Toggled rule "${updated.name}" active state -> ${newActiveState}`);
     return updated;
@@ -375,8 +369,9 @@ export class AutomationService implements OnModuleInit {
    * Delete rule and all its steps (cascade)
    */
   async deleteRule(user: ScopedUser, id: string) {
+    const tenantId = requireTenantId(user);
     const existing = await this.getRuleById(user, id);
-    await this.prisma.automationRule.delete({ where: { id } });
+    await this.prisma.automationRule.deleteMany({ where: { id, tenantId } });
     this.logger.log(`Deleted automation rule: "${existing.name}" [ID: ${id}]`);
     return { success: true, message: `Rule "${existing.name}" deleted successfully` };
   }
@@ -558,7 +553,9 @@ export class AutomationService implements OnModuleInit {
             recipientEmail = admin?.email || 'admin@jsnc.co.in';
           } else if (config.recipient === 'assigned_employee') {
             if (context.assignedToId) {
-              const rep = await this.prisma.user.findUnique({ where: { id: context.assignedToId } });
+              const rep = await this.prisma.user.findFirst({
+                where: { id: context.assignedToId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+              });
               recipientEmail = rep?.email;
             }
           } else {
@@ -581,7 +578,9 @@ export class AutomationService implements OnModuleInit {
       case 'send_sms': {
         let phone = config.phone || context.customerPhone || context.phone;
         if (config.recipient === 'assigned_employee' && context.assignedToId) {
-          const rep = await this.prisma.user.findUnique({ where: { id: context.assignedToId } });
+          const rep = await this.prisma.user.findFirst({
+            where: { id: context.assignedToId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+          });
           phone = rep?.phone || phone;
         }
 
@@ -628,11 +627,13 @@ export class AutomationService implements OnModuleInit {
           const value = this.interpolate(String(config.value ?? ''), context);
 
           if (field === 'status' || field === 'urgency' || field === 'notes') {
-            const currentLead = await this.prisma.lead.findUnique({ where: { id: leadId } });
+            const currentLead = await this.prisma.lead.findFirst({
+              where: { id: leadId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+            });
             const previousValue = (currentLead as any)?.[field] ?? '';
 
-            await this.prisma.lead.update({
-              where: { id: leadId },
+            await this.prisma.lead.updateMany({
+              where: { id: leadId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
               data: { [field]: value },
             });
 
@@ -673,7 +674,9 @@ export class AutomationService implements OnModuleInit {
           const mode = config.mode || 'round_robin';
           let targetUserId: string | null = null;
 
-          const currentLead = await this.prisma.lead.findUnique({ where: { id: leadId } });
+          const currentLead = await this.prisma.lead.findFirst({
+            where: { id: leadId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+          });
           const prevAssignedId = currentLead?.assignedToId;
 
           if (mode === 'specific_user') {
@@ -697,10 +700,12 @@ export class AutomationService implements OnModuleInit {
           }
 
           if (targetUserId) {
-            const targetUser = await this.prisma.user.findUnique({ where: { id: targetUserId } });
+            const targetUser = await this.prisma.user.findFirst({
+              where: { id: targetUserId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+            });
 
-            await this.prisma.lead.update({
-              where: { id: leadId },
+            await this.prisma.lead.updateMany({
+              where: { id: leadId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
               data: { assignedToId: targetUserId },
             });
             context.assignedToId = targetUserId;

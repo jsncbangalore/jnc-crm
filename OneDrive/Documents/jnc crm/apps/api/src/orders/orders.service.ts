@@ -306,6 +306,7 @@ export class OrdersService {
     },
     user: ScopedUser,
   ) {
+    const tenantId = requireTenantId(user);
     const order = await this.findOne(orderId, user);
 
     const amount = Number(dto.amount);
@@ -315,7 +316,7 @@ export class OrdersService {
 
     // Find any active invoice for this order to link if present
     const activeInvoice = await this.prisma.invoice.findFirst({
-      where: { orderId: order.id, isVoided: false },
+      where: { orderId: order.id, tenantId, isVoided: false },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -347,29 +348,22 @@ export class OrdersService {
 
     const balanceAmount = Math.max(0, Number((order.totalAmount - totalPaid).toFixed(2)));
 
-    const updatedOrder = await this.prisma.order.update({
-      where: { id: order.id },
+    await this.prisma.order.updateMany({
+      where: { id: order.id, tenantId },
       data: {
         paidAmount: totalPaid,
         balanceAmount,
         paymentStatus,
         paymentRef: dto.transactionRef?.trim() || order.paymentRef,
       },
-      include: {
-        lines: { include: { sku: true } },
-        payments: {
-          include: { recordedBy: { select: { id: true, name: true, employeeCode: true } } },
-          orderBy: { createdAt: 'desc' },
-        },
-        invoices: { where: { isVoided: false } },
-      },
     });
+    const updatedOrder = await this.findOne(order.id, user);
 
     // If an active tax invoice exists, also update its balanceDue and paymentStatus
     if (activeInvoice) {
       const invBalanceDue = Math.max(0, Number((activeInvoice.totalAmount - totalPaid).toFixed(2)));
-      await this.prisma.invoice.update({
-        where: { id: activeInvoice.id },
+      await this.prisma.invoice.updateMany({
+        where: { id: activeInvoice.id, tenantId },
         data: {
           paymentStatus: paymentStatus === 'paid' ? 'paid' : (totalPaid > 0 ? 'partial' : 'unpaid'),
           balanceDue: invBalanceDue,
@@ -392,6 +386,7 @@ export class OrdersService {
   }
 
   async updateOrder(id: string, dto: Partial<CreateOrderDto> & { paymentStatus?: string }, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
     const order = await this.findOne(id, user);
 
     let subtotal = order.subtotal;
@@ -454,8 +449,8 @@ export class OrdersService {
       });
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id },
+    await this.prisma.order.updateMany({
+      where: { id, tenantId },
       data: {
         customerName: dto.customerName ?? order.customerName,
         customerPhone: dto.customerPhone ?? order.customerPhone,
@@ -467,14 +462,8 @@ export class OrdersService {
         taxAmount,
         totalAmount,
       },
-      include: {
-        lines: { include: { sku: true } },
-        shipments: true,
-        invoices: { where: { isVoided: false }, include: { lines: true } },
-        contact: true,
-        createdBy: { select: { id: true, name: true, employeeCode: true } },
-      },
     });
+    const updated = await this.findOne(id, user);
 
     await this.auditService.log({
       actorId: user.id,
@@ -489,14 +478,15 @@ export class OrdersService {
   }
 
   async updateStatus(id: string, dto: UpdateOrderStatusDto, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
     const order = await this.findOne(id, user);
     const oldStatus = order.status;
 
-    const updated = await this.prisma.order.update({
-      where: { id },
+    await this.prisma.order.updateMany({
+      where: { id, tenantId },
       data: { status: dto.status },
-      include: { lines: { include: { sku: true } }, shipments: true },
     });
+    const updated = await this.findOne(id, user);
 
     await this.prisma.statusHistory.create({
       data: {
@@ -594,13 +584,12 @@ export class OrdersService {
     if (!shipment) throw new NotFoundException('Shipment not found');
 
     const oldStatus = shipment.status;
-    const updated = await this.prisma.shipment.update({
-      where: { id: shipmentId },
+    await this.prisma.shipment.updateMany({
+      where: { id: shipmentId, tenantId },
       data: {
         status,
         deliveredAt: status === 'delivered' ? new Date() : shipment.deliveredAt,
       },
-      include: { order: true },
     });
 
     await this.prisma.statusHistory.create({
@@ -615,8 +604,8 @@ export class OrdersService {
 
     // Auto-update order status on delivery
     if (status === 'delivered') {
-      await this.prisma.order.update({
-        where: { id: shipment.orderId },
+      await this.prisma.order.updateMany({
+        where: { id: shipment.orderId, tenantId },
         data: { status: 'delivered' },
       });
 
@@ -633,6 +622,10 @@ export class OrdersService {
       }
     }
 
+    const updated = await this.prisma.shipment.findFirst({
+      where: { id: shipmentId, tenantId },
+      include: { order: true },
+    });
     return updated;
   }
 

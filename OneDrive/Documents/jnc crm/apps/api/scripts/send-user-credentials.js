@@ -2,7 +2,7 @@ const nodemailer = require('nodemailer');
 const { assertNotProductionDb } = require('./safety-check');
 const { PrismaClient } = require('@prisma/client');
 
-const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres.hbzlelktcfagwvmyusvw:Jsnc%402024js@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres';
+const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jnc_crm_dev?schema=public';
 process.env.DATABASE_URL = dbUrl;
 assertNotProductionDb('send-user-credentials');
 

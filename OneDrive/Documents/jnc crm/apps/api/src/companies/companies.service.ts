@@ -21,6 +21,14 @@ export interface CreateCompanyDto {
   billingEmail?: string;
 }
 
+export interface CreateContactDto {
+  name: string;
+  email?: string;
+  phone: string;
+  designation?: string;
+  isPrimary?: boolean;
+}
+
 @Injectable()
 export class CompaniesService {
   constructor(private prisma: PrismaService) {}
@@ -98,9 +106,9 @@ export class CompaniesService {
   }
 
   async update(id: string, dto: Partial<CreateCompanyDto>, user: ScopedUser) {
-    await this.findOne(id, user);
-    return this.prisma.company.update({
-      where: { id },
+    const tenantId = requireTenantId(user);
+    const res = await this.prisma.company.updateMany({
+      where: { id, tenantId, deletedAt: null },
       data: {
         ...(dto.name !== undefined && { name: dto.name.trim() }),
         ...(dto.gstin !== undefined && { gstin: dto.gstin?.trim() || null }),
@@ -112,13 +120,37 @@ export class CompaniesService {
         ...(dto.billingEmail !== undefined && { billingEmail: dto.billingEmail?.trim().toLowerCase() || null }),
       },
     });
+    if (res.count === 0) throw new NotFoundException('Company not found');
+    return this.findOne(id, user);
   }
 
   async delete(id: string, user: ScopedUser) {
-    await this.findOne(id, user);
-    return this.prisma.company.update({
-      where: { id },
+    const tenantId = requireTenantId(user);
+    const res = await this.prisma.company.updateMany({
+      where: { id, tenantId, deletedAt: null },
       data: { deletedAt: new Date() },
+    });
+    if (res.count === 0) throw new NotFoundException('Company not found');
+    return { success: true };
+  }
+
+  async addContact(companyId: string, dto: CreateContactDto, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    const company = await this.prisma.company.findFirst({
+      where: { id: companyId, tenantId, deletedAt: null },
+    });
+    if (!company) throw new NotFoundException('Company not found');
+
+    return this.prisma.contact.create({
+      data: {
+        tenantId,
+        companyId: company.id,
+        name: dto.name.trim(),
+        email: dto.email?.trim().toLowerCase() || null,
+        phone: dto.phone.trim(),
+        designation: dto.designation?.trim() || null,
+        isPrimary: !!dto.isPrimary,
+      },
     });
   }
 }

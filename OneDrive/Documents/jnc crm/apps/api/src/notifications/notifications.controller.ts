@@ -121,8 +121,8 @@ export class NotificationsController {
 
       // Update lead status to contacted/active if was new
       if (lead.status === 'new') {
-        await this.prisma.lead.update({
-          where: { id: lead.id },
+        await this.prisma.lead.updateMany({
+          where: { id: lead.id, tenantId: lead.tenantId },
           data: { status: 'contacted' },
         });
       }

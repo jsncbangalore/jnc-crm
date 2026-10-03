@@ -96,19 +96,27 @@ export class SuppliersService {
   }
 
   async update(id: string, dto: Partial<CreateSupplierDto>, user?: ScopedUser) {
-    await this.findOne(id, user);
-    return this.prisma.supplier.update({
-      where: { id },
+    const tenantId = requireTenantId(user);
+    const res = await this.prisma.supplier.updateMany({
+      where: { id, tenantId, deletedAt: null },
       data: dto,
     });
+    if (res.count === 0) {
+      throw new NotFoundException('Supplier not found');
+    }
+    return this.findOne(id, user);
   }
 
   async delete(id: string, user?: ScopedUser) {
-    await this.findOne(id, user);
-    return this.prisma.supplier.update({
-      where: { id },
+    const tenantId = requireTenantId(user);
+    const res = await this.prisma.supplier.updateMany({
+      where: { id, tenantId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
+    if (res.count === 0) {
+      throw new NotFoundException('Supplier not found');
+    }
+    return { success: true };
   }
 
   async countActiveSuppliers(user?: ScopedUser): Promise<number> {

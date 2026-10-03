@@ -93,8 +93,11 @@ npm install
 
 ### 3. Database Migration & Schema Sync
 ```bash
-# Push Prisma schema to Supabase Cloud Database
-npx prisma db push
+# Push Prisma schema to Development/Test Database
+# NOTE: The prisma/migrations directory contains incremental ALTER migrations on top of base tables.
+# To initialize a brand-new empty database (e.g. for development or testing), use `prisma db push` or
+# `npm run db:push:test` in apps/api. `prisma migrate deploy` is only for existing databases that already have base tables.
+npm run db:push:test
 ```
 
 ### 4. Running the Backend API

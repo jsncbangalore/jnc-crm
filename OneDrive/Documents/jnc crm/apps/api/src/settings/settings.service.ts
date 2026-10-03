@@ -260,8 +260,8 @@ export class SettingsService {
       throw new NotFoundException('Mail account not found');
     }
 
-    return this.prisma.mailAccount.update({
-      where: { id },
+    await this.prisma.mailAccount.updateMany({
+      where: { id, tenantId },
       data: {
         name: dto.name,
         email: dto.email,
@@ -275,6 +275,7 @@ export class SettingsService {
         isActive: dto.isActive !== undefined ? Boolean(dto.isActive) : undefined,
       },
     });
+    return this.prisma.mailAccount.findFirst({ where: { id, tenantId } });
   }
 
   async deleteMailAccount(user: ScopedUser, id: string) {
@@ -289,8 +290,9 @@ export class SettingsService {
       throw new NotFoundException('Mail account not found');
     }
 
-    return this.prisma.mailAccount.delete({
-      where: { id },
+    await this.prisma.mailAccount.deleteMany({
+      where: { id, tenantId },
     });
+    return { success: true };
   }
 }

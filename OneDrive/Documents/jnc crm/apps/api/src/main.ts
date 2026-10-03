@@ -44,6 +44,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { json, urlencoded, static as expressStatic } from 'express';
 import { validateEnvironmentOrExit } from './common/env-validation';
+import { corsOriginCallback } from './common/cors-config';
 
 async function bootstrap() {
   // 1. Strict Startup Secrets Validation Guard — Fail fast if mandatory secrets are missing
@@ -89,25 +90,8 @@ async function bootstrap() {
   }));
 
   // CORS Configuration (Supports admin.jsnc.co.in, api.jsnc.co.in, localhost, and custom domains)
-  const allowedOrigins = [
-    'https://admin.jsnc.co.in',
-    'http://admin.jsnc.co.in',
-    'https://api.jsnc.co.in',
-    'http://api.jsnc.co.in',
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://localhost:3333',
-    ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map((u) => u.trim()) : []),
-  ];
-
   app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.jsnc.co.in')) {
-        callback(null, true);
-      } else {
-        callback(new Error('Origin not allowed by CORS'));
-      }
-    },
+    origin: corsOriginCallback,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Range'],
     exposedHeaders: ['Content-Disposition', 'Content-Range', 'Content-Length'],

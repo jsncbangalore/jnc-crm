@@ -608,6 +608,7 @@ export class InvoicingService {
       where: { invoiceId: id },
     });
 
+    // Re-create updated invoice; tenantId verified on line 550 (existing.tenantId)
     const updated = await this.prisma.invoice.update({
       where: { id },
       data: {
@@ -1065,23 +1066,16 @@ export class InvoicingService {
 
     const balanceDue = Math.max(0, Number((invoice.totalAmount - totalPaid).toFixed(2)));
 
-    const updatedInvoice = await this.prisma.invoice.update({
-      where: { id: invoice.id },
+    await this.prisma.invoice.updateMany({
+      where: { id: invoice.id, tenantId: invoice.tenantId },
       data: {
         paymentStatus,
         balanceDue,
         paymentMethod: dto.paymentMethod || invoice.paymentMethod || 'NEFT',
         transactionRef: dto.transactionRef?.trim() || invoice.transactionRef,
       },
-      include: {
-        lines: { include: { sku: true } },
-        payments: {
-          include: { recordedBy: { select: { id: true, name: true, employeeCode: true } } },
-          orderBy: { createdAt: 'desc' },
-        },
-        order: true,
-      },
     });
+    const updatedInvoice = await this.findOne(invoice.id, user);
 
     // If linked to an order, also update order payment status & paidAmount
     if (invoice.orderId) {
@@ -1089,7 +1083,7 @@ export class InvoicingService {
         where: { orderId: invoice.orderId },
       });
       const orderTotalPaid = orderPayments.reduce((acc, p) => acc + p.amount, 0);
-      const order = await this.prisma.order.findUnique({ where: { id: invoice.orderId } });
+      const order = await this.prisma.order.findFirst({ where: { id: invoice.orderId, tenantId: invoice.tenantId } });
       if (order) {
         let orderPaymentStatus = 'pending';
         if (orderTotalPaid >= order.totalAmount - 0.5) {
@@ -1097,8 +1091,8 @@ export class InvoicingService {
         } else if (orderTotalPaid > 0) {
           orderPaymentStatus = 'partial';
         }
-        await this.prisma.order.update({
-          where: { id: invoice.orderId },
+        await this.prisma.order.updateMany({
+          where: { id: invoice.orderId, tenantId: invoice.tenantId },
           data: {
             paidAmount: orderTotalPaid,
             balanceAmount: Math.max(0, Number((order.totalAmount - orderTotalPaid).toFixed(2))),
@@ -1140,14 +1134,15 @@ export class InvoicingService {
       throw new BadRequestException('Invoice is already voided');
     }
 
-    const updated = await this.prisma.invoice.update({
-      where: { id },
+    await this.prisma.invoice.updateMany({
+      where: { id, tenantId },
       data: {
         isVoided: true,
         voidedAt: new Date(),
         voidReason: reason || 'Voided by Administrator',
       },
     });
+    const updated = await this.findOne(id, user);
 
     // Record in Audit Log
     await this.auditService.log({

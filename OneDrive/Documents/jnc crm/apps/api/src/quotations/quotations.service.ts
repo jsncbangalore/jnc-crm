@@ -247,18 +247,14 @@ export class QuotationsService {
   }
 
   async updateStatus(id: string, status: string, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
     const quote = await this.findOne(id, user);
-    const updated = await this.prisma.quotation.update({
-      where: { id },
+    const res = await this.prisma.quotation.updateMany({
+      where: { id, tenantId },
       data: { status },
-      include: {
-        lines: { include: { sku: true } },
-        lead: true,
-        contact: true,
-        order: true,
-        createdBy: { select: { id: true, name: true, employeeCode: true } },
-      },
     });
+    if (res.count === 0) throw new NotFoundException('Quotation not found');
+    const updated = await this.findOne(id, user);
 
     await this.auditService.log({
       actorId: user.id,
@@ -274,6 +270,7 @@ export class QuotationsService {
   }
 
   async convertToOrder(id: string, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
     const quote = await this.findOne(id, user);
     if (quote.order) {
       throw new BadRequestException('Quotation has already been converted to an order.');
@@ -302,14 +299,14 @@ export class QuotationsService {
       user,
     );
 
-    await this.prisma.quotation.update({
-      where: { id },
+    await this.prisma.quotation.updateMany({
+      where: { id, tenantId },
       data: { status: 'approved' },
     });
 
     if (quote.leadId) {
-      await this.prisma.lead.update({
-        where: { id: quote.leadId },
+      await this.prisma.lead.updateMany({
+        where: { id: quote.leadId, tenantId },
         data: { status: 'won' },
       }).catch(() => {});
     }

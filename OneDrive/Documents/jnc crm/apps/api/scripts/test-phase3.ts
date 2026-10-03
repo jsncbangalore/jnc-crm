@@ -55,21 +55,8 @@ import { InventoryService } from '../src/inventory/inventory.service';
 import { CustomObjectsService } from '../src/custom-objects/custom-objects.service';
 import { ActivitiesService } from '../src/activities/activities.service';
 import { NotificationsService } from '../src/notifications/notifications.service';
-
-const PAGE_KEY_TO_ROUTE: Record<string, string> = {
-  dashboard: '/',
-  leads: '/leads',
-  orders: '/orders',
-  invoices: '/invoices',
-  inventory: '/inventory',
-  suppliers: '/suppliers',
-  shipments: '/shipments',
-  quotations: '/quotations',
-  users: '/users',
-  automation: '/automation',
-  custom_objects: '/setup/objects',
-  daily_activities: '/daily-activities',
-};
+import { corsOriginCallback } from '../src/common/cors-config';
+import { resolveTeamNavigation, PAGE_KEY_TO_ROUTE } from '../src/common/team-navigation';
 
 const prisma = new PrismaClient();
 const jwtService = new JwtService({
@@ -123,20 +110,25 @@ async function runPhase3Tests() {
   console.log('========================================================================\n');
 
   let passedCount = 0;
-  let totalCount = 0;
+  let failedCount = 0;
+  let skippedCount = 0;
 
   function recordPass(testName: string, detail: string) {
     passedCount++;
-    totalCount++;
-    console.log(`[PASS] Test ${totalCount}: ${testName}`);
+    console.log(`[PASS] ${testName}`);
     console.log(`       -> ${detail}\n`);
   }
 
   function recordFail(testName: string, reason: string) {
-    totalCount++;
-    console.error(`[FAIL] Test ${totalCount}: ${testName}`);
+    failedCount++;
+    console.error(`[FAIL] ${testName}`);
     console.error(`       -> ${reason}\n`);
-    throw new Error(`Test failed: ${testName} - ${reason}`);
+  }
+
+  function recordSkip(testName: string, reason: string) {
+    skippedCount++;
+    console.warn(`[SKIP] ${testName}`);
+    console.warn(`       -> ${reason}\n`);
   }
 
   // =========================================================================
@@ -155,7 +147,7 @@ async function runPhase3Tests() {
     console.warn(`\n[DATABASE STATUS] Test database server at ${process.env.DATABASE_URL?.replace(/:[^:]*@/, ':***@')} is currently offline.`);
     console.warn(`Reason: ${connErr.message}`);
     console.warn(`Per Safety Rule 0: "I will give the URL; never use the production Supabase URL."`);
-    console.warn(`The suite will verify pure logic/guard tests now, and full database CRUD tests as soon as the test database URL is provided.\n`);
+    console.warn(`DB-dependent tests will be recorded as SKIPPED per Rule 3.\n`);
   }
 
   if (isDbReachable) {
@@ -735,24 +727,54 @@ async function runPhase3Tests() {
       }
     }
   } else {
-    console.log('[INFO] Skipping Tests 1, 2, 3, 5, 6 until test PostgreSQL URL is configured in apps/api/.env.test.\n');
+    console.log('[DATABASE OFFLINE] Recording all 22 database-dependent test assertions as SKIPPED per Rule 3:\n');
+    recordSkip('Test 1.1: Users Isolation (Cross-tenant user read/write blocked)', 'Test DB offline');
+    recordSkip('Test 1.2: Teams Isolation (Cross-tenant team read/write blocked)', 'Test DB offline');
+    recordSkip('Test 1.3: Leads Isolation (Cross-tenant lead read/write blocked)', 'Test DB offline');
+    recordSkip('Test 1.4: Companies Isolation (Cross-tenant company read/write blocked)', 'Test DB offline');
+    recordSkip('Test 1.5: Contacts Isolation (Cross-tenant contact read/write blocked)', 'Test DB offline');
+    recordSkip('Test 1.6: Orders Isolation (Cross-tenant order read/write blocked)', 'Test DB offline');
+    recordSkip('Test 1.7: Invoices Isolation (Cross-tenant invoice read/write blocked)', 'Test DB offline');
+    recordSkip('Test 1.8: Quotations Isolation (Cross-tenant quotation read/write blocked)', 'Test DB offline');
+    recordSkip('Test 1.9: Suppliers Isolation (Cross-tenant supplier read/write blocked)', 'Test DB offline');
+    recordSkip('Test 1.10: Inventory Isolation (Cross-tenant inventory read/write blocked)', 'Test DB offline');
+    recordSkip('Test 1.11: Custom Objects Isolation (Cross-tenant custom object read/write blocked)', 'Test DB offline');
+    recordSkip('Test 2.1: Duplicate Email Login without Company Code requires code', 'Test DB offline');
+    recordSkip('Test 2.2: Duplicate Email Login with Company Code succeeds for tenant', 'Test DB offline');
+    recordSkip('Test 3: Wrong Password API Response returns status 401 without reload', 'Test DB offline');
+    recordSkip('Test 5.1: Admin Cannot Create Tenant Admin', 'Test DB offline');
+    recordSkip('Test 5.2: Admin Cannot Promote User to Tenant Admin', 'Test DB offline');
+    recordSkip('Test 5.3: User Cannot Change Own Role', 'Test DB offline');
+    recordSkip('Test 5.4: Last Active Tenant Admin Cannot Be Demoted or Deactivated', 'Test DB offline');
+    recordSkip('Test 6.1: Deactivated User Access Blocked on Access Token', 'Test DB offline');
+    recordSkip('Test 6.2: Suspended Tenant Access Blocked on Access Token', 'Test DB offline');
+    recordSkip('Test 6.3: Deactivated User Blocked on Refresh Token', 'Test DB offline');
+    recordSkip('Test 6.4: Password Reset Increments tokenVersion Revoking Old Tokens', 'Test DB offline');
   }
 
   // -----------------------------------------------------------------------
   // TEST 4: Team without dashboard lands on its first allowed page (no loop)
+  // Calls the REAL resolveTeamNavigation function used by TeamPageGuard
   // -----------------------------------------------------------------------
   console.log('>>> RUNNING TEST GROUP 4: Team Navigation Without Dashboard <<<\n');
-  const allowedPagesSample = JSON.stringify(['leads', 'orders']);
-  const parsedAllowed: string[] = JSON.parse(allowedPagesSample);
-  const firstAllowedKey = parsedAllowed.find((p) => PAGE_KEY_TO_ROUTE[p]);
-  const destinationRoute = PAGE_KEY_TO_ROUTE[firstAllowedKey || ''];
-  if (destinationRoute !== '/leads') {
-    recordFail('Team First Allowed Page', `Expected /leads but got: ${destinationRoute}`);
+  const userWithoutDashboard = {
+    role: 'employee',
+    teamId: 'team-a-sales',
+    teamRef: {
+      allowedPages: JSON.stringify(['leads', 'orders']),
+    },
+  };
+
+  const decision = resolveTeamNavigation(userWithoutDashboard, 'dashboard');
+  if (decision.action !== 'redirect' || decision.targetRoute !== '/leads') {
+    recordFail('Team First Allowed Page', `Expected redirect to /leads but got: ${JSON.stringify(decision)}`);
+  } else {
+    recordPass('Team First Allowed Page', `Calling real resolveTeamNavigation: user without dashboard lands on '${decision.targetRoute}' with no infinite loop`);
   }
-  recordPass('Team First Allowed Page', `Team without dashboard allowedPages=['leads', 'orders'] resolves cleanly to '${destinationRoute}' with no loop`);
 
   // -----------------------------------------------------------------------
   // TEST 7: mustResetPassword = true blocks all API endpoints except /auth/*
+  // Calls the REAL RolesGuard canActivate implementation
   // -----------------------------------------------------------------------
   console.log('>>> RUNNING TEST GROUP 7: mustResetPassword Guard <<<\n');
   const mustResetUser = {
@@ -763,90 +785,102 @@ async function runPhase3Tests() {
     mustResetPassword: true,
   };
 
-    const mockLeadsContext = {
-      getHandler: () => () => {},
-      getClass: () => ({}),
-      switchToHttp: () => ({
-        getRequest: () => ({
-          user: mustResetUser,
-          url: '/api/v1/leads',
-          path: '/api/v1/leads',
-        }),
+  const mockLeadsContext = {
+    getHandler: () => () => {},
+    getClass: () => ({}),
+    switchToHttp: () => ({
+      getRequest: () => ({
+        user: mustResetUser,
+        url: '/api/v1/leads',
+        path: '/api/v1/leads',
       }),
-    } as any;
+    }),
+  } as any;
 
-    reflector.getAllAndOverride = (key: string) => {
-      if (key === 'page_access') return 'leads';
-      if (key === 'roles') return ['admin', 'tenant_admin'];
-      return undefined;
-    };
+  reflector.getAllAndOverride = (key: string) => {
+    if (key === 'page_access') return 'leads';
+    if (key === 'roles') return ['admin', 'tenant_admin'];
+    return undefined;
+  };
 
-    let nonAuthBlocked = false;
-    let guardErrorMsg = '';
-    try {
-      await rolesGuard.canActivate(mockLeadsContext);
-    } catch (err: any) {
-      if (err instanceof ForbiddenException) {
-        nonAuthBlocked = true;
-        guardErrorMsg = err.message;
-      }
+  let nonAuthBlocked = false;
+  let guardErrorMsg = '';
+  try {
+    await rolesGuard.canActivate(mockLeadsContext);
+  } catch (err: any) {
+    if (err instanceof ForbiddenException) {
+      nonAuthBlocked = true;
+      guardErrorMsg = err.message;
     }
-    if (!nonAuthBlocked) recordFail('mustResetPassword Block', 'User with mustResetPassword was allowed to access /leads');
-    recordPass('mustResetPassword Block', `Blocked non-auth endpoint (/leads) with: "${guardErrorMsg}"`);
+  }
+  if (!nonAuthBlocked) {
+    recordFail('mustResetPassword Block', 'User with mustResetPassword was allowed to access /leads');
+  } else {
+    recordPass('mustResetPassword Block', `Calling real RolesGuard: blocked non-auth endpoint (/leads) with: "${guardErrorMsg}"`);
+  }
 
-    // Verify /auth/ endpoint is permitted
-    reflector.getAllAndOverride = () => undefined;
-    const mockAuthContext = {
-      getHandler: () => () => {},
-      getClass: () => ({}),
-      switchToHttp: () => ({
-        getRequest: () => ({
-          user: mustResetUser,
-          url: '/api/v1/auth/change-password',
-          path: '/api/v1/auth/change-password',
-        }),
+  // Verify /auth/ endpoint is permitted
+  reflector.getAllAndOverride = () => undefined;
+  const mockAuthContext = {
+    getHandler: () => () => {},
+    getClass: () => ({}),
+    switchToHttp: () => ({
+      getRequest: () => ({
+        user: mustResetUser,
+        url: '/api/v1/auth/change-password',
+        path: '/api/v1/auth/change-password',
       }),
-    } as any;
+    }),
+  } as any;
 
-    const authPermitted = await rolesGuard.canActivate(mockAuthContext);
-    if (!authPermitted) recordFail('mustResetPassword Auth Allow', 'User was blocked from accessing /auth/change-password');
-    recordPass('mustResetPassword Auth Allow', 'User with mustResetPassword is permitted to access /auth/change-password to set new password');
+  const authPermitted = await rolesGuard.canActivate(mockAuthContext);
+  if (!authPermitted) {
+    recordFail('mustResetPassword Auth Allow', 'User was blocked from accessing /auth/change-password');
+  } else {
+    recordPass('mustResetPassword Auth Allow', 'Calling real RolesGuard: user with mustResetPassword is permitted to access /auth/change-password to set new password');
+  }
 
-    // -----------------------------------------------------------------------
-    // TEST 8: CORS rejection of unknown origins
-    // -----------------------------------------------------------------------
-    console.log('>>> RUNNING TEST GROUP 8: CORS Policy Enforcement <<<\n');
-    const allowedOrigins = [
-      'https://admin.jsnc.co.in',
-      'http://admin.jsnc.co.in',
-      'https://api.jsnc.co.in',
-      'http://api.jsnc.co.in',
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:3333',
-    ];
+  // -----------------------------------------------------------------------
+  // TEST 8: CORS rejection of unknown origins
+  // Calls the REAL corsOriginCallback used by main.ts
+  // -----------------------------------------------------------------------
+  console.log('>>> RUNNING TEST GROUP 8: CORS Policy Enforcement <<<\n');
+  const testUntrustedOrigin = 'https://malicious-phishing-site.com';
+  let untrustedError: Error | null = null;
+  corsOriginCallback(testUntrustedOrigin, (err, allow) => {
+    if (err) untrustedError = err;
+  });
+  if (!untrustedError) {
+    recordFail('CORS Untrusted Rejection', 'Malicious origin was allowed by real corsOriginCallback');
+  } else {
+    recordPass('CORS Untrusted Rejection', `Calling real corsOriginCallback: origin "${testUntrustedOrigin}" rejected with "${untrustedError.message}" (no CORS headers issued)`);
+  }
 
-    function checkCorsOrigin(origin: string): boolean {
-      if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.jsnc.co.in')) {
-        return true;
-      }
-      return false;
-    }
+  const testTrustedOrigin = 'https://admin.jsnc.co.in';
+  let trustedAllowed = false;
+  corsOriginCallback(testTrustedOrigin, (err, allow) => {
+    if (!err && allow) trustedAllowed = true;
+  });
+  if (!trustedAllowed) {
+    recordFail('CORS Trusted Allow', 'Legitimate origin admin.jsnc.co.in was blocked by corsOriginCallback');
+  } else {
+    recordPass('CORS Trusted Allow', `Calling real corsOriginCallback: legitimate origin "${testTrustedOrigin}" is permitted`);
+  }
 
-    const testUntrustedOrigin = 'https://malicious-phishing-site.com';
-    const isUntrustedAllowed = checkCorsOrigin(testUntrustedOrigin);
-    if (isUntrustedAllowed) recordFail('CORS Untrusted Rejection', 'Malicious origin was allowed by CORS');
-    recordPass('CORS Untrusted Rejection', `Origin "${testUntrustedOrigin}" is rejected; no CORS headers issued`);
+  console.log('========================================================================');
+  console.log('TEST SUMMARY:');
+  console.log(`  PASSED:  ${passedCount}`);
+  console.log(`  FAILED:  ${failedCount}`);
+  console.log(`  SKIPPED: ${skippedCount}`);
+  console.log('========================================================================\n');
 
-    const testTrustedOrigin = 'https://admin.jsnc.co.in';
-    const isTrustedAllowed = checkCorsOrigin(testTrustedOrigin);
-    if (!isTrustedAllowed) recordFail('CORS Trusted Allow', 'Legitimate origin admin.jsnc.co.in was blocked by CORS');
-    recordPass('CORS Trusted Allow', `Legitimate origin "${testTrustedOrigin}" is permitted`);
+  await prisma.$disconnect();
 
-    console.log('========================================================================');
-    console.log(`TEST SUMMARY: ${passedCount} of ${totalCount} assertions verified successfully!`);
-    console.log('========================================================================\n');
-    await prisma.$disconnect();
+  if (failedCount > 0 || skippedCount > 0) {
+    console.error(`[EXECUTION INCOMPLETE]: Test suite finished with ${failedCount} failure(s) and ${skippedCount} skipped verification(s).`);
+    console.error(`Per Honest Reporting Rule 3: Skipped groups count as NOT verified. Exiting with non-zero code.\n`);
+    process.exit(1);
+  }
 }
 
 runPhase3Tests().catch((err) => {

@@ -412,8 +412,8 @@ export class InventoryService {
     }
 
     // Update SKU fields
-    const updated = await this.prisma.sku.update({
-      where: { id },
+    await this.prisma.sku.updateMany({
+      where: { id, tenantId },
       data: {
         ...skuData,
         unitPrice: skuData.unitPrice !== undefined ? Number(skuData.unitPrice) : undefined,
@@ -423,6 +423,7 @@ export class InventoryService {
         reorderQty: skuData.reorderQty !== undefined ? Number(skuData.reorderQty) : undefined,
       },
     });
+    const updated = await this.prisma.sku.findFirst({ where: { id, tenantId } });
 
     // Handle Quantity adjustments via StockMovement Ledger
     if (quantityOnHand !== undefined) {
@@ -726,8 +727,8 @@ export class InventoryService {
 
         let skuId: string;
         if (existingSku) {
-          await this.prisma.sku.update({
-            where: { id: existingSku.id },
+          await this.prisma.sku.updateMany({
+            where: { id: existingSku.id, tenantId },
             data: {
               name,
               category,
@@ -1069,13 +1070,16 @@ export class InventoryService {
     });
 
     // 3. Mark transfer completed
-    const updated = await this.prisma.stockTransfer.update({
-      where: { id },
+    await this.prisma.stockTransfer.updateMany({
+      where: { id, tenantId },
       data: {
         status: 'completed',
         receivedById: user.id,
         receivedAt: new Date(),
       },
+    });
+    const updated = await this.prisma.stockTransfer.findFirst({
+      where: { id, tenantId },
       include: {
         sku: true,
         sourceWarehouse: true,
@@ -1167,12 +1171,15 @@ export class InventoryService {
     });
 
     // 3. Update Transfer record
-    const updated = await this.prisma.stockTransfer.update({
-      where: { id },
+    await this.prisma.stockTransfer.updateMany({
+      where: { id, tenantId },
       data: {
         status: 'cancelled',
         cancelledAt: new Date(),
       },
+    });
+    const updated = await this.prisma.stockTransfer.findFirst({
+      where: { id, tenantId },
       include: {
         sku: true,
         sourceWarehouse: true,
@@ -2042,8 +2049,8 @@ export class InventoryService {
               },
             });
             if (existingPos) {
-              await this.prisma.projectStockPosition.update({
-                where: { id: existingPos.id },
+              await this.prisma.projectStockPosition.updateMany({
+                where: { id: existingPos.id, tenantId },
                 data: {
                   inflow: { increment: Number(item.quantity || 0) },
                   presentStock: { increment: Number(item.quantity || 0) },

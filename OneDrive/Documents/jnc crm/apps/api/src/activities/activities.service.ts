@@ -86,29 +86,25 @@ export class ActivitiesService {
     dto: { name?: string; description?: string; status?: string },
   ) {
     this.requireProjectCreationRole(user);
-    await this.findProjectOrFail(id, user);
-    return this.prisma.project.update({
-      where: { id },
+    const tenantId = requireTenantId(user);
+    const res = await this.prisma.project.updateMany({
+      where: { id, tenantId },
       data: {
         name: dto.name?.trim(),
         description: dto.description?.trim(),
         status: dto.status,
       },
-      include: {
-        createdBy: { select: { id: true, name: true, employeeCode: true } },
-        assignments: {
-          include: {
-            user: { select: { id: true, name: true, employeeCode: true, role: true } },
-          },
-        },
-      },
     });
+    if (res.count === 0) throw new NotFoundException('Project not found');
+    return this.findProjectOrFail(id, user);
   }
 
   async deleteProject(user: ScopedUser, id: string) {
     this.requireSuperAdminOrAdmin(user);
-    await this.findProjectOrFail(id, user);
-    return this.prisma.project.delete({ where: { id } });
+    const tenantId = requireTenantId(user);
+    const res = await this.prisma.project.deleteMany({ where: { id, tenantId } });
+    if (res.count === 0) throw new NotFoundException('Project not found');
+    return { success: true };
   }
 
   // ─── Member Assignment (Developer Lead & Project Manager Access) ─────────────

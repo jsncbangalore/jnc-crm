@@ -9,6 +9,7 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException }
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
+import { isPlatformOwner } from '../auth/roles';
 
 const ALLOWED_FIELD_TYPES = [
   'text',
@@ -341,15 +342,12 @@ export class CustomObjectsService {
     if (data.pluralLabel !== undefined) updateData.pluralLabel = data.pluralLabel.trim();
     if (data.description !== undefined) updateData.description = data.description.trim();
 
-    return this.prisma.customObject.update({
-      where: { id: object.id },
+    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
+    await this.prisma.customObject.updateMany({
+      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
       data: updateData,
-      include: {
-        fields: {
-          orderBy: { displayOrder: 'asc' },
-        },
-      },
     });
+    return this.findObjectOrThrow(id, user);
   }
 
   /**
@@ -357,8 +355,11 @@ export class CustomObjectsService {
    */
   async deleteObject(id: string, user?: ScopedUser) {
     const object = await this.findObjectOrThrow(id, user);
+    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
 
-    await this.prisma.customObject.delete({ where: { id: object.id } });
+    await this.prisma.customObject.deleteMany({
+      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
+    });
     return { success: true, message: `Custom object "${object.label}" (${object.apiName}) deleted successfully` };
   }
 
@@ -403,6 +404,7 @@ export class CustomObjectsService {
     user?: ScopedUser,
   ) {
     const object = await this.findObjectOrThrow(objectId, user);
+    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
 
     const apiName = this.validateApiName(data.apiName, 'Field API Name');
 
@@ -472,6 +474,7 @@ export class CustomObjectsService {
       );
       const isCustom = await this.prisma.customObject.findFirst({
         where: {
+          ...(tenantId ? { tenantId } : {}),
           OR: [{ apiName: target.toLowerCase() }, { label: target }],
         },
       });
@@ -504,8 +507,8 @@ export class CustomObjectsService {
     });
 
     // Touch parent object's updatedAt
-    await this.prisma.customObject.update({
-      where: { id: objectId },
+    await this.prisma.customObject.updateMany({
+      where: { id: objectId, ...(tenantId ? { tenantId } : {}) },
       data: { updatedAt: new Date() },
     });
 
@@ -595,8 +598,9 @@ export class CustomObjectsService {
     });
 
     // Touch parent object's updatedAt
-    await this.prisma.customObject.update({
-      where: { id: object.id },
+    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
+    await this.prisma.customObject.updateMany({
+      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
       data: { updatedAt: new Date() },
     });
 
@@ -621,8 +625,9 @@ export class CustomObjectsService {
     });
 
     // Touch parent object's updatedAt
-    await this.prisma.customObject.update({
-      where: { id: object.id },
+    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
+    await this.prisma.customObject.updateMany({
+      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
       data: { updatedAt: new Date() },
     });
 
@@ -638,6 +643,7 @@ export class CustomObjectsService {
    */
   async restoreField(objectId: string, fieldId: string, user?: ScopedUser) {
     const object = await this.findObjectOrThrow(objectId, user);
+    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
     const field = await this.prisma.customField.findFirst({
       where: { id: fieldId, objectId: object.id },
     });
@@ -651,8 +657,8 @@ export class CustomObjectsService {
     });
 
     // Touch parent object's updatedAt
-    await this.prisma.customObject.update({
-      where: { id: object.id },
+    await this.prisma.customObject.updateMany({
+      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
       data: { updatedAt: new Date() },
     });
 
@@ -879,7 +885,9 @@ export class CustomObjectsService {
         return !!r;
       }
       if (tgt === 'contact') {
-        const r = await this.prisma.contact.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}), deletedAt: null } });
+        const r = await this.prisma.contact.findFirst({
+          where: { id: targetId, ...(tenantId ? { tenantId } : { tenantId: { not: null } }), deletedAt: null },
+        });
         return !!r;
       }
       if (tgt === 'order') {
@@ -913,7 +921,7 @@ export class CustomObjectsService {
       });
       if (customObj) {
         const rec = await this.prisma.customObjectRecord.findFirst({
-          where: { id: targetId, objectId: customObj.id, deletedAt: null },
+          where: { id: targetId, objectId: customObj.id, ...(tenantId ? { tenantId } : {}), deletedAt: null },
         });
         return !!rec;
       }
@@ -1003,7 +1011,9 @@ export class CustomObjectsService {
               where: { ...(tenantId ? { tenantId } : {}), OR: [{ apiName: targetObj }, { id: targetObj }] },
             });
             if (customObj) {
-              const rec = await this.prisma.customObjectRecord.findFirst({ where: { id: targetId, objectId: customObj.id } });
+              const rec = await this.prisma.customObjectRecord.findFirst({
+                where: { id: targetId, objectId: customObj.id, ...(tenantId ? { tenantId } : {}) },
+              });
               if (rec) {
                 isArchived = !!rec.deletedAt;
                 try {
@@ -1125,9 +1135,9 @@ export class CustomObjectsService {
    */
   async getRecordById(objectApiName: string, recordId: string, user?: ScopedUser) {
     const object = await this.findObjectOrThrow(objectApiName, user);
-
+    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
     const record = await this.prisma.customObjectRecord.findFirst({
-      where: { id: recordId, objectId: object.id },
+      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
       include: {
         createdBy: { select: { id: true, name: true, employeeCode: true } },
         updatedBy: { select: { id: true, name: true, employeeCode: true } },
@@ -1208,8 +1218,9 @@ export class CustomObjectsService {
     });
 
     // Touch parent object's updatedAt
-    await this.prisma.customObject.update({
-      where: { id: object.id },
+    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
+    await this.prisma.customObject.updateMany({
+      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
       data: { updatedAt: new Date() },
     });
 
@@ -1233,9 +1244,10 @@ export class CustomObjectsService {
     user: ScopedUser,
   ) {
     const object = await this.findObjectOrThrow(objectApiName, user);
+    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
 
     const existing = await this.prisma.customObjectRecord.findFirst({
-      where: { id: recordId, objectId: object.id },
+      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
     });
     if (!existing) {
       throw new NotFoundException(`Record with ID "${recordId}" not found on custom object "${object.label}".`);
@@ -1264,21 +1276,25 @@ export class CustomObjectsService {
       }
     }
 
-    const updated = await this.prisma.customObjectRecord.update({
-      where: { id: recordId },
+    await this.prisma.customObjectRecord.updateMany({
+      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
       data: {
         data: JSON.stringify(mergedData),
         updatedById: user.id,
       },
+    });
+    const updated = await this.prisma.customObjectRecord.findFirst({
+      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
       include: {
         createdBy: { select: { id: true, name: true, employeeCode: true } },
         updatedBy: { select: { id: true, name: true, employeeCode: true } },
       },
     });
+    if (!updated) throw new NotFoundException('Record not found');
 
     // Touch parent object's updatedAt
-    await this.prisma.customObject.update({
-      where: { id: object.id },
+    await this.prisma.customObject.updateMany({
+      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
       data: { updatedAt: new Date() },
     });
 
@@ -1298,25 +1314,29 @@ export class CustomObjectsService {
    */
   async deleteRecord(objectApiName: string, recordId: string, user: ScopedUser) {
     const object = await this.findObjectOrThrow(objectApiName, user);
+    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
 
     const existing = await this.prisma.customObjectRecord.findFirst({
-      where: { id: recordId, objectId: object.id },
+      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
     });
     if (!existing) {
       throw new NotFoundException(`Record with ID "${recordId}" not found on custom object "${object.label}".`);
     }
 
-    const updated = await this.prisma.customObjectRecord.update({
-      where: { id: recordId },
+    await this.prisma.customObjectRecord.updateMany({
+      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
       data: {
         deletedAt: new Date(),
         updatedById: user.id,
       },
     });
+    const updated = await this.prisma.customObjectRecord.findFirst({
+      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
+    });
 
     // Touch parent object's updatedAt
-    await this.prisma.customObject.update({
-      where: { id: object.id },
+    await this.prisma.customObject.updateMany({
+      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
       data: { updatedAt: new Date() },
     });
 
@@ -1361,7 +1381,11 @@ export class CustomObjectsService {
 
       if (tgt === 'contact') {
         const contacts = await this.prisma.contact.findMany({
-          where: { deletedAt: null, ...(tenantId ? { tenantId } : {}), ...(s ? { name: { contains: s, mode: 'insensitive' } } : {}) },
+          where: {
+            deletedAt: null,
+            ...(tenantId ? { tenantId } : { tenantId: { not: null } }),
+            ...(s ? { name: { contains: s, mode: 'insensitive' } } : {}),
+          },
           take: 50,
           orderBy: { name: 'asc' },
         });

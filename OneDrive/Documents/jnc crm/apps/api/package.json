@@ -12,7 +12,12 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:db-push": "prisma db push",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "db:push:test": "node scripts/prisma-safe.js db-push-test",
+    "db:seed:test": "node scripts/prisma-safe.js seed-test",
+    "contacts:report": "ts-node scripts/report-orphan-contacts.ts",
+    "test:phase3": "node scripts/prisma-safe.js test-phase3",
+    "migrate:prod": "node scripts/prisma-safe.js migrate-prod"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.3",
