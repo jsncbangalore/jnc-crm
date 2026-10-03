@@ -119,18 +119,21 @@ export async function seedTestDatabase() {
 
   // 3. Seed Users of each role for each Tenant
   console.log('3. Seeding All Roles for Tenant A & Tenant B...');
-  const roles = [
-    'tenant_admin',
-    'admin',
-    'sub_admin',
-    'employee',
-    'store_manager',
-    'project_manager',
-    'developer_lead',
-    'developer',
-  ];
+  const roleCodes: Record<string, string> = {
+    tenant_admin: 'TAD',
+    admin: 'ADM',
+    sub_admin: 'SAD',
+    employee: 'EMP',
+    store_manager: 'STM',
+    project_manager: 'PRM',
+    developer_lead: 'DVL',
+    developer: 'DEV',
+  };
+
+  const roles = Object.keys(roleCodes);
 
   for (const role of roles) {
+    const codeSuffix = roleCodes[role];
     // Tenant A User
     await prisma.user.upsert({
       where: {
@@ -141,6 +144,7 @@ export async function seedTestDatabase() {
       },
       update: {
         role,
+        employeeCode: `A-${codeSuffix}`,
         isActive: true,
         passwordHash: hashedPw,
         tokenVersion: 0,
@@ -150,7 +154,7 @@ export async function seedTestDatabase() {
         tenantId: tenantA.id,
         email: `${role}.a@example.com`,
         name: `Tenant A ${role.replace('_', ' ').toUpperCase()}`,
-        employeeCode: `A-${role.substring(0, 3).toUpperCase()}`,
+        employeeCode: `A-${codeSuffix}`,
         role,
         passwordHash: hashedPw,
         isActive: true,
@@ -169,6 +173,7 @@ export async function seedTestDatabase() {
       },
       update: {
         role,
+        employeeCode: `B-${codeSuffix}`,
         isActive: true,
         passwordHash: hashedPw,
         tokenVersion: 0,
@@ -178,7 +183,7 @@ export async function seedTestDatabase() {
         tenantId: tenantB.id,
         email: `${role}.b@example.com`,
         name: `Tenant B ${role.replace('_', ' ').toUpperCase()}`,
-        employeeCode: `B-${role.substring(0, 3).toUpperCase()}`,
+        employeeCode: `B-${codeSuffix}`,
         role,
         passwordHash: hashedPw,
         isActive: true,

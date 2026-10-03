@@ -266,7 +266,7 @@ export class LeadsService {
     endDate?: string;
     page?: number;
     limit?: number;
-  }) {
+  } = {}) {
     const scopeWhere = this.scopingService.getLeadScope(user);
     const where: any = {
       ...scopeWhere,
@@ -292,7 +292,7 @@ export class LeadsService {
       };
     }
     if (query.search) {
-      where.OR = [
+      const searchOR = [
         { leadNumber: { contains: query.search, mode: 'insensitive' } },
         { customerName: { contains: query.search, mode: 'insensitive' } },
         { customerPhone: { contains: query.search, mode: 'insensitive' } },
@@ -301,6 +301,12 @@ export class LeadsService {
         { productCategory: { contains: query.search, mode: 'insensitive' } },
         { productName: { contains: query.search, mode: 'insensitive' } },
       ];
+      if (scopeWhere.OR) {
+        where.AND = [{ OR: scopeWhere.OR }, { OR: searchOR }];
+        delete where.OR;
+      } else {
+        where.OR = searchOR;
+      }
     }
 
     const page = Number(query.page) || 1;

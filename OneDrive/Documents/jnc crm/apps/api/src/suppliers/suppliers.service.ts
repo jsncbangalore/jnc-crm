@@ -55,13 +55,19 @@ export class SuppliersService {
       where.isActive = query.isActive;
     }
     if (query.search) {
-      where.OR = [
+      const searchOR = [
         { name: { contains: query.search } },
         { contactPerson: { contains: query.search } },
         { city: { contains: query.search } },
         { email: { contains: query.search } },
         { gstin: { contains: query.search } },
       ];
+      if (scope.OR) {
+        where.AND = [{ OR: scope.OR }, { OR: searchOR }];
+        delete where.OR;
+      } else {
+        where.OR = searchOR;
+      }
     }
 
     return this.prisma.supplier.findMany({

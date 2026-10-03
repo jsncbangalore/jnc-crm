@@ -55,6 +55,7 @@ import { InventoryService } from '../src/inventory/inventory.service';
 import { CustomObjectsService } from '../src/custom-objects/custom-objects.service';
 import { ActivitiesService } from '../src/activities/activities.service';
 import { NotificationsService } from '../src/notifications/notifications.service';
+import { DashboardService } from '../src/dashboard/dashboard.service';
 import { corsOriginCallback } from '../src/common/cors-config';
 import { resolveTeamNavigation, PAGE_KEY_TO_ROUTE } from '../src/common/team-navigation';
 
@@ -86,6 +87,7 @@ const suppliersService = new SuppliersService(prisma as any, scopingService);
 const inventoryService = new InventoryService(prisma as any, scopingService, auditService, backupService);
 const customObjectsService = new CustomObjectsService(prisma as any);
 const activitiesService = new ActivitiesService(prisma as any);
+const dashboardService = new DashboardService(prisma as any, scopingService);
 
 function createTestRefreshToken(user: any): string {
   const payload = {
@@ -448,6 +450,8 @@ async function runPhase3Tests() {
     // -----------------------------------------------------------------------
     console.log('>>> RUNNING TEST GROUP 2: Multi-Tenant Duplicate Email Disambiguation <<<\n');
     const sharedEmail = `shared.user.${timestamp}@testdomain.com`;
+    const sharedPassword = 'SharedPass123!';
+    const sharedHash = await bcrypt.hash(sharedPassword, 10);
     const userSharedA = await prisma.user.create({
       data: {
         tenantId: tenantA.id,
@@ -455,7 +459,7 @@ async function runPhase3Tests() {
         name: 'Shared User in A',
         employeeCode: `SHA-${timestamp}`.substring(0, 10),
         role: 'employee',
-        passwordHash: await bcrypt.hash('PassA123!', 10),
+        passwordHash: sharedHash,
         isActive: true,
       },
     });
@@ -466,39 +470,44 @@ async function runPhase3Tests() {
         name: 'Shared User in B',
         employeeCode: `SHB-${timestamp}`.substring(0, 10),
         role: 'employee',
-        passwordHash: await bcrypt.hash('PassB123!', 10),
+        passwordHash: sharedHash,
         isActive: true,
       },
     });
 
-    // 2a. Login without company code must fail with BadRequestException
-    let ambiguousBlocked = false;
-    let ambiguousError = '';
-    try {
-      await authService.validateUser(sharedEmail, 'PassA123!', undefined);
-    } catch (err: any) {
-      if (err instanceof BadRequestException) {
-        ambiguousBlocked = true;
-        ambiguousError = err.message;
-      }
+    // 2a. Login without company code with duplicate email and matching password -> returns requiresCompanySelection
+    const multiResult = await authService.login({
+      identifier: sharedEmail,
+      password: sharedPassword,
+    });
+    if (multiResult.requiresCompanySelection && multiResult.companies && multiResult.companies.length >= 2 && multiResult.selectionToken) {
+      recordPass('Email Disambiguation (Company Selection Required)', `Returned requiresCompanySelection: true with ${multiResult.companies.length} companies and valid selectionToken`);
+    } else {
+      recordFail('Email Disambiguation (Company Selection Required)', 'Did not prompt company selection when user exists in multiple tenants');
     }
-    if (!ambiguousBlocked) {
-      recordFail('Email Disambiguation (Missing Code)', 'Did not reject login when email exists across multiple tenants');
-    }
-    recordPass('Email Disambiguation (Missing Code)', `Rejected with message: "${ambiguousError}"`);
 
-    // 2b. Login with company code routes to respective tenant
-    const loggedInA = await authService.validateUser(sharedEmail, 'PassA123!', tenantA.code);
-    if (loggedInA.id !== userSharedA.id || loggedInA.tenantId !== tenantA.id) {
-      recordFail('Email Disambiguation (Tenant A)', 'Failed to authenticate into Tenant A with company code');
+    // 2b. Select company using selectionToken
+    const selectResA = await authService.selectCompany({
+      selectionToken: multiResult.selectionToken,
+      companyCode: tenantB.code,
+    });
+    if (selectResA.user.id === userSharedB.id && selectResA.accessToken) {
+      recordPass('Email Disambiguation (Select Company)', `Successfully authenticated into Tenant B via selectionToken (User: ${selectResA.user.name})`);
+    } else {
+      recordFail('Email Disambiguation (Select Company)', 'Failed to authenticate via selectCompany');
     }
-    recordPass('Email Disambiguation (Tenant A)', `Authenticated into Tenant A (ID: ${loggedInA.tenantId}, User: ${loggedInA.name})`);
 
-    const loggedInB = await authService.validateUser(sharedEmail, 'PassB123!', tenantB.code);
-    if (loggedInB.id !== userSharedB.id || loggedInB.tenantId !== tenantB.id) {
-      recordFail('Email Disambiguation (Tenant B)', 'Failed to authenticate into Tenant B with company code');
+    // 2c. Login directly with company code routes to respective tenant
+    const loggedInA = await authService.login({
+      identifier: sharedEmail,
+      password: sharedPassword,
+      companyCode: tenantA.code,
+    });
+    if (loggedInA.user && loggedInA.user.id === userSharedA.id && loggedInA.accessToken) {
+      recordPass('Email Disambiguation (Direct Company Code)', `Authenticated directly into Tenant A with company code (ID: ${loggedInA.user.tenantId}, User: ${loggedInA.user.name})`);
+    } else {
+      recordFail('Email Disambiguation (Direct Company Code)', 'Failed to authenticate into Tenant A with direct company code');
     }
-    recordPass('Email Disambiguation (Tenant B)', `Authenticated into Tenant B (ID: ${loggedInB.tenantId}, User: ${loggedInB.name})`);
 
     // -----------------------------------------------------------------------
     // TEST 3: Wrong password error handling without reload
@@ -507,7 +516,11 @@ async function runPhase3Tests() {
     let wrongPassBlocked = false;
     let wrongPassMessage = '';
     try {
-      await authService.validateUser(adminA.email, 'WrongPassword999!', tenantA.code);
+      await authService.login({
+        identifier: adminA.email,
+        password: 'WrongPassword999!',
+        companyCode: tenantA.code,
+      });
     } catch (err: any) {
       if (err instanceof UnauthorizedException) {
         wrongPassBlocked = true;
@@ -866,6 +879,242 @@ async function runPhase3Tests() {
   } else {
     recordPass('CORS Trusted Allow', `Calling real corsOriginCallback: legitimate origin "${testTrustedOrigin}" is permitted`);
   }
+
+  // -----------------------------------------------------------------------
+  // TEST 9: Per-User Data Visibility Table & Scoping Enforcement
+  // -----------------------------------------------------------------------
+  console.log('>>> RUNNING TEST GROUP 9: Per-User Data Visibility & Scoping Enforcement <<<\n');
+
+  // Setup: Use seeded users from Tenant A
+  const empAUser = await prisma.user.findFirst({ where: { email: 'employee.a@example.com' } });
+  const subAdminUser = await prisma.user.findFirst({ where: { email: 'sub_admin.a@example.com' } });
+  const adminUser = await prisma.user.findFirst({ where: { email: 'admin.a@example.com' } });
+  const storeMgrUser = await prisma.user.findFirst({ where: { email: 'store_manager.a@example.com' } });
+  const devUser = await prisma.user.findFirst({ where: { email: 'developer.a@example.com' } });
+
+  const scopedEmpA: ScopedUser = {
+    id: empAUser!.id,
+    role: empAUser!.role,
+    tenantId: empAUser!.tenantId,
+    employeeCode: empAUser!.employeeCode,
+    teamId: empAUser!.teamId,
+  };
+
+  // Create Employee B in Tenant A with different team
+  const otherTeam = await prisma.team.upsert({
+    where: { id: 'team-ops-test' },
+    update: {},
+    create: {
+      id: 'team-ops-test',
+      tenantId: empAUser!.tenantId!,
+      name: 'Operations Team Test',
+      allowedPages: JSON.stringify(['leads', 'orders']),
+    },
+  });
+
+  const hashedPw = await bcrypt.hash('TestPass123!', 10);
+
+  const empBUser = await prisma.user.upsert({
+    where: { tenantId_email: { tenantId: empAUser!.tenantId!, email: 'employee.b.scope@example.com' } },
+    update: { isActive: true },
+    create: {
+      tenantId: empAUser!.tenantId!,
+      email: 'employee.b.scope@example.com',
+      name: 'Employee B Scope Test',
+      employeeCode: 'EMP-B-SCP',
+      role: 'employee',
+      passwordHash: hashedPw,
+      isActive: true,
+      teamId: otherTeam.id,
+    },
+  });
+
+  const scopedEmpB: ScopedUser = {
+    id: empBUser.id,
+    role: empBUser.role,
+    tenantId: empBUser.tenantId,
+    employeeCode: empBUser.employeeCode,
+    teamId: empBUser.teamId,
+  };
+
+  const scopedSubAdminUser: ScopedUser = {
+    id: subAdminUser!.id,
+    role: subAdminUser!.role,
+    tenantId: subAdminUser!.tenantId,
+    employeeCode: subAdminUser!.employeeCode,
+    teamId: empAUser!.teamId,
+  };
+
+  const scopedAdminUser: ScopedUser = {
+    id: adminUser!.id,
+    role: adminUser!.role,
+    tenantId: adminUser!.tenantId,
+    employeeCode: adminUser!.employeeCode,
+  };
+
+  const scopedStoreMgr: ScopedUser = {
+    id: storeMgrUser!.id,
+    role: storeMgrUser!.role,
+    tenantId: storeMgrUser!.tenantId,
+    employeeCode: storeMgrUser!.employeeCode,
+  };
+
+  const scopedDevUser: ScopedUser = {
+    id: devUser!.id,
+    role: devUser!.role,
+    tenantId: devUser!.tenantId,
+    employeeCode: devUser!.employeeCode,
+  };
+
+  // Employee B creates: Company, Lead, Quotation
+  const phoneLeadB = `9${Math.floor(100000000 + Math.random() * 900000000)}`;
+  const phoneQuoteB = `8${Math.floor(100000000 + Math.random() * 900000000)}`;
+
+  const companyByB = await companiesService.create({
+    name: `Private Company B ${timestamp}`,
+    city: 'Bangalore',
+  }, scopedEmpB);
+
+  const leadByB = await leadsService.createLead({
+    customerName: `Private Lead B ${timestamp}`,
+    customerPhone: phoneLeadB,
+    source: 'manual',
+    companyName: companyByB.name,
+    assignedToId: scopedEmpB.id,
+  }, scopedEmpB);
+
+  const quoteByB = await quotationsService.create({
+    customerName: `Private Quote B ${timestamp}`,
+    customerPhone: phoneQuoteB,
+    lines: [{ name: 'Resistor 10k', quantity: 10, unitPrice: 5 }],
+  }, scopedEmpB);
+
+  // 9.1: Employee A cannot list Employee B's records
+  const companiesSeenByEmpA = await companiesService.findAll(scopedEmpA);
+  if (companiesSeenByEmpA.some((c: any) => c.id === companyByB.id)) {
+    recordFail('Scope List: Company', 'Employee A was able to list Employee B company');
+  } else {
+    recordPass('Scope List: Company', 'Employee A cannot list Company created by Employee B (scope: own)');
+  }
+
+  const leadsSeenByEmpA = await leadsService.findAll(scopedEmpA);
+  if (leadsSeenByEmpA.items.some((l: any) => l.id === leadByB.id)) {
+    recordFail('Scope List: Lead', 'Employee A was able to list Employee B lead');
+  } else {
+    recordPass('Scope List: Lead', 'Employee A cannot list Lead created by Employee B (scope: own)');
+  }
+
+  const quotesSeenByEmpA = await quotationsService.findAll(scopedEmpA, {});
+  if (quotesSeenByEmpA.items.some((q: any) => q.id === quoteByB.id)) {
+    recordFail('Scope List: Quotation', 'Employee A was able to list Employee B quotation');
+  } else {
+    recordPass('Scope List: Quotation', 'Employee A cannot list Quotation created by Employee B (scope: own)');
+  }
+
+  // 9.2: Employee A cannot open (get-by-id) Employee B's records -> throws NotFoundException (404, not 403)
+  let empAOpenCompBlocked = false;
+  try {
+    await companiesService.findOne(companyByB.id, scopedEmpA);
+  } catch (err: any) {
+    if (err instanceof NotFoundException) empAOpenCompBlocked = true;
+  }
+  if (!empAOpenCompBlocked) recordFail('Scope Open: Company 404', 'Employee A did not get 404 on Employee B company');
+  else recordPass('Scope Open: Company 404', 'Employee A receives 404 NotFoundException trying to open Employee B company');
+
+  let empAOpenLeadBlocked = false;
+  try {
+    await leadsService.findOne(leadByB.id, scopedEmpA);
+  } catch (err: any) {
+    if (err instanceof NotFoundException) empAOpenLeadBlocked = true;
+  }
+  if (!empAOpenLeadBlocked) recordFail('Scope Open: Lead 404', 'Employee A did not get 404 on Employee B lead');
+  else recordPass('Scope Open: Lead 404', 'Employee A receives 404 NotFoundException trying to open Employee B lead');
+
+  let empAOpenQuoteBlocked = false;
+  try {
+    await quotationsService.findOne(quoteByB.id, scopedEmpA);
+  } catch (err: any) {
+    if (err instanceof NotFoundException) empAOpenQuoteBlocked = true;
+  }
+  if (!empAOpenQuoteBlocked) recordFail('Scope Open: Quotation 404', 'Employee A did not get 404 on Employee B quotation');
+  else recordPass('Scope Open: Quotation 404', 'Employee A receives 404 NotFoundException trying to open Employee B quotation');
+
+  // 9.3: Employee A cannot edit (update) Employee B's records -> throws NotFoundException
+  let empAEditCompBlocked = false;
+  try {
+    await companiesService.update(companyByB.id, { name: 'Compromised Name' }, scopedEmpA);
+  } catch (err: any) {
+    if (err instanceof NotFoundException) empAEditCompBlocked = true;
+  }
+  if (!empAEditCompBlocked) recordFail('Scope Edit: Company 404', 'Employee A was able to update Employee B company');
+  else recordPass('Scope Edit: Company 404', 'Employee A receives 404 NotFoundException trying to update Employee B company');
+
+  // 9.4: Employee A cannot delete Employee B's records -> throws NotFoundException
+  let empADeleteCompBlocked = false;
+  try {
+    await companiesService.delete(companyByB.id, scopedEmpA);
+  } catch (err: any) {
+    if (err instanceof NotFoundException) empADeleteCompBlocked = true;
+  }
+  if (!empADeleteCompBlocked) recordFail('Scope Delete: Company 404', 'Employee A was able to delete Employee B company');
+  else recordPass('Scope Delete: Company 404', 'Employee A receives 404 NotFoundException trying to delete Employee B company');
+
+  // 9.5: Sub_admin sees only their team's records + unassigned
+  const subAdminLeads = await leadsService.findAll(scopedSubAdminUser);
+  if (subAdminLeads.items.some((l: any) => l.id === leadByB.id)) {
+    recordFail('Scope Sub-Admin: Team Isolation', 'Sub-admin saw lead assigned to a different team');
+  } else {
+    recordPass('Scope Sub-Admin: Team Isolation', 'Sub-admin sees only own team records and unassigned leads (excludes Team Ops lead)');
+  }
+
+  // 9.6: Admin sees all records in company
+  const adminCompanies = await companiesService.findAll(scopedAdminUser);
+  const adminLeads = await leadsService.findAll(scopedAdminUser);
+  const adminQuotes = await quotationsService.findAll(scopedAdminUser, {});
+  if (
+    adminCompanies.some((c: any) => c.id === companyByB.id) &&
+    adminLeads.items.some((l: any) => l.id === leadByB.id) &&
+    adminQuotes.items.some((q: any) => q.id === quoteByB.id)
+  ) {
+    recordPass('Scope Admin: Full Access', 'Admin / Tenant Admin sees all company data across all teams and owners');
+  } else {
+    recordFail('Scope Admin: Full Access', 'Admin failed to see all records in the company');
+  }
+
+  // 9.7: Employee cannot see company totals on the dashboard
+  const empDashboard = await dashboardService.getKpis(scopedEmpA);
+  if (empDashboard.activeSuppliers === 0) {
+    recordPass('Scope Dashboard: Supplier Visibility', 'Employee cannot see company supplier totals on dashboard (suppliers count is 0)');
+  } else {
+    recordFail('Scope Dashboard: Supplier Visibility', 'Employee was shown company supplier totals on dashboard');
+  }
+
+  // 9.8: Search respects scope
+  const empSearchLeads = await leadsService.findAll(scopedEmpA, { search: 'Private' });
+  if (empSearchLeads.items.some((l: any) => l.id === leadByB.id)) {
+    recordFail('Scope Search: Lead Isolation', 'Employee search revealed another employee lead');
+  } else {
+    recordPass('Scope Search: Lead Isolation', 'Search query strictly respects user scope (Employee cannot find Employee B records via search)');
+  }
+
+  // 9.9: Store Manager and Developer role visibility
+  let storeMgrLeadBlocked = false;
+  try {
+    await leadsService.findAll(scopedStoreMgr);
+  } catch (err: any) {
+    if (err instanceof ForbiddenException) storeMgrLeadBlocked = true;
+  }
+  if (!storeMgrLeadBlocked) recordFail('Role Scope: Store Manager Lead Access', 'Store manager was allowed to access Leads');
+  else recordPass('Role Scope: Store Manager Lead Access', 'Store Manager blocked from accessing Leads with ForbiddenException (visibility: none)');
+
+  let devSupplierBlocked = false;
+  try {
+    await suppliersService.findAll(scopedDevUser);
+  } catch (err: any) {
+    if (err instanceof ForbiddenException) devSupplierBlocked = true;
+  }
+  if (!devSupplierBlocked) recordFail('Role Scope: Developer Supplier Access', 'Developer was allowed to access Suppliers');
+  else recordPass('Role Scope: Developer Supplier Access', 'Developer blocked from accessing Suppliers with ForbiddenException (visibility: none)');
 
   console.log('========================================================================');
   console.log('TEST SUMMARY:');

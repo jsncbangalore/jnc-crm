@@ -36,7 +36,7 @@ function loadEnvFile(filePath) {
   }
 }
 
-if (action === 'db-push-test' || action === 'test-phase3' || action === 'seed-test') {
+if (action === 'db-push-test' || action === 'test-phase3' || action === 'seed-test' || action === 'test-data-visibility' || action === 'test-login-system') {
   // Load .env.test first for test actions
   const envTestPath = path.resolve(__dirname, '..', '.env.test');
   loadEnvFile(envTestPath);
@@ -168,7 +168,39 @@ if (action === 'db-push-test') {
     path.resolve(__dirname, '..')
   );
   process.exit(setupResult.status ?? 0);
+} else if (action === 'test-data-visibility') {
+  if (isProd) {
+    console.error('\n[SECURITY ERROR] test-data-visibility refused to run on production database!');
+    process.exit(1);
+  }
+  const result = runNodeOrNpx(
+    tsNodeBin,
+    'ts-node',
+    ['--transpile-only', 'scripts/test-data-visibility.ts', ...extraArgs],
+    path.resolve(__dirname, '..')
+  );
+  process.exit(result.status ?? 0);
+} else if (action === 'test-login-system') {
+  if (isProd) {
+    console.error('\n[SECURITY ERROR] test-login-system refused to run on production database!');
+    process.exit(1);
+  }
+  const result = runNodeOrNpx(
+    tsNodeBin,
+    'ts-node',
+    ['--transpile-only', 'scripts/test-login-system.ts', ...extraArgs],
+    path.resolve(__dirname, '..')
+  );
+  process.exit(result.status ?? 0);
+} else if (action === 'audit-scoping') {
+  const result = runNodeOrNpx(
+    tsNodeBin,
+    'ts-node',
+    ['--transpile-only', 'scripts/audit-scoping.ts', ...extraArgs],
+    path.resolve(__dirname, '..')
+  );
+  process.exit(result.status ?? 0);
 } else {
-  console.error(`Unknown action: ${action}. Valid actions: db-push-test, test-phase3, seed-test, setup-dev, migrate-prod`);
+  console.error(`Unknown action: ${action}. Valid actions: db-push-test, test-phase3, seed-test, setup-dev, migrate-prod, test-data-visibility, test-login-system, audit-scoping`);
   process.exit(1);
 }

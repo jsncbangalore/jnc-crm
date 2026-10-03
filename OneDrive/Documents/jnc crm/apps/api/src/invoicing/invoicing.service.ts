@@ -710,18 +710,20 @@ export class InvoicingService {
     }
 
     if (query?.search) {
-      where.AND = [
-        {
-          OR: [
-            { invoiceNumber: { contains: query.search } },
-            { customerName: { contains: query.search } },
-            { customerPhone: { contains: query.search } },
-            { customerEmail: { contains: query.search } },
-            { customerGstin: { contains: query.search } },
-            { buyerOrderNo: { contains: query.search } },
-          ],
-        },
+      const searchOR = [
+        { invoiceNumber: { contains: query.search } },
+        { customerName: { contains: query.search } },
+        { customerPhone: { contains: query.search } },
+        { customerEmail: { contains: query.search } },
+        { customerGstin: { contains: query.search } },
+        { buyerOrderNo: { contains: query.search } },
       ];
+      if (scope.OR) {
+        where.AND = [{ OR: scope.OR }, { OR: searchOR }];
+        delete where.OR;
+      } else {
+        where.AND = [{ OR: searchOR }];
+      }
     }
 
     if (query?.status && query.status !== 'all') {

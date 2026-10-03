@@ -18,6 +18,8 @@
     "db:setup:dev": "node scripts/prisma-safe.js setup-dev",
     "contacts:report": "ts-node scripts/report-orphan-contacts.ts",
     "test:phase3": "node scripts/prisma-safe.js test-phase3",
+    "test:visibility": "node scripts/prisma-safe.js test-data-visibility",
+    "test:login": "node scripts/prisma-safe.js test-login-system",
     "migrate:prod": "node scripts/prisma-safe.js migrate-prod"
   },
   "dependencies": {

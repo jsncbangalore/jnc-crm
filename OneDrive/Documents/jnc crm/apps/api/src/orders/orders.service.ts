@@ -226,11 +226,17 @@ export class OrdersService {
 
     if (query.status) where.status = query.status;
     if (query.search) {
-      where.OR = [
+      const searchOR = [
         { orderNumber: { contains: query.search } },
         { customerName: { contains: query.search } },
         { customerPhone: { contains: query.search } },
       ];
+      if (scopeWhere.OR) {
+        where.AND = [{ OR: scopeWhere.OR }, { OR: searchOR }];
+        delete where.OR;
+      } else {
+        where.OR = searchOR;
+      }
     }
 
     const page = Number(query.page) || 1;

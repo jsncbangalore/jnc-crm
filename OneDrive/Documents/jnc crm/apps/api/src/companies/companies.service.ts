@@ -74,19 +74,18 @@ export class CompaniesService {
     const scope = this.scopingService.getCompanyScope(user);
     const where: any = { ...scope, deletedAt: null };
     if (query?.search) {
-      where.AND = [
-        { OR: scope.OR ?? undefined },
-        {
-          OR: [
-            { name: { contains: query.search, mode: 'insensitive' } },
-            { gstin: { contains: query.search, mode: 'insensitive' } },
-            { city: { contains: query.search, mode: 'insensitive' } },
-            { billingEmail: { contains: query.search, mode: 'insensitive' } },
-          ],
-        },
+      const searchOR = [
+        { name: { contains: query.search, mode: 'insensitive' } },
+        { gstin: { contains: query.search, mode: 'insensitive' } },
+        { city: { contains: query.search, mode: 'insensitive' } },
+        { billingEmail: { contains: query.search, mode: 'insensitive' } },
       ];
-      // Remove top-level OR when we use AND to merge
-      if (scope.OR) delete where.OR;
+      if (scope.OR) {
+        where.AND = [{ OR: scope.OR }, { OR: searchOR }];
+        delete where.OR;
+      } else {
+        where.OR = searchOR;
+      }
     }
 
     return this.prisma.company.findMany({
