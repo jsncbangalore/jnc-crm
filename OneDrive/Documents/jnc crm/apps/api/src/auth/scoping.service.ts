@@ -7,6 +7,7 @@
 
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { requireTenantId } from '../common/tenant.util';
+import { getVisibility, ModelName } from './data-visibility';
 
 export interface ScopedUser {
   id: string;
@@ -15,121 +16,70 @@ export interface ScopedUser {
   role: string;
   teamId?: string | null;
   warehouseId?: string | null;
-  tenant?: {
-    id: string;
-    code: string;
-    name: string;
-    slug: string;
-    status: string;
-  } | null;
+  tenant?: { id: string; code: string; name: string; slug: string; status: string } | null;
 }
 
 @Injectable()
 export class ScopingService {
-  /**
-   * Enforces strict Tenant Isolation.
-   * Platform administrators must impersonate a tenant to access tenant-scoped records.
-   */
+
   getTenantScope(user: ScopedUser) {
     if (user.role === 'platform_super_admin' && !user.tenantId) {
-      throw new ForbiddenException(
-        'Platform administrators cannot access company workspace resources directly. Impersonate a client company to view their data.',
-      );
+      throw new ForbiddenException('Platform administrators cannot access company workspace resources directly. Impersonate a client company to view their data.');
     }
-    return {
-      tenantId: requireTenantId(user),
-    };
+    return { tenantId: requireTenantId(user) };
   }
 
   /**
-   * Generates Prisma `where` clause for Leads based on tenant and role
+   * Generic scope builder driven by VISIBILITY_TABLE.
+   * Only Lead has assignedToId and shares relation.
    */
-  getLeadScope(user: ScopedUser) {
+  getScope(user: ScopedUser, model: ModelName): Record<string, any> {
     const tenantFilter = this.getTenantScope(user);
+    const level = getVisibility(user.role, model);
 
-    if (user.role === 'tenant_admin' || user.role === 'admin') {
+    if (level === 'none') {
+      throw new ForbiddenException(`Your role does not have access to ${model} records.`);
+    }
+    if (level === 'all') {
       return { ...tenantFilter };
     }
 
-    if (user.role === 'sub_admin') {
-      if (user.teamId) {
-        return {
-          ...tenantFilter,
-          OR: [
-            { assignedTo: { teamId: user.teamId } },
-            { assignedToId: user.id },
-            { assignedToId: null },
-          ],
-        };
+    const hasAssignment = model === 'Lead';
+    const hasShares = model === 'Lead';
+
+    if (level === 'team') {
+      const clauses: any[] = [{ createdById: user.id }];
+      if (hasAssignment) {
+        clauses.push({ assignedToId: user.id });
+        if (user.teamId) clauses.push({ assignedTo: { teamId: user.teamId } });
+        clauses.push({ assignedToId: null });
       }
-      return { ...tenantFilter };
+      return { ...tenantFilter, OR: clauses };
     }
 
-    // Employee / Sales Rep: Assigned leads OR leads shared with them inside same tenant
-    return {
-      ...tenantFilter,
-      OR: [
-        { assignedToId: user.id },
-        { shares: { some: { userId: user.id } } },
-      ],
-    };
+    // 'own'
+    const ownClauses: any[] = [{ createdById: user.id }];
+    if (hasAssignment) ownClauses.push({ assignedToId: user.id });
+    if (hasShares) ownClauses.push({ shares: { some: { userId: user.id } } });
+    return { ...tenantFilter, OR: ownClauses };
   }
 
-  /**
-   * Generates Prisma `where` clause for Orders based on tenant and role
-   */
-  getOrderScope(user: ScopedUser) {
-    const tenantFilter = this.getTenantScope(user);
+  getLeadScope(user: ScopedUser) { return this.getScope(user, 'Lead'); }
+  getCompanyScope(user: ScopedUser) { return this.getScope(user, 'Company'); }
+  getContactScope(user: ScopedUser) { return this.getScope(user, 'Contact'); }
+  getQuotationScope(user: ScopedUser) { return this.getScope(user, 'Quotation'); }
+  getOrderScope(user: ScopedUser) { return this.getScope(user, 'Order'); }
+  getInvoiceScope(user: ScopedUser) { return this.getScope(user, 'Invoice'); }
+  getSupplierScope(user: ScopedUser) { return this.getScope(user, 'Supplier'); }
 
-    if (user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'sub_admin') {
-      return { ...tenantFilter };
-    }
-
-    // Employee: Only orders created by them
-    return {
-      ...tenantFilter,
-      createdById: user.id,
-    };
-  }
-
-  /**
-   * Generates Prisma `where` clause for Invoices based on tenant and role
-   */
-  getInvoiceScope(user: ScopedUser) {
-    return this.getTenantScope(user);
-  }
-
-  /**
-   * Generates Prisma `where` clause for Inventory / Stock Movements based on tenant & warehouse
-   */
   getInventoryScope(user: ScopedUser) {
     const tenantFilter = this.getTenantScope(user);
-
-    if (user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'store_manager') {
-      return { ...tenantFilter };
-    }
-
-    if (user.role === 'sub_admin' && user.warehouseId) {
-      return {
-        ...tenantFilter,
-        warehouseId: user.warehouseId,
-      };
-    }
-
+    const level = getVisibility(user.role, 'Inventory');
+    if (level === 'none') throw new ForbiddenException('Your role does not have access to Inventory records.');
+    if (user.role === 'sub_admin' && user.warehouseId) return { ...tenantFilter, warehouseId: user.warehouseId };
     return { ...tenantFilter };
   }
 
-  /**
-   * Custom Objects and Records Scope
-   */
-  getCustomObjectScope(user: ScopedUser) {
-    return this.getTenantScope(user);
-  }
-
-  /**
-   * Projects Scope
-   */
-  getProjectScope(user: ScopedUser) {
-    return this.getTenantScope(user);
-  }
+  getCustomObjectScope(user: ScopedUser) { return this.getTenantScope(user); }
+  getProjectScope(user: ScopedUser) { return this.getTenantScope(user); }
 }

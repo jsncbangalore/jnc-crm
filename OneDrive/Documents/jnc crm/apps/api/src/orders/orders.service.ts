@@ -266,8 +266,9 @@ export class OrdersService {
 
   async findOne(id: string, user: ScopedUser) {
     const tenantId = requireTenantId(user);
+    const scope = this.scopingService.getOrderScope(user);
     const order = await this.prisma.order.findFirst({
-      where: { id, tenantId },
+      where: { id, tenantId, ...scope },
       include: {
         lines: { include: { sku: { include: { preferredSupplier: true } } } },
         shipments: true,

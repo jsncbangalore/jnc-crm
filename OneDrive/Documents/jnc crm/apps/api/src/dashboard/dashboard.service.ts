@@ -103,20 +103,32 @@ export class DashboardService {
       },
     });
 
-    // ─── Low Stock SKUs (Strictly Scoped by Tenant) ──────────────────────────
-    const allSkus = await this.prisma.sku.findMany({
-      where: { ...tenantScope, deletedAt: null },
-      include: { stockItems: true },
-    });
-    const lowStockCount = allSkus.filter((sku) => {
-      const totalOnHand = sku.stockItems.reduce((s, si) => s + si.quantityOnHand, 0);
-      return totalOnHand <= sku.reorderPoint;
-    }).length;
+    // ─── Low Stock SKUs (Strictly Scoped by Role & Tenant) ──────────────────
+    let lowStockCount = 0;
+    try {
+      const invScope = this.scopingService.getInventoryScope(user);
+      const allSkus = await this.prisma.sku.findMany({
+        where: { ...invScope, deletedAt: null },
+        include: { stockItems: true },
+      });
+      lowStockCount = allSkus.filter((sku) => {
+        const totalOnHand = sku.stockItems.reduce((s, si) => s + si.quantityOnHand, 0);
+        return totalOnHand <= sku.reorderPoint;
+      }).length;
+    } catch {
+      lowStockCount = 0;
+    }
 
-    // ─── Active Supplier Companies (Strictly Scoped by Tenant) ───────────────
-    const activeSuppliersCount = await this.prisma.supplier.count({
-      where: { ...tenantScope, isActive: true, deletedAt: null },
-    });
+    // ─── Active Supplier Companies (Strictly Scoped by Role & Tenant) ─────────
+    let activeSuppliersCount = 0;
+    try {
+      const supplierScope = this.scopingService.getSupplierScope(user);
+      activeSuppliersCount = await this.prisma.supplier.count({
+        where: { ...supplierScope, isActive: true, deletedAt: null },
+      });
+    } catch {
+      activeSuppliersCount = 0;
+    }
 
     // ─── Total leads in pipeline (by status) ───────────────────────────────
     const leadsByStatus = await this.prisma.lead.groupBy({

@@ -24,6 +24,9 @@ import DailyActivitiesPage from './pages/DailyActivitiesPage';
 import NotificationsPage from './pages/NotificationsPage';
 import PlatformCompaniesPage from './pages/PlatformCompaniesPage';
 import PlatformAdminsPage from './pages/PlatformAdminsPage';
+import PlatformLoginPage from './pages/PlatformLoginPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import { PopupProvider } from './contexts/PopupContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { BrandingProvider } from './contexts/BrandingContext';
@@ -98,6 +101,9 @@ function AppRoutes() {
       />
       <Route path="/inquiry" element={<PublicInquiryPage />} />
       <Route path="/quote-request" element={<PublicInquiryPage />} />
+      <Route path="/platform/login" element={<PlatformLoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route
         path="/"
         element={

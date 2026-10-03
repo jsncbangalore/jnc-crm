@@ -192,17 +192,23 @@ export class QuotationsService {
   }
 
   async findAll(user: ScopedUser, query: { status?: string; search?: string; page?: number; limit?: number }) {
-    const tenantId = requireTenantId(user);
-    const where: any = { tenantId, deletedAt: null };
+    const scope = this.scopingService.getQuotationScope(user);
+    const where: any = { ...scope, deletedAt: null };
 
     if (query.status) where.status = query.status;
     if (query.search) {
-      where.OR = [
+      const searchOR = [
         { quoteNumber: { contains: query.search } },
         { lead: { customerName: { contains: query.search } } },
         { lead: { customerPhone: { contains: query.search } } },
         { contact: { name: { contains: query.search } } },
       ];
+      if (scope.OR) {
+        where.AND = [{ OR: scope.OR }, { OR: searchOR }];
+        delete where.OR;
+      } else {
+        where.OR = searchOR;
+      }
     }
 
     const page = Number(query.page) || 1;
@@ -231,8 +237,9 @@ export class QuotationsService {
 
   async findOne(id: string, user: ScopedUser) {
     const tenantId = requireTenantId(user);
+    const scope = this.scopingService.getQuotationScope(user);
     const quotation = await this.prisma.quotation.findFirst({
-      where: { id, tenantId },
+      where: { id, tenantId, ...scope },
       include: {
         lines: { include: { sku: true } },
         lead: true,

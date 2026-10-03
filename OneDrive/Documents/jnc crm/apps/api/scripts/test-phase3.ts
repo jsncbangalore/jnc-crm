@@ -78,11 +78,11 @@ const backupService = {
 
 const usersService = new UsersService(prisma as any, notificationsService, auditService);
 const leadsService = new LeadsService(prisma as any, scopingService, notificationsService, auditService);
-const companiesService = new CompaniesService(prisma as any);
+const companiesService = new CompaniesService(prisma as any, scopingService);
 const ordersService = new OrdersService(prisma as any, scopingService, notificationsService, auditService);
 const invoicingService = new InvoicingService(prisma as any, scopingService, notificationsService, auditService);
 const quotationsService = new QuotationsService(prisma as any, scopingService, auditService, ordersService);
-const suppliersService = new SuppliersService(prisma as any);
+const suppliersService = new SuppliersService(prisma as any, scopingService);
 const inventoryService = new InventoryService(prisma as any, scopingService, auditService, backupService);
 const customObjectsService = new CustomObjectsService(prisma as any);
 const activitiesService = new ActivitiesService(prisma as any);

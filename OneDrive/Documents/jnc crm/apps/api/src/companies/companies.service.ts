@@ -7,7 +7,7 @@
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ScopedUser } from '../auth/scoping.service';
+import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 
 export interface CreateCompanyDto {
@@ -47,7 +47,10 @@ export class CreateContactDto {
 
 @Injectable()
 export class CompaniesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private scopingService: ScopingService,
+  ) {}
 
   async create(dto: CreateCompanyDto, user: ScopedUser) {
     const tenantId = requireTenantId(user);
@@ -62,20 +65,28 @@ export class CompaniesService {
         state: dto.state?.trim() || 'Karnataka',
         website: dto.website?.trim() || null,
         billingEmail: dto.billingEmail?.trim().toLowerCase() || null,
+        createdById: user.id,
       },
     });
   }
 
   async findAll(user: ScopedUser, query?: { search?: string }) {
-    const tenantId = requireTenantId(user);
-    const where: any = { tenantId, deletedAt: null };
+    const scope = this.scopingService.getCompanyScope(user);
+    const where: any = { ...scope, deletedAt: null };
     if (query?.search) {
-      where.OR = [
-        { name: { contains: query.search, mode: 'insensitive' } },
-        { gstin: { contains: query.search, mode: 'insensitive' } },
-        { city: { contains: query.search, mode: 'insensitive' } },
-        { billingEmail: { contains: query.search, mode: 'insensitive' } },
+      where.AND = [
+        { OR: scope.OR ?? undefined },
+        {
+          OR: [
+            { name: { contains: query.search, mode: 'insensitive' } },
+            { gstin: { contains: query.search, mode: 'insensitive' } },
+            { city: { contains: query.search, mode: 'insensitive' } },
+            { billingEmail: { contains: query.search, mode: 'insensitive' } },
+          ],
+        },
       ];
+      // Remove top-level OR when we use AND to merge
+      if (scope.OR) delete where.OR;
     }
 
     return this.prisma.company.findMany({
@@ -83,7 +94,7 @@ export class CompaniesService {
       orderBy: { name: 'asc' },
       include: {
         contacts: {
-          where: { deletedAt: null, tenantId },
+          where: { deletedAt: null, tenantId: scope.tenantId },
           orderBy: { isPrimary: 'desc' },
         },
         _count: {
@@ -94,12 +105,12 @@ export class CompaniesService {
   }
 
   async findOne(id: string, user: ScopedUser) {
-    const tenantId = requireTenantId(user);
+    const scope = this.scopingService.getCompanyScope(user);
     const company = await this.prisma.company.findFirst({
-      where: { id, tenantId },
+      where: { id, ...scope, deletedAt: null },
       include: {
         contacts: {
-          where: { deletedAt: null, tenantId },
+          where: { deletedAt: null, tenantId: scope.tenantId },
           orderBy: { isPrimary: 'desc' },
         },
         leads: {
@@ -123,8 +134,9 @@ export class CompaniesService {
 
   async update(id: string, dto: Partial<CreateCompanyDto>, user: ScopedUser) {
     const tenantId = requireTenantId(user);
+    const scope = this.scopingService.getCompanyScope(user);
     const res = await this.prisma.company.updateMany({
-      where: { id, tenantId, deletedAt: null },
+      where: { id, tenantId, ...scope, deletedAt: null },
       data: {
         ...(dto.name !== undefined && { name: dto.name.trim() }),
         ...(dto.gstin !== undefined && { gstin: dto.gstin?.trim() || null }),
@@ -142,8 +154,9 @@ export class CompaniesService {
 
   async delete(id: string, user: ScopedUser) {
     const tenantId = requireTenantId(user);
+    const scope = this.scopingService.getCompanyScope(user);
     const res = await this.prisma.company.updateMany({
-      where: { id, tenantId, deletedAt: null },
+      where: { id, tenantId, ...scope, deletedAt: null },
       data: { deletedAt: new Date() },
     });
     if (res.count === 0) throw new NotFoundException('Company not found');
@@ -167,6 +180,7 @@ export class CompaniesService {
         isPrimary: !!dto.isPrimary,
         tenantId,
         companyId: company.id,
+        createdById: user.id,
       },
     });
   }

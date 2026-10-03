@@ -43,7 +43,13 @@ function _flushQueue(token: string | null, error?: unknown) {
 }
 
 // Auth endpoints that must never trigger a refresh redirect
-const AUTH_BYPASS_URLS = ['/auth/login', '/auth/refresh'];
+const AUTH_BYPASS_URLS = [
+  '/auth/login',
+  '/auth/refresh',
+  '/auth/platform-login',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+];
 
 // Auto-refresh on 401
 api.interceptors.response.use(
@@ -121,8 +127,16 @@ export default api;
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
-  login: (username: string, password: string, companyCode?: string) =>
-    api.post('/auth/login', { username, password, companyCode }),
+  login: (identifier: string, password: string, companyCode?: string) =>
+    api.post('/auth/login', { identifier, password, companyCode }),
+  selectCompany: (selectionToken: string, companyCode: string) =>
+    api.post('/auth/login/select-company', { selectionToken, companyCode }),
+  platformLogin: (email: string, password: string) =>
+    api.post('/auth/platform-login', { email, password }),
+  forgotPassword: (email: string) =>
+    api.post('/auth/forgot-password', { email }),
+  resetPassword: (token: string, newPassword: string) =>
+    api.post('/auth/reset-password', { token, newPassword }),
   me: () => api.get('/auth/me'),
   updateProfile: (data: { name?: string; phone?: string }) =>
     api.patch('/auth/profile', data),

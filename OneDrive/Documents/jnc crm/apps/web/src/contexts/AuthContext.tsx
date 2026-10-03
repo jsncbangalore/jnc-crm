@@ -1,11 +1,28 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { User } from '../types';
 import { authApi } from '../services/api';
+
+export interface CompanyChoice {
+  code: string;
+  name: string;
+}
+
+export interface SelectionPending {
+  companies: CompanyChoice[];
+  selectionToken: string;
+}
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (username: string, password: string, companyCode?: string) => Promise<User & { redirectPath?: string }>;
+  /** Returns user on success, or `{ requiresCompanySelection, companies, selectionToken }` if more than one company matched */
+  login: (
+    identifier: string,
+    password: string,
+    companyCode?: string,
+  ) => Promise<(User & { redirectPath?: string }) | { requiresCompanySelection: true; companies: CompanyChoice[]; selectionToken: string }>;
+  /** Complete multi-company login after user picks a company */
+  selectCompany: (selectionToken: string, companyCode: string) => Promise<User & { redirectPath?: string }>;
   logout: () => void;
   updateUser: (updatedFields: Partial<User>) => void;
   isAuthenticated: boolean;
@@ -29,15 +46,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     return null;
   });
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading] = useState(false);
 
-  const login = async (username: string, password: string, companyCode?: string): Promise<User & { redirectPath?: string }> => {
-    const { data } = await authApi.login(username, password, companyCode);
+  const _storeSession = (data: any) => {
     localStorage.setItem('jnc_access_token', data.accessToken);
     localStorage.setItem('jnc_refresh_token', data.refreshToken);
     localStorage.setItem('jnc_user', JSON.stringify(data.user));
     setUser(data.user);
-    return { ...data.user, redirectPath: data.redirectPath };
+    return { ...data.user, redirectPath: data.redirectPath } as User & { redirectPath?: string };
+  };
+
+  const login = async (
+    identifier: string,
+    password: string,
+    companyCode?: string,
+  ) => {
+    const { data } = await authApi.login(identifier, password, companyCode);
+
+    if (data.requiresCompanySelection) {
+      return {
+        requiresCompanySelection: true as const,
+        companies: data.companies as CompanyChoice[],
+        selectionToken: data.selectionToken as string,
+      };
+    }
+
+    return _storeSession(data);
+  };
+
+  const selectCompany = async (selectionToken: string, companyCode: string) => {
+    const { data } = await authApi.selectCompany(selectionToken, companyCode);
+    return _storeSession(data);
   };
 
   const updateUser = (updatedFields: Partial<User>) => {
@@ -57,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, updateUser, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, isLoading, login, selectCompany, logout, updateUser, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

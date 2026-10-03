@@ -1,28 +1,56 @@
 [
   {
     "file": "auth/auth.service.ts",
-    "line": 35,
+    "line": 48,
     "model": "user",
     "method": "update",
-    "reason": "Auth service reset failed login attempts by user ID during authenticated session"
+    "reason": "Auth service reset failed login attempts by user ID on successful lockout expiry"
   },
   {
     "file": "auth/auth.service.ts",
-    "line": 135,
+    "line": 96,
     "model": "user",
     "method": "update",
-    "reason": "Auth service refresh token rotation and tokenVersion update"
+    "reason": "Auth service record failed login attempt and lockout by user ID"
   },
   {
     "file": "auth/auth.service.ts",
-    "line": 305,
+    "line": 139,
+    "model": "user",
+    "method": "update",
+    "reason": "Auth service reset failed login attempts after successful authentication"
+  },
+  {
+    "file": "auth/auth.service.ts",
+    "line": 440,
+    "model": "user",
+    "method": "findFirst",
+    "reason": "Forgot password user lookup by verified email across platform"
+  },
+  {
+    "file": "auth/auth.service.ts",
+    "line": 497,
+    "model": "user",
+    "method": "update",
+    "reason": "Password reset execution by verified single-use reset token"
+  },
+  {
+    "file": "auth/auth.service.ts",
+    "line": 592,
     "model": "user",
     "method": "findUnique",
-    "reason": "Auth service profile resolution by user ID extracted from verified JWT"
+    "reason": "Auth service change password current user lookup by verified JWT subject"
   },
   {
     "file": "auth/auth.service.ts",
-    "line": 315,
+    "line": 601,
+    "model": "user",
+    "method": "update",
+    "reason": "Auth service change password hash update by verified JWT subject"
+  },
+  {
+    "file": "auth/auth.service.ts",
+    "line": 612,
     "model": "user",
     "method": "update",
     "reason": "Auth service update profile by verified authenticated user ID"

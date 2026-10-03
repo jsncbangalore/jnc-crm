@@ -32,6 +32,7 @@ export class InventoryService {
     page?: number;
     limit?: number;
   }) {
+    this.scopingService.getInventoryScope(user);
     const tenantId = requireTenantId(user);
     const page = Number(query.page) || 1;
     const limit = Number(query.limit) || 200;

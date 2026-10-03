@@ -8,10 +8,11 @@
 import { Module } from '@nestjs/common';
 import { SuppliersService } from './suppliers.service';
 import { SuppliersController } from './suppliers.controller';
+import { ScopingService } from '../auth/scoping.service';
 
 @Module({
   controllers: [SuppliersController],
-  providers: [SuppliersService],
+  providers: [SuppliersService, ScopingService],
   exports: [SuppliersService],
 })
 export class SuppliersModule {}

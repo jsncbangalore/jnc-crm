@@ -702,21 +702,8 @@ export class InvoicingService {
     user: ScopedUser,
     query?: { page?: number; limit?: number; search?: string; status?: string; docType?: string },
   ) {
-    const isAdmin = user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'sub_admin';
-    const where: any = {};
-
-    if (user.tenantId) {
-      where.tenantId = user.tenantId;
-    } else if (user.role !== 'platform_super_admin') {
-      where.tenantId = requireTenantId(user);
-    }
-
-    if (!isAdmin) {
-      where.OR = [
-        { createdById: user.id },
-        { order: { createdById: user.id } },
-      ];
-    }
+    const scope = this.scopingService.getInvoiceScope(user);
+    const where: any = { ...scope };
 
     if (query?.docType && query.docType !== 'all') {
       where.docType = query.docType;
@@ -944,15 +931,15 @@ export class InvoicingService {
    * Get single invoice by ID with items, company header profile, and signatory config
    */
   async findOne(id: string, user: ScopedUser) {
-    const tenantId = requireTenantId(user);
+    const scope = this.scopingService.getInvoiceScope(user);
     const invoice = await this.prisma.invoice.findFirst({
-      where: { id, tenantId },
+      where: { id, ...scope },
       include: {
         lines: { include: { sku: true } },
         company: {
           include: {
             contacts: {
-              where: { deletedAt: null, tenantId },
+              where: { deletedAt: null, tenantId: scope.tenantId },
               orderBy: { isPrimary: 'desc' },
             },
           },

@@ -136,11 +136,34 @@ model User {
   uploadedProjectLogs ProjectDailyLog[] @relation("UploadedProjectLogs")
   projectAssignments  ProjectAssignment[] @relation("AssignedProjectUser")
   createdProjectAssignments ProjectAssignment[] @relation("AssignedByProjectUser")
+  createdCompanies  Company[]  @relation("CreatedCompanies")
+  createdContacts   Contact[]  @relation("CreatedContacts")
+  createdLeads      Lead[]     @relation("CreatedLeads")
+  createdSuppliers  Supplier[] @relation("CreatedSuppliers")
+  passwordResetTokens PasswordResetToken[]
 
   @@unique([tenantId, email])
   @@unique([tenantId, employeeCode])
   @@index([tenantId])
   @@index([role])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UsedSelectionToken {
+  jti       String   @id
+  usedAt    DateTime @default(now())
 }
 
 // ==========================================
@@ -157,11 +180,13 @@ model Company {
   state        String?   @default("Karnataka")
   website      String?
   billingEmail String?
+  createdById  String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
   tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy    User?     @relation("CreatedCompanies", fields: [createdById], references: [id])
   contacts     Contact[]
   leads        Lead[]
   invoices     Invoice[]
@@ -178,12 +203,14 @@ model Contact {
   phone       String
   designation String?
   isPrimary   Boolean   @default(false)
+  createdById String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
   tenant      Tenant?     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   company     Company?    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy   User?       @relation("CreatedContacts", fields: [createdById], references: [id])
   leads       Lead[]
   quotations  Quotation[]
   orders      Order[]
@@ -213,6 +240,7 @@ model Lead {
   queryMessage    String?
   rawPayload      String?
   isDuplicate     Boolean     @default(false)
+  createdById     String?
   lostReason      String?
   
   capturedAt      DateTime    @default(now())
@@ -224,6 +252,7 @@ model Lead {
   company         Company?       @relation(fields: [companyId], references: [id])
   contact         Contact?       @relation(fields: [contactId], references: [id])
   assignedTo      User?          @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  createdBy       User?          @relation("CreatedLeads", fields: [createdById], references: [id])
   activities      LeadActivity[]
   quotations      Quotation[]
   shares          LeadShare[]
@@ -308,11 +337,13 @@ model Supplier {
   rating        Float?    @default(4.5)
   notes         String?
   isActive      Boolean   @default(true)
+  createdById   String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
   tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User?           @relation("CreatedSuppliers", fields: [createdById], references: [id])
   preferredSkus Sku[]           @relation("PreferredSupplier")
   stockMovements StockMovement[] @relation("SupplierMovements")
 

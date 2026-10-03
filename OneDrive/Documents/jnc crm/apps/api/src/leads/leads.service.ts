@@ -131,6 +131,7 @@ export class LeadsService {
         isDuplicate: false,
         companyId,
         assignedToId,
+        createdById: actor?.id ?? null,
       },
       include: {
         assignedTo: {
@@ -338,8 +339,9 @@ export class LeadsService {
 
   async findOne(id: string, user: ScopedUser) {
     const tenantId = requireTenantId(user);
+    const scopeWhere = this.scopingService.getLeadScope(user);
     const lead = await this.prisma.lead.findFirst({
-      where: { id, tenantId, deletedAt: null },
+      where: { id, tenantId, ...scopeWhere, deletedAt: null },
       include: {
         assignedTo: {
           select: { id: true, name: true, employeeCode: true, email: true },
@@ -366,10 +368,6 @@ export class LeadsService {
 
     if (!lead) {
       throw new NotFoundException('Lead not found');
-    }
-
-    if (user.role === 'employee' && lead.assignedToId !== user.id) {
-      throw new ForbiddenException('You do not have permission to view this lead');
     }
 
     return lead;

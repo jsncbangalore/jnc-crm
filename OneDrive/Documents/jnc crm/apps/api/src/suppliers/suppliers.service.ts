@@ -7,7 +7,7 @@
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ScopedUser } from '../auth/scoping.service';
+import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 
 export interface CreateSupplierDto {
@@ -24,7 +24,10 @@ export interface CreateSupplierDto {
 
 @Injectable()
 export class SuppliersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private scopingService: ScopingService,
+  ) {}
 
   async create(dto: CreateSupplierDto, user?: ScopedUser) {
     const tenantId = requireTenantId(user);
@@ -40,13 +43,14 @@ export class SuppliersService {
         city: dto.city,
         leadTimeDays: dto.leadTimeDays ? Number(dto.leadTimeDays) : 7,
         notes: dto.notes,
+        createdById: user?.id ?? null,
       },
     });
   }
 
   async findAll(user?: ScopedUser, query: { search?: string; isActive?: boolean } = {}) {
-    const tenantId = requireTenantId(user);
-    const where: any = { deletedAt: null, tenantId };
+    const scope = user ? this.scopingService.getSupplierScope(user) : { tenantId: requireTenantId(user) };
+    const where: any = { deletedAt: null, ...scope };
     if (query.isActive !== undefined) {
       where.isActive = query.isActive;
     }
@@ -75,9 +79,9 @@ export class SuppliersService {
   }
 
   async findOne(id: string, user?: ScopedUser) {
-    const tenantId = requireTenantId(user);
+    const scope = user ? this.scopingService.getSupplierScope(user) : { tenantId: requireTenantId(user) };
     const supplier = await this.prisma.supplier.findFirst({
-      where: { id, tenantId },
+      where: { id, ...scope },
       include: {
         preferredSkus: true,
         stockMovements: {
@@ -96,9 +100,9 @@ export class SuppliersService {
   }
 
   async update(id: string, dto: Partial<CreateSupplierDto>, user?: ScopedUser) {
-    const tenantId = requireTenantId(user);
+    const scope = user ? this.scopingService.getSupplierScope(user) : { tenantId: requireTenantId(user) };
     const res = await this.prisma.supplier.updateMany({
-      where: { id, tenantId, deletedAt: null },
+      where: { id, ...scope, deletedAt: null },
       data: dto,
     });
     if (res.count === 0) {
@@ -108,9 +112,9 @@ export class SuppliersService {
   }
 
   async delete(id: string, user?: ScopedUser) {
-    const tenantId = requireTenantId(user);
+    const scope = user ? this.scopingService.getSupplierScope(user) : { tenantId: requireTenantId(user) };
     const res = await this.prisma.supplier.updateMany({
-      where: { id, tenantId, deletedAt: null },
+      where: { id, ...scope, deletedAt: null },
       data: { deletedAt: new Date() },
     });
     if (res.count === 0) {
