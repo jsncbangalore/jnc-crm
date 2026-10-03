@@ -10,6 +10,9 @@ import { AppModule } from '../src/app.module';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { UsersService } from '../src/users/users.service';
+import { assertNotProductionDb } from './safety-check';
+
+assertNotProductionDb('live-verification');
 
 async function runLiveVerification() {
   console.log('================================================================');

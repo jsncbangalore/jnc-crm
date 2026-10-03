@@ -7,6 +7,9 @@
 
 import { PrismaClient } from '@prisma/client';
 import * as jwt from 'jsonwebtoken';
+import { assertNotProductionDb } from './safety-check';
+
+assertNotProductionDb('verify-invoice-features');
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'jnc-crm-jwt-secret-key-2026';

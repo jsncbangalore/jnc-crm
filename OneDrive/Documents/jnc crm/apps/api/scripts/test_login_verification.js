@@ -1,4 +1,6 @@
 const path = require('path');
+const { assertNotProductionDb } = require('./safety-check');
+assertNotProductionDb('test_login_verification');
 const { PrismaClient } = require(path.resolve(__dirname, '../../../node_modules/@prisma/client'));
 const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();

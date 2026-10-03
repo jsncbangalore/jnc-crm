@@ -1,13 +1,12 @@
 const nodemailer = require('nodemailer');
+const { assertNotProductionDb } = require('./safety-check');
 const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: 'postgresql://postgres.hbzlelktcfagwvmyusvw:Jsnc%402024js@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres'
-    }
-  }
-});
+const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres.hbzlelktcfagwvmyusvw:Jsnc%402024js@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres';
+process.env.DATABASE_URL = dbUrl;
+assertNotProductionDb('send-user-credentials');
+
+const prisma = new PrismaClient();
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
