@@ -8,6 +8,7 @@ import {
 import { notificationsApi, leadsApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
+import DOMPurify from 'dompurify';
 
 export default function NotificationsPage() {
   const { user } = useAuth();
@@ -534,7 +535,7 @@ export default function NotificationsPage() {
                   {selectedItem.body.includes('<div') || selectedItem.body.includes('<p') || selectedItem.body.includes('<table') ? (
                     <div
                       className="p-4 bg-white text-slate-900 leading-relaxed overflow-x-auto"
-                      dangerouslySetInnerHTML={{ __html: selectedItem.body }}
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedItem.body) }}
                     />
                   ) : (
                     <div className="p-4 bg-slate-100 dark:bg-[#141722] text-slate-200 whitespace-pre-wrap leading-relaxed text-xs sm:text-sm">

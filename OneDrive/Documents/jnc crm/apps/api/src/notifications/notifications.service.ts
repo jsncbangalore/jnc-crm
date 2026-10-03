@@ -7,6 +7,7 @@
 
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { decryptAtRest } from '../common/encryption.util';
 import * as nodemailer from 'nodemailer';
 
 export interface SendEmailOptions {
@@ -80,7 +81,7 @@ export class NotificationsService {
             secure: mailAccount.isSecure || mailAccount.smtpPort === 465,
             auth: {
               user: mailAccount.smtpUser,
-              pass: mailAccount.smtpPass,
+              pass: decryptAtRest(mailAccount.smtpPass) || mailAccount.smtpPass,
             },
             tls: { rejectUnauthorized: false },
           });

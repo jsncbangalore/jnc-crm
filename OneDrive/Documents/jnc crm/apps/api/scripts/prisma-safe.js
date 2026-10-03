@@ -36,7 +36,7 @@ function loadEnvFile(filePath) {
   }
 }
 
-if (action === 'db-push-test' || action === 'test-phase3' || action === 'seed-test' || action === 'test-data-visibility' || action === 'test-login-system') {
+if (action === 'db-push-test' || action === 'test-phase3' || action === 'seed-test' || action === 'test-data-visibility' || action === 'test-login-system' || action === 'test-security') {
   // Load .env.test first for test actions
   const envTestPath = path.resolve(__dirname, '..', '.env.test');
   loadEnvFile(envTestPath);
@@ -192,6 +192,18 @@ if (action === 'db-push-test') {
     path.resolve(__dirname, '..')
   );
   process.exit(result.status ?? 0);
+} else if (action === 'test-security') {
+  if (isProd) {
+    console.error('\n[SECURITY ERROR] test-security refused to run on production database!');
+    process.exit(1);
+  }
+  const result = runNodeOrNpx(
+    tsNodeBin,
+    'ts-node',
+    ['--transpile-only', 'scripts/test-security.ts', ...extraArgs],
+    path.resolve(__dirname, '..')
+  );
+  process.exit(result.status ?? 0);
 } else if (action === 'audit-scoping') {
   const result = runNodeOrNpx(
     tsNodeBin,
@@ -201,6 +213,6 @@ if (action === 'db-push-test') {
   );
   process.exit(result.status ?? 0);
 } else {
-  console.error(`Unknown action: ${action}. Valid actions: db-push-test, test-phase3, seed-test, setup-dev, migrate-prod, test-data-visibility, test-login-system, audit-scoping`);
+  console.error(`Unknown action: ${action}. Valid actions: db-push-test, test-phase3, seed-test, setup-dev, migrate-prod, test-data-visibility, test-login-system, test-security, audit-scoping`);
   process.exit(1);
 }

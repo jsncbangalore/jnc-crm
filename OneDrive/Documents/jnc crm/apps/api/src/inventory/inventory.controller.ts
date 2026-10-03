@@ -5,7 +5,7 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, Res, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, Res, UseGuards, UseInterceptors, UploadedFile, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PageAccess } from '../auth/page-access.decorator';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
@@ -14,12 +14,33 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { InventoryService } from './inventory.service';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { requireTenantId } from '../common/tenant.util';
+import { validateUploadedFile } from '../common/file-validator';
+import {
+  CreateWarehouseDto,
+  RecordMovementDto,
+  CreateSkuDto,
+  UpdateSkuDto,
+  BulkDeleteSkusDto,
+  ImportInventoryDto,
+  TransferStockDto,
+  CreateProjectStockDto,
+  UpdateProjectStockDto,
+  AssignProjectStockDto,
+  BulkImportProjectStockDto,
+  AllocateProjectStockDto,
+  CreatePurchaseBillDto,
+  ScanBillOcrDto,
+  BulkEditComponentsDto,
+  RecordPurchaseDto,
+} from './dto/inventory.dto';
 import * as Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { Response } from 'express';
 import * as multer from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 
 @Controller('inventory')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -47,7 +68,7 @@ export class InventoryController {
 
   @Post('movements')
   @Roles('tenant_admin', 'admin', 'sub_admin')
-  recordMovement(@Body() data: any, @CurrentUser() user: ScopedUser) {
+  recordMovement(@Body() data: RecordMovementDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.recordMovement(data, user);
   }
 
@@ -77,7 +98,7 @@ export class InventoryController {
   @Post('warehouses')
   @Roles('tenant_admin', 'admin')
   createWarehouse(
-    @Body() data: { name: string; code: string; address?: string; city?: string },
+    @Body() data: CreateWarehouseDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.inventoryService.createWarehouse(data, user);
@@ -95,13 +116,13 @@ export class InventoryController {
 
   @Post('skus')
   @Roles('tenant_admin', 'admin', 'sub_admin')
-  createSku(@Body() data: any, @CurrentUser() user: ScopedUser) {
+  createSku(@Body() data: CreateSkuDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.createSku(data, user);
   }
 
   @Patch('skus/:id')
   @Roles('tenant_admin', 'admin', 'sub_admin')
-  updateSku(@Param('id') id: string, @Body() data: any, @CurrentUser() user: ScopedUser) {
+  updateSku(@Param('id') id: string, @Body() data: UpdateSkuDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.updateSku(id, data, user);
   }
 
@@ -113,10 +134,7 @@ export class InventoryController {
 
   @Post('skus/bulk-delete')
   @Roles('tenant_admin', 'admin')
-  bulkDeleteSkus(@Body() body: { ids: string[] }, @CurrentUser() user: ScopedUser) {
-    if (!body.ids || !Array.isArray(body.ids)) {
-      throw new BadRequestException('ids array is required');
-    }
+  bulkDeleteSkus(@Body() body: BulkDeleteSkusDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.bulkDeleteSkus(body.ids, user);
   }
 
@@ -262,7 +280,7 @@ export class InventoryController {
   @Post('import-json')
   @Roles('tenant_admin', 'admin', 'sub_admin')
   async importJson(
-    @Body() body: { records: any[]; warehouseCode?: string },
+    @Body() body: ImportInventoryDto,
     @CurrentUser() user: ScopedUser,
   ) {
     if (!body.records || !Array.isArray(body.records)) {
@@ -307,7 +325,7 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
   @Post('transfers')
   @Roles('tenant_admin', 'admin', 'sub_admin')
   async initiateTransfer(
-    @Body() body: { skuId: string; sourceWarehouseId: string; destinationWarehouseId: string; quantity: number; notes?: string },
+    @Body() body: TransferStockDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.inventoryService.initiateTransfer(body, user);
@@ -367,7 +385,7 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
 
   @Post('project-stock')
   @Roles('tenant_admin', 'admin', 'sub_admin')
-  async createProjectStock(@Body() data: any, @CurrentUser() user: ScopedUser) {
+  async createProjectStock(@Body() data: CreateProjectStockDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.createProjectStockPosition(data, user);
   }
 
@@ -375,7 +393,7 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
   @Roles('tenant_admin', 'admin', 'sub_admin')
   async updateProjectStock(
     @Param('id') id: string,
-    @Body() data: any,
+    @Body() data: UpdateProjectStockDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.inventoryService.updateProjectStockPosition(id, data, user);
@@ -409,7 +427,7 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
 
   @Post('project-stock/bulk')
   @Roles('tenant_admin', 'admin', 'sub_admin')
-  async bulkImportProjectStock(@Body() body: { rows: any[] }, @CurrentUser() user: ScopedUser) {
+  async bulkImportProjectStock(@Body() body: BulkImportProjectStockDto, @CurrentUser() user: ScopedUser) {
     if (!body.rows || !Array.isArray(body.rows)) {
       throw new BadRequestException('Invalid payload: rows array required');
     }
@@ -462,27 +480,97 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   @Roles('tenant_admin', 'admin', 'sub_admin')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: multer.diskStorage({
-        destination: (req, file, cb) => {
-          const uploadDir = path.resolve(process.cwd(), '../../purchase-documents');
-          if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-          cb(null, uploadDir);
-        },
-        filename: (req, file, cb) => {
-          const ext = path.extname(file.originalname);
-          const uniqueName = `purchase-doc-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
-          cb(null, uniqueName);
-        },
-      }),
-      limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
     }),
   )
   async uploadPurchaseDocument(
     @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: ScopedUser,
   ) {
     if (!file) throw new BadRequestException('File is required');
-    const fileUrl = `/uploads/purchase-docs/${file.filename}`;
-    return { success: true, url: fileUrl, filename: file.filename, originalName: file.originalname };
+
+    validateUploadedFile(file, 'document_or_image', 10 * 1024 * 1024);
+
+    const tenantId = requireTenantId(user);
+    const tenantDir = path.resolve(process.cwd(), '../../purchase-documents', tenantId);
+    if (!fs.existsSync(tenantDir)) fs.mkdirSync(tenantDir, { recursive: true });
+
+    const ext = path.extname(file.originalname).toLowerCase();
+    const randomName = `${crypto.randomUUID()}${ext}`;
+    const destinationPath = path.resolve(tenantDir, randomName);
+
+    fs.writeFileSync(destinationPath, file.buffer);
+
+    const fileUrl = `/api/v1/inventory/purchase-documents/${tenantId}/${randomName}`;
+    return {
+      success: true,
+      url: fileUrl,
+      filename: randomName,
+      tenantId,
+      originalName: file.originalname,
+    };
+  }
+
+  // ─── Protected Streaming of Purchase Documents ──────────────────────────────
+
+  @Get('purchase-documents/:filename')
+  async streamPurchaseDoc(
+    @Param('filename') filename: string,
+    @CurrentUser() user: ScopedUser,
+    @Res() res: Response,
+  ) {
+    const tenantId = requireTenantId(user);
+    return this.serveSafeTenantDoc(tenantId, filename, user, res);
+  }
+
+  @Get('purchase-documents/:tenantId/:filename')
+  async streamPurchaseDocWithTenant(
+    @Param('tenantId') targetTenantId: string,
+    @Param('filename') filename: string,
+    @CurrentUser() user: ScopedUser,
+    @Res() res: Response,
+  ) {
+    return this.serveSafeTenantDoc(targetTenantId, filename, user, res);
+  }
+
+  @Get('uploads/purchase-docs/:filename')
+  async streamLegacyPurchaseDoc(
+    @Param('filename') filename: string,
+    @CurrentUser() user: ScopedUser,
+    @Res() res: Response,
+  ) {
+    const tenantId = requireTenantId(user);
+    return this.serveSafeTenantDoc(tenantId, filename, user, res);
+  }
+
+  private serveSafeTenantDoc(
+    targetTenantId: string,
+    filename: string,
+    user: ScopedUser,
+    res: Response,
+  ) {
+    const userTenantId = requireTenantId(user);
+    if (user.role !== 'platform_super_admin' && userTenantId !== targetTenantId) {
+      throw new ForbiddenException('Access denied to cross-tenant documents.');
+    }
+
+    const tenantDir = path.resolve(process.cwd(), '../../purchase-documents', targetTenantId);
+    const safePath = path.resolve(tenantDir, path.basename(filename));
+
+    // Fallback: check legacy root purchase-documents folder if migrating
+    if (!fs.existsSync(safePath)) {
+      const legacyPath = path.resolve(process.cwd(), '../../purchase-documents', path.basename(filename));
+      if (fs.existsSync(legacyPath)) {
+        res.setHeader('Content-Disposition', 'inline');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        return res.sendFile(legacyPath);
+      }
+      throw new NotFoundException('Requested document was not found.');
+    }
+
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.sendFile(safePath);
   }
 
   // ─── Supplier Purchase History ───────────────────────────────────────────────
@@ -499,22 +587,10 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   @Roles('tenant_admin', 'admin', 'sub_admin')
   async recordSupplierPurchase(
     @Param('supplierId') supplierId: string,
-    @Body() body: {
-      invoiceNumber?: string;
-      invoiceDate?: string;
-      supplierGstin?: string;
-      taxRate: number;
-      taxType: string;
-      documentUrl?: string;
-      notes?: string;
-      items: Array<{ skuId: string; quantity: number; unitRate: number }>;
-    },
+    @Body() body: RecordPurchaseDto,
     @CurrentUser() user: ScopedUser,
   ) {
-    if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
-      throw new BadRequestException('At least one item is required');
-    }
-    return this.inventoryService.recordSupplierPurchase(supplierId, body, user);
+    return this.inventoryService.recordSupplierPurchase(supplierId, body as any, user);
   }
 
   // ─── Purchase Bills & Soft Copies Repository ─────────────────────────────────
@@ -531,7 +607,7 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
 
   @Post('purchase-bills')
   @Roles('tenant_admin', 'admin', 'sub_admin')
-  async createPurchaseBill(@Body() body: any, @CurrentUser() user: ScopedUser) {
+  async createPurchaseBill(@Body() body: CreatePurchaseBillDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.createPurchaseBill(body, user);
   }
 
@@ -542,7 +618,7 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   }
 
   @Post('purchase-bills/scan-ocr')
-  async scanBillOcr(@Body() body: any) {
+  async scanBillOcr(@Body() body: ScanBillOcrDto) {
     return this.inventoryService.scanBillOcr(body);
   }
 
@@ -550,7 +626,7 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
 
   @Post('bulk-edit')
   @Roles('tenant_admin', 'admin', 'sub_admin')
-  async bulkEditComponents(@Body() body: any, @CurrentUser() user: ScopedUser) {
+  async bulkEditComponents(@Body() body: BulkEditComponentsDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.bulkEditComponents(body, user);
   }
 }

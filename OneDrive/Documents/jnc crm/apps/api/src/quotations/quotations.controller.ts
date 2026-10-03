@@ -12,7 +12,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
-import { QuotationsService, CreateQuotationDto } from './quotations.service';
+import { QuotationsService, CreateQuotationDto, UpdateQuotationStatusDto } from './quotations.service';
 
 @Controller('quotations')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -46,7 +46,7 @@ export class QuotationsController {
   @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   updateStatus(
     @Param('id') id: string,
-    @Body() body: { status: string },
+    @Body() body: UpdateQuotationStatusDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.quotationsService.updateStatus(id, body.status, user);

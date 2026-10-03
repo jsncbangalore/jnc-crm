@@ -28,12 +28,18 @@ export const MANDATORY_ENV_VARS = [
   { key: 'INDIAMART_WEBHOOK_SECRET', description: 'IndiaMART push API shared secret token' },
   { key: 'WEBSITE_WEBHOOK_SECRET', description: 'Website RFQ & contact form shared secret' },
   { key: 'BACKUP_ENCRYPTION_KEY', description: 'AES-256-GCM database backup encryption key' },
+  { key: 'ENCRYPTION_KEY', description: 'AES-256-GCM credentials encryption key (32 bytes base64)' },
+];
+
+const KNOWN_DEFAULT_SECRETS = [
+  'secret', 'changeme', 'jwt_secret', 'jwt-secret', 'default', '12345678', 'password', 'admin'
 ];
 
 export function validateEnvironmentOrExit(): EnvValidationResult {
   const logger = new Logger('EnvironmentValidationGuard');
   const missingVariables: string[] = [];
   const configuredVariables: string[] = [];
+  const invalidVariables: string[] = [];
 
   for (const item of MANDATORY_ENV_VARS) {
     const val = process.env[item.key];
@@ -42,6 +48,27 @@ export function validateEnvironmentOrExit(): EnvValidationResult {
     } else {
       configuredVariables.push(item.key);
     }
+  }
+
+  // Cryptographic Secret Strength Validation
+  const jwtSecret = process.env.JWT_SECRET || '';
+  if (jwtSecret.length < 32 || KNOWN_DEFAULT_SECRETS.includes(jwtSecret.toLowerCase())) {
+    invalidVariables.push('JWT_SECRET must be at least 32 characters and cannot use known default values.');
+  }
+
+  const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || '';
+  if (jwtRefreshSecret.length < 32 || KNOWN_DEFAULT_SECRETS.includes(jwtRefreshSecret.toLowerCase())) {
+    invalidVariables.push('JWT_REFRESH_SECRET must be at least 32 characters and cannot use known default values.');
+  }
+
+  const encryptionKey = process.env.ENCRYPTION_KEY || '';
+  try {
+    const keyBuf = Buffer.from(encryptionKey, 'base64');
+    if (keyBuf.length !== 32) {
+      invalidVariables.push('ENCRYPTION_KEY must be exactly 32 bytes when base64-decoded.');
+    }
+  } catch {
+    invalidVariables.push('ENCRYPTION_KEY is not a valid base64-encoded string.');
   }
 
   if (missingVariables.length > 0) {
@@ -64,6 +91,20 @@ export function validateEnvironmentOrExit(): EnvValidationResult {
     console.error('================================================================================\n');
 
     logger.error(`Application bootstrap aborted: ${missingVariables.length} mandatory environment variables are missing.`);
+    process.exit(1);
+  }
+
+  if (invalidVariables.length > 0) {
+    console.error('\n================================================================================');
+    console.error('❌ FATAL: MANDATORY SERVER SECRETS FAILED SECURITY VALIDATION');
+    console.error('================================================================================');
+    invalidVariables.forEach((err) => {
+      console.error(`  ✖ [SECURITY FLAW] ${err}`);
+    });
+    console.error('\nAborting server bootstrap immediately to prevent insecure operation.');
+    console.error('================================================================================\n');
+
+    logger.error(`Application bootstrap aborted: ${invalidVariables.length} secrets failed security validation.`);
     process.exit(1);
   }
 

@@ -28,3 +28,13 @@
   AddType image/svg+xml .svg
   AddType font/woff2 .woff2
 </IfModule>
+
+# Security Headers (Clickjacking, MIME sniffing, HSTS, CSP, Permissions)
+<IfModule mod_headers.c>
+  Header always set X-Frame-Options "DENY"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://api.jsnc.co.in http://localhost:3333 http://127.0.0.1:3333; frame-ancestors 'none';"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+</IfModule>

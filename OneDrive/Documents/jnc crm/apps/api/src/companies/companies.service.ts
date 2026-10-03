@@ -10,18 +10,75 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 
-export interface CreateCompanyDto {
+import { IsString, IsNotEmpty, IsOptional, IsEmail, IsBoolean } from 'class-validator';
+
+export class CreateCompanyDto {
+  @IsString()
+  @IsNotEmpty()
   name: string;
+
+  @IsString()
+  @IsOptional()
   gstin?: string;
+
+  @IsString()
+  @IsOptional()
   industry?: string;
+
+  @IsString()
+  @IsOptional()
   address?: string;
+
+  @IsString()
+  @IsOptional()
   city?: string;
+
+  @IsString()
+  @IsOptional()
   state?: string;
+
+  @IsString()
+  @IsOptional()
   website?: string;
+
+  @IsEmail()
+  @IsOptional()
   billingEmail?: string;
 }
 
-import { IsString, IsNotEmpty, IsOptional, IsEmail, IsBoolean } from 'class-validator';
+export class UpdateCompanyDto {
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @IsString()
+  @IsOptional()
+  gstin?: string;
+
+  @IsString()
+  @IsOptional()
+  industry?: string;
+
+  @IsString()
+  @IsOptional()
+  address?: string;
+
+  @IsString()
+  @IsOptional()
+  city?: string;
+
+  @IsString()
+  @IsOptional()
+  state?: string;
+
+  @IsString()
+  @IsOptional()
+  website?: string;
+
+  @IsEmail()
+  @IsOptional()
+  billingEmail?: string;
+}
 
 export class CreateContactDto {
   @IsString()

@@ -161,6 +161,13 @@ async function runLoginTests() {
     auditLog: {
       create: async () => ({}),
     },
+    refreshSession: {
+      create: async () => ({}),
+      update: async () => ({}),
+      updateMany: async () => ({ count: 0 }),
+      findUnique: async () => null,
+      deleteMany: async () => ({ count: 0 }),
+    },
   };
 
   const authService = new AuthService(mockPrisma, jwtService);

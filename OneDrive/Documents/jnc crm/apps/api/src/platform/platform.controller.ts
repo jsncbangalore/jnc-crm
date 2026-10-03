@@ -24,6 +24,11 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
+import {
+  ResetTenantAdminPasswordDto,
+  CreatePlatformAdminDto,
+  TogglePlatformAdminActiveDto,
+} from './dto/platform-admin.dto';
 
 @Controller('platform/tenants')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -70,7 +75,7 @@ export class PlatformController {
   @Post(':id/reset-admin-password')
   async resetTenantAdminPassword(
     @Param('id') id: string,
-    @Body() dto: { newPassword?: string; adminEmail?: string; sendEmail?: boolean; appUrl?: string },
+    @Body() dto: ResetTenantAdminPasswordDto,
   ) {
     return this.platformService.resetTenantAdminPassword(id, dto);
   }
@@ -89,12 +94,12 @@ export class PlatformAdminsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createPlatformAdmin(@Body() dto: any, @CurrentUser() actor: any) {
+  async createPlatformAdmin(@Body() dto: CreatePlatformAdminDto, @CurrentUser() actor: any) {
     return this.platformService.createPlatformAdmin(dto, actor);
   }
 
   @Patch(':id/toggle-active')
-  async toggleActive(@Param('id') id: string, @Body() body: { isActive?: boolean }) {
+  async toggleActive(@Param('id') id: string, @Body() body: TogglePlatformAdminActiveDto) {
     return this.platformService.togglePlatformAdminActive(id, body?.isActive);
   }
 

@@ -5,7 +5,7 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { IsNotEmpty, IsString, IsOptional, IsNumber, IsEmail, IsIn } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsNumber, IsEmail, IsIn, IsArray } from 'class-validator';
 
 export class CreateLeadDto {
   @IsNotEmpty()
@@ -96,4 +96,15 @@ export class CreateLeadActivityDto {
 
   @IsOptional()
   isCompleted?: boolean;
+}
+
+export class ShareLeadDto {
+  @IsNotEmpty()
+  @IsString()
+  targetUserId: string;
+}
+
+export class ImportLeadsDto {
+  @IsArray()
+  records: any[];
 }

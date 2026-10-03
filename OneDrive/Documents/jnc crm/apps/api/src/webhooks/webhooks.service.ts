@@ -8,6 +8,13 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.service';
+import * as crypto from 'crypto';
+
+function stripHtml(val?: any): string | undefined {
+  if (val === null || val === undefined) return undefined;
+  if (typeof val !== 'string') return String(val);
+  return val.replace(/<[^>]*>/g, '').trim();
+}
 
 @Injectable()
 export class WebhooksService {
@@ -41,13 +48,13 @@ export class WebhooksService {
     }
 
     // Normalize IndiaMART schema
-    const customerName = payload.SENDER_NAME || payload.sender_name || payload.name || 'IndiaMART Prospect';
-    const customerPhone = payload.SENDER_MOBILE || payload.sender_mobile || payload.mobile || payload.phone || '';
-    const customerEmail = payload.SENDER_EMAIL || payload.sender_email || payload.email;
-    const city = payload.SENDER_CITY || payload.sender_city || payload.city;
-    const companyName = payload.GLUSR_USR_COMPANYNAME || payload.company_name || payload.company;
-    const productName = payload.PRODUCT_NAME || payload.product_name || payload.subject || payload.SUBJECT;
-    const queryMessage = payload.QUERY_MESSAGE || payload.query_message || payload.message || payload.query;
+    const customerName = stripHtml(payload.SENDER_NAME || payload.sender_name || payload.name) || 'IndiaMART Prospect';
+    const customerPhone = stripHtml(payload.SENDER_MOBILE || payload.sender_mobile || payload.mobile || payload.phone) || '';
+    const customerEmail = stripHtml(payload.SENDER_EMAIL || payload.sender_email || payload.email);
+    const city = stripHtml(payload.SENDER_CITY || payload.sender_city || payload.city);
+    const companyName = stripHtml(payload.GLUSR_USR_COMPANYNAME || payload.company_name || payload.company);
+    const productName = stripHtml(payload.PRODUCT_NAME || payload.product_name || payload.subject || payload.SUBJECT);
+    const queryMessage = stripHtml(payload.QUERY_MESSAGE || payload.query_message || payload.message || payload.query);
 
     if (!customerPhone) {
       this.logger.warn('IndiaMART webhook missing customer phone number');
@@ -129,9 +136,9 @@ export class WebhooksService {
 
     try {
       const lead = await this.leadsService.createLead({
-        customerName,
-        customerPhone: customerPhone || '919999999999',
-        queryMessage,
+        customerName: stripHtml(customerName) || 'WhatsApp Lead',
+        customerPhone: stripHtml(customerPhone) || '919999999999',
+        queryMessage: stripHtml(queryMessage) || 'Inbound WhatsApp Inquiry',
         source: 'whatsapp',
         productCategory: 'General Inquiry',
         rawPayload: JSON.stringify(payload),
@@ -180,7 +187,9 @@ export class WebhooksService {
 
     const providedToken = tokenHeader || payload.websiteToken || payload._secret_token || payload.token;
 
-    if (!providedToken || providedToken !== configuredToken) {
+    const configuredHash = crypto.createHash('sha256').update(configuredToken).digest();
+    const providedHash = crypto.createHash('sha256').update(providedToken || '').digest();
+    if (!providedToken || !crypto.timingSafeEqual(configuredHash, providedHash)) {
       this.logger.warn(`Website inquiry token mismatch or missing: provided="${providedToken}"`);
       throw new UnauthorizedException('Invalid or missing website submission token.');
     }
@@ -203,16 +212,16 @@ export class WebhooksService {
 
     try {
       const lead = await this.leadsService.createLead({
-        customerName: payload.name || payload.customerName || 'Web Inquiry',
-        customerPhone: payload.phone || payload.customerPhone || '',
-        customerEmail: payload.email || payload.customerEmail,
-        city: payload.city,
-        companyName: payload.company || payload.companyName,
-        productCategory: payload.category || payload.productCategory,
-        productName: payload.product || payload.productName,
+        customerName: stripHtml(payload.name || payload.customerName) || 'Web Inquiry',
+        customerPhone: stripHtml(payload.phone || payload.customerPhone) || '',
+        customerEmail: stripHtml(payload.email || payload.customerEmail),
+        city: stripHtml(payload.city),
+        companyName: stripHtml(payload.company || payload.companyName),
+        productCategory: stripHtml(payload.category || payload.productCategory),
+        productName: stripHtml(payload.product || payload.productName),
         quantity: payload.quantity ? Number(payload.quantity) : 1,
         estimatedValue: payload.estimatedValue ? Number(payload.estimatedValue) : 0,
-        queryMessage: payload.message || payload.queryMessage || 'Website contact form submission',
+        queryMessage: stripHtml(payload.message || payload.queryMessage) || 'Website contact form submission',
         source: 'web',
         rawPayload: JSON.stringify(payload),
       });

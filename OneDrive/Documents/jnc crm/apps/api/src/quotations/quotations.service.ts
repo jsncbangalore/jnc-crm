@@ -12,26 +12,61 @@ import { AuditService } from '../audit/audit.service';
 import { OrdersService } from '../orders/orders.service';
 import { requireTenantId } from '../common/tenant.util';
 
-export interface CreateQuotationDto {
+import { IsString, IsNotEmpty, IsOptional, IsArray, IsNumber } from 'class-validator';
+
+export class CreateQuotationDto {
+  @IsString()
+  @IsOptional()
   leadId?: string;
+
+  @IsString()
+  @IsOptional()
   contactId?: string;
+
+  @IsString()
+  @IsNotEmpty()
   customerName: string;
+
+  @IsString()
+  @IsNotEmpty()
   customerPhone: string;
+
+  @IsString()
+  @IsOptional()
   customerEmail?: string;
+
+  @IsString()
+  @IsOptional()
   companyName?: string;
+
+  @IsString()
+  @IsOptional()
   shippingAddress?: string;
+
+  @IsString()
+  @IsOptional()
   validUntil?: string;
+
+  @IsString()
+  @IsOptional()
   notes?: string;
+
+  @IsString()
+  @IsOptional()
   terms?: string;
+
+  @IsNumber()
+  @IsOptional()
   taxRate?: number;
-  lines: {
-    skuId?: string;
-    name?: string;
-    quantity: number;
-    unitPrice: number;
-    discount?: number;
-    notes?: string;
-  }[];
+
+  @IsArray()
+  lines: any[];
+}
+
+export class UpdateQuotationStatusDto {
+  @IsString()
+  @IsNotEmpty()
+  status: string;
 }
 
 @Injectable()

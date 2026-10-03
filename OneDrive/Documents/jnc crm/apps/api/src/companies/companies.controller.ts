@@ -11,7 +11,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
-import { CompaniesService, CreateCompanyDto, CreateContactDto } from './companies.service';
+import { CompaniesService, CreateCompanyDto, UpdateCompanyDto, CreateContactDto } from './companies.service';
 
 @Controller('companies')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -38,7 +38,7 @@ export class CompaniesController {
   @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   async updateCompany(
     @Param('id') id: string,
-    @Body() dto: Partial<CreateCompanyDto>,
+    @Body() dto: UpdateCompanyDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.companiesService.update(id, dto, user);

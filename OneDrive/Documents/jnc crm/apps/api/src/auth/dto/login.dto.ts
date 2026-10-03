@@ -63,7 +63,28 @@ export class ResetPasswordDto {
 }
 
 export class RefreshTokenDto {
+  @IsOptional()
+  @IsString()
+  refreshToken?: string;
+}
+
+export class UpdateProfileDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+}
+
+export class ChangePasswordDto {
   @IsNotEmpty()
   @IsString()
-  refreshToken: string;
+  currentPass: string;
+
+  @IsNotEmpty()
+  @IsString()
+  @MinLength(12, { message: 'Password must be at least 12 characters long' })
+  newPass: string;
 }

@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { authApi } from '../services/api';
+import { authApi, setAccessToken } from '../services/api';
 import { Eye, EyeOff, RefreshCw, AlertCircle } from 'lucide-react';
 import AuthLayout from '../components/layout/AuthLayout';
 
@@ -26,9 +26,8 @@ export default function PlatformLoginPage() {
     try {
       const { data } = await authApi.platformLogin(email.trim(), password);
 
-      // Store tokens
-      localStorage.setItem('jnc_access_token', data.accessToken);
-      localStorage.setItem('jnc_refresh_token', data.refreshToken);
+      // Store access token in memory & user in localStorage
+      setAccessToken(data.accessToken);
       localStorage.setItem('jnc_user', JSON.stringify(data.user));
 
       // Reload to let AuthContext re-initialize, then navigate

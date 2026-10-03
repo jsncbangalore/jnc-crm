@@ -17,6 +17,8 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { ActivitiesService } from './activities.service';
+import { CreateProjectDto, UpdateProjectDto, AssignMembersDto, UploadLogDto } from './dto/project.dto';
+import { validateUploadedFile } from '../common/file-validator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import * as XLSX from 'xlsx';
 
@@ -35,7 +37,7 @@ export class ActivitiesController {
 
   @Post('projects')
   async createProject(
-    @Body() body: { name: string; description?: string; status?: string },
+    @Body() body: CreateProjectDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.activitiesService.createProject(user, body);
@@ -44,7 +46,7 @@ export class ActivitiesController {
   @Put('projects/:id')
   async updateProject(
     @Param('id') id: string,
-    @Body() body: { name?: string; description?: string; status?: string },
+    @Body() body: UpdateProjectDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.activitiesService.updateProject(user, id, body);
@@ -65,10 +67,10 @@ export class ActivitiesController {
   @Post('projects/:id/assign')
   async assignMembers(
     @Param('id') projectId: string,
-    @Body('memberIds') memberIds: string[],
+    @Body() body: AssignMembersDto,
     @CurrentUser() user: ScopedUser,
   ) {
-    return this.activitiesService.assignMembers(user, projectId, memberIds || []);
+    return this.activitiesService.assignMembers(user, projectId, body.memberIds || []);
   }
 
   // ─── Daily Logs ───────────────────────────────────────────────────────────────
@@ -83,11 +85,16 @@ export class ActivitiesController {
   async uploadLog(
     @Param('projectId') projectId: string,
     @UploadedFile() file: Express.Multer.File | undefined,
-    @Body('taskSummary') taskSummary: string,
+    @Body() body: UploadLogDto,
     @CurrentUser() user: ScopedUser,
   ) {
+    const taskSummary = body?.taskSummary || '';
     if (!file && (!taskSummary || !taskSummary.trim())) {
       throw new BadRequestException('Please enter a summary or select a file to upload.');
+    }
+
+    if (file) {
+      validateUploadedFile(file, 'spreadsheet', 20 * 1024 * 1024);
     }
 
     let records: any[] = [];

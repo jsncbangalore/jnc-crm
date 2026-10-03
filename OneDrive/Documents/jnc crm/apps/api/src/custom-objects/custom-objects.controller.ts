@@ -15,6 +15,8 @@ import {
   Body,
   Query,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { PageAccess } from '../auth/page-access.decorator';
 import { AuthGuard } from '@nestjs/passport';
@@ -23,6 +25,12 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { CustomObjectsService } from './custom-objects.service';
+import {
+  CreateCustomObjectDto,
+  UpdateCustomObjectDto,
+  CreateCustomFieldDto,
+  UpdateCustomFieldDto,
+} from './dto/custom-objects.dto';
 
 @Controller('custom-objects')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -43,13 +51,7 @@ export class CustomObjectsController {
 
   @Post()
   createObject(
-    @Body()
-    data: {
-      apiName: string;
-      label: string;
-      pluralLabel?: string;
-      description?: string;
-    },
+    @Body() data: CreateCustomObjectDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.customObjectsService.createObject(data, user);
@@ -58,12 +60,7 @@ export class CustomObjectsController {
   @Patch(':id')
   updateObject(
     @Param('id') id: string,
-    @Body()
-    data: {
-      label?: string;
-      pluralLabel?: string;
-      description?: string;
-    },
+    @Body() data: UpdateCustomObjectDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.customObjectsService.updateObject(id, data, user);
@@ -90,17 +87,7 @@ export class CustomObjectsController {
   @Post(':id/fields')
   createField(
     @Param('id') objectId: string,
-    @Body()
-    data: {
-      apiName: string;
-      label: string;
-      fieldType: string;
-      isRequired?: boolean;
-      isUnique?: boolean;
-      picklistValues?: string[] | string;
-      lookupTargetObject?: string;
-      displayOrder?: number;
-    },
+    @Body() data: CreateCustomFieldDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.customObjectsService.createField(objectId, data, user);
@@ -110,16 +97,7 @@ export class CustomObjectsController {
   updateField(
     @Param('id') objectId: string,
     @Param('fieldId') fieldId: string,
-    @Body()
-    data: {
-      label?: string;
-      fieldType?: string;
-      isRequired?: boolean;
-      isUnique?: boolean;
-      picklistValues?: string[] | string;
-      lookupTargetObject?: string;
-      displayOrder?: number;
-    },
+    @Body() data: UpdateCustomFieldDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.customObjectsService.updateField(objectId, fieldId, data, user);
@@ -187,6 +165,7 @@ export class CustomObjectsController {
   }
 
   @Post(':objectApiName/records')
+  @UsePipes(new ValidationPipe({ whitelist: false, forbidNonWhitelisted: false }))
   createRecord(
     @Param('objectApiName') objectApiName: string,
     @Body() submittedData: Record<string, any>,
@@ -196,6 +175,7 @@ export class CustomObjectsController {
   }
 
   @Patch(':objectApiName/records/:recordId')
+  @UsePipes(new ValidationPipe({ whitelist: false, forbidNonWhitelisted: false }))
   updateRecord(
     @Param('objectApiName') objectApiName: string,
     @Param('recordId') recordId: string,

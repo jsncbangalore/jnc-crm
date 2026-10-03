@@ -14,6 +14,16 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { InvoicingService } from './invoicing.service';
+import {
+  CreateDirectInvoiceDto,
+  UpdateInvoiceDto,
+  CompanyProfileDto,
+  SignatorySettingsDto,
+  GenerateFromOrderDto,
+  VoidInvoiceDto,
+  RecordInvoicePaymentDto,
+  EmailInvoiceDto,
+} from './dto/invoicing.dto';
 
 @Controller('invoices')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -47,10 +57,10 @@ export class InvoicingController {
   @Post('create-direct')
   @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async createDirect(
-    @Body() body: any,
+    @Body() body: CreateDirectInvoiceDto,
     @CurrentUser() user: ScopedUser,
   ) {
-    return this.invoicingService.createDirectDocument(user, body);
+    return this.invoicingService.createDirectDocument(user, body as any);
   }
 
   @Get('company-profile')
@@ -61,7 +71,7 @@ export class InvoicingController {
   @Post('company-profile')
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async updateCompanyProfile(
-    @Body() body: any,
+    @Body() body: CompanyProfileDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.invoicingService.updateCompanyProfile(user, body);
@@ -75,7 +85,7 @@ export class InvoicingController {
   @Post('settings/company-profile')
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async updateSettingsCompanyProfile(
-    @Body() body: any,
+    @Body() body: CompanyProfileDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.invoicingService.updateCompanyProfile(user, body);
@@ -89,12 +99,7 @@ export class InvoicingController {
   @Post('settings/signatory')
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async updateSignatorySettings(
-    @Body() body: {
-      signatoryName?: string;
-      signatoryDesignation?: string;
-      signatureImage?: string | null;
-      stampImage?: string | null;
-    },
+    @Body() body: SignatorySettingsDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.invoicingService.updateSignatorySettings(user, body);
@@ -125,7 +130,7 @@ export class InvoicingController {
   @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async generateFromOrder(
     @Param('orderId') orderId: string,
-    @Body() body: { paymentTerms?: string; dueDate?: string; notes?: string },
+    @Body() body: GenerateFromOrderDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.invoicingService.generateInvoiceForOrder(orderId, user, body);
@@ -135,7 +140,7 @@ export class InvoicingController {
   @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async updateInvoice(
     @Param('id') id: string,
-    @Body() body: any,
+    @Body() body: UpdateInvoiceDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.invoicingService.updateDocument(id, user, body);
@@ -145,24 +150,17 @@ export class InvoicingController {
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async voidInvoice(
     @Param('id') id: string,
-    @Body('reason') reason: string,
+    @Body() body: VoidInvoiceDto,
     @CurrentUser() user: ScopedUser,
   ) {
-    return this.invoicingService.voidInvoice(id, reason, user);
+    return this.invoicingService.voidInvoice(id, body?.reason || '', user);
   }
 
   @Post(':id/payments')
   @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async recordPayment(
     @Param('id') id: string,
-    @Body() body: {
-      amount: number;
-      paymentType?: string;
-      paymentMethod?: string;
-      transactionRef?: string;
-      paymentDate?: string;
-      notes?: string;
-    },
+    @Body() body: RecordInvoicePaymentDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.invoicingService.recordPayment(id, body, user);
@@ -171,7 +169,7 @@ export class InvoicingController {
   @Post(':id/email')
   async emailInvoice(
     @Param('id') id: string,
-    @Body() body: { recipientEmail?: string; customNote?: string; templateType?: string },
+    @Body() body: EmailInvoiceDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.invoicingService.emailInvoice(id, user, body);

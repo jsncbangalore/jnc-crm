@@ -5,7 +5,7 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, ForbiddenException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
@@ -21,6 +21,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
+    this.$use(async (params, next) => {
+      if (params.model === 'AuditLog') {
+        if (['update', 'updateMany', 'delete', 'deleteMany', 'upsert'].includes(params.action)) {
+          throw new ForbiddenException('AuditLog records are strictly append-only and cannot be updated or deleted.');
+        }
+      }
+      return next(params);
+    });
     await this.$connect();
   }
 

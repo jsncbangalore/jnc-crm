@@ -4,7 +4,7 @@ import Navbar from './Navbar';
 import MobileDock from './MobileDock';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBranding } from '../../contexts/BrandingContext';
-import { authApi } from '../../services/api';
+import { authApi, setAccessToken } from '../../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { KeyRound, ShieldAlert, CheckCircle2, Lock } from 'lucide-react';
 
@@ -52,7 +52,7 @@ export default function AppLayout() {
     const masterToken = sessionStorage.getItem('jnc_master_token');
     const masterUser = sessionStorage.getItem('jnc_master_user');
     if (masterToken && masterUser) {
-      localStorage.setItem('jnc_access_token', masterToken);
+      setAccessToken(masterToken);
       localStorage.setItem('jnc_user', masterUser);
       sessionStorage.removeItem('jnc_master_token');
       sessionStorage.removeItem('jnc_master_user');

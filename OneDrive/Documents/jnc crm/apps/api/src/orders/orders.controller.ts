@@ -12,7 +12,15 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
-import { OrdersService, CreateOrderDto, UpdateOrderStatusDto, CreateShipmentDto } from './orders.service';
+import {
+  OrdersService,
+  CreateOrderDto,
+  UpdateOrderDto,
+  UpdateOrderStatusDto,
+  CreateShipmentDto,
+  UpdateShipmentStatusDto,
+  RecordOrderPaymentDto,
+} from './orders.service';
 
 @Controller('orders')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -46,7 +54,7 @@ export class OrdersController {
   @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   updateOrder(
     @Param('id') id: string,
-    @Body() dto: Partial<CreateOrderDto> & { paymentStatus?: string },
+    @Body() dto: UpdateOrderDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.ordersService.updateOrder(id, dto, user);
@@ -56,14 +64,7 @@ export class OrdersController {
   @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   recordPayment(
     @Param('id') id: string,
-    @Body() body: {
-      amount: number;
-      paymentType?: string;
-      paymentMethod?: string;
-      transactionRef?: string;
-      paymentDate?: string;
-      notes?: string;
-    },
+    @Body() body: RecordOrderPaymentDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.ordersService.recordPayment(id, body, user);
@@ -101,7 +102,7 @@ export class OrdersController {
   @Roles('tenant_admin', 'admin', 'sub_admin')
   updateShipmentStatus(
     @Param('id') id: string,
-    @Body() body: { status: string },
+    @Body() body: UpdateShipmentStatusDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.ordersService.updateShipmentStatus(id, body.status, user);

@@ -23,6 +23,12 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
+import {
+  UpdateBrandingDto,
+  UpdateCompanyProfileDto,
+  CreateMailAccountDto,
+  UpdateMailAccountDto,
+} from './dto/settings.dto';
 
 @Controller('settings')
 export class SettingsController {
@@ -46,12 +52,7 @@ export class SettingsController {
   @Roles('tenant_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   async updateBranding(
-    @Body()
-    body: {
-      companyDisplayName?: string;
-      companyPhone?: string;
-      companyLogoUrl?: string | null;
-    },
+    @Body() body: UpdateBrandingDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.settingsService.updateBranding(user, body);
@@ -77,7 +78,7 @@ export class SettingsController {
   @Roles('tenant_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   async updateCompanyProfile(
-    @Body() body: any,
+    @Body() body: UpdateCompanyProfileDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.settingsService.updateCompanyProfile(user, body);
@@ -96,18 +97,7 @@ export class SettingsController {
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('platform_super_admin', 'tenant_admin')
   async createMailAccount(
-    @Body()
-    body: {
-      name: string;
-      email: string;
-      senderName?: string;
-      smtpHost: string;
-      smtpPort?: number;
-      smtpUser: string;
-      smtpPass: string;
-      isSecure?: boolean;
-      purpose?: string;
-    },
+    @Body() body: CreateMailAccountDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.settingsService.createMailAccount(user, body);
@@ -118,19 +108,7 @@ export class SettingsController {
   @Roles('platform_super_admin', 'tenant_admin')
   async updateMailAccount(
     @Param('id') id: string,
-    @Body()
-    body: {
-      name?: string;
-      email?: string;
-      senderName?: string;
-      smtpHost?: string;
-      smtpPort?: number;
-      smtpUser?: string;
-      smtpPass?: string;
-      isSecure?: boolean;
-      purpose?: string;
-      isActive?: boolean;
-    },
+    @Body() body: UpdateMailAccountDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.settingsService.updateMailAccount(user, id, body);

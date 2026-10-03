@@ -18,11 +18,27 @@ import {
   Headers,
   Logger,
   UnauthorizedException,
+  BadRequestException,
+  PayloadTooLargeException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { WebhooksService } from './webhooks.service';
 import { Response, Request } from 'express';
 import * as crypto from 'crypto';
+
+function timingSafeTokenMatch(provided?: string, expected?: string): boolean {
+  if (!provided || !expected) return false;
+  const h1 = crypto.createHash('sha256').update(provided).digest();
+  const h2 = crypto.createHash('sha256').update(expected).digest();
+  return crypto.timingSafeEqual(h1, h2);
+}
+
+function checkPayloadSize(payload: any, maxBytes: number = 100 * 1024) {
+  const size = Buffer.byteLength(typeof payload === 'string' ? payload : JSON.stringify(payload || ''));
+  if (size > maxBytes) {
+    throw new PayloadTooLargeException(`Webhook payload exceeds maximum size limit of ${maxBytes / 1024}KB.`);
+  }
+}
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -42,6 +58,8 @@ export class WebhooksController {
     @Headers('x-indiamart-token') tokenHeader?: string,
     @Query('token') queryToken?: string,
   ) {
+    checkPayloadSize(payload);
+
     const configuredToken = process.env.INDIAMART_WEBHOOK_SECRET;
     if (!configuredToken) {
       this.logger.error('CRITICAL: INDIAMART_WEBHOOK_SECRET environment variable is not configured on server.');
@@ -50,9 +68,18 @@ export class WebhooksController {
 
     const providedToken = tokenHeader || queryToken;
 
-    if (!providedToken || providedToken !== configuredToken) {
+    if (!timingSafeTokenMatch(providedToken, configuredToken)) {
       this.logger.warn(`Unauthorized IndiaMART push attempt: invalid or missing token.`);
       throw new UnauthorizedException('Invalid or missing IndiaMART webhook secret token.');
+    }
+
+    // 24h replay/expiration check if timestamp present
+    const ts = payload?.QUERY_TIME || payload?.TIMESTAMP || payload?.timestamp;
+    if (ts) {
+      const parsed = new Date(ts).getTime();
+      if (!isNaN(parsed) && (Date.now() - parsed > 24 * 3600 * 1000 || parsed - Date.now() > 5 * 60 * 1000)) {
+        throw new BadRequestException('Webhook payload timestamp expired or invalid.');
+      }
     }
 
     const result = await this.webhooksService.processIndiaMartLead(payload);
@@ -107,6 +134,8 @@ export class WebhooksController {
     @Body() payload: any,
     @Headers('x-hub-signature-256') signatureHeader?: string,
   ) {
+    checkPayloadSize(payload);
+
     const appSecret = process.env.WHATSAPP_APP_SECRET;
     if (!appSecret) {
       this.logger.error('CRITICAL: WHATSAPP_APP_SECRET environment variable is not configured on server.');

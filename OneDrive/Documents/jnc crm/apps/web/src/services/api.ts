@@ -19,13 +19,27 @@ export const getApiBaseUrl = () => {
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+  },
+  withCredentials: true,
 });
+
+let _inMemoryAccessToken: string | null = null;
+
+export const setAccessToken = (token: string | null) => {
+  _inMemoryAccessToken = token;
+};
+
+export const getAccessToken = () => _inMemoryAccessToken;
 
 // Attach token to every request
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('jnc_access_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (_inMemoryAccessToken) {
+    config.headers.Authorization = `Bearer ${_inMemoryAccessToken}`;
+  }
+  config.headers['X-Requested-With'] = 'XMLHttpRequest';
   return config;
 });
 
@@ -76,22 +90,21 @@ api.interceptors.response.use(
         });
       }
 
-      const storedRefresh = localStorage.getItem('jnc_refresh_token');
-      if (!storedRefresh) {
-        if (window.location.pathname !== '/login') {
-          localStorage.removeItem('jnc_access_token');
-          localStorage.removeItem('jnc_user');
-          window.location.href = '/login';
-        }
-        return Promise.reject(err);
-      }
-
       _refreshing = (async () => {
         try {
           const refreshUrl = `${getApiBaseUrl()}/auth/refresh`;
-          const { data } = await axios.post(refreshUrl, { refreshToken: storedRefresh });
-          localStorage.setItem('jnc_access_token', data.accessToken);
-          localStorage.setItem('jnc_refresh_token', data.refreshToken);
+          const { data } = await axios.post(
+            refreshUrl,
+            {},
+            {
+              withCredentials: true,
+              headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+              },
+            },
+          );
+          setAccessToken(data.accessToken);
           if (data.user) {
             localStorage.setItem('jnc_user', JSON.stringify(data.user));
           }
@@ -99,10 +112,12 @@ api.interceptors.response.use(
           return data.accessToken as string;
         } catch (refreshErr) {
           _flushQueue(null, refreshErr);
-          localStorage.removeItem('jnc_access_token');
-          localStorage.removeItem('jnc_refresh_token');
+          setAccessToken(null);
           localStorage.removeItem('jnc_user');
-          if (window.location.pathname !== '/login') {
+          if (
+            window.location.pathname !== '/login' &&
+            window.location.pathname !== '/platform/login'
+          ) {
             window.location.href = '/login';
           }
           throw refreshErr;
@@ -120,7 +135,7 @@ api.interceptors.response.use(
       }
     }
     return Promise.reject(err);
-  }
+  },
 );
 
 export default api;
@@ -138,6 +153,9 @@ export const authApi = {
   resetPassword: (token: string, newPassword: string) =>
     api.post('/auth/reset-password', { token, newPassword }),
   me: () => api.get('/auth/me'),
+  refresh: () => api.post('/auth/refresh', {}),
+  logout: () => api.post('/auth/logout', {}),
+  logoutAll: () => api.post('/auth/logout-all', {}),
   updateProfile: (data: { name?: string; phone?: string }) =>
     api.patch('/auth/profile', data),
   changePassword: (currentPass: string, newPass: string) =>

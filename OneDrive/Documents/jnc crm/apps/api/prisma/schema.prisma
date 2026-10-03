@@ -58,6 +58,8 @@ model Tenant {
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   deletedAt           DateTime?
+  scheduledDeletionDate DateTime?
+  deletionConfirmToken String?
 
   // Relations
   users           User[]
@@ -141,6 +143,7 @@ model User {
   createdLeads      Lead[]     @relation("CreatedLeads")
   createdSuppliers  Supplier[] @relation("CreatedSuppliers")
   passwordResetTokens PasswordResetToken[]
+  refreshSessions   RefreshSession[]
 
   @@unique([tenantId, email])
   @@unique([tenantId, employeeCode])
@@ -164,6 +167,22 @@ model PasswordResetToken {
 model UsedSelectionToken {
   jti       String   @id
   usedAt    DateTime @default(now())
+}
+
+model RefreshSession {
+  id          String   @id @default(uuid())
+  userId      String
+  tokenHash   String   @unique
+  familyId    String
+  isRevoked   Boolean  @default(false)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
 }
 
 // ==========================================

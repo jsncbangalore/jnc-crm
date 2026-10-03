@@ -42,9 +42,14 @@ try {
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
-import { json, urlencoded, static as expressStatic } from 'express';
+import { json, urlencoded } from 'express';
+import helmet from 'helmet';
+import * as cookieParser from 'cookie-parser';
 import { validateEnvironmentOrExit } from './common/env-validation';
 import { corsOriginCallback } from './common/cors-config';
+import { requestIdMiddleware } from './common/request-id.middleware';
+import { GlobalHttpExceptionFilter } from './common/http-exception.filter';
+import { SanitizeResponseInterceptor } from './common/sanitize-response.interceptor';
 
 async function bootstrap() {
   // 1. Strict Startup Secrets Validation Guard — Fail fast if mandatory secrets are missing
@@ -52,49 +57,93 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
-  // Capture rawBody buffer for HMAC-SHA256 signature verification (e.g. WhatsApp Webhooks)
-  // while allowing up to 50MB payload for large spreadsheet uploads
-  app.use(json({
+  // 2. Behind proxy: configure Express trust proxy so Throttler and logs identify client IP correctly
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.set('trust proxy', 1);
+
+  // 3. HTTP Security via Helmet: HSTS (1 year + subdomains), CSP 'none', noSniff, frameguard deny, no-referrer
+  app.use(
+    helmet({
+      hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true,
+      },
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'none'"],
+        },
+      },
+      noSniff: true,
+      frameguard: { action: 'deny' },
+      referrerPolicy: { policy: 'no-referrer' },
+      hidePoweredBy: true,
+    }),
+  );
+
+  // 4. Parse cookies for HttpOnly refresh tokens
+  app.use(cookieParser());
+
+  // 5. Request ID tracking & secure logging (never log secrets/tokens/credentials)
+  app.use(requestIdMiddleware);
+
+  // 6. Body Size Limits: 1MB globally; 50MB only for spreadsheet import routes (leads and inventory)
+  const defaultJsonParser = json({
+    limit: '1mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    },
+  });
+  const defaultUrlencodedParser = urlencoded({ extended: true, limit: '1mb' });
+  const importJsonParser = json({
     limit: '50mb',
     verify: (req: any, _res, buf) => {
       req.rawBody = buf;
     },
-  }));
-  app.use(urlencoded({ extended: true, limit: '50mb' }));
+  });
+  const importUrlencodedParser = urlencoded({ extended: true, limit: '50mb' });
 
-  // Serve purchase document uploads statically with inline display (prevent auto-download)
-  const purchaseDocsDir = path.resolve(process.cwd(), '../../purchase-documents');
-  if (!fs.existsSync(purchaseDocsDir)) fs.mkdirSync(purchaseDocsDir, { recursive: true });
-  app.use(
-    '/uploads/purchase-docs',
-    expressStatic(purchaseDocsDir, {
-      setHeaders: (res, filePath) => {
-        res.setHeader('Content-Disposition', 'inline');
-        if (filePath.endsWith('.avif')) res.setHeader('Content-Type', 'image/avif');
-        if (filePath.endsWith('.webp')) res.setHeader('Content-Type', 'image/webp');
-        if (filePath.endsWith('.png')) res.setHeader('Content-Type', 'image/png');
-        if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) res.setHeader('Content-Type', 'image/jpeg');
-        if (filePath.endsWith('.pdf')) res.setHeader('Content-Type', 'application/pdf');
-      },
-    })
-  );
+  app.use((req: any, res: any, next: any) => {
+    const isImportRoute =
+      req.originalUrl &&
+      (req.originalUrl.includes('/leads/import') ||
+        req.originalUrl.includes('/inventory/import'));
 
-  // Global prefix
+    if (isImportRoute) {
+      importJsonParser(req, res, (err: any) => {
+        if (err) return next(err);
+        importUrlencodedParser(req, res, next);
+      });
+    } else {
+      defaultJsonParser(req, res, (err: any) => {
+        if (err) return next(err);
+        defaultUrlencodedParser(req, res, next);
+      });
+    }
+  });
+
+  // 7. Global API Prefix
   app.setGlobalPrefix('api/v1');
 
-  // Validation
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: false,
-    transform: true,
-  }));
+  // 8. Strict Global ValidationPipe
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
-  // CORS Configuration (Supports admin.jsnc.co.in, api.jsnc.co.in, localhost, and custom domains)
+  // 9. Global Error Masking in Production & Response Secret Sanitizer
+  app.useGlobalFilters(new GlobalHttpExceptionFilter());
+  app.useGlobalInterceptors(new SanitizeResponseInterceptor());
+
+  // 10. CORS Configuration
   app.enableCors({
     origin: corsOriginCallback,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Range'],
-    exposedHeaders: ['Content-Disposition', 'Content-Range', 'Content-Length'],
+    exposedHeaders: ['Content-Disposition', 'Content-Range', 'Content-Length', 'X-Request-Id'],
     credentials: true,
   });
 

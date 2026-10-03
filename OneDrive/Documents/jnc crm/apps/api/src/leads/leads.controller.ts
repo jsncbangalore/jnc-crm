@@ -13,7 +13,9 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { LeadsService } from './leads.service';
-import { CreateLeadDto, UpdateLeadStatusDto, CreateLeadActivityDto } from './dto/create-lead.dto';
+import { CreateLeadDto, UpdateLeadStatusDto, CreateLeadActivityDto, ShareLeadDto, ImportLeadsDto } from './dto/create-lead.dto';
+import { validateUploadedFile } from '../common/file-validator';
+import { sanitizeRowForImport } from '../common/csv-sanitize.util';
 import { FileInterceptor } from '@nestjs/platform-express';
 import * as Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -95,13 +97,13 @@ Nexus Power Electronics,Siddharth Rao,9876543210,siddharth@nexuspower.in,IRFZ44N
   @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   async shareLead(
     @Param('id') id: string,
-    @Body('targetUserId') targetUserId: string,
+    @Body() dto: ShareLeadDto,
     @CurrentUser() user: ScopedUser,
   ) {
-    if (!targetUserId) {
+    if (!dto.targetUserId) {
       throw new BadRequestException('targetUserId is required for sharing.');
     }
-    return this.leadsService.shareLead(id, targetUserId, user);
+    return this.leadsService.shareLead(id, dto.targetUserId, user);
   }
 
   /**
@@ -123,6 +125,8 @@ Nexus Power Electronics,Siddharth Rao,9876543210,siddharth@nexuspower.in,IRFZ44N
       throw new BadRequestException('Spreadsheet file is required');
     }
 
+    validateUploadedFile(file, 'spreadsheet', 50 * 1024 * 1024);
+
     let records: any[] = [];
     const lowerName = file.originalname.toLowerCase();
 
@@ -143,7 +147,8 @@ Nexus Power Electronics,Siddharth Rao,9876543210,siddharth@nexuspower.in,IRFZ44N
       records = parseResult.data;
     }
 
-    return this.leadsService.previewImport(records, user);
+    const sanitized = records.map((r) => sanitizeRowForImport(r));
+    return this.leadsService.previewImport(sanitized, user);
   }
 
   /**
@@ -152,13 +157,14 @@ Nexus Power Electronics,Siddharth Rao,9876543210,siddharth@nexuspower.in,IRFZ44N
   @Post('import-preview-json')
   @Roles('tenant_admin', 'admin', 'sub_admin')
   async previewJson(
-    @Body() body: { records: any[] },
+    @Body() body: ImportLeadsDto,
     @CurrentUser() user: ScopedUser,
   ) {
     if (!body.records || !Array.isArray(body.records)) {
       throw new BadRequestException('Records array is required');
     }
-    return this.leadsService.previewImport(body.records, user);
+    const sanitized = body.records.map((r) => sanitizeRowForImport(r));
+    return this.leadsService.previewImport(sanitized, user);
   }
 
   /**
@@ -167,12 +173,13 @@ Nexus Power Electronics,Siddharth Rao,9876543210,siddharth@nexuspower.in,IRFZ44N
   @Post('import-commit')
   @Roles('tenant_admin', 'admin', 'sub_admin')
   async commitImport(
-    @Body() body: { records: any[] },
+    @Body() body: ImportLeadsDto,
     @CurrentUser() user: ScopedUser,
   ) {
     if (!body.records || !Array.isArray(body.records)) {
       throw new BadRequestException('Records array is required');
     }
-    return this.leadsService.commitImport(body.records, user);
+    const sanitized = body.records.map((r) => sanitizeRowForImport(r));
+    return this.leadsService.commitImport(sanitized, user);
   }
 }

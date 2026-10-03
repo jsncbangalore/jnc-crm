@@ -25,6 +25,7 @@ import {
   RefreshTokenDto,
 } from './dto/login.dto';
 import { getRoleRedirectPath } from './roles';
+import { validatePasswordPolicy, needsRehash } from '../common/password-policy';
 
 const GENERIC_ERROR = 'Invalid credentials.';
 
@@ -279,7 +280,7 @@ export class AuthService {
     }
 
     await this.resetFailedAttempts(matchedLockKey, matchedUser.id);
-    return this._buildLoginResponse(matchedUser, ipAddress);
+    return this._buildLoginResponse(matchedUser, ipAddress, loginDto.password);
   }
 
   // ─── POST /auth/login/select-company ────────────────────────────────────────
@@ -428,7 +429,7 @@ export class AuthService {
     await this.resetFailedAttempts(emailKey, user.id);
     await this._auditPlatformLogin(true, user.id, lower, ipAddress);
 
-    return this._buildLoginResponse(user, ipAddress);
+    return this._buildLoginResponse(user, ipAddress, dto.password);
   }
 
   // ─── POST /auth/forgot-password ─────────────────────────────────────────────
@@ -491,6 +492,7 @@ export class AuthService {
       throw new BadRequestException('Reset link is invalid or has expired.');
     }
 
+    validatePasswordPolicy(dto.newPassword, { email: record.user.email, name: record.user.name });
     const passwordHash = await bcrypt.hash(dto.newPassword, 12);
 
     await this.prisma.$transaction([
@@ -508,6 +510,10 @@ export class AuthService {
         where: { id: record.id },
         data: { usedAt: new Date() },
       }),
+      this.prisma.refreshSession.updateMany({
+        where: { userId: record.userId },
+        data: { isRevoked: true },
+      }),
     ]);
 
     // Clear any AccountLockout rows too
@@ -516,94 +522,238 @@ export class AuthService {
       : record.user.email.toLowerCase();
     await this.prisma.accountLockout.delete({ where: { identityKey: lockKey } }).catch(() => {});
 
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: record.user.tenantId || 'default-tenant-id',
+        actorId: record.userId,
+        actorName: record.user.name,
+        action: 'PASSWORD_RESET',
+        entityName: 'User',
+        entityId: record.userId,
+      },
+    }).catch(() => {});
+
     return { message: 'Password has been reset successfully. Please sign in.' };
   }
 
   // ─── POST /auth/refresh ──────────────────────────────────────────────────────
 
-  async refreshToken(dto: RefreshTokenDto) {
+  async refreshToken(rawRefreshToken: string, ipAddress?: string) {
+    if (!rawRefreshToken) {
+      throw new UnauthorizedException('Refresh token is required');
+    }
+
+    let payload: any;
     try {
-      const payload = this.jwtService.verify(dto.refreshToken, {
+      payload = this.jwtService.verify(rawRefreshToken, {
         secret: process.env.JWT_REFRESH_SECRET,
+        algorithms: ['HS256'],
+        issuer: 'jnc-crm-api',
+        audience: 'jnc-crm-client',
       });
-
-      const user = await this.prisma.user.findFirst({
-        where: { id: payload.sub, deletedAt: null },
-        select: {
-          id: true,
-          tenantId: true,
-          employeeCode: true,
-          name: true,
-          email: true,
-          role: true,
-          teamId: true,
-          teamRef: { select: { id: true, name: true, allowedPages: true } },
-          warehouseId: true,
-          isActive: true,
-          mustResetPassword: true,
-          tokenVersion: true,
-          tenant: {
-            select: {
-              id: true,
-              code: true,
-              name: true,
-              slug: true,
-              status: true,
-              logoUrl: true,
-              currency: true,
-              deletedAt: true,
-            },
-          },
-        },
-      });
-
-      if (!user || !user.isActive) {
-        throw new UnauthorizedException('Invalid or deactivated account');
-      }
-
-      if (payload.tokenVersion !== undefined && payload.tokenVersion !== user.tokenVersion) {
-        throw new UnauthorizedException('Refresh token revoked');
-      }
-
-      if (
-        user.tenant &&
-        (user.tenant.status !== 'active' || user.tenant.deletedAt !== null) &&
-        user.role !== 'platform_super_admin'
-      ) {
-        throw new UnauthorizedException('Tenant is suspended or deactivated');
-      }
-
-      return {
-        user,
-        redirectPath: this.getRedirectPath(user),
-        ...this.generateTokens(user),
-      };
-    } catch (e) {
+    } catch {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
+
+    const tokenHash = crypto.createHash('sha256').update(rawRefreshToken).digest('hex');
+    const session = await this.prisma.refreshSession.findUnique({
+      where: { tokenHash },
+    });
+
+    // Reuse detection: If token was already revoked or not found
+    if (!session || session.isRevoked) {
+      const familyId = payload.familyId || session?.familyId;
+      if (familyId) {
+        await this.prisma.refreshSession.updateMany({
+          where: { familyId },
+          data: { isRevoked: true },
+        }).catch(() => {});
+      }
+      await this.prisma.user.update({
+        where: { id: payload.sub },
+        data: { tokenVersion: { increment: 1 } },
+      }).catch(() => {});
+
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: payload.tenantId || 'default-tenant-id',
+          actorId: payload.sub,
+          actorName: payload.email,
+          action: 'REFRESH_TOKEN_REUSE_DETECTED',
+          entityName: 'UserSession',
+          entityId: payload.sub,
+          afterState: JSON.stringify({ familyId, ipAddress }),
+          ipAddress: ipAddress || '127.0.0.1',
+        },
+      }).catch(() => {});
+
+      throw new UnauthorizedException('Refresh token reuse detected. Session family has been revoked.');
+    }
+
+    if (new Date(session.expiresAt) < new Date()) {
+      throw new UnauthorizedException('Refresh token has expired');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: payload.sub, deletedAt: null },
+      select: {
+        id: true,
+        tenantId: true,
+        employeeCode: true,
+        name: true,
+        email: true,
+        role: true,
+        teamId: true,
+        teamRef: { select: { id: true, name: true, allowedPages: true } },
+        warehouseId: true,
+        isActive: true,
+        mustResetPassword: true,
+        tokenVersion: true,
+        tenant: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            slug: true,
+            status: true,
+            logoUrl: true,
+            currency: true,
+            deletedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Invalid or deactivated account');
+    }
+
+    if (payload.tokenVersion !== undefined && payload.tokenVersion !== user.tokenVersion) {
+      throw new UnauthorizedException('Refresh token revoked');
+    }
+
+    if (
+      user.tenant &&
+      (user.tenant.status !== 'active' || user.tenant.deletedAt !== null) &&
+      user.role !== 'platform_super_admin'
+    ) {
+      throw new UnauthorizedException('Tenant is suspended or deactivated');
+    }
+
+    // Invalidate old token (Single-use rotation)
+    await this.prisma.refreshSession.update({
+      where: { id: session.id },
+      data: { isRevoked: true },
+    });
+
+    // Issue rotated token in same family
+    const newTokens = this.generateTokens(user, session.familyId);
+    const newTokenHash = crypto.createHash('sha256').update(newTokens.refreshToken).digest('hex');
+    const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await this.prisma.refreshSession.create({
+      data: {
+        userId: user.id,
+        tokenHash: newTokenHash,
+        familyId: session.familyId,
+        expiresAt: newExpiresAt,
+        isRevoked: false,
+      },
+    });
+
+    return {
+      user,
+      redirectPath: this.getRedirectPath(user),
+      accessToken: newTokens.accessToken,
+      refreshToken: newTokens.refreshToken,
+    };
   }
 
   // ─── Change password (authenticated) ────────────────────────────────────────
 
   async changePassword(userId: string, currentPass: string, newPass: string) {
-    if (!newPass || newPass.length < 6) {
-      throw new BadRequestException('New password must be at least 6 characters long');
-    }
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+
+    validatePasswordPolicy(newPass, { email: user.email, name: user.name });
 
     const isMatch = await bcrypt.compare(currentPass, user.passwordHash);
     if (!isMatch) {
       throw new UnauthorizedException('Current password does not match');
     }
 
-    const passwordHash = await bcrypt.hash(newPass, 10);
+    const passwordHash = await bcrypt.hash(newPass, 12);
     await this.prisma.user.update({
       where: { id: userId },
       data: { passwordHash, mustResetPassword: false, tokenVersion: { increment: 1 } },
     });
 
+    await this.prisma.refreshSession.updateMany({
+      where: { userId },
+      data: { isRevoked: true },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: user.tenantId || 'default-tenant-id',
+        actorId: userId,
+        actorName: user.name,
+        action: 'PASSWORD_CHANGE',
+        entityName: 'User',
+        entityId: userId,
+      },
+    }).catch(() => {});
+
     return { message: 'Password updated successfully' };
+  }
+
+  // ─── Sign out (revokes single session) ───────────────────────────────────────
+
+  async logout(rawToken?: string, userId?: string, ipAddress?: string) {
+    if (rawToken) {
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      await this.prisma.refreshSession.updateMany({
+        where: { tokenHash },
+        data: { isRevoked: true },
+      }).catch(() => {});
+    }
+    if (userId) {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: 'default-tenant-id',
+          actorId: userId,
+          action: 'LOGOUT',
+          entityName: 'User',
+          entityId: userId,
+          ipAddress: ipAddress || '127.0.0.1',
+        },
+      }).catch(() => {});
+    }
+    return { success: true, message: 'Logged out successfully' };
+  }
+
+  // ─── Sign out of all devices (increments tokenVersion + revokes all) ────────
+
+  async logoutAll(userId: string, ipAddress?: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } },
+    });
+    await this.prisma.refreshSession.updateMany({
+      where: { userId },
+      data: { isRevoked: true },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: 'default-tenant-id',
+        actorId: userId,
+        action: 'LOGOUT_ALL_DEVICES',
+        entityName: 'User',
+        entityId: userId,
+        ipAddress: ipAddress || '127.0.0.1',
+      },
+    }).catch(() => {});
+    return { success: true, message: 'Signed out of all devices successfully' };
   }
 
   // ─── Update profile ──────────────────────────────────────────────────────────
@@ -637,7 +787,7 @@ export class AuthService {
     return getRoleRedirectPath(user);
   }
 
-  private async _buildLoginResponse(user: any, ipAddress?: string) {
+  private async _buildLoginResponse(user: any, ipAddress?: string, rawPasswordToRehash?: string) {
     const { passwordHash, ...result } = user;
     const resolvedUser = {
       ...result,
@@ -648,10 +798,35 @@ export class AuthService {
       .update({ where: { id: resolvedUser.id }, data: { lastLoginAt: new Date() } })
       .catch(() => {});
 
+    // Transparent password rehashing if cost < 12
+    if (passwordHash && rawPasswordToRehash && needsRehash(passwordHash)) {
+      const newHash = await bcrypt.hash(rawPasswordToRehash, 12);
+      await this.prisma.user.update({
+        where: { id: resolvedUser.id },
+        data: { passwordHash: newHash },
+      }).catch(() => {});
+    }
+
+    const tokens = this.generateTokens(resolvedUser);
+    const tokenHash = crypto.createHash('sha256').update(tokens.refreshToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    if (this.prisma.refreshSession) {
+      await this.prisma.refreshSession.create({
+        data: {
+          userId: resolvedUser.id,
+          tokenHash,
+          familyId: tokens.familyId,
+          expiresAt,
+          isRevoked: false,
+        },
+      }).catch(() => {});
+    }
+
     await this.prisma.auditLog
       .create({
         data: {
-          tenantId: resolvedUser.tenantId || null,
+          tenantId: resolvedUser.tenantId || 'default-tenant-id',
           actorId: resolvedUser.id,
           actorName: resolvedUser.name,
           action: 'LOGIN',
@@ -670,7 +845,8 @@ export class AuthService {
     return {
       user: resolvedUser,
       redirectPath: this.getRedirectPath(resolvedUser),
-      ...this.generateTokens(resolvedUser),
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
     };
   }
 
@@ -683,7 +859,7 @@ export class AuthService {
     await this.prisma.auditLog
       .create({
         data: {
-          tenantId: null,
+          tenantId: 'default-tenant-id',
           actorId: userId,
           actorName: email,
           action: success ? 'PLATFORM_LOGIN' : 'PLATFORM_LOGIN_FAILED',
@@ -696,8 +872,11 @@ export class AuthService {
       .catch(() => {});
   }
 
-  private generateTokens(user: any) {
+  private generateTokens(user: any, familyId?: string) {
     const tenantId = user.tenantId ?? (user.tenant ? user.tenant.id : null);
+    const resolvedFamilyId = familyId || crypto.randomUUID();
+    const tokenId = crypto.randomUUID();
+
     const payload = {
       sub: user.id,
       tenantId,
@@ -707,19 +886,27 @@ export class AuthService {
       employee_code: user.employeeCode,
       employeeCode: user.employeeCode,
       tokenVersion: user.tokenVersion ?? 0,
+      familyId: resolvedFamilyId,
+      jti: tokenId,
     };
 
     const accessToken = this.jwtService.sign(payload, {
       secret: process.env.JWT_SECRET,
-      expiresIn: process.env.JWT_EXPIRATION || '1d',
+      expiresIn: '15m',
+      algorithm: 'HS256',
+      issuer: 'jnc-crm-api',
+      audience: 'jnc-crm-client',
     });
 
     const refreshToken = this.jwtService.sign(payload, {
       secret: process.env.JWT_REFRESH_SECRET,
-      expiresIn: process.env.JWT_REFRESH_EXPIRATION || '7d',
+      expiresIn: '7d',
+      algorithm: 'HS256',
+      issuer: 'jnc-crm-api',
+      audience: 'jnc-crm-client',
     });
 
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken, familyId: resolvedFamilyId };
   }
 
   /** Adds ~200–400 ms of artificial delay to make timing attacks harder */

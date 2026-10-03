@@ -9,6 +9,7 @@ import { Injectable, ForbiddenException, Logger, NotFoundException } from '@nest
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
+import { encryptAtRest } from '../common/encryption.util';
 
 export interface CompanyBrandingConfig {
   companyDisplayName: string;
@@ -216,7 +217,8 @@ export class SettingsService {
       throw new ForbiddenException('Only Company Administrators can configure Mail Accounts.');
     }
 
-    return this.prisma.mailAccount.create({
+    const encryptedPass = encryptAtRest(dto.smtpPass) || dto.smtpPass;
+    const created = await this.prisma.mailAccount.create({
       data: {
         tenantId,
         name: dto.name,
@@ -225,12 +227,28 @@ export class SettingsService {
         smtpHost: dto.smtpHost,
         smtpPort: dto.smtpPort ? Number(dto.smtpPort) : 587,
         smtpUser: dto.smtpUser,
-        smtpPass: dto.smtpPass,
+        smtpPass: encryptedPass,
         isSecure: Boolean(dto.isSecure),
         purpose: dto.purpose || 'PRIMARY_ALERTS',
         createdById: user.id,
       },
+      select: {
+        id: true,
+        tenantId: true,
+        name: true,
+        email: true,
+        senderName: true,
+        smtpHost: true,
+        smtpPort: true,
+        smtpUser: true,
+        isSecure: true,
+        purpose: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
+    return created;
   }
 
   async updateMailAccount(
@@ -260,6 +278,10 @@ export class SettingsService {
       throw new NotFoundException('Mail account not found');
     }
 
+    const encryptedPass = dto.smtpPass !== undefined && dto.smtpPass !== ''
+      ? (encryptAtRest(dto.smtpPass) || dto.smtpPass)
+      : undefined;
+
     await this.prisma.mailAccount.updateMany({
       where: { id, tenantId },
       data: {
@@ -269,13 +291,30 @@ export class SettingsService {
         smtpHost: dto.smtpHost,
         smtpPort: dto.smtpPort !== undefined ? Number(dto.smtpPort) : undefined,
         smtpUser: dto.smtpUser,
-        smtpPass: dto.smtpPass !== undefined && dto.smtpPass !== '' ? dto.smtpPass : undefined,
+        smtpPass: encryptedPass,
         isSecure: dto.isSecure !== undefined ? Boolean(dto.isSecure) : undefined,
         purpose: dto.purpose,
         isActive: dto.isActive !== undefined ? Boolean(dto.isActive) : undefined,
       },
     });
-    return this.prisma.mailAccount.findFirst({ where: { id, tenantId } });
+    return this.prisma.mailAccount.findFirst({
+      where: { id, tenantId },
+      select: {
+        id: true,
+        tenantId: true,
+        name: true,
+        email: true,
+        senderName: true,
+        smtpHost: true,
+        smtpPort: true,
+        smtpUser: true,
+        isSecure: true,
+        purpose: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
   }
 
   async deleteMailAccount(user: ScopedUser, id: string) {

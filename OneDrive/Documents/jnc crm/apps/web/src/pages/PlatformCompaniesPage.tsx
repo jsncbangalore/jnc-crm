@@ -11,7 +11,7 @@ import {
   Plus, Search, RefreshCw, KeyRound, Lock, Power, Settings,
   CheckCircle2, X, Copy, Check, Users, Send
 } from 'lucide-react';
-import { platformApi } from '../services/api';
+import { platformApi, setAccessToken, getAccessToken } from '../services/api';
 import { Tenant } from '../types';
 import { usePopup } from '../contexts/PopupContext';
 import { format } from 'date-fns';
@@ -205,12 +205,12 @@ export default function PlatformCompaniesPage() {
       async () => {
         try {
           const { data } = await platformApi.impersonateTenant(tenant.id);
-          const currentToken = localStorage.getItem('jnc_access_token');
+          const currentToken = getAccessToken();
           const currentUser = localStorage.getItem('jnc_user');
           if (currentToken) sessionStorage.setItem('jnc_master_token', currentToken);
           if (currentUser) sessionStorage.setItem('jnc_master_user', currentUser);
 
-          localStorage.setItem('jnc_access_token', data.accessToken);
+          setAccessToken(data.accessToken);
           localStorage.setItem('jnc_user', JSON.stringify(data.user));
           window.location.href = '/';
         } catch (err: any) {

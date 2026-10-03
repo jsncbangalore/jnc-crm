@@ -12,27 +12,147 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
 
-export interface CreateOrderDto {
+import { IsString, IsNotEmpty, IsOptional, IsArray, IsNumber } from 'class-validator';
+
+export class CreateOrderDto {
+  @IsString()
+  @IsOptional()
   quotationId?: string;
+
+  @IsString()
+  @IsOptional()
   contactId?: string;
+
+  @IsString()
+  @IsNotEmpty()
   customerName: string;
+
+  @IsString()
+  @IsNotEmpty()
   customerPhone: string;
+
+  @IsString()
+  @IsOptional()
   customerEmail?: string;
+
+  @IsString()
+  @IsOptional()
   shippingAddress?: string;
-  lines: { skuId?: string; name?: string; quantity: number; unitPrice: number; hsnCode?: string }[];
+
+  @IsArray()
+  lines: any[];
+
+  @IsString()
+  @IsOptional()
   notes?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentStatus?: string;
 }
 
-export interface UpdateOrderStatusDto {
+export class UpdateOrderDto {
+  @IsString()
+  @IsOptional()
+  quotationId?: string;
+
+  @IsString()
+  @IsOptional()
+  contactId?: string;
+
+  @IsString()
+  @IsOptional()
+  customerName?: string;
+
+  @IsString()
+  @IsOptional()
+  customerPhone?: string;
+
+  @IsString()
+  @IsOptional()
+  customerEmail?: string;
+
+  @IsString()
+  @IsOptional()
+  shippingAddress?: string;
+
+  @IsArray()
+  @IsOptional()
+  lines?: any[];
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentStatus?: string;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
+}
+
+export class UpdateOrderStatusDto {
+  @IsString()
+  @IsNotEmpty()
   status: string;
+
+  @IsString()
+  @IsOptional()
   note?: string;
 }
 
-export interface CreateShipmentDto {
+export class CreateShipmentDto {
+  @IsString()
+  @IsNotEmpty()
   orderId: string;
+
+  @IsString()
+  @IsNotEmpty()
   courierName: string;
+
+  @IsString()
+  @IsNotEmpty()
   trackingNumber: string;
+
+  @IsString()
+  @IsOptional()
   trackingUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+}
+
+export class UpdateShipmentStatusDto {
+  @IsString()
+  @IsNotEmpty()
+  status: string;
+}
+
+export class RecordOrderPaymentDto {
+  @IsNumber()
+  amount: number;
+
+  @IsString()
+  @IsOptional()
+  paymentType?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
+
+  @IsString()
+  @IsOptional()
+  transactionRef?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentDate?: string;
+
+  @IsString()
+  @IsOptional()
   notes?: string;
 }
 
