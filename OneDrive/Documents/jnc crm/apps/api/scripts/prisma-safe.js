@@ -141,8 +141,34 @@ if (action === 'db-push-test') {
     ['migrate', 'deploy'],
     path.resolve(__dirname, '..')
   );
-  process.exit(result.status ?? 0);
+} else if (action === 'setup-dev') {
+  if (isProd) {
+    console.error('\n[SECURITY ERROR] db:setup:dev refused to run on production database!');
+    console.error(`Host: ${PROD_HOST}`);
+    console.error('db:setup:dev can NEVER run against the production database under any circumstances.\n');
+    process.exit(1);
+  }
+
+  console.log(`[Safe Prisma] Synchronizing dev database schema via db push...`);
+  const pushResult = runNodeOrNpx(
+    prismaBin,
+    'prisma',
+    ['db', 'push', '--skip-generate'],
+    path.resolve(__dirname, '..')
+  );
+  if (pushResult.status !== 0) {
+    process.exit(pushResult.status ?? 1);
+  }
+
+  console.log(`[Safe Prisma] Initializing JNC internal tenant and admins...`);
+  const setupResult = runNodeOrNpx(
+    tsNodeBin,
+    'ts-node',
+    ['--transpile-only', 'scripts/setup-dev-db.ts'],
+    path.resolve(__dirname, '..')
+  );
+  process.exit(setupResult.status ?? 0);
 } else {
-  console.error(`Unknown action: ${action}. Valid actions: db-push-test, test-phase3, seed-test, migrate-prod`);
+  console.error(`Unknown action: ${action}. Valid actions: db-push-test, test-phase3, seed-test, setup-dev, migrate-prod`);
   process.exit(1);
 }

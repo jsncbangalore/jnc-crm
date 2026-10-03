@@ -117,6 +117,14 @@ export class InventoryService {
     referenceType?: string;
     referenceId?: string;
   }, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    const sku = await this.prisma.sku.findFirst({
+      where: { id: data.skuId, tenantId },
+    });
+    if (!sku) {
+      throw new NotFoundException(`SKU "${data.skuId}" not found in your organization`);
+    }
+
     const movement = await this.prisma.stockMovement.create({
       data: {
         ...data,
@@ -1687,12 +1695,15 @@ export class InventoryService {
       throw new NotFoundException(`Project stock position "${id}" not found`);
     }
 
-    const merged = { ...existing, ...data };
+    const merged = { ...existing, ...data, id: existing.id, tenantId };
     const formatted = this.computeProjectStockFields(merged);
 
-    return this.prisma.projectStockPosition.update({
-      where: { id },
+    await this.prisma.projectStockPosition.updateMany({
+      where: { id, tenantId },
       data: formatted,
+    });
+    return this.prisma.projectStockPosition.findFirst({
+      where: { id, tenantId },
     });
   }
 

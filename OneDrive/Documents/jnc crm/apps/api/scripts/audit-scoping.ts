@@ -38,7 +38,15 @@ const TENANT_MODELS = new Set([
 
 const TARGET_METHODS = ['findUnique', 'findFirst', 'update', 'delete', 'updateMany'];
 
-interface AuditFinding {
+export interface AllowlistEntry {
+  file: string;
+  line: number;
+  model: string;
+  method?: string;
+  reason: string;
+}
+
+export interface AuditFinding {
   file: string;
   line: number;
   model: string;
@@ -47,6 +55,7 @@ interface AuditFinding {
   hasTenantId: boolean;
   verdict: 'SAFE' | 'POTENTIAL_LEAK';
   reason: string;
+  allowlisted: boolean;
 }
 
 function scanDir(dir: string, fileList: string[] = []): string[] {
@@ -65,7 +74,15 @@ function scanDir(dir: string, fileList: string[] = []): string[] {
   return fileList;
 }
 
-export function runScopingAudit(srcDir: string): AuditFinding[] {
+export function loadAllowlist(): AllowlistEntry[] {
+  const allowlistPath = path.resolve(__dirname, 'scoping-allowlist.json');
+  if (!fs.existsSync(allowlistPath)) {
+    throw new Error(`scoping-allowlist.json not found at ${allowlistPath}`);
+  }
+  return JSON.parse(fs.readFileSync(allowlistPath, 'utf-8'));
+}
+
+export function runScopingAudit(srcDir: string, allowlist: AllowlistEntry[]): AuditFinding[] {
   const files = scanDir(srcDir);
   const findings: AuditFinding[] = [];
 
@@ -87,45 +104,30 @@ export function runScopingAudit(srcDir: string): AuditFinding[] {
             const block = preceding + '\n' + following;
             const hasTenantId = /tenantId/i.test(block);
 
-            let verdict: 'SAFE' | 'POTENTIAL_LEAK' = hasTenantId ? 'SAFE' : 'POTENTIAL_LEAK';
-            let reason = hasTenantId ? 'tenantId present in query block' : 'where clause lacks explicit tenantId';
+            let verdict: 'SAFE' | 'POTENTIAL_LEAK' = 'POTENTIAL_LEAK';
+            let reason = 'where clause lacks explicit tenantId';
+            let allowlisted = false;
 
-            // Known safe patterns:
-            // 1. Auth service resolving user by email/phone across tenants or by id during JWT validation
-            if (relativePath.includes('auth/') && (model === 'user' || model === 'tenant')) {
+            if (hasTenantId) {
               verdict = 'SAFE';
-              reason = 'Auth service login / token resolution (system auth context)';
-            }
-            // 2. Platform service managing cross-tenant resources as platform super admin
-            else if (relativePath.includes('platform/') || relativePath.includes('admin/')) {
-              verdict = 'SAFE';
-              reason = 'Platform Super Admin cross-tenant administrative control';
-            }
-            // 3. Webhooks ingestion from third party (e.g. WhatsApp, IndiaMART, inbound customer email)
-            else if (relativePath.includes('webhooks/') || (relativePath.includes('notifications/') && line.includes('lead.findFirst'))) {
-              verdict = 'SAFE';
-              reason = 'External inbound webhook handler resolving tenant by secret/payload/email';
-            }
-            // 4. Background jobs, backup verification, or delayed automation queue
-            else if (relativePath.includes('backup/')) {
-              verdict = 'SAFE';
-              reason = 'System offline backup snapshot verification / integrity health check';
-            }
-            else if (relativePath.includes('automation/') && block.includes('dueJobs')) {
-              verdict = 'SAFE';
-              reason = 'System background delayed job queue worker';
-            }
-            else if (relativePath.includes('users/users.service.ts') && block.includes('platform_super_admin')) {
-              verdict = 'SAFE';
-              reason = 'Platform Super Admin email uniqueness check across platform (tenantId is null)';
-            }
-            else if (relativePath.includes('invoicing/invoicing.service.ts') && block.includes('lineItemsData')) {
-              verdict = 'SAFE';
-              reason = 'Invoice line items re-creation write preceded by tenantId verification on existing invoice';
-            }
-            else if (relativePath.includes('scripts/') || relativePath.includes('scheduler/')) {
-              verdict = 'SAFE';
-              reason = 'Internal system background process / maintenance runner';
+              reason = 'tenantId present in query block';
+            } else {
+              // Match against explicit allowlist file ONLY (no hardcoded free-text justifications)
+              const currentLine = i + 1;
+              const match = allowlist.find((entry) => {
+                const fileMatch = entry.file === relativePath;
+                const modelMatch = entry.model.toLowerCase() === model.toLowerCase();
+                const methodMatch = !entry.method || entry.method === method;
+                // Allow a tolerance of +/- 15 lines to accommodate minor edits around comments
+                const lineMatch = Math.abs(entry.line - currentLine) <= 15;
+                return fileMatch && modelMatch && methodMatch && lineMatch;
+              });
+
+              if (match) {
+                verdict = 'SAFE';
+                reason = `[ALLOWLIST] ${match.reason}`;
+                allowlisted = true;
+              }
             }
 
             findings.push({
@@ -137,6 +139,7 @@ export function runScopingAudit(srcDir: string): AuditFinding[] {
               hasTenantId,
               verdict,
               reason,
+              allowlisted,
             });
           }
         }
@@ -153,24 +156,42 @@ if (require.main === module) {
   console.log(`[SCOPING AUDIT] Scanning apps/api/src for multi-tenant query isolation...`);
   console.log(`========================================================================\n`);
 
-  const findings = runScopingAudit(srcPath);
+  const allowlist = loadAllowlist();
+  console.log(`Loaded ${allowlist.length} exemptions from scoping-allowlist.json:\n`);
+  console.log(`------------------------------------------------------------------------------------------------------------------------`);
+  console.log(`| #  | File : Line                                    | Model           | Method     | Approved Reason                         |`);
+  console.log(`------------------------------------------------------------------------------------------------------------------------`);
+  allowlist.forEach((entry, idx) => {
+    const loc = `${entry.file}:${entry.line}`.padEnd(46);
+    const m = entry.model.padEnd(15);
+    const meth = (entry.method || '*').padEnd(10);
+    const num = String(idx + 1).padStart(2);
+    console.log(`| ${num} | ${loc} | ${m} | ${meth} | ${entry.reason}`);
+  });
+  console.log(`------------------------------------------------------------------------------------------------------------------------\n`);
+
+  const findings = runScopingAudit(srcPath, allowlist);
   const potentialLeaks = findings.filter((f) => f.verdict === 'POTENTIAL_LEAK');
-  const safeFindings = findings.filter((f) => f.verdict === 'SAFE');
+  const directTenantSafe = findings.filter((f) => f.hasTenantId);
+  const allowlistSafe = findings.filter((f) => f.allowlisted);
 
   console.log(`Audited ${findings.length} total database queries across tenant-owned models.`);
-  console.log(`- Verified SAFE: ${safeFindings.length}`);
+  console.log(`- Verified SAFE with explicit tenantId: ${directTenantSafe.length}`);
+  console.log(`- Verified SAFE via scoping-allowlist.json: ${allowlistSafe.length}`);
   console.log(`- POTENTIAL LEAKS FLAGGED: ${potentialLeaks.length}\n`);
 
   if (potentialLeaks.length > 0) {
     console.log(`------------------------------------------------------------------------`);
-    console.log(`FLAGGED QUERIES MISSING EXPLICIT tenantId:`);
+    console.log(`[!] CRITICAL: FLAGGED QUERIES MISSING EXPLICIT tenantId NOT IN ALLOWLIST:`);
     console.log(`------------------------------------------------------------------------`);
     for (const f of potentialLeaks) {
-      console.log(`[!] ${f.file}:${f.line} -> prisma.${f.model}.${f.method}`);
+      console.log(`[X] ${f.file}:${f.line} -> prisma.${f.model}.${f.method}`);
       console.log(`    Code: ${f.snippet}`);
       console.log(`    Reason: ${f.reason}\n`);
     }
+    process.exit(1);
   } else {
-    console.log(`All queries on tenant-owned models enforce tenantId or have documented safety justifications!`);
+    console.log(`[PASSED] All queries on tenant-owned models enforce tenantId or are strictly accounted for in scoping-allowlist.json!\n`);
+    process.exit(0);
   }
 }

@@ -21,11 +21,27 @@ export interface CreateCompanyDto {
   billingEmail?: string;
 }
 
-export interface CreateContactDto {
+import { IsString, IsNotEmpty, IsOptional, IsEmail, IsBoolean } from 'class-validator';
+
+export class CreateContactDto {
+  @IsString()
+  @IsNotEmpty()
   name: string;
+
+  @IsEmail()
+  @IsOptional()
   email?: string;
+
+  @IsString()
+  @IsNotEmpty()
   phone: string;
+
+  @IsString()
+  @IsOptional()
   designation?: string;
+
+  @IsBoolean()
+  @IsOptional()
   isPrimary?: boolean;
 }
 
@@ -143,13 +159,14 @@ export class CompaniesService {
 
     return this.prisma.contact.create({
       data: {
-        tenantId,
-        companyId: company.id,
-        name: dto.name.trim(),
+        ...dto,
+        name: dto.name?.trim(),
         email: dto.email?.trim().toLowerCase() || null,
-        phone: dto.phone.trim(),
+        phone: dto.phone?.trim(),
         designation: dto.designation?.trim() || null,
         isPrimary: !!dto.isPrimary,
+        tenantId,
+        companyId: company.id,
       },
     });
   }

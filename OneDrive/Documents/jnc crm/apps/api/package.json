@@ -15,6 +15,7 @@
     "prisma:seed": "ts-node prisma/seed.ts",
     "db:push:test": "node scripts/prisma-safe.js db-push-test",
     "db:seed:test": "node scripts/prisma-safe.js seed-test",
+    "db:setup:dev": "node scripts/prisma-safe.js setup-dev",
     "contacts:report": "ts-node scripts/report-orphan-contacts.ts",
     "test:phase3": "node scripts/prisma-safe.js test-phase3",
     "migrate:prod": "node scripts/prisma-safe.js migrate-prod"

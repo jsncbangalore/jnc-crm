@@ -191,9 +191,9 @@ export class CustomObjectsService {
    * Get all objects (Standard Objects + Custom Objects)
    */
   async getAllObjects(user?: ScopedUser) {
-    const tenantId = user?.tenantId ? requireTenantId(user) : undefined;
+    const tenantId = requireTenantId(user);
     const customObjects = await this.prisma.customObject.findMany({
-      where: tenantId ? { tenantId } : {},
+      where: { tenantId },
       orderBy: { createdAt: 'desc' },
       include: {
         fields: {
@@ -232,10 +232,10 @@ export class CustomObjectsService {
    * Get single CustomObject by ID or apiName
    */
   async getObjectById(idOrApiName: string, user?: ScopedUser) {
-    const tenantId = user?.tenantId ? requireTenantId(user) : undefined;
+    const tenantId = requireTenantId(user);
     const object = await this.prisma.customObject.findFirst({
       where: {
-        ...(tenantId ? { tenantId } : {}),
+        tenantId,
         OR: [{ id: idOrApiName }, { apiName: idOrApiName.toLowerCase() }],
       },
       include: {
@@ -342,9 +342,9 @@ export class CustomObjectsService {
     if (data.pluralLabel !== undefined) updateData.pluralLabel = data.pluralLabel.trim();
     if (data.description !== undefined) updateData.description = data.description.trim();
 
-    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
+    const tenantId = requireTenantId(user);
     await this.prisma.customObject.updateMany({
-      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: object.id, tenantId },
       data: updateData,
     });
     return this.findObjectOrThrow(id, user);
@@ -355,10 +355,10 @@ export class CustomObjectsService {
    */
   async deleteObject(id: string, user?: ScopedUser) {
     const object = await this.findObjectOrThrow(id, user);
-    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
+    const tenantId = requireTenantId(user);
 
     await this.prisma.customObject.deleteMany({
-      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: object.id, tenantId },
     });
     return { success: true, message: `Custom object "${object.label}" (${object.apiName}) deleted successfully` };
   }
@@ -404,7 +404,7 @@ export class CustomObjectsService {
     user?: ScopedUser,
   ) {
     const object = await this.findObjectOrThrow(objectId, user);
-    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
+    const tenantId = requireTenantId(user);
 
     const apiName = this.validateApiName(data.apiName, 'Field API Name');
 
@@ -474,7 +474,7 @@ export class CustomObjectsService {
       );
       const isCustom = await this.prisma.customObject.findFirst({
         where: {
-          ...(tenantId ? { tenantId } : {}),
+          tenantId,
           OR: [{ apiName: target.toLowerCase() }, { label: target }],
         },
       });
@@ -508,7 +508,7 @@ export class CustomObjectsService {
 
     // Touch parent object's updatedAt
     await this.prisma.customObject.updateMany({
-      where: { id: objectId, ...(tenantId ? { tenantId } : {}) },
+      where: { id: objectId, tenantId },
       data: { updatedAt: new Date() },
     });
 
@@ -580,9 +580,10 @@ export class CustomObjectsService {
       const isStd = STANDARD_OBJECTS.some(
         (s) => s.apiName.toLowerCase() === target.toLowerCase() || s.label.toLowerCase() === target.toLowerCase(),
       );
+      const tenantId = requireTenantId(user);
       const isCustom = await this.prisma.customObject.findFirst({
         where: {
-          ...(object.tenantId ? { tenantId: object.tenantId } : {}),
+          tenantId,
           OR: [{ apiName: target.toLowerCase() }, { label: target }],
         },
       });
@@ -598,9 +599,9 @@ export class CustomObjectsService {
     });
 
     // Touch parent object's updatedAt
-    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
+    const tenantId = requireTenantId(user);
     await this.prisma.customObject.updateMany({
-      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: object.id, tenantId },
       data: { updatedAt: new Date() },
     });
 
@@ -612,6 +613,7 @@ export class CustomObjectsService {
    */
   async softDeleteField(objectId: string, fieldId: string, user?: ScopedUser) {
     const object = await this.findObjectOrThrow(objectId, user);
+    const tenantId = requireTenantId(user);
     const field = await this.prisma.customField.findFirst({
       where: { id: fieldId, objectId: object.id },
     });
@@ -625,9 +627,8 @@ export class CustomObjectsService {
     });
 
     // Touch parent object's updatedAt
-    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
     await this.prisma.customObject.updateMany({
-      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: object.id, tenantId },
       data: { updatedAt: new Date() },
     });
 
@@ -643,7 +644,7 @@ export class CustomObjectsService {
    */
   async restoreField(objectId: string, fieldId: string, user?: ScopedUser) {
     const object = await this.findObjectOrThrow(objectId, user);
-    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
+    const tenantId = requireTenantId(user);
     const field = await this.prisma.customField.findFirst({
       where: { id: fieldId, objectId: object.id },
     });
@@ -658,7 +659,7 @@ export class CustomObjectsService {
 
     // Touch parent object's updatedAt
     await this.prisma.customObject.updateMany({
-      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: object.id, tenantId },
       data: { updatedAt: new Date() },
     });
 
@@ -677,11 +678,11 @@ export class CustomObjectsService {
    * Helper: Resolve custom object by API name or ID
    */
   private async findObjectOrThrow(objectApiNameOrId: string, user?: ScopedUser) {
-    const tenantId = user?.tenantId ? requireTenantId(user) : undefined;
+    const tenantId = requireTenantId(user);
     const clean = objectApiNameOrId.trim().toLowerCase();
     const object = await this.prisma.customObject.findFirst({
       where: {
-        ...(tenantId ? { tenantId } : {}),
+        tenantId,
         OR: [{ apiName: clean }, { id: objectApiNameOrId }],
       },
       include: {
@@ -873,55 +874,56 @@ export class CustomObjectsService {
    */
   private async verifyLookupTargetExists(targetObject: string, targetId: string, tenantId?: string): Promise<boolean> {
     if (!targetId || !targetObject) return false;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant context is required to verify lookup targets');
+    }
     const tgt = targetObject.toLowerCase();
 
     try {
       if (tgt === 'company') {
-        const r = await this.prisma.company.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}), deletedAt: null } });
+        const r = await this.prisma.company.findFirst({ where: { id: targetId, tenantId, deletedAt: null } });
         return !!r;
       }
       if (tgt === 'lead') {
-        const r = await this.prisma.lead.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}), deletedAt: null } });
+        const r = await this.prisma.lead.findFirst({ where: { id: targetId, tenantId, deletedAt: null } });
         return !!r;
       }
       if (tgt === 'contact') {
-        const r = await this.prisma.contact.findFirst({
-          where: { id: targetId, ...(tenantId ? { tenantId } : { tenantId: { not: null } }), deletedAt: null },
-        });
+        const r = await this.prisma.contact.findFirst({ where: { id: targetId, tenantId, deletedAt: null } });
         return !!r;
       }
       if (tgt === 'order') {
-        const r = await this.prisma.order.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}) } });
+        const r = await this.prisma.order.findFirst({ where: { id: targetId, tenantId } });
         return !!r;
       }
       if (tgt === 'invoice') {
-        const r = await this.prisma.invoice.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}) } });
+        const r = await this.prisma.invoice.findFirst({ where: { id: targetId, tenantId } });
         return !!r;
       }
       if (tgt === 'sku') {
-        const r = await this.prisma.sku.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}), deletedAt: null } });
+        const r = await this.prisma.sku.findFirst({ where: { id: targetId, tenantId, deletedAt: null } });
         return !!r;
       }
       if (tgt === 'warehouse') {
-        const r = await this.prisma.warehouse.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}), isActive: true } });
+        const r = await this.prisma.warehouse.findFirst({ where: { id: targetId, tenantId, isActive: true } });
         return !!r;
       }
       if (tgt === 'supplier') {
-        const r = await this.prisma.supplier.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}), isActive: true } });
+        const r = await this.prisma.supplier.findFirst({ where: { id: targetId, tenantId, isActive: true } });
         return !!r;
       }
       if (tgt === 'user') {
-        const r = await this.prisma.user.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}), deletedAt: null } });
+        const r = await this.prisma.user.findFirst({ where: { id: targetId, tenantId, deletedAt: null } });
         return !!r;
       }
 
       // Check if target is a CustomObject
       const customObj = await this.prisma.customObject.findFirst({
-        where: { ...(tenantId ? { tenantId } : {}), OR: [{ apiName: tgt }, { id: targetObject }] },
+        where: { tenantId, OR: [{ apiName: tgt }, { id: targetObject }] },
       });
       if (customObj) {
         const rec = await this.prisma.customObjectRecord.findFirst({
-          where: { id: targetId, objectId: customObj.id, ...(tenantId ? { tenantId } : {}), deletedAt: null },
+          where: { id: targetId, objectId: customObj.id, tenantId, deletedAt: null },
         });
         return !!rec;
       }
@@ -937,6 +939,9 @@ export class CustomObjectsService {
    * Gracefully handles archived records by displaying "[Archived: <Name>]" without throwing!
    */
   private async resolveLookupLabels(fields: any[], records: any[], tenantId?: string) {
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant context is required for resolving custom object lookups');
+    }
     const lookupFields = fields.filter((f) => f.fieldType === 'lookup');
     if (lookupFields.length === 0 || records.length === 0) return records;
 
@@ -953,54 +958,54 @@ export class CustomObjectsService {
 
         try {
           if (targetObj === 'company') {
-            const row = await this.prisma.company.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}) } });
+            const row = await this.prisma.company.findFirst({ where: { id: targetId, tenantId } });
             if (row) {
               isArchived = !!row.deletedAt;
               displayLabel = isArchived ? `[Archived: ${row.name}]` : row.name;
             }
           } else if (targetObj === 'lead') {
-            const row = await this.prisma.lead.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}) }, include: { contact: true, company: true } });
+            const row = await this.prisma.lead.findFirst({ where: { id: targetId, tenantId }, include: { contact: true, company: true } });
             if (row) {
               isArchived = !!row.deletedAt;
               const name = row.contact?.name || row.company?.name || row.leadNumber;
               displayLabel = isArchived ? `[Archived: ${row.leadNumber} - ${name}]` : `${row.leadNumber} (${name})`;
             }
           } else if (targetObj === 'contact') {
-            const row = await this.prisma.contact.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}) } });
+            const row = await this.prisma.contact.findFirst({ where: { id: targetId, tenantId } });
             if (row) {
               isArchived = !!row.deletedAt;
               displayLabel = isArchived ? `[Archived: ${row.name}]` : row.name;
             }
           } else if (targetObj === 'order') {
-            const row = await this.prisma.order.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}) } });
+            const row = await this.prisma.order.findFirst({ where: { id: targetId, tenantId } });
             if (row) {
               displayLabel = row.orderNumber;
             }
           } else if (targetObj === 'invoice') {
-            const row = await this.prisma.invoice.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}) } });
+            const row = await this.prisma.invoice.findFirst({ where: { id: targetId, tenantId } });
             if (row) {
               displayLabel = row.invoiceNumber;
             }
           } else if (targetObj === 'sku') {
-            const row = await this.prisma.sku.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}) } });
+            const row = await this.prisma.sku.findFirst({ where: { id: targetId, tenantId } });
             if (row) {
               isArchived = !!row.deletedAt;
               displayLabel = isArchived ? `[Archived: ${row.skuCode} - ${row.name}]` : `${row.skuCode} (${row.name})`;
             }
           } else if (targetObj === 'warehouse') {
-            const row = await this.prisma.warehouse.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}) } });
+            const row = await this.prisma.warehouse.findFirst({ where: { id: targetId, tenantId } });
             if (row) {
               isArchived = !row.isActive;
               displayLabel = isArchived ? `[Archived: ${row.name}]` : row.name;
             }
           } else if (targetObj === 'supplier') {
-            const row = await this.prisma.supplier.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}) } });
+            const row = await this.prisma.supplier.findFirst({ where: { id: targetId, tenantId } });
             if (row) {
               isArchived = !row.isActive;
               displayLabel = isArchived ? `[Archived: ${row.name}]` : row.name;
             }
           } else if (targetObj === 'user') {
-            const row = await this.prisma.user.findFirst({ where: { id: targetId, ...(tenantId ? { tenantId } : {}) } });
+            const row = await this.prisma.user.findFirst({ where: { id: targetId, tenantId } });
             if (row) {
               isArchived = !!row.deletedAt;
               displayLabel = isArchived ? `[Archived: ${row.name}]` : row.name;
@@ -1008,11 +1013,11 @@ export class CustomObjectsService {
           } else {
             // Target is another CustomObject
             const customObj = await this.prisma.customObject.findFirst({
-              where: { ...(tenantId ? { tenantId } : {}), OR: [{ apiName: targetObj }, { id: targetObj }] },
+              where: { tenantId, OR: [{ apiName: targetObj }, { id: targetObj }] },
             });
             if (customObj) {
               const rec = await this.prisma.customObjectRecord.findFirst({
-                where: { id: targetId, objectId: customObj.id, ...(tenantId ? { tenantId } : {}) },
+                where: { id: targetId, objectId: customObj.id, tenantId },
               });
               if (rec) {
                 isArchived = !!rec.deletedAt;
@@ -1055,12 +1060,13 @@ export class CustomObjectsService {
     },
     user?: ScopedUser,
   ) {
+    const tenantId = requireTenantId(user);
     const object = await this.findObjectOrThrow(objectApiName, user);
     const page = Math.max(1, Number(query.page || 1));
     const limit = Math.max(1, Math.min(100, Number(query.limit || 25)));
     const skip = (page - 1) * limit;
 
-    const where: any = { objectId: object.id };
+    const where: any = { objectId: object.id, tenantId };
     if (!query.includeArchived) {
       where.deletedAt = null;
     }
@@ -1097,7 +1103,7 @@ export class CustomObjectsService {
     });
 
     // Resolve Lookups
-    const withLookups = await this.resolveLookupLabels(object.fields, formatted, object.tenantId);
+    const withLookups = await this.resolveLookupLabels(object.fields, formatted, tenantId);
 
     // If client searched across field values
     let filteredRecords = withLookups;
@@ -1134,10 +1140,10 @@ export class CustomObjectsService {
    * GET /custom-objects/:objectApiName/records/:id
    */
   async getRecordById(objectApiName: string, recordId: string, user?: ScopedUser) {
+    const tenantId = requireTenantId(user);
     const object = await this.findObjectOrThrow(objectApiName, user);
-    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
     const record = await this.prisma.customObjectRecord.findFirst({
-      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: recordId, objectId: object.id, tenantId },
       include: {
         createdBy: { select: { id: true, name: true, employeeCode: true } },
         updatedBy: { select: { id: true, name: true, employeeCode: true } },
@@ -1166,7 +1172,7 @@ export class CustomObjectsService {
       },
     ];
 
-    const withLookups = await this.resolveLookupLabels(object.fields, formatted, object.tenantId);
+    const withLookups = await this.resolveLookupLabels(object.fields, formatted, tenantId);
 
     return {
       object: {
@@ -1185,6 +1191,7 @@ export class CustomObjectsService {
    * POST /custom-objects/:objectApiName/records
    */
   async createRecord(objectApiName: string, submittedData: Record<string, any>, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
     const object = await this.findObjectOrThrow(objectApiName, user);
 
     // Validate data payload
@@ -1208,6 +1215,7 @@ export class CustomObjectsService {
     const record = await this.prisma.customObjectRecord.create({
       data: {
         objectId: object.id,
+        tenantId,
         data: JSON.stringify(cleanedData),
         createdById: user.id,
         updatedById: user.id,
@@ -1218,9 +1226,8 @@ export class CustomObjectsService {
     });
 
     // Touch parent object's updatedAt
-    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
     await this.prisma.customObject.updateMany({
-      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: object.id, tenantId },
       data: { updatedAt: new Date() },
     });
 
@@ -1243,11 +1250,11 @@ export class CustomObjectsService {
     submittedData: Record<string, any>,
     user: ScopedUser,
   ) {
+    const tenantId = requireTenantId(user);
     const object = await this.findObjectOrThrow(objectApiName, user);
-    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
 
     const existing = await this.prisma.customObjectRecord.findFirst({
-      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: recordId, objectId: object.id, tenantId },
     });
     if (!existing) {
       throw new NotFoundException(`Record with ID "${recordId}" not found on custom object "${object.label}".`);
@@ -1277,14 +1284,14 @@ export class CustomObjectsService {
     }
 
     await this.prisma.customObjectRecord.updateMany({
-      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: recordId, objectId: object.id, tenantId },
       data: {
         data: JSON.stringify(mergedData),
         updatedById: user.id,
       },
     });
     const updated = await this.prisma.customObjectRecord.findFirst({
-      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: recordId, objectId: object.id, tenantId },
       include: {
         createdBy: { select: { id: true, name: true, employeeCode: true } },
         updatedBy: { select: { id: true, name: true, employeeCode: true } },
@@ -1294,7 +1301,7 @@ export class CustomObjectsService {
 
     // Touch parent object's updatedAt
     await this.prisma.customObject.updateMany({
-      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: object.id, tenantId },
       data: { updatedAt: new Date() },
     });
 
@@ -1313,30 +1320,30 @@ export class CustomObjectsService {
    * DELETE /custom-objects/:objectApiName/records/:id (Soft-delete)
    */
   async deleteRecord(objectApiName: string, recordId: string, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
     const object = await this.findObjectOrThrow(objectApiName, user);
-    const tenantId = user && !isPlatformOwner(user) ? requireTenantId(user) : object.tenantId;
 
     const existing = await this.prisma.customObjectRecord.findFirst({
-      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: recordId, objectId: object.id, tenantId },
     });
     if (!existing) {
       throw new NotFoundException(`Record with ID "${recordId}" not found on custom object "${object.label}".`);
     }
 
     await this.prisma.customObjectRecord.updateMany({
-      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: recordId, objectId: object.id, tenantId },
       data: {
         deletedAt: new Date(),
         updatedById: user.id,
       },
     });
     const updated = await this.prisma.customObjectRecord.findFirst({
-      where: { id: recordId, objectId: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: recordId, objectId: object.id, tenantId },
     });
 
     // Touch parent object's updatedAt
     await this.prisma.customObject.updateMany({
-      where: { id: object.id, ...(tenantId ? { tenantId } : {}) },
+      where: { id: object.id, tenantId },
       data: { updatedAt: new Date() },
     });
 
@@ -1351,14 +1358,14 @@ export class CustomObjectsService {
    * Helper: Get lookup selection options for dropdowns in UI
    */
   async getLookupOptions(targetObjectApiName: string, search?: string, user?: ScopedUser) {
-    const tenantId = user?.tenantId ? requireTenantId(user) : undefined;
+    const tenantId = requireTenantId(user);
     const tgt = targetObjectApiName.toLowerCase().trim();
     const s = search ? search.trim().toLowerCase() : '';
 
     try {
       if (tgt === 'company') {
         const companies = await this.prisma.company.findMany({
-          where: { deletedAt: null, ...(tenantId ? { tenantId } : {}), ...(s ? { name: { contains: s, mode: 'insensitive' } } : {}) },
+          where: { deletedAt: null, tenantId, ...(s ? { name: { contains: s, mode: 'insensitive' } } : {}) },
           take: 50,
           orderBy: { name: 'asc' },
         });
@@ -1367,7 +1374,7 @@ export class CustomObjectsService {
 
       if (tgt === 'lead') {
         const leads = await this.prisma.lead.findMany({
-          where: { deletedAt: null, ...(tenantId ? { tenantId } : {}) },
+          where: { deletedAt: null, tenantId },
           include: { contact: true, company: true },
           take: 50,
           orderBy: { createdAt: 'desc' },
@@ -1383,7 +1390,7 @@ export class CustomObjectsService {
         const contacts = await this.prisma.contact.findMany({
           where: {
             deletedAt: null,
-            ...(tenantId ? { tenantId } : { tenantId: { not: null } }),
+            tenantId,
             ...(s ? { name: { contains: s, mode: 'insensitive' } } : {}),
           },
           take: 50,
@@ -1394,7 +1401,7 @@ export class CustomObjectsService {
 
       if (tgt === 'order') {
         const orders = await this.prisma.order.findMany({
-          where: tenantId ? { tenantId } : {},
+          where: { tenantId },
           take: 50,
           orderBy: { createdAt: 'desc' },
         });
@@ -1403,7 +1410,7 @@ export class CustomObjectsService {
 
       if (tgt === 'invoice') {
         const invoices = await this.prisma.invoice.findMany({
-          where: tenantId ? { tenantId } : {},
+          where: { tenantId },
           take: 50,
           orderBy: { createdAt: 'desc' },
         });
@@ -1412,7 +1419,7 @@ export class CustomObjectsService {
 
       if (tgt === 'sku') {
         const skus = await this.prisma.sku.findMany({
-          where: { deletedAt: null, ...(tenantId ? { tenantId } : {}), ...(s ? { OR: [{ skuCode: { contains: s, mode: 'insensitive' } }, { name: { contains: s, mode: 'insensitive' } }] } : {}) },
+          where: { deletedAt: null, tenantId, ...(s ? { OR: [{ skuCode: { contains: s, mode: 'insensitive' } }, { name: { contains: s, mode: 'insensitive' } }] } : {}) },
           take: 50,
           orderBy: { skuCode: 'asc' },
         });
@@ -1421,7 +1428,7 @@ export class CustomObjectsService {
 
       if (tgt === 'warehouse') {
         const warehouses = await this.prisma.warehouse.findMany({
-          where: { isActive: true, ...(tenantId ? { tenantId } : {}) },
+          where: { isActive: true, tenantId },
           take: 50,
           orderBy: { name: 'asc' },
         });
@@ -1430,7 +1437,7 @@ export class CustomObjectsService {
 
       if (tgt === 'supplier') {
         const suppliers = await this.prisma.supplier.findMany({
-          where: { isActive: true, ...(tenantId ? { tenantId } : {}) },
+          where: { isActive: true, tenantId },
           take: 50,
           orderBy: { name: 'asc' },
         });
@@ -1439,7 +1446,7 @@ export class CustomObjectsService {
 
       if (tgt === 'user') {
         const users = await this.prisma.user.findMany({
-          where: { deletedAt: null, isActive: true, ...(tenantId ? { tenantId } : {}) },
+          where: { deletedAt: null, isActive: true, tenantId },
           take: 50,
           orderBy: { name: 'asc' },
         });
@@ -1448,11 +1455,11 @@ export class CustomObjectsService {
 
       // Check if CustomObject
       const customObj = await this.prisma.customObject.findFirst({
-        where: { ...(tenantId ? { tenantId } : {}), OR: [{ apiName: tgt }, { id: targetObjectApiName }] },
+        where: { tenantId, OR: [{ apiName: tgt }, { id: targetObjectApiName }] },
       });
       if (customObj) {
         const recs = await this.prisma.customObjectRecord.findMany({
-          where: { objectId: customObj.id, deletedAt: null },
+          where: { objectId: customObj.id, tenantId, deletedAt: null },
           take: 50,
           orderBy: { createdAt: 'desc' },
         });

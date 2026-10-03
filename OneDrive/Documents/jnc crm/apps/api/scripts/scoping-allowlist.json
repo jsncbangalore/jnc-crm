@@ -1,0 +1,149 @@
+[
+  {
+    "file": "auth/auth.service.ts",
+    "line": 35,
+    "model": "user",
+    "method": "update",
+    "reason": "Auth service reset failed login attempts by user ID during authenticated session"
+  },
+  {
+    "file": "auth/auth.service.ts",
+    "line": 135,
+    "model": "user",
+    "method": "update",
+    "reason": "Auth service refresh token rotation and tokenVersion update"
+  },
+  {
+    "file": "auth/auth.service.ts",
+    "line": 305,
+    "model": "user",
+    "method": "findUnique",
+    "reason": "Auth service profile resolution by user ID extracted from verified JWT"
+  },
+  {
+    "file": "auth/auth.service.ts",
+    "line": 315,
+    "model": "user",
+    "method": "update",
+    "reason": "Auth service update profile by verified authenticated user ID"
+  },
+  {
+    "file": "auth/roles.guard.ts",
+    "line": 98,
+    "model": "user",
+    "method": "findUnique",
+    "reason": "RolesGuard user lookup by verified JWT subject to load fresh role and tenantId"
+  },
+  {
+    "file": "automation/automation.service.ts",
+    "line": 767,
+    "model": "automationRule",
+    "method": "findUnique",
+    "reason": "System background delayed job worker executing scheduled automation step by rule ID"
+  },
+  {
+    "file": "backup/backup.service.ts",
+    "line": 261,
+    "model": "invoice",
+    "method": "findFirst",
+    "reason": "System backup verification health check comparing live record counts across platform"
+  },
+  {
+    "file": "backup/backup.service.ts",
+    "line": 262,
+    "model": "lead",
+    "method": "findFirst",
+    "reason": "System backup verification health check comparing live record counts across platform"
+  },
+  {
+    "file": "notifications/notifications.controller.ts",
+    "line": 82,
+    "model": "lead",
+    "method": "findFirst",
+    "reason": "Inbound email webhook mapping incoming customer email to existing lead"
+  },
+  {
+    "file": "platform/platform.service.ts",
+    "line": 166,
+    "model": "user",
+    "method": "findFirst",
+    "reason": "Platform Super Admin cross-tenant tenant_admin creation uniqueness check"
+  },
+  {
+    "file": "platform/platform.service.ts",
+    "line": 387,
+    "model": "user",
+    "method": "update",
+    "reason": "Platform Super Admin cross-tenant user password reset"
+  },
+  {
+    "file": "platform/platform.service.ts",
+    "line": 562,
+    "model": "user",
+    "method": "update",
+    "reason": "Platform Super Admin cross-tenant user role change"
+  },
+  {
+    "file": "platform/platform.service.ts",
+    "line": 814,
+    "model": "user",
+    "method": "update",
+    "reason": "Platform Super Admin cross-tenant user suspension / activation"
+  },
+  {
+    "file": "platform/platform.service.ts",
+    "line": 853,
+    "model": "user",
+    "method": "update",
+    "reason": "Platform Super Admin cross-tenant user soft deletion"
+  },
+  {
+    "file": "users/users.service.ts",
+    "line": 141,
+    "model": "user",
+    "method": "findFirst",
+    "reason": "Platform Super Admin email uniqueness check across platform (tenantId is null)"
+  },
+  {
+    "file": "webhooks/webhooks.service.ts",
+    "line": 30,
+    "model": "lead",
+    "method": "findFirst",
+    "reason": "External inbound webhook handler resolving lead by incoming phone before tenant context"
+  },
+  {
+    "file": "webhooks/webhooks.service.ts",
+    "line": 73,
+    "model": "lead",
+    "method": "findFirst",
+    "reason": "External inbound webhook handler resolving lead by email/phone from external portal"
+  },
+  {
+    "file": "webhooks/webhooks.service.ts",
+    "line": 117,
+    "model": "lead",
+    "method": "findFirst",
+    "reason": "External inbound webhook handler resolving lead from third-party lead provider"
+  },
+  {
+    "file": "webhooks/webhooks.service.ts",
+    "line": 142,
+    "model": "lead",
+    "method": "findFirst",
+    "reason": "External inbound webhook handler resolving lead for marketing attribution"
+  },
+  {
+    "file": "webhooks/webhooks.service.ts",
+    "line": 191,
+    "model": "lead",
+    "method": "findFirst",
+    "reason": "External inbound webhook handler matching lead from IndiaMART API"
+  },
+  {
+    "file": "webhooks/webhooks.service.ts",
+    "line": 223,
+    "model": "lead",
+    "method": "findFirst",
+    "reason": "External inbound webhook handler matching lead from WhatsApp webhook API"
+  }
+]

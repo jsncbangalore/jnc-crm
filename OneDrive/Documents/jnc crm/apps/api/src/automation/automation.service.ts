@@ -434,10 +434,13 @@ export class AutomationService implements OnModuleInit {
       return;
     }
 
-    const where: any = { triggerEvent, isActive: true };
-    if (context.tenantId) {
-      where.tenantId = context.tenantId;
+    const tenantId = context.tenantId;
+    if (!tenantId) {
+      this.logger.warn(`AUTOMATION GUARD: Trigger event "${triggerEvent}" aborted: missing tenantId in context`);
+      return;
     }
+
+    const where: any = { triggerEvent, isActive: true, tenantId };
 
     const rules = await this.prisma.automationRule.findMany({
       where,
@@ -538,6 +541,11 @@ export class AutomationService implements OnModuleInit {
     context: Record<string, any>,
     rule?: any,
   ) {
+    const tenantId = context.tenantId || rule?.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException('Tenant context required for automated workflow step execution');
+    }
+
     switch (stepType) {
       case 'send_email': {
         let recipientEmail = config.to;
@@ -547,14 +555,14 @@ export class AutomationService implements OnModuleInit {
               where: {
                 role: { in: ['tenant_admin', 'admin'] },
                 isActive: true,
-                ...(context.tenantId ? { tenantId: context.tenantId } : {}),
+                tenantId,
               },
             });
             recipientEmail = admin?.email || 'admin@jsnc.co.in';
           } else if (config.recipient === 'assigned_employee') {
             if (context.assignedToId) {
               const rep = await this.prisma.user.findFirst({
-                where: { id: context.assignedToId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+                where: { id: context.assignedToId, tenantId },
               });
               recipientEmail = rep?.email;
             }
@@ -579,7 +587,7 @@ export class AutomationService implements OnModuleInit {
         let phone = config.phone || context.customerPhone || context.phone;
         if (config.recipient === 'assigned_employee' && context.assignedToId) {
           const rep = await this.prisma.user.findFirst({
-            where: { id: context.assignedToId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+            where: { id: context.assignedToId, tenantId },
           });
           phone = rep?.phone || phone;
         }
@@ -601,7 +609,7 @@ export class AutomationService implements OnModuleInit {
                 where: {
                   role: { in: ['tenant_admin', 'admin'] },
                   isActive: true,
-                  ...(context.tenantId ? { tenantId: context.tenantId } : {}),
+                  tenantId,
                 },
               });
               assigneeId = admin?.id;
@@ -628,12 +636,12 @@ export class AutomationService implements OnModuleInit {
 
           if (field === 'status' || field === 'urgency' || field === 'notes') {
             const currentLead = await this.prisma.lead.findFirst({
-              where: { id: leadId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+              where: { id: leadId, tenantId },
             });
             const previousValue = (currentLead as any)?.[field] ?? '';
 
             await this.prisma.lead.updateMany({
-              where: { id: leadId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+              where: { id: leadId, tenantId },
               data: { [field]: value },
             });
 
@@ -675,7 +683,7 @@ export class AutomationService implements OnModuleInit {
           let targetUserId: string | null = null;
 
           const currentLead = await this.prisma.lead.findFirst({
-            where: { id: leadId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+            where: { id: leadId, tenantId },
           });
           const prevAssignedId = currentLead?.assignedToId;
 
@@ -688,7 +696,7 @@ export class AutomationService implements OnModuleInit {
                 role: 'employee',
                 isActive: true,
                 deletedAt: null,
-                ...(context.tenantId ? { tenantId: context.tenantId } : {}),
+                tenantId,
               },
               orderBy: { createdAt: 'asc' },
             });
@@ -701,11 +709,11 @@ export class AutomationService implements OnModuleInit {
 
           if (targetUserId) {
             const targetUser = await this.prisma.user.findFirst({
-              where: { id: targetUserId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+              where: { id: targetUserId, tenantId },
             });
 
             await this.prisma.lead.updateMany({
-              where: { id: leadId, ...(context.tenantId ? { tenantId: context.tenantId } : {}) },
+              where: { id: leadId, tenantId },
               data: { assignedToId: targetUserId },
             });
             context.assignedToId = targetUserId;

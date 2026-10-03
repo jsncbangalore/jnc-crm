@@ -255,11 +255,11 @@ export class InvoicingService {
     const fyEnd = fyStart + 1;
     const fyCode = `${String(fyStart).slice(-2)}-${String(fyEnd).slice(-2)}`;
 
-    const tenantId = user?.tenantId;
+    const tenantId = requireTenantId(user);
     const count = await this.prisma.invoice.count({
       where: {
         docType,
-        ...(tenantId ? { tenantId } : {}),
+        tenantId,
       },
     });
 
