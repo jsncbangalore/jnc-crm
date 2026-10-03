@@ -62,6 +62,7 @@ model Tenant {
   // Relations
   users           User[]
   companies       Company[]      // B2B Accounts registered within this tenant
+  contacts        Contact[]
   leads           Lead[]
   leadShares      LeadShare[]
   mailAccounts    MailAccount[]  // Per-tenant isolated SMTP configurations
@@ -170,6 +171,7 @@ model Company {
 
 model Contact {
   id          String    @id @default(uuid())
+  tenantId    String?
   companyId   String?
   name        String
   email       String?
@@ -180,10 +182,13 @@ model Contact {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
+  tenant      Tenant?     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   company     Company?    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   leads       Lead[]
   quotations  Quotation[]
   orders      Order[]
+
+  @@index([tenantId])
 }
 
 model Lead {

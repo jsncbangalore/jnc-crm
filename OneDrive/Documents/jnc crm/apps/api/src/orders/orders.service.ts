@@ -265,8 +265,9 @@ export class OrdersService {
   }
 
   async findOne(id: string, user: ScopedUser) {
-    const order = await this.prisma.order.findUnique({
-      where: { id },
+    const tenantId = requireTenantId(user);
+    const order = await this.prisma.order.findFirst({
+      where: { id, tenantId },
       include: {
         lines: { include: { sku: { include: { preferredSupplier: true } } } },
         shipments: true,
@@ -585,8 +586,9 @@ export class OrdersService {
   }
 
   async updateShipmentStatus(shipmentId: string, status: string, user: ScopedUser) {
-    const shipment = await this.prisma.shipment.findUnique({
-      where: { id: shipmentId },
+    const tenantId = requireTenantId(user);
+    const shipment = await this.prisma.shipment.findFirst({
+      where: { id: shipmentId, tenantId },
       include: { order: true },
     });
     if (!shipment) throw new NotFoundException('Shipment not found');

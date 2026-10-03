@@ -32,13 +32,13 @@ export class CustomObjectsController {
   constructor(private customObjectsService: CustomObjectsService) {}
 
   @Get()
-  getAllObjects() {
-    return this.customObjectsService.getAllObjects();
+  getAllObjects(@CurrentUser() user: ScopedUser) {
+    return this.customObjectsService.getAllObjects(user);
   }
 
   @Get(':id')
-  getObjectById(@Param('id') id: string) {
-    return this.customObjectsService.getObjectById(id);
+  getObjectById(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
+    return this.customObjectsService.getObjectById(id, user);
   }
 
   @Post()
@@ -64,13 +64,14 @@ export class CustomObjectsController {
       pluralLabel?: string;
       description?: string;
     },
+    @CurrentUser() user: ScopedUser,
   ) {
-    return this.customObjectsService.updateObject(id, data);
+    return this.customObjectsService.updateObject(id, data, user);
   }
 
   @Delete(':id')
-  deleteObject(@Param('id') id: string) {
-    return this.customObjectsService.deleteObject(id);
+  deleteObject(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
+    return this.customObjectsService.deleteObject(id, user);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -80,9 +81,10 @@ export class CustomObjectsController {
   @Get(':id/fields')
   getObjectFields(
     @Param('id') objectId: string,
-    @Query('includeDeleted') includeDeleted?: string,
+    @Query('includeDeleted') includeDeleted: string | undefined,
+    @CurrentUser() user: ScopedUser,
   ) {
-    return this.customObjectsService.getObjectFields(objectId, includeDeleted === 'true');
+    return this.customObjectsService.getObjectFields(objectId, includeDeleted === 'true', user);
   }
 
   @Post(':id/fields')
@@ -99,8 +101,9 @@ export class CustomObjectsController {
       lookupTargetObject?: string;
       displayOrder?: number;
     },
+    @CurrentUser() user: ScopedUser,
   ) {
-    return this.customObjectsService.createField(objectId, data);
+    return this.customObjectsService.createField(objectId, data, user);
   }
 
   @Patch(':id/fields/:fieldId')
@@ -117,24 +120,27 @@ export class CustomObjectsController {
       lookupTargetObject?: string;
       displayOrder?: number;
     },
+    @CurrentUser() user: ScopedUser,
   ) {
-    return this.customObjectsService.updateField(objectId, fieldId, data);
+    return this.customObjectsService.updateField(objectId, fieldId, data, user);
   }
 
   @Delete(':id/fields/:fieldId')
   softDeleteField(
     @Param('id') objectId: string,
     @Param('fieldId') fieldId: string,
+    @CurrentUser() user: ScopedUser,
   ) {
-    return this.customObjectsService.softDeleteField(objectId, fieldId);
+    return this.customObjectsService.softDeleteField(objectId, fieldId, user);
   }
 
   @Patch(':id/fields/:fieldId/restore')
   restoreField(
     @Param('id') objectId: string,
     @Param('fieldId') fieldId: string,
+    @CurrentUser() user: ScopedUser,
   ) {
-    return this.customObjectsService.restoreField(objectId, fieldId);
+    return this.customObjectsService.restoreField(objectId, fieldId, user);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -144,20 +150,22 @@ export class CustomObjectsController {
   @Get('lookups/:targetObject')
   getLookupOptions(
     @Param('targetObject') targetObject: string,
-    @Query('search') search?: string,
+    @Query('search') search: string | undefined,
+    @CurrentUser() user: ScopedUser,
   ) {
-    return this.customObjectsService.getLookupOptions(targetObject, search);
+    return this.customObjectsService.getLookupOptions(targetObject, search, user);
   }
 
   @Get(':objectApiName/records')
   getRecords(
     @Param('objectApiName') objectApiName: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('search') search?: string,
-    @Query('sortBy') sortBy?: string,
-    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
-    @Query('includeArchived') includeArchived?: string,
+    @Query('page') page: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Query('search') search: string | undefined,
+    @Query('sortBy') sortBy: string | undefined,
+    @Query('sortOrder') sortOrder: 'asc' | 'desc' | undefined,
+    @Query('includeArchived') includeArchived: string | undefined,
+    @CurrentUser() user: ScopedUser,
   ) {
     return this.customObjectsService.getRecords(objectApiName, {
       page: page ? Number(page) : 1,
@@ -166,15 +174,16 @@ export class CustomObjectsController {
       sortBy,
       sortOrder,
       includeArchived: includeArchived === 'true',
-    });
+    }, user);
   }
 
   @Get(':objectApiName/records/:recordId')
   getRecordById(
     @Param('objectApiName') objectApiName: string,
     @Param('recordId') recordId: string,
+    @CurrentUser() user: ScopedUser,
   ) {
-    return this.customObjectsService.getRecordById(objectApiName, recordId);
+    return this.customObjectsService.getRecordById(objectApiName, recordId, user);
   }
 
   @Post(':objectApiName/records')

@@ -20,6 +20,8 @@ import { PageAccess } from '../auth/page-access.decorator';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { ScopedUser } from '../auth/scoping.service';
 import { AutomationService } from './automation.service';
 
 @Controller('automation')
@@ -31,11 +33,12 @@ export class AutomationController {
 
   @Get('rules')
   getAllRules(
+    @CurrentUser() user: ScopedUser,
     @Query('search') search?: string,
     @Query('triggerEvent') triggerEvent?: string,
     @Query('isActive') isActive?: string,
   ) {
-    return this.automationService.getAllRules({
+    return this.automationService.getAllRules(user, {
       search,
       triggerEvent,
       isActive: isActive !== undefined ? isActive === 'true' : undefined,
@@ -43,17 +46,18 @@ export class AutomationController {
   }
 
   @Get('metrics')
-  getMetrics() {
-    return this.automationService.getMetrics();
+  getMetrics(@CurrentUser() user: ScopedUser) {
+    return this.automationService.getMetrics(user);
   }
 
   @Get('rules/:id')
-  getRuleById(@Param('id') id: string) {
-    return this.automationService.getRuleById(id);
+  getRuleById(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
+    return this.automationService.getRuleById(user, id);
   }
 
   @Post('rules')
   createRule(
+    @CurrentUser() user: ScopedUser,
     @Body()
     data: {
       name: string;
@@ -65,11 +69,12 @@ export class AutomationController {
       isActive?: boolean;
     },
   ) {
-    return this.automationService.createRule(data);
+    return this.automationService.createRule(user, data);
   }
 
   @Patch('rules/:id')
   updateRule(
+    @CurrentUser() user: ScopedUser,
     @Param('id') id: string,
     @Body()
     data: {
@@ -82,17 +87,21 @@ export class AutomationController {
       isActive?: boolean;
     },
   ) {
-    return this.automationService.updateRule(id, data);
+    return this.automationService.updateRule(user, id, data);
   }
 
   @Patch('rules/:id/toggle')
-  toggleRule(@Param('id') id: string, @Body('isActive') isActive?: boolean) {
-    return this.automationService.toggleRuleActive(id, isActive);
+  toggleRule(
+    @CurrentUser() user: ScopedUser,
+    @Param('id') id: string,
+    @Body('isActive') isActive?: boolean,
+  ) {
+    return this.automationService.toggleRuleActive(user, id, isActive);
   }
 
   @Delete('rules/:id')
-  deleteRule(@Param('id') id: string) {
-    return this.automationService.deleteRule(id);
+  deleteRule(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
+    return this.automationService.deleteRule(user, id);
   }
 
   @Post('run-nightly-reorder')

@@ -154,8 +154,9 @@ export class ActivitiesService {
       });
     }
 
-    return this.prisma.project.findUnique({
-      where: { id: projectId },
+    const tenantId = requireTenantId(user);
+    return this.prisma.project.findFirst({
+      where: { id: projectId, tenantId },
       include: {
         assignments: {
           include: {
@@ -170,7 +171,7 @@ export class ActivitiesService {
 
   async listLogs(user: ScopedUser, projectId: string) {
     this.requireProjectAccessRole(user);
-    await this.findProjectOrFail(projectId);
+    await this.findProjectOrFail(projectId, user);
 
     // Individual Developer can ONLY see their own uploaded logs
     if (user.role === 'developer') {
@@ -202,7 +203,7 @@ export class ActivitiesService {
     dto: { fileName?: string; taskSummary?: string; records: any[] },
   ) {
     this.requireProjectAccessRole(user);
-    await this.findProjectOrFail(projectId);
+    await this.findProjectOrFail(projectId, user);
 
     // Check if developer is assigned to project if role is developer
     if (user.role === 'developer') {
@@ -236,6 +237,7 @@ export class ActivitiesService {
 
   async deleteLog(user: ScopedUser, projectId: string, logId: string) {
     this.requireSuperAdminOrAdmin(user);
+    await this.findProjectOrFail(projectId, user);
     const log = await this.prisma.projectDailyLog.findFirst({
       where: { id: logId, projectId },
     });

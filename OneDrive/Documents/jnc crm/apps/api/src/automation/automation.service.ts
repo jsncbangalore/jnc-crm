@@ -9,6 +9,8 @@ import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleIni
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { ScopedUser } from '../auth/scoping.service';
+import { requireTenantId } from '../common/tenant.util';
 
 export const ALLOWED_STEP_TYPES = [
   'send_email',
@@ -131,8 +133,9 @@ export class AutomationService implements OnModuleInit {
   /**
    * List all automation rules with their ordered steps
    */
-  async getAllRules(filter?: { search?: string; triggerEvent?: string; isActive?: boolean }) {
-    const where: any = {};
+  async getAllRules(user: ScopedUser, filter?: { search?: string; triggerEvent?: string; isActive?: boolean }) {
+    const tenantId = requireTenantId(user);
+    const where: any = { tenantId };
 
     if (filter?.search) {
       where.OR = [
@@ -165,9 +168,10 @@ export class AutomationService implements OnModuleInit {
   /**
    * Get single rule by ID with its ordered steps
    */
-  async getRuleById(id: string) {
-    const rule = await this.prisma.automationRule.findUnique({
-      where: { id },
+  async getRuleById(user: ScopedUser, id: string) {
+    const tenantId = requireTenantId(user);
+    const rule = await this.prisma.automationRule.findFirst({
+      where: { id, tenantId },
       include: {
         steps: {
           orderBy: { stepOrder: 'asc' },
@@ -183,15 +187,19 @@ export class AutomationService implements OnModuleInit {
   /**
    * Create a new automation rule with an ordered sequence of steps
    */
-  async createRule(data: {
-    name: string;
-    triggerEvent: string;
-    conditionJson?: string;
-    actionType?: string;
-    actionPayloadJson?: string;
-    steps?: Array<{ stepType: string; config: any; stepOrder?: number }>;
-    isActive?: boolean;
-  }) {
+  async createRule(
+    user: ScopedUser,
+    data: {
+      name: string;
+      triggerEvent: string;
+      conditionJson?: string;
+      actionType?: string;
+      actionPayloadJson?: string;
+      steps?: Array<{ stepType: string; config: any; stepOrder?: number }>;
+      isActive?: boolean;
+    },
+  ) {
+    const tenantId = requireTenantId(user);
     if (!data.name || !data.name.trim()) {
       throw new BadRequestException('Rule name is required');
     }
@@ -242,6 +250,7 @@ export class AutomationService implements OnModuleInit {
     const firstStep = stepsToCreate[0];
     const rule = await this.prisma.automationRule.create({
       data: {
+        tenantId,
         name: data.name.trim(),
         triggerEvent: data.triggerEvent.trim(),
         conditionJson,
@@ -267,6 +276,7 @@ export class AutomationService implements OnModuleInit {
    * Update existing automation rule and its steps sequence
    */
   async updateRule(
+    user: ScopedUser,
     id: string,
     data: {
       name?: string;
@@ -278,7 +288,7 @@ export class AutomationService implements OnModuleInit {
       isActive?: boolean;
     },
   ) {
-    await this.getRuleById(id);
+    await this.getRuleById(user, id);
 
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name.trim();
@@ -343,8 +353,8 @@ export class AutomationService implements OnModuleInit {
   /**
    * Toggle rule active/inactive state
    */
-  async toggleRuleActive(id: string, targetActive?: boolean) {
-    const existing = await this.getRuleById(id);
+  async toggleRuleActive(user: ScopedUser, id: string, targetActive?: boolean) {
+    const existing = await this.getRuleById(user, id);
     const newActiveState = targetActive !== undefined ? targetActive : !existing.isActive;
 
     const updated = await this.prisma.automationRule.update({
@@ -364,8 +374,8 @@ export class AutomationService implements OnModuleInit {
   /**
    * Delete rule and all its steps (cascade)
    */
-  async deleteRule(id: string) {
-    const existing = await this.getRuleById(id);
+  async deleteRule(user: ScopedUser, id: string) {
+    const existing = await this.getRuleById(user, id);
     await this.prisma.automationRule.delete({ where: { id } });
     this.logger.log(`Deleted automation rule: "${existing.name}" [ID: ${id}]`);
     return { success: true, message: `Rule "${existing.name}" deleted successfully` };
@@ -374,8 +384,10 @@ export class AutomationService implements OnModuleInit {
   /**
    * Automation dashboard metrics
    */
-  async getMetrics() {
+  async getMetrics(user: ScopedUser) {
+    const tenantId = requireTenantId(user);
     const rules = await this.prisma.automationRule.findMany({
+      where: { tenantId },
       include: { steps: true },
     });
     const totalRules = rules.length;
@@ -427,8 +439,13 @@ export class AutomationService implements OnModuleInit {
       return;
     }
 
+    const where: any = { triggerEvent, isActive: true };
+    if (context.tenantId) {
+      where.tenantId = context.tenantId;
+    }
+
     const rules = await this.prisma.automationRule.findMany({
-      where: { triggerEvent, isActive: true },
+      where,
       include: {
         steps: {
           orderBy: { stepOrder: 'asc' },
@@ -531,7 +548,13 @@ export class AutomationService implements OnModuleInit {
         let recipientEmail = config.to;
         if (!recipientEmail) {
           if (config.recipient === 'admin') {
-            const admin = await this.prisma.user.findFirst({ where: { role: { in: ['tenant_admin', 'admin'] }, isActive: true } });
+            const admin = await this.prisma.user.findFirst({
+              where: {
+                role: { in: ['tenant_admin', 'admin'] },
+                isActive: true,
+                ...(context.tenantId ? { tenantId: context.tenantId } : {}),
+              },
+            });
             recipientEmail = admin?.email || 'admin@jsnc.co.in';
           } else if (config.recipient === 'assigned_employee') {
             if (context.assignedToId) {
@@ -575,7 +598,13 @@ export class AutomationService implements OnModuleInit {
           let assigneeId = config.assigneeId || config.user_id || config.userId;
           if (!assigneeId) {
             if (config.recipient === 'admin') {
-              const admin = await this.prisma.user.findFirst({ where: { role: { in: ['tenant_admin', 'admin'] }, isActive: true } });
+              const admin = await this.prisma.user.findFirst({
+                where: {
+                  role: { in: ['tenant_admin', 'admin'] },
+                  isActive: true,
+                  ...(context.tenantId ? { tenantId: context.tenantId } : {}),
+                },
+              });
               assigneeId = admin?.id;
             } else {
               assigneeId = context.assignedToId;
@@ -652,7 +681,12 @@ export class AutomationService implements OnModuleInit {
           } else if (mode === 'round_robin') {
             // Pick next active sales rep
             const employees = await this.prisma.user.findMany({
-              where: { role: 'employee', isActive: true, deletedAt: null },
+              where: {
+                role: 'employee',
+                isActive: true,
+                deletedAt: null,
+                ...(context.tenantId ? { tenantId: context.tenantId } : {}),
+              },
               orderBy: { createdAt: 'asc' },
             });
             if (employees.length > 0) {

@@ -255,8 +255,8 @@ export class SettingsService {
       throw new ForbiddenException('Only Company Administrators can modify Mail Accounts.');
     }
 
-    const account = await this.prisma.mailAccount.findUnique({ where: { id } });
-    if (!account || account.tenantId !== tenantId) {
+    const account = await this.prisma.mailAccount.findFirst({ where: { id, tenantId } });
+    if (!account) {
       throw new NotFoundException('Mail account not found');
     }
 
@@ -284,8 +284,8 @@ export class SettingsService {
       throw new ForbiddenException('Only Company Administrators can delete Mail Accounts.');
     }
 
-    const account = await this.prisma.mailAccount.findUnique({ where: { id } });
-    if (!account || account.tenantId !== tenantId) {
+    const account = await this.prisma.mailAccount.findFirst({ where: { id, tenantId } });
+    if (!account) {
       throw new NotFoundException('Mail account not found');
     }
 

@@ -47,10 +47,10 @@ export class CompaniesService {
     const where: any = { tenantId, deletedAt: null };
     if (query?.search) {
       where.OR = [
-        { name: { contains: query.search } },
-        { gstin: { contains: query.search } },
-        { city: { contains: query.search } },
-        { billingEmail: { contains: query.search } },
+        { name: { contains: query.search, mode: 'insensitive' } },
+        { gstin: { contains: query.search, mode: 'insensitive' } },
+        { city: { contains: query.search, mode: 'insensitive' } },
+        { billingEmail: { contains: query.search, mode: 'insensitive' } },
       ];
     }
 
@@ -59,7 +59,7 @@ export class CompaniesService {
       orderBy: { name: 'asc' },
       include: {
         contacts: {
-          where: { deletedAt: null },
+          where: { deletedAt: null, tenantId },
           orderBy: { isPrimary: 'desc' },
         },
         _count: {
@@ -75,7 +75,7 @@ export class CompaniesService {
       where: { id, tenantId },
       include: {
         contacts: {
-          where: { deletedAt: null },
+          where: { deletedAt: null, tenantId },
           orderBy: { isPrimary: 'desc' },
         },
         leads: {

@@ -87,8 +87,10 @@ export class InvoicingService {
     user: ScopedUser,
     options?: { paymentTerms?: string; dueDate?: string; notes?: string },
   ) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
+    const tenantId = requireTenantId(user);
+    const scopeWhere = this.scopingService.getOrderScope(user);
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, tenantId, ...scopeWhere },
       include: {
         lines: { include: { sku: true } },
         contact: { include: { company: true } },
@@ -98,15 +100,6 @@ export class InvoicingService {
 
     if (!order || order.deletedAt) {
       throw new NotFoundException('Order not found');
-    }
-
-    // Check RBAC Scope
-    const scopeWhere = this.scopingService.getOrderScope(user);
-    const accessible = await this.prisma.order.findFirst({
-      where: { id: orderId, ...scopeWhere },
-    });
-    if (!accessible) {
-      throw new ForbiddenException('You do not have permission to invoice this order');
     }
 
     // Must be confirmed or later
@@ -547,8 +540,9 @@ export class InvoicingService {
       }>;
     },
   ) {
-    const existing = await this.prisma.invoice.findUnique({
-      where: { id },
+    const tenantId = requireTenantId(user);
+    const existing = await this.prisma.invoice.findFirst({
+      where: { id, tenantId },
       include: { lines: true },
     });
     if (!existing) {
@@ -949,14 +943,15 @@ export class InvoicingService {
    * Get single invoice by ID with items, company header profile, and signatory config
    */
   async findOne(id: string, user: ScopedUser) {
-    const invoice = await this.prisma.invoice.findUnique({
-      where: { id },
+    const tenantId = requireTenantId(user);
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id, tenantId },
       include: {
         lines: { include: { sku: true } },
         company: {
           include: {
             contacts: {
-              where: { deletedAt: null },
+              where: { deletedAt: null, tenantId },
               orderBy: { isPrimary: 'desc' },
             },
           },
@@ -1018,8 +1013,9 @@ export class InvoicingService {
     },
     user: ScopedUser,
   ) {
-    const invoice = await this.prisma.invoice.findUnique({
-      where: { id: invoiceId },
+    const tenantId = requireTenantId(user);
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, tenantId },
       include: {
         payments: true,
         order: true,
@@ -1134,7 +1130,8 @@ export class InvoicingService {
       throw new ForbiddenException('Only Administrators can void invoices.');
     }
 
-    const invoice = await this.prisma.invoice.findUnique({ where: { id } });
+    const tenantId = requireTenantId(user);
+    const invoice = await this.prisma.invoice.findFirst({ where: { id, tenantId } });
     if (!invoice) {
       throw new NotFoundException('Invoice not found');
     }
