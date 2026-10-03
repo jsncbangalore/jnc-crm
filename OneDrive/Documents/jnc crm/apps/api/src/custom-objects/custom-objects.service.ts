@@ -5,7 +5,7 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
