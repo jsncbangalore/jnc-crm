@@ -81,6 +81,8 @@ BACKUP_OFFSITE_PATH="backups/offsite"
 
 ## 🚀 Getting Started
 
+> [!NOTE] Move the project to a path without spaces or '&', for example `C:\dev\jnc-crm`, and keep it outside OneDrive.
+
 ### 1. Prerequisites
 - **Node.js**: `v18.x` or higher
 - **npm**: `v9.x` or higher
@@ -107,6 +109,26 @@ cd apps/api
 node ../../node_modules/@nestjs/cli/bin/nest.js build
 node dist/src/main.js
 ```
+The REST API is live at `http://localhost:3333/api/v1`.
+
+## 👤 Owner Login Shortcut (Local Development)
+
+- The internal JNC owner can log in via the normal login endpoint `/auth/login` using the email `tenantadmin@jsnc.co.in` (or the email set via `OWNER_EMAIL`). No company code is required.
+- After successful login, you will be redirected to the Platform Admin page at `/platform/companies`.
+- Use `npm run owner:reset` to reset the owner password locally. The script prints the password (if generated) once to the console.
+- Ensure you are using the local test database (`DATABASE_URL` points to localhost) before running the script.
+
+## 🛠️ Owner Reset Script Usage
+
+```bash
+# Set a custom password (must meet policy)
+$env:OWNER_PASSWORD="MyStrong12!Pass"
+npm run owner:reset
+
+# Or let the script generate a random password
+npm run owner:reset
+```
+
 The REST API is live at `http://localhost:3333/api/v1`.
 
 ### 5. Running the Frontend Web Application

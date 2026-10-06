@@ -10,13 +10,14 @@ const path = require('path');
 const fs = require('fs');
 
 const PROD_HOST = 'aws-0-ap-southeast-1.pooler.supabase.com';
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', '::1', 'host.docker.internal'];
 
 const action = process.argv[2];
 const extraArgs = process.argv.slice(3);
 
 function loadEnvFile(filePath) {
   if (fs.existsSync(filePath)) {
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = fs.readFileSync(filePath, 'utf8');
     const lines = content.split('\n');
     for (const line of lines) {
       const trimmed = line.trim();
@@ -25,194 +26,109 @@ function loadEnvFile(filePath) {
       if (idx !== -1) {
         const key = trimmed.substring(0, idx).trim();
         let val = trimmed.substring(idx + 1).trim();
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-          val = val.substring(1, val.length - 1);
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith('\'') && val.endsWith('\''))) {
+          val = val.slice(1, -1);
         }
-        if (!process.env[key]) {
-          process.env[key] = val;
-        }
+        if (!process.env[key]) process.env[key] = val;
       }
     }
   }
 }
 
-if (action === 'db-push-test' || action === 'test-phase3' || action === 'seed-test' || action === 'test-data-visibility' || action === 'test-login-system' || action === 'test-security') {
-  // Load .env.test first for test actions
+// Load environment based on action (match script names)
+if (['db-push-test','test-phase3','seed-test','test-visibility','test-login','test-security','owner:reset','owner:reset','owner-reset','test-login-system','test-data-visibility'].includes(action)) {
   const envTestPath = path.resolve(__dirname, '..', '.env.test');
   loadEnvFile(envTestPath);
 } else {
-  // Load .env
   const envPath = path.resolve(__dirname, '..', '.env');
   loadEnvFile(envPath);
 }
 
-const dbUrl = process.env.DATABASE_URL || '';
-const isProd = dbUrl.includes(PROD_HOST);
+// Resolve effective DATABASE_URL (process env wins, trim whitespace/quotes)
+const rawUrl = process.env.DATABASE_URL || '';
+const dbUrl = rawUrl.trim().replace(/^['\"]|['\"]$/g, '');
 const hasAllowProd = extraArgs.includes('--allow-production') || process.argv.includes('--allow-production');
+
+// Print DB info
+if (dbUrl) {
+  try {
+    const parsed = new URL(dbUrl);
+    console.log(`[Database] ${parsed.pathname.replace(/^\//, '')} @ ${parsed.hostname}`);
+  } catch (_) {
+    console.log(`[Database] ${dbUrl}`);
+  }
+} else {
+  console.log('[Database] (none)');
+}
+
+function assertLocalDatabase(contextName) {
+  if (!dbUrl) return; // nothing to check
+  try {
+    const hostname = new URL(dbUrl).hostname;
+    const isLocal = LOCAL_HOSTS.includes(hostname);
+    if (!isLocal && !hasAllowProd) {
+      console.error(`\n[SECURITY ERROR] ${contextName} refused to run on non‑local database host ${hostname}. Pass --allow-production to override.`);
+      process.exit(1);
+    }
+    if (contextName === 'migrate-prod' && process.env.CONFIRM_PRODUCTION !== 'yes') {
+      console.error('\n[SECURITY ERROR] migrate:prod requires CONFIRM_PRODUCTION=yes environment variable.');
+      process.exit(1);
+    }
+  } catch (e) {
+    console.error(`\n[SECURITY ERROR] ${contextName} has invalid DATABASE_URL: ${e.message}`);
+    process.exit(1);
+  }
+}
+
+// Known actions mapping (script name -> execution details)
+const knownActions = {
+  'db-push-dev': { type: 'prisma', args: ['db','push','--skip-generate'] },
+  'db-push-test': { type: 'prisma', args: ['db','push','--skip-generate'] },
+  'test-phase3': { type: 'ts-node', file: 'scripts/test-phase3.ts' },
+  'seed-test': { type: 'ts-node', file: 'scripts/seed-test.ts' },
+  'test-visibility': { type: 'ts-node', file: 'scripts/test-data-visibility.ts' },
+  'test-login': { type: 'ts-node', file: 'scripts/test-login-system.ts' },
+  'test-security': { type: 'ts-node', file: 'scripts/test-security.ts' },
+  'owner:reset': { type: 'ts-node', file: 'scripts/owner-reset.ts' },
+  'migrate-prod': { type: 'prisma', args: ['migrate','deploy'] },
+  'setup-dev': { type: 'prisma', args: ['db','push','--skip-generate'] },
+};
 
 function resolveBin(pkgSubpath) {
   try {
     return require.resolve(pkgSubpath, { paths: [__dirname, path.resolve(__dirname, '..'), path.resolve(__dirname, '../../..')] });
-  } catch {
-    return null;
-  }
+  } catch (_) { return null; }
 }
 
-const tsNodeBin = resolveBin('ts-node/dist/bin.js');
 const prismaBin = resolveBin('prisma/build/index.js');
+const tsNodeBin = resolveBin('ts-node/dist/bin.js');
 
-function runNodeOrNpx(binPath, npxCmd, args, cwd) {
-  if (binPath && fs.existsSync(binPath)) {
-    return spawnSync(process.execPath, [binPath, ...args], {
-      stdio: 'inherit',
-      shell: false,
-      env: process.env,
-      cwd,
-    });
+function runAction(name) {
+  const entry = knownActions[name];
+  if (!entry) {
+    console.error(`[SECURITY ERROR] Unknown action: ${name}. Known actions: ${Object.keys(knownActions).join(', ')}`);
+    process.exit(1);
   }
-  return spawnSync('npx', [npxCmd, ...args], {
-    stdio: 'inherit',
-    shell: true,
-    env: process.env,
-    cwd,
-  });
+  // Guard
+  assertLocalDatabase(name);
+
+  if (entry.type === 'prisma') {
+    if (!prismaBin) { console.error('Prisma binary not found'); process.exit(1); }
+    console.log(`[Safe Prisma] Running ${name}...`);
+    const result = spawnSync(process.execPath, [prismaBin, ...entry.args, ...extraArgs], { stdio: 'inherit', env: process.env, cwd: path.resolve(__dirname, '..') });
+    process.exit(result.status ?? 0);
+  } else if (entry.type === 'ts-node') {
+    if (!tsNodeBin) { console.error('ts-node binary not found'); process.exit(1); }
+    console.log(`[Safe Script] Running ${name}...`);
+    const scriptPath = path.resolve(__dirname, '..', entry.file);
+    const result = spawnSync(process.execPath, [tsNodeBin, '--transpile-only', scriptPath, ...extraArgs], { stdio: 'inherit', env: process.env, cwd: path.resolve(__dirname, '..') });
+    process.exit(result.status ?? 0);
+  }
 }
 
-if (action === 'db-push-test') {
-  if (isProd) {
-    console.error('\n[SECURITY ERROR] db:push:test refused to run on production database!');
-    console.error(`Host: ${PROD_HOST}`);
-    console.error('db:push:test can NEVER run against the production database under any circumstances.\n');
-    process.exit(1);
-  }
-
-  console.log(`[Safe Prisma] Running db push against test database...`);
-  const result = runNodeOrNpx(
-    prismaBin,
-    'prisma',
-    ['db', 'push', '--skip-generate', ...extraArgs],
-    path.resolve(__dirname, '..')
-  );
-  process.exit(result.status ?? 0);
-} else if (action === 'test-phase3') {
-  if (isProd) {
-    console.error('\n[SECURITY ERROR] test:phase3 refused to run on production database!');
-    console.error(`Host: ${PROD_HOST}`);
-    console.error('test:phase3 can NEVER run against the production database under any circumstances.\n');
-    process.exit(1);
-  }
-
-  console.log(`[Safe Test Runner] Launching Phase 3 test suite against test database...`);
-  const result = runNodeOrNpx(
-    tsNodeBin,
-    'ts-node',
-    ['--transpile-only', 'scripts/test-phase3.ts', ...extraArgs],
-    path.resolve(__dirname, '..')
-  );
-  process.exit(result.status ?? 0);
-} else if (action === 'seed-test') {
-  if (isProd) {
-    console.error('\n[SECURITY ERROR] db:seed:test refused to run on production database!');
-    console.error(`Host: ${PROD_HOST}`);
-    console.error('db:seed:test can NEVER run against the production database under any circumstances.\n');
-    process.exit(1);
-  }
-
-  console.log(`[Safe Test Runner] Seeding test database...`);
-  const result = runNodeOrNpx(
-    tsNodeBin,
-    'ts-node',
-    ['--transpile-only', 'scripts/seed-test.ts', ...extraArgs],
-    path.resolve(__dirname, '..')
-  );
-  process.exit(result.status ?? 0);
-} else if (action === 'migrate-prod') {
-  if (isProd && !hasAllowProd) {
-    console.error('\n[SECURITY ERROR] migrate:prod refused to run on production database without --allow-production!');
-    console.error(`Host: ${PROD_HOST}`);
-    console.error('To run migrations on production, you must explicitly pass: npm run migrate:prod -- --allow-production\n');
-    process.exit(1);
-  }
-
-  console.log(`[Safe Prisma] Running prisma migrate deploy...`);
-  const result = runNodeOrNpx(
-    prismaBin,
-    'prisma',
-    ['migrate', 'deploy'],
-    path.resolve(__dirname, '..')
-  );
-} else if (action === 'setup-dev') {
-  if (isProd) {
-    console.error('\n[SECURITY ERROR] db:setup:dev refused to run on production database!');
-    console.error(`Host: ${PROD_HOST}`);
-    console.error('db:setup:dev can NEVER run against the production database under any circumstances.\n');
-    process.exit(1);
-  }
-
-  console.log(`[Safe Prisma] Synchronizing dev database schema via db push...`);
-  const pushResult = runNodeOrNpx(
-    prismaBin,
-    'prisma',
-    ['db', 'push', '--skip-generate'],
-    path.resolve(__dirname, '..')
-  );
-  if (pushResult.status !== 0) {
-    process.exit(pushResult.status ?? 1);
-  }
-
-  console.log(`[Safe Prisma] Initializing JNC internal tenant and admins...`);
-  const setupResult = runNodeOrNpx(
-    tsNodeBin,
-    'ts-node',
-    ['--transpile-only', 'scripts/setup-dev-db.ts'],
-    path.resolve(__dirname, '..')
-  );
-  process.exit(setupResult.status ?? 0);
-} else if (action === 'test-data-visibility') {
-  if (isProd) {
-    console.error('\n[SECURITY ERROR] test-data-visibility refused to run on production database!');
-    process.exit(1);
-  }
-  const result = runNodeOrNpx(
-    tsNodeBin,
-    'ts-node',
-    ['--transpile-only', 'scripts/test-data-visibility.ts', ...extraArgs],
-    path.resolve(__dirname, '..')
-  );
-  process.exit(result.status ?? 0);
-} else if (action === 'test-login-system') {
-  if (isProd) {
-    console.error('\n[SECURITY ERROR] test-login-system refused to run on production database!');
-    process.exit(1);
-  }
-  const result = runNodeOrNpx(
-    tsNodeBin,
-    'ts-node',
-    ['--transpile-only', 'scripts/test-login-system.ts', ...extraArgs],
-    path.resolve(__dirname, '..')
-  );
-  process.exit(result.status ?? 0);
-} else if (action === 'test-security') {
-  if (isProd) {
-    console.error('\n[SECURITY ERROR] test-security refused to run on production database!');
-    process.exit(1);
-  }
-  const result = runNodeOrNpx(
-    tsNodeBin,
-    'ts-node',
-    ['--transpile-only', 'scripts/test-security.ts', ...extraArgs],
-    path.resolve(__dirname, '..')
-  );
-  process.exit(result.status ?? 0);
-} else if (action === 'audit-scoping') {
-  const result = runNodeOrNpx(
-    tsNodeBin,
-    'ts-node',
-    ['--transpile-only', 'scripts/audit-scoping.ts', ...extraArgs],
-    path.resolve(__dirname, '..')
-  );
-  process.exit(result.status ?? 0);
+if (knownActions[action]) {
+  runAction(action);
 } else {
-  console.error(`Unknown action: ${action}. Valid actions: db-push-test, test-phase3, seed-test, setup-dev, migrate-prod, test-data-visibility, test-login-system, test-security, audit-scoping`);
+  console.error(`[SECURITY ERROR] Unknown action: ${action}. Known actions: ${Object.keys(knownActions).join(', ')}`);
   process.exit(1);
 }

@@ -55,6 +55,17 @@ async function bootstrap() {
   // 1. Strict Startup Secrets Validation Guard — Fail fast if mandatory secrets are missing
   validateEnvironmentOrExit();
 
+  // 2. Log DB connection info (no password)
+  const dbUrl = process.env.DATABASE_URL || '';
+  const match = dbUrl.match(/postgresql:\/\/[^@]+@([^/:]+)[:\/](.+?)(?:\?|$)/);
+  if (match) {
+    const host = match[1];
+    const dbName = match[2];
+    console.log(`Database: ${dbName} @ ${host}`);
+  } else {
+    console.log('Database: <unknown>');
+  }
+
   const app = await NestFactory.create(AppModule);
 
   // 2. Behind proxy: configure Express trust proxy so Throttler and logs identify client IP correctly

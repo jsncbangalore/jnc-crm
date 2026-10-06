@@ -22,7 +22,7 @@ async function main() {
       name: 'JS Network Communication',
       slug: 'jnc',
       status: 'active',
-      plan: 'enterprise',
+      planTier: 'enterprise',
       maxUsers: 50,
       currency: 'INR',
     },
@@ -36,12 +36,12 @@ async function main() {
 
   const boss = await prisma.user.upsert({
     where: { tenantId_employeeCode: { tenantId: defaultTenantId, employeeCode: 'JNC-SA-001' } },
-    update: { mustResetPassword: true, role: 'tenant_admin' },
+    update: { mustResetPassword: true, role: 'tenant_admin', email: 'jayarajjnc@gmail.com' },
     create: {
       tenantId: defaultTenantId,
       employeeCode: 'JNC-SA-001',
       name: 'JNC Network Owner',
-      email: 'owner@jncnetwork.com',
+      email: 'jayarajjnc@gmail.com',
       passwordHash: await hash(initialAdminPass),
       role: 'tenant_admin',
       isActive: true,
@@ -104,6 +104,7 @@ async function main() {
     update: {},
     create: {
       id: 'seed-supplier-1',
+      tenantId: defaultTenantId,
       name: 'Mouser Electronics India',
       contactPerson: 'Suresh Patil',
       email: 'india@mouser.com',
@@ -119,6 +120,7 @@ async function main() {
     update: {},
     create: {
       id: 'seed-supplier-2',
+      tenantId: defaultTenantId,
       name: 'Arrow Electronics India',
       contactPerson: 'Divya Nair',
       email: 'india@arrow.com',
@@ -134,6 +136,7 @@ async function main() {
     update: {},
     create: {
       id: 'seed-supplier-3',
+      tenantId: defaultTenantId,
       name: 'Robu.in Components',
       contactPerson: 'Kiran Tiwari',
       email: 'support@robu.in',
@@ -621,6 +624,7 @@ async function main() {
     const created = await prisma.automationRule.create({
       data: {
         ...ruleData,
+        tenantId: defaultTenantId,
         actionType: ruleSteps[0]?.stepType,
         actionPayloadJson: ruleSteps[0]?.config,
         steps: {
