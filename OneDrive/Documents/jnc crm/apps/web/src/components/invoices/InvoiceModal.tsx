@@ -707,7 +707,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                     <p className="font-bold text-black">GST IN : {profile?.gstin || '29AZWPJ2622A1ZD'}.</p>
                     <p className="text-black font-medium">MSME UDYAM Reg No: {profile?.msmeUdyamNo || 'UDYAM-KR-03-0292006'}.</p>
                     <p className="text-black font-medium">State Name : {profile?.state || 'Karnataka'}, Code - {profile?.stateCode || '29'}</p>
-                    <p className="text-black font-medium">Email : {profile?.email || 'Info@Jsnc.co.in'}</p>
+                    <p className="text-black font-medium">Email : {profile?.email || 'jsnetworkcommunication@gmail.com'}</p>
                   </div>
 
                   {/* Right Column: Invoice Metadata Table with Full Continuous Borders */}

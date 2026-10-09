@@ -326,7 +326,7 @@ export default function PlatformAdminsPage() {
                   <input
                     type="email"
                     className="input text-xs font-mono"
-                    placeholder="admin@jsnc.co.in"
+                    placeholder="admin@jsnetwork.com"
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                     required
