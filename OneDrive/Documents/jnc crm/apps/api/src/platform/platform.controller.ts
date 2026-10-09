@@ -109,6 +109,23 @@ export class PlatformAdminsController {
   }
 }
 
+@Controller('platform/analytics')
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles('platform_super_admin')
+export class PlatformAnalyticsController {
+  constructor(private readonly platformService: PlatformService) {}
+
+  @Get()
+  async getAnalytics() {
+    return this.platformService.getAnalytics();
+  }
+
+  @Post('send-summary')
+  async sendSummaryReport(@Body() body: { recipientEmail?: string }) {
+    return this.platformService.sendSummaryReport(body?.recipientEmail);
+  }
+}
+
 @Controller('platform/system-info')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('platform_super_admin')

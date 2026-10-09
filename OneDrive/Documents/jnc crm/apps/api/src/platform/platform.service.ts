@@ -1068,5 +1068,174 @@ export class PlatformService {
       user: target,
     };
   }
+
+  /**
+   * Real-time Platform Analytics Metrics for Super Admin Dashboard
+   */
+  async getAnalytics() {
+    const totalCompanies = await this.prisma.tenant.count({
+      where: { isInternal: false },
+    });
+    const activeCompanies = await this.prisma.tenant.count({
+      where: { isInternal: false, status: 'active' },
+    });
+    const suspendedCompanies = await this.prisma.tenant.count({
+      where: { isInternal: false, status: 'suspended' },
+    });
+    const trialCompanies = await this.prisma.tenant.count({
+      where: { isInternal: false, status: 'trial' },
+    });
+
+    const tenants = await this.prisma.tenant.findMany({
+      where: { isInternal: false },
+      select: { maxUsers: true, planTier: true },
+    });
+
+    const totalLicenses = tenants.reduce((acc, t) => acc + (t.maxUsers || 0), 0);
+
+    const totalActiveUsers = await this.prisma.user.count({
+      where: {
+        tenantId: { not: null },
+        isActive: true,
+        deletedAt: null,
+      },
+    });
+
+    const planTierBreakdown = tenants.reduce((acc: Record<string, number>, t) => {
+      const tier = t.planTier || 'standard';
+      acc[tier] = (acc[tier] || 0) + 1;
+      return acc;
+    }, {});
+
+    const recentTenants = await this.prisma.tenant.findMany({
+      where: { isInternal: false },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        email: true,
+        status: true,
+        planTier: true,
+        maxUsers: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      totalCompanies,
+      activeCompanies,
+      suspendedCompanies,
+      trialCompanies,
+      totalLicenses,
+      totalActiveUsers,
+      planTierBreakdown,
+      recentTenants,
+    };
+  }
+
+  /**
+   * Dispatch summary report email of all platform analytics directly to Super Admin
+   */
+  async sendSummaryReport(targetEmail?: string) {
+    const analytics = await this.getAnalytics();
+    const recipient = (targetEmail || process.env.PRIMARY_EMAIL_FROM || 'jsnetworkcommunication@gmail.com').trim();
+
+    const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
+    .card { max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { background: #0f172a; padding: 24px; text-align: center; color: #ffffff; }
+    .header h1 { margin: 0; font-size: 20px; font-weight: 700; }
+    .header p { margin: 4px 0 0; font-size: 13px; color: #94a3b8; }
+    .body { padding: 28px; }
+    .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
+    .metric-card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; text-align: center; }
+    .metric-num { font-size: 22px; font-weight: 800; color: #2563eb; }
+    .metric-label { font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 700; margin-top: 4px; }
+    .table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 16px; }
+    .table th { background: #f1f5f9; padding: 8px; text-align: left; color: #475569; font-weight: 700; }
+    .table td { padding: 8px; border-bottom: 1px solid #f1f5f9; }
+    .footer { border-top: 1px solid #f1f5f9; padding: 16px 28px; text-align: center; font-size: 12px; color: #94a3b8; background: #fafafa; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>JNC CRM SaaS Platform Executive Report</h1>
+      <p>Real-Time Client Analytics & Operational Metrics</p>
+    </div>
+    <div class="body">
+      <p>Hello Super Administrator,</p>
+      <p>Here is your real-time SaaS client platform operational summary:</p>
+
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="metric-num">${analytics.totalCompanies}</div>
+          <div class="metric-label">Client Companies</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-num" style="color: #16a34a;">${analytics.activeCompanies}</div>
+          <div class="metric-label">Active Workspaces</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-num" style="color: #ea580c;">${analytics.totalActiveUsers}</div>
+          <div class="metric-label">Active User Accounts</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-num" style="color: #9333ea;">${analytics.totalLicenses}</div>
+          <div class="metric-label">License Seats Allocated</div>
+        </div>
+      </div>
+
+      <h3 style="font-size: 14px; font-weight: 700; margin-top: 24px;">Recent Client Company Provisioning</h3>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Company</th>
+            <th>Code</th>
+            <th>Plan</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${analytics.recentTenants.map(t => `
+            <tr>
+              <td><strong>${t.name}</strong><br><span style="font-size:11px; color:#64748b;">${t.email}</span></td>
+              <td><code>${t.code}</code></td>
+              <td style="text-transform: capitalize;">${t.planTier}</td>
+              <td style="text-transform: capitalize; color: ${t.status === 'active' ? '#16a34a' : '#dc2626'}; font-weight: bold;">${t.status}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="footer">
+      <p style="margin: 0;">Generated automatically by JNC CRM Platform Engine</p>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    await this.notificationsService.sendEmail({
+      to: recipient,
+      subject: `[JNC CRM] Executive Platform Analytics Report — ${analytics.activeCompanies} Active Companies`,
+      html: emailHtml,
+      text: `Executive SaaS Platform Analytics:\nTotal Companies: ${analytics.totalCompanies}\nActive Workspaces: ${analytics.activeCompanies}\nActive Users: ${analytics.totalActiveUsers}\nTotal Licenses Allocated: ${analytics.totalLicenses}`,
+    });
+
+    return {
+      success: true,
+      recipient,
+      message: `Executive analytics report successfully sent to ${recipient}`,
+      analytics,
+    };
+  }
 }
 

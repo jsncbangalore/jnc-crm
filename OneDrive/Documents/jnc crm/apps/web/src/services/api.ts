@@ -177,6 +177,8 @@ export const platformApi = {
   toggleAdminActive: (id: string, isActive?: boolean) => api.patch(`/platform/admins/${id}/toggle-active`, { isActive }),
   resetAdminUserPassword: (id: string) => api.post(`/platform/admins/${id}/reset-password`),
   getSystemInfo: () => api.get('/platform/system-info'),
+  getAnalytics: () => api.get('/platform/analytics'),
+  sendSummaryReport: (recipientEmail?: string) => api.post('/platform/analytics/send-summary', { recipientEmail }),
 };
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────

@@ -86,8 +86,20 @@ export default function PlatformCompaniesPage() {
   const [resetSendEmail, setResetSendEmail] = useState(true);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [resetSuccessResult, setResetSuccessResult] = useState<any | null>(null);
-  const [copiedReset, setCopiedReset] = useState(false);
+  const [sendingReport, setSendingReport] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const handleSendExecutiveReport = async () => {
+    try {
+      setSendingReport(true);
+      const { data } = await platformApi.sendSummaryReport();
+      showAlert('Report Dispatched', data?.message || 'Executive analytics report sent to Super Admin via email.', 'success');
+    } catch (err: any) {
+      showAlert('Failed to Send Report', err?.response?.data?.message || 'Could not send executive report email', 'error');
+    } finally {
+      setSendingReport(false);
+    }
+  };
 
   const fetchTenants = async () => {
     try {
@@ -348,30 +360,42 @@ export default function PlatformCompaniesPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setForm({
-              code: '',
-              name: '',
-              slug: '',
-              planTier: 'standard',
-              maxUsers: 10,
-              adminName: '',
-              adminEmail: '',
-              adminPhone: '',
-              adminPassword: '',
-              city: 'Bengaluru',
-              state: 'Karnataka',
-              gstin: '',
-              sendEmail: true,
-            });
-            setShowCreateModal(true);
-          }}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus size={16} />
-          <span>Provision New Company</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSendExecutiveReport}
+            disabled={sendingReport}
+            className="btn bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 flex items-center gap-2 text-xs font-bold"
+            title="Dispatch real-time SaaS client analytics report to Super Admin"
+          >
+            <Send size={14} className={sendingReport ? 'animate-pulse text-indigo-500' : 'text-indigo-600 dark:text-indigo-400'} />
+            <span>{sendingReport ? 'Sending Report...' : 'Send Executive Report to SA'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setForm({
+                code: '',
+                name: '',
+                slug: '',
+                planTier: 'standard',
+                maxUsers: 10,
+                adminName: '',
+                adminEmail: '',
+                adminPhone: '',
+                adminPassword: '',
+                city: 'Bengaluru',
+                state: 'Karnataka',
+                gstin: '',
+                sendEmail: true,
+              });
+              setShowCreateModal(true);
+            }}
+            className="btn btn-primary flex items-center gap-2 text-xs font-bold"
+          >
+            <Plus size={16} />
+            <span>Provision New Company</span>
+          </button>
+        </div>
       </div>
 
       {/* 4 Stat Cards - Plain Text Numbers & Labels Only (No Decorative Icons) */}
