@@ -47,6 +47,10 @@ export class CreatePlatformAdminDto {
 
   @IsOptional()
   @IsString()
+  role?: string;
+
+  @IsOptional()
+  @IsString()
   password?: string;
 }
 

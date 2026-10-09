@@ -12,6 +12,7 @@ import { platformApi } from '../services/api';
 import { User } from '../types';
 import { usePopup } from '../contexts/PopupContext';
 import { format } from 'date-fns';
+import { ROLE_LABELS } from '../utils/roles';
 
 export default function PlatformAdminsPage() {
   const { showAlert, showConfirm } = usePopup();
@@ -66,6 +67,7 @@ export default function PlatformAdminsPage() {
         name: form.name.trim(),
         email: form.email.trim().toLowerCase(),
         phone: form.phone.trim(),
+        role: form.role,
       });
       setShowCreateModal(false);
       setCreatedResult(data);
@@ -228,8 +230,16 @@ export default function PlatformAdminsPage() {
                     </td>
 
                     <td className="py-3.5 px-4">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
-                        Platform Super Admin
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                        admin.role === 'platform_super_admin'
+                          ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                          : admin.role === 'platform_operations_manager'
+                          ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
+                          : admin.role === 'platform_account_onboarding'
+                          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      }`}>
+                        {ROLE_LABELS[admin.role] || admin.role || 'Platform Admin'}
                       </span>
                     </td>
 
@@ -342,6 +352,21 @@ export default function PlatformAdminsPage() {
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   />
+                </div>
+
+                <div>
+                  <label className="label">Platform Role *</label>
+                  <select
+                    className="input text-xs"
+                    value={form.role}
+                    onChange={(e) => setForm({ ...form, role: e.target.value })}
+                    required
+                  >
+                    <option value="platform_super_admin">👑 Platform Super Administrator (SA)</option>
+                    <option value="platform_operations_manager">📊 Platform Operations Manager</option>
+                    <option value="platform_account_onboarding">🔑 Account Onboarding Team</option>
+                    <option value="platform_client_support">🎧 Client Support Team</option>
+                  </select>
                 </div>
 
                 <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-[#2A3042]">

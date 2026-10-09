@@ -12,11 +12,15 @@ export type ModelName =
   | 'Invoice' | 'Supplier' | 'Inventory' | 'Activity';
 
 export type RoleName =
-  | 'platform_super_admin' | 'tenant_admin' | 'admin' | 'sub_admin'
+  | 'platform_super_admin' | 'platform_operations_manager' | 'platform_account_onboarding' | 'platform_client_support'
+  | 'tenant_admin' | 'admin' | 'sub_admin'
   | 'employee' | 'store_manager' | 'project_manager' | 'developer_lead' | 'developer';
 
 export const VISIBILITY_TABLE: Record<RoleName, Record<ModelName, VisibilityLevel>> = {
-  platform_super_admin: { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
+  platform_super_admin:       { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
+  platform_operations_manager:{ Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
+  platform_account_onboarding: { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
+  platform_client_support:    { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
   tenant_admin:         { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
   admin:                { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
   sub_admin:            { Lead:'team', Company:'team', Contact:'team', Quotation:'team', Order:'team', Invoice:'team', Supplier:'all', Inventory:'all', Activity:'team' },

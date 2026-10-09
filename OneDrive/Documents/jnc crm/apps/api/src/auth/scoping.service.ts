@@ -23,7 +23,7 @@ export interface ScopedUser {
 export class ScopingService {
 
   getTenantScope(user: ScopedUser) {
-    if (user.role === 'platform_super_admin' && !user.tenantId) {
+    if (user.role.startsWith('platform_') && !user.tenantId) {
       throw new ForbiddenException('Platform administrators cannot access company workspace resources directly. Impersonate a client company to view their data.');
     }
     return { tenantId: requireTenantId(user) };

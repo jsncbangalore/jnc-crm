@@ -712,12 +712,19 @@ export class PlatformService {
   }
 
   /**
-   * List all platform super administrators (tenantId is null)
+   * List all platform administrators (tenantId is null)
    */
   async listPlatformAdmins() {
     return this.prisma.user.findMany({
       where: {
-        role: 'platform_super_admin',
+        role: {
+          in: [
+            'platform_super_admin',
+            'platform_operations_manager',
+            'platform_account_onboarding',
+            'platform_client_support',
+          ],
+        },
         tenantId: null,
         deletedAt: null,
       },
@@ -738,9 +745,9 @@ export class PlatformService {
   }
 
   /**
-   * Create a new platform super administrator account
+   * Create a new platform administrator account with specific platform sub-role
    */
-  async createPlatformAdmin(dto: { name: string; email: string; phone?: string }, actor?: any) {
+  async createPlatformAdmin(dto: { name: string; email: string; phone?: string; role?: string }, actor?: any) {
     const cleanEmail = dto.email.trim().toLowerCase();
     const existing = await this.prisma.user.findFirst({
       where: { email: cleanEmail },
@@ -749,8 +756,19 @@ export class PlatformService {
       throw new ConflictException(`User with email '${cleanEmail}' already exists`);
     }
 
+    const validPlatformRoles = [
+      'platform_super_admin',
+      'platform_operations_manager',
+      'platform_account_onboarding',
+      'platform_client_support',
+    ];
+    const targetRole = validPlatformRoles.includes(dto.role || '') ? dto.role! : 'platform_super_admin';
+
     const count = await this.prisma.user.count({
-      where: { role: 'platform_super_admin', tenantId: null },
+      where: {
+        role: { in: validPlatformRoles },
+        tenantId: null,
+      },
     });
     const employeeCode = `PSA-${String(count + 1).padStart(3, '0')}`;
 
@@ -767,7 +785,7 @@ export class PlatformService {
         email: cleanEmail,
         phone: dto.phone?.trim() || null,
         employeeCode,
-        role: 'platform_super_admin',
+        role: targetRole,
         tenantId: null,
         passwordHash,
         isActive: true,
@@ -887,8 +905,15 @@ export class PlatformService {
    * Toggle active state for a platform administrator
    */
   async togglePlatformAdminActive(id: string, requestedState?: boolean) {
+    const validPlatformRoles = [
+      'platform_super_admin',
+      'platform_operations_manager',
+      'platform_account_onboarding',
+      'platform_client_support',
+    ];
+
     const target = await this.prisma.user.findFirst({
-      where: { id, role: 'platform_super_admin', tenantId: null },
+      where: { id, role: { in: validPlatformRoles }, tenantId: null },
     });
     if (!target) throw new NotFoundException('Platform administrator not found');
 
@@ -896,7 +921,7 @@ export class PlatformService {
 
     if (!nextState) {
       const activeCount = await this.prisma.user.count({
-        where: { role: 'platform_super_admin', tenantId: null, isActive: true },
+        where: { role: { in: validPlatformRoles }, tenantId: null, isActive: true },
       });
       if (activeCount <= 1) {
         throw new BadRequestException('Cannot deactivate the last active Platform Administrator.');
@@ -934,7 +959,18 @@ export class PlatformService {
     dto?: { newPassword?: string; sendEmail?: boolean; appUrl?: string },
   ) {
     const target = await this.prisma.user.findFirst({
-      where: { id, role: 'platform_super_admin', tenantId: null },
+      where: {
+        id,
+        role: {
+          in: [
+            'platform_super_admin',
+            'platform_operations_manager',
+            'platform_account_onboarding',
+            'platform_client_support',
+          ],
+        },
+        tenantId: null,
+      },
     });
     if (!target) throw new NotFoundException('Platform administrator not found');
 

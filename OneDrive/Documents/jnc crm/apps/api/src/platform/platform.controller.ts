@@ -32,7 +32,7 @@ import {
 
 @Controller('platform/tenants')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('platform_super_admin')
+@Roles('platform_super_admin', 'platform_operations_manager', 'platform_account_onboarding', 'platform_client_support')
 export class PlatformController {
   constructor(private readonly platformService: PlatformService) {}
 
@@ -111,7 +111,7 @@ export class PlatformAdminsController {
 
 @Controller('platform/analytics')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('platform_super_admin')
+@Roles('platform_super_admin', 'platform_operations_manager')
 export class PlatformAnalyticsController {
   constructor(private readonly platformService: PlatformService) {}
 

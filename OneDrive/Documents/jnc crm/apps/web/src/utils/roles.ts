@@ -4,6 +4,9 @@
 
 export const ALL_ROLES = [
   'platform_super_admin',
+  'platform_operations_manager',
+  'platform_account_onboarding',
+  'platform_client_support',
   'tenant_admin',
   'admin',
   'sub_admin',
@@ -22,6 +25,9 @@ export type UserRole = (typeof ALL_ROLES)[number];
 
 export const ROLE_RANKS: Record<string, number> = {
   platform_super_admin: 100,
+  platform_operations_manager: 95,
+  platform_account_onboarding: 90,
+  platform_client_support: 90,
   tenant_admin: 80,
   admin: 60,
   sub_admin: 50,
@@ -37,7 +43,10 @@ export const ROLE_RANKS: Record<string, number> = {
 };
 
 export const ROLE_LABELS: Record<string, string> = {
-  platform_super_admin: 'Platform Super Administrator',
+  platform_super_admin: 'Platform Super Administrator (SA)',
+  platform_operations_manager: 'Platform Operations Manager',
+  platform_account_onboarding: 'Account Onboarding Team',
+  platform_client_support: 'Client Support Team',
   tenant_admin: 'Company Administrator (Tenant Admin)',
   admin: 'Administrator',
   sub_admin: 'Sub-Administrator',
@@ -53,11 +62,11 @@ export const ROLE_LABELS: Record<string, string> = {
 };
 
 /**
- * Returns true if the user is the Platform Owner (vendor super admin with no tenant)
+ * Returns true if the user is a Platform Owner/Staff member (vendor platform admin with no tenant)
  */
 export function isPlatformOwner(user?: { role?: string; tenantId?: string | null } | null): boolean {
   if (!user) return false;
-  return user.role === 'platform_super_admin' && !user.tenantId;
+  return !!(user.role && user.role.startsWith('platform_') && !user.tenantId);
 }
 
 /**
