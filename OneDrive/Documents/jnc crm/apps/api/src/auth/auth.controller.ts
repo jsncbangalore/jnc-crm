@@ -40,7 +40,7 @@ const REFRESH_COOKIE_NAME = 'jnc_refresh_token';
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
+  sameSite: 'lax' as const,
   path: '/api/v1/auth',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 };

@@ -220,6 +220,9 @@ export class AuthService {
 
     // ── Block platform_super_admin on this endpoint ──────────────────────────
     const nonPlatformCandidates = candidates.filter((c) => c.role !== 'platform_super_admin');
+    if (nonPlatformCandidates.length === 0 && candidates.length > 0) {
+      throw new UnauthorizedException(GENERIC_ERROR);
+    }
 
     // ── Password check across all non-platform candidates ───────────────────
     const matched: any[] = [];
@@ -232,7 +235,7 @@ export class AuthService {
 
     if (matched.length === 0) {
       // Record failure against first non-platform candidate (or key-only)
-      const firstUser = nonPlatformCandidates[0] ?? candidates[0];
+      const firstUser = nonPlatformCandidates[0];
       const failKey = firstUser?.tenantId
         ? `${(firstUser.email || lower).toLowerCase()}:${firstUser.tenantId}`
         : lockKey;

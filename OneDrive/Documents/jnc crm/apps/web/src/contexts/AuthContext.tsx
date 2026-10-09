@@ -68,7 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const _storeSession = (data: any) => {
-    // Keep access token in memory only
+    // Keep access token in memory only; reset inactivity timestamp for new session
+    lastActivityRef.current = Date.now();
     setAccessToken(data.accessToken);
     if (data.user) {
       localStorage.setItem('jnc_user', JSON.stringify(data.user));
@@ -159,6 +160,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) return;
+
+    // Reset timestamp and modal state whenever active user is present
+    lastActivityRef.current = Date.now();
+    setShowInactivityModal(false);
 
     const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
     const handleActivity = () => {

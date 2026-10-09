@@ -139,7 +139,8 @@ async function runLoginTests() {
         return results;
       },
       findFirst: async ({ where }: any) => {
-        if (where.role === 'platform_super_admin' && where.email?.equals === 'superadmin@jsnc.co.in') {
+        const rawEmail = where.email?.equals || where.OR?.[0]?.email?.equals;
+        if (where.role === 'platform_super_admin' && rawEmail === 'superadmin@jsnc.co.in') {
           return platformAdmin;
         }
         if (where.id?.in) {
