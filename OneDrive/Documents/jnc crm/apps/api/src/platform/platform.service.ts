@@ -786,10 +786,100 @@ export class PlatformService {
       },
     });
 
+    let emailDispatched = false;
+    let emailStatusMessage = 'Email dispatch attempted';
+
+    const frontendUrl = process.env.FRONTEND_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://admin.jsnc.co.in' : 'http://localhost:5173');
+    const loginUrl = `${frontendUrl}/login`;
+
+    const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
+    .card { max-width: 580px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { background: #0f172a; padding: 24px; text-align: center; color: #ffffff; }
+    .header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.025em; }
+    .header p { margin: 4px 0 0; font-size: 13px; color: #94a3b8; }
+    .body { padding: 28px; }
+    .creds-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 18px; margin: 20px 0; }
+    .table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .table td { padding: 8px 4px; vertical-align: middle; }
+    .label { width: 140px; color: #64748b; font-weight: 600; }
+    .val { color: #0f172a; font-weight: 600; }
+    .code-badge { font-family: monospace; font-size: 15px; font-weight: 700; color: #2563eb; }
+    .pass-badge { font-family: monospace; font-size: 16px; font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 4px 10px; border-radius: 6px; display: inline-block; }
+    .btn-container { text-align: center; margin: 28px 0 10px; }
+    .btn { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); }
+    .footer { border-top: 1px solid #f1f5f9; padding: 16px 28px; text-align: center; font-size: 12px; color: #94a3b8; background: #fafafa; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>Platform Administrator Account Created</h1>
+      <p>JNC Master Control Center Access</p>
+    </div>
+    <div class="body">
+      <p>Hello <strong>${newUser.name}</strong>,</p>
+      <p>Your Platform Administrator account has been provisioned. Below are your official master credentials to sign in:</p>
+      
+      <div class="creds-box">
+        <table class="table">
+          <tr>
+            <td class="label">User ID / Code:</td>
+            <td><span class="code-badge">${employeeCode}</span></td>
+          </tr>
+          <tr>
+            <td class="label">Login Email:</td>
+            <td class="val font-mono">${cleanEmail}</td>
+          </tr>
+          <tr>
+            <td class="label">Temporary Password:</td>
+            <td><span class="pass-badge">${tempPassword}</span></td>
+          </tr>
+          <tr>
+            <td class="label">Access Role:</td>
+            <td class="val">Platform Super Administrator</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="btn-container">
+        <a href="${loginUrl}" class="btn">Login to Platform Control Center</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p style="margin: 0 0 4px;">For security, please change your temporary password upon your first sign in.</p>
+      <p style="margin: 0;">JNC CRM Enterprise Platform</p>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    try {
+      await this.notificationsService.sendEmail({
+        to: cleanEmail,
+        subject: `[JNC CRM] Your Platform Administrator Credentials [${employeeCode}]`,
+        html: emailHtml,
+        text: `Hello ${newUser.name},\n\nYour Platform Administrator account has been created:\n\nUser ID: ${employeeCode}\nEmail: ${cleanEmail}\nTemporary Password: ${tempPassword}\nLogin URL: ${loginUrl}\n\nPlease change your password upon first login.`,
+      });
+      emailDispatched = true;
+      emailStatusMessage = `Credentials email sent successfully to ${cleanEmail}`;
+    } catch (err: any) {
+      emailDispatched = false;
+      emailStatusMessage = `Account created, but email sending failed: ${err?.message || 'SMTP error'}`;
+    }
+
     return {
       message: 'Platform administrator account created successfully',
       user: newUser,
       tempPassword,
+      emailDispatched,
+      emailStatusMessage,
     };
   }
 
