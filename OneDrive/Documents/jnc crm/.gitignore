@@ -26,6 +26,8 @@ Super Admin.txt
 *.db.enc
 backups/
 apps/api/backups/
+apps/api/data/
+storage/
 prisma/*.db
 
 # OS Files

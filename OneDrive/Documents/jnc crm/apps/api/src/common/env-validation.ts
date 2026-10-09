@@ -41,6 +41,33 @@ export function validateEnvironmentOrExit(): EnvValidationResult {
   const configuredVariables: string[] = [];
   const invalidVariables: string[] = [];
 
+  // Alias SMTP_FROM to EMAIL_FROM with warning
+  if (process.env.SMTP_FROM && !process.env.EMAIL_FROM) {
+    logger.warn('SMTP_FROM is deprecated; aliasing to EMAIL_FROM. Please update configuration to use EMAIL_FROM.');
+    process.env.EMAIL_FROM = process.env.SMTP_FROM;
+  }
+
+  // Deprecation warning for CORS_ORIGIN / CORS_ORIGINS
+  if (process.env.CORS_ORIGIN || process.env.CORS_ORIGINS) {
+    logger.warn('CORS_ORIGIN and CORS_ORIGINS are deprecated; use ALLOWED_ORIGINS instead.');
+  }
+
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // Ignore COOKIE_SECURE=false in production
+  if (isProduction && process.env.COOKIE_SECURE === 'false') {
+    logger.warn('COOKIE_SECURE=false is ignored in production. Cookies are always secure in production.');
+    process.env.COOKIE_SECURE = 'true';
+  }
+
+  // Enforce https:// FRONTEND_URL in production
+  const frontendUrl = process.env.FRONTEND_URL || '';
+  if (isProduction) {
+    if (!frontendUrl || !frontendUrl.startsWith('https://')) {
+      invalidVariables.push('In production, FRONTEND_URL must be specified and must start with https://');
+    }
+  }
+
   for (const item of MANDATORY_ENV_VARS) {
     const val = process.env[item.key];
     if (!val || val.trim() === '') {

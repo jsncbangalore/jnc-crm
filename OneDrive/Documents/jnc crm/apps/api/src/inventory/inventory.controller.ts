@@ -436,8 +436,8 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
 
   @Delete('clear-all')
   @Roles('tenant_admin')
-  async clearAllInventory(@CurrentUser() user: ScopedUser) {
-    return this.inventoryService.clearAllInventory(user);
+  async clearAllInventory(@Body() body: { confirm?: string }, @CurrentUser() user: ScopedUser) {
+    return this.inventoryService.clearAllInventory(body?.confirm || '', user);
   }
 
   @Get('project-stock/template-csv')
@@ -615,6 +615,14 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   @Roles('tenant_admin', 'admin')
   async deletePurchaseBill(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.deletePurchaseBill(id, user);
+  }
+
+  @Post('purchase-bills/upload-document')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadPurchaseBillDocument(@UploadedFile() file: any, @CurrentUser() user: ScopedUser) {
+    validateUploadedFile(file, 'document_or_image', 10 * 1024 * 1024);
+    return this.inventoryService.uploadPurchaseBillDocument(file, user);
   }
 
   @Post('purchase-bills/scan-ocr')

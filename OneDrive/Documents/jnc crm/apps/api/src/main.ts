@@ -57,14 +57,21 @@ async function bootstrap() {
 
   // 2. Log DB connection info (no password)
   const dbUrl = process.env.DATABASE_URL || '';
-  const match = dbUrl.match(/postgresql:\/\/[^@]+@([^/:]+)[:\/](.+?)(?:\?|$)/);
-  if (match) {
-    const host = match[1];
-    const dbName = match[2];
-    console.log(`Database: ${dbName} @ ${host}`);
-  } else {
-    console.log('Database: <unknown>');
-  }
+  let projectRef = 'unknown';
+  let host = 'localhost';
+  try {
+    const matchHost = dbUrl.match(/@([^:\/]+)/);
+    if (matchHost) host = matchHost[1];
+    const matchRef = dbUrl.match(/postgres\.([a-z0-9]+)|db\.([a-z0-9]+)\.supabase|org\/([a-z0-9]+)/i);
+    if (matchRef) {
+      projectRef = matchRef[1] || matchRef[2] || matchRef[3];
+    } else if (host.includes('supabase.com')) {
+      projectRef = host.split('.')[0];
+    } else {
+      projectRef = process.env.NEW_PROJECT_REF || 'dev-local';
+    }
+  } catch (err) {}
+  console.log(`Database project ${projectRef} @ ${host}`);
 
   const app = await NestFactory.create(AppModule);
 

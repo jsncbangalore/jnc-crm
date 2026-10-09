@@ -7,14 +7,14 @@
 
 import { Module } from '@nestjs/common';
 import { PlatformService } from './platform.service';
-import { PlatformController, PlatformAdminsController } from './platform.controller';
+import { PlatformController, PlatformAdminsController, SystemInfoController } from './platform.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [PrismaModule, AuthModule, NotificationsModule],
-  controllers: [PlatformController, PlatformAdminsController],
+  controllers: [PlatformController, PlatformAdminsController, SystemInfoController],
   providers: [PlatformService],
   exports: [PlatformService],
 })

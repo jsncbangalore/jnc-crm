@@ -51,7 +51,7 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where: { tenantId_employeeCode: { tenantId: defaultTenantId, employeeCode: 'JNC-ADM-001' } },
-    update: { mustResetPassword: true },
+    update: { mustResetPassword: true, email: 'admin@jncnetwork.com' },
     create: {
       tenantId: defaultTenantId,
       employeeCode: 'JNC-ADM-001',
@@ -66,7 +66,7 @@ async function main() {
 
   const emp1 = await prisma.user.upsert({
     where: { tenantId_employeeCode: { tenantId: defaultTenantId, employeeCode: 'JNC-EMP-001' } },
-    update: { mustResetPassword: true },
+    update: { mustResetPassword: true, email: 'priya@jncnetwork.com' },
     create: {
       tenantId: defaultTenantId,
       employeeCode: 'JNC-EMP-001',
@@ -82,7 +82,7 @@ async function main() {
 
   const emp2 = await prisma.user.upsert({
     where: { tenantId_employeeCode: { tenantId: defaultTenantId, employeeCode: 'JNC-EMP-002' } },
-    update: { mustResetPassword: true },
+    update: { mustResetPassword: true, email: 'arjun@jncnetwork.com' },
     create: {
       tenantId: defaultTenantId,
       employeeCode: 'JNC-EMP-002',
@@ -93,6 +93,22 @@ async function main() {
       role: 'employee',
       isActive: true,
       mustResetPassword: true,
+    },
+  });
+
+  const superAdmin = await prisma.user.upsert({
+    where: { id: 'seed-platform-super-admin-id' },
+    update: { mustResetPassword: false, role: 'platform_super_admin' },
+    create: {
+      id: 'seed-platform-super-admin-id',
+      tenantId: null,
+      employeeCode: 'ADM-PLATFORM-001',
+      name: 'Platform Administrator',
+      email: 'superadmin@jsnc.co.in',
+      passwordHash: await hash(initialAdminPass),
+      role: 'platform_super_admin',
+      isActive: true,
+      mustResetPassword: false,
     },
   });
 

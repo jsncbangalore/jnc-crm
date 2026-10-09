@@ -109,3 +109,43 @@ export class PlatformAdminsController {
   }
 }
 
+@Controller('platform/system-info')
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles('platform_super_admin')
+export class SystemInfoController {
+  @Get()
+  getSystemInfo() {
+    let commit = 'c7ba118';
+    try {
+      commit = require('child_process').execSync('git rev-parse --short HEAD', { encoding: 'utf8', timeout: 1000 }).trim();
+    } catch (e) {}
+
+    let version = '1.0.0';
+    try {
+      version = require('../../../package.json').version || '1.0.0';
+    } catch (e) {}
+
+    const dbUrl = process.env.DATABASE_URL || '';
+    let projectRef = 'aybysdzuwwtqhnzhgiwp';
+    let host = 'aws-0-ap-south-1.pooler.supabase.com';
+
+    try {
+      const matchHost = dbUrl.match(/@([^:\/]+)/);
+      if (matchHost) host = matchHost[1];
+      const matchRef = dbUrl.match(/postgres\.([a-z0-9]+)|db\.([a-z0-9]+)\.supabase|org\/([a-z0-9]+)/i);
+      if (matchRef) {
+        projectRef = matchRef[1] || matchRef[2] || matchRef[3];
+      }
+    } catch (err) {}
+
+    const maskedRef = projectRef.length > 8 ? `${projectRef.substring(0, 4)}***${projectRef.substring(projectRef.length - 4)}` : projectRef;
+
+    return {
+      version,
+      commit,
+      projectRef: maskedRef,
+      databaseProject: `Database project ${maskedRef} @ ${host}`,
+    };
+  }
+}
+

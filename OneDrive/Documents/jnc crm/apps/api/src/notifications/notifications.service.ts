@@ -97,37 +97,37 @@ export class NotificationsService {
     }
 
     // 2. Fallback to env configuration
-    const primaryUser = process.env.SMTP_USER || '';
-      const primaryPass = process.env.SMTP_PASS || '';
+    const primaryUser = process.env.SMTP_USER || 'jsnetworkcommunication@gmail.com';
+    const primaryPass = process.env.SMTP_PASS || '';
 
-      if (primaryUser && primaryPass) {
-        const isGmail = primaryUser.toLowerCase().includes('@gmail.com');
-        const host = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'smtpout.secureserver.net');
-        const port = Number(process.env.SMTP_PORT) || (isGmail ? 465 : 587);
+    if (primaryUser && primaryPass) {
+      const isGmail = primaryUser.toLowerCase().includes('@gmail.com');
+      const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+      const port = Number(process.env.SMTP_PORT) || 465;
 
-        let transporter = this.transporterCache.get('default_root_smtp');
-        if (!transporter) {
-          transporter = nodemailer.createTransport({
-            host,
-            port,
-            secure: port === 465,
-            auth: { user: primaryUser, pass: primaryPass },
-            tls: { rejectUnauthorized: false },
-          });
-          this.transporterCache.set('default_root_smtp', transporter);
-        }
-
-        return {
-          transporter,
-          fromEmail: primaryUser,
-          senderName: 'JS Network Communication',
-        };
+      let transporter = this.transporterCache.get('default_root_smtp');
+      if (!transporter) {
+        transporter = nodemailer.createTransport({
+          host,
+          port,
+          secure: port === 465,
+          auth: { user: primaryUser, pass: primaryPass },
+          tls: { rejectUnauthorized: false },
+        });
+        this.transporterCache.set('default_root_smtp', transporter);
       }
+
+      return {
+        transporter,
+        fromEmail: primaryUser,
+        senderName: 'JS Network Communication',
+      };
+    }
 
     // 3. For third-party customer tenants with no SMTP configured: return null
     return {
       transporter: null,
-      fromEmail: 'noreply@jsnc.co.in',
+      fromEmail: 'jsnetworkcommunication@gmail.com',
       senderName: 'System Notification',
     };
   }

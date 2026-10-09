@@ -96,7 +96,7 @@ export class NotificationsController {
     const messageLog = await this.prisma.messageLog.create({
       data: {
         channel: 'email_inbound',
-        recipient: 'jayaraj@jsnc.co.in',
+        recipient: process.env.SMTP_USER || 'jsnetworkcommunication@gmail.com',
         subject: body.subject || `Reply from ${cleanFrom}`,
         body: content,
         status: 'received',

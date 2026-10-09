@@ -107,7 +107,7 @@ function buildHtml(u) {
 
       <div style="background: #F1F5F9; padding: 16px 24px; border-top: 1px solid #E2E8F0; text-align: center; color: #64748B; font-size: 11px;">
         <p style="margin: 0; font-weight: 600;">JS Network Communication &mdash; Enterprise Management Portal</p>
-        <p style="margin: 4px 0 0 0;">Support Hotline: +91 9663421455 | Email: jayaraj@jsnc.co.in</p>
+        <p style="margin: 4px 0 0 0;">Support Hotline: +91 9663421455 | Email: jsnetworkcommunication@gmail.com</p>
       </div>
     </div>
   `;
