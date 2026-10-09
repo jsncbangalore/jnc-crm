@@ -99,11 +99,19 @@ export default function PlatformAdminsPage() {
 
   const handleResetCredentials = async (admin: User) => {
     showConfirm(
-      `Reset credentials for ${admin.name}? A new temporary password will be generated and dispatched.`,
+      `Reset credentials for ${admin.name} (${admin.email})? A new temporary password will be generated and dispatched via email.`,
       async () => {
         try {
-          const { data } = await platformApi.resetAdminUserPassword(admin.id);
-          setCreatedResult({ user: admin, tempPassword: data.tempPassword });
+          const { data } = await platformApi.resetAdminUserPassword(admin.id, {
+            sendEmail: true,
+            appUrl: window.location.origin + '/platform/login',
+          });
+          setCreatedResult({
+            user: admin,
+            tempPassword: data.tempPassword,
+            emailDispatched: data.emailDispatched,
+            emailStatusMessage: data.emailStatusMessage,
+          });
           fetchAdmins();
         } catch (err: any) {
           const msg = err?.response?.data?.message || (err.response ? `Server Error (${err.response.status}): ${err.response.statusText || 'Could not reset credentials'}` : 'Unable to connect to server');
@@ -111,7 +119,7 @@ export default function PlatformAdminsPage() {
         }
       },
       'Reset Admin Credentials',
-      'Reset'
+      'Reset & Send Email'
     );
   };
 
@@ -373,6 +381,16 @@ export default function PlatformAdminsPage() {
                 Platform Administrator Credentials
               </h2>
 
+              {(createdResult as any).emailStatusMessage && (
+                <div className={`p-3 rounded-xl border text-xs ${
+                  (createdResult as any).emailDispatched
+                    ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                    : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
+                }`}>
+                  {(createdResult as any).emailStatusMessage}
+                </div>
+              )}
+
               <div className="bg-slate-50 dark:bg-[#1E2230] p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-2 text-xs font-mono">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Name:</span>
@@ -396,7 +414,7 @@ export default function PlatformAdminsPage() {
                 )}
                 <div className="flex justify-between pt-1 border-t border-slate-200 dark:border-slate-800">
                   <span className="text-slate-500">Login Portal:</span>
-                  <span className="text-crm-blue font-bold">{window.location.origin}/login</span>
+                  <span className="text-crm-blue font-bold">{window.location.origin}/platform/login</span>
                 </div>
               </div>
 
@@ -409,7 +427,7 @@ export default function PlatformAdminsPage() {
                       `User ID: ${createdResult.user.employeeCode}`,
                       `Email: ${createdResult.user.email}`,
                       createdResult.tempPassword ? `Password: ${createdResult.tempPassword}` : '',
-                      `Login URL: ${window.location.origin}/login`,
+                      `Login URL: ${window.location.origin}/platform/login`,
                     ].filter(Boolean).join('\n');
                     navigator.clipboard.writeText(text);
                     setCopied(true);

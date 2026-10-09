@@ -837,33 +837,144 @@ export class PlatformService {
   }
 
   /**
-   * Reset credentials for a platform administrator
+   * Reset credentials for a platform administrator and send credentials email
    */
-  async resetPlatformAdminUserPassword(id: string) {
+  async resetPlatformAdminUserPassword(
+    id: string,
+    dto?: { newPassword?: string; sendEmail?: boolean; appUrl?: string },
+  ) {
     const target = await this.prisma.user.findFirst({
       where: { id, role: 'platform_super_admin', tenantId: null },
     });
     if (!target) throw new NotFoundException('Platform administrator not found');
 
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*()_+';
-    let tempPassword = '';
+    let generatedPass = '';
     for (let i = 0; i < 14; i++) {
-      tempPassword += chars.charAt(crypto.randomInt(0, chars.length));
+      generatedPass += chars.charAt(crypto.randomInt(0, chars.length));
     }
-    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    const passwordToSet = dto?.newPassword?.trim() || generatedPass;
+    const passwordHash = await bcrypt.hash(passwordToSet, 10);
 
     await this.prisma.user.update({
       where: { id },
       data: {
         passwordHash,
         mustResetPassword: true,
+        isActive: true,
         tokenVersion: { increment: 1 },
       },
     });
 
+    // Clear any account lockout records
+    try {
+      const emailKey = `platform-email:${target.email.toLowerCase()}`;
+      await this.prisma.accountLockout.deleteMany({
+        where: {
+          OR: [
+            { identityKey: emailKey },
+            { identityKey: target.email.toLowerCase() },
+          ],
+        },
+      });
+    } catch {}
+
+    let emailDispatched = false;
+    let emailStatusMessage = 'Email not requested';
+
+    if (dto?.sendEmail !== false) {
+      const frontendUrl = dto?.appUrl || process.env.FRONTEND_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://admin.jsnc.co.in' : 'http://localhost:5173');
+      const platformLoginUrl = frontendUrl.endsWith('/platform/login') ? frontendUrl : `${frontendUrl}/platform/login`;
+
+      const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
+    .card { max-width: 580px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { background: #0f172a; padding: 24px; text-align: center; color: #ffffff; }
+    .header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.025em; }
+    .header p { margin: 4px 0 0; font-size: 13px; color: #94a3b8; }
+    .body { padding: 28px; }
+    .creds-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 18px; margin: 20px 0; }
+    .table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .table td { padding: 8px 4px; vertical-align: middle; }
+    .label { width: 140px; color: #64748b; font-weight: 600; }
+    .val { color: #0f172a; font-weight: 600; }
+    .code-badge { font-family: monospace; font-size: 15px; font-weight: 700; color: #2563eb; }
+    .pass-badge { font-family: monospace; font-size: 16px; font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 4px 10px; border-radius: 6px; display: inline-block; }
+    .btn-container { text-align: center; margin: 28px 0 10px; }
+    .btn { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); }
+    .footer { border-top: 1px solid #f1f5f9; padding: 16px 28px; text-align: center; font-size: 12px; color: #94a3b8; background: #fafafa; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>Platform Master Credentials Reset</h1>
+      <p>Platform Super Admin Access for JNC CRM</p>
+    </div>
+    <div class="body">
+      <p>Hello <strong>${target.name}</strong>,</p>
+      <p>Your Platform Super Administrator credentials for the JNC CRM Master Console have been reset. Below are your updated sign-in details:</p>
+      
+      <div class="creds-box">
+        <table class="table">
+          <tr>
+            <td class="label">User ID / Code:</td>
+            <td><span class="code-badge">${target.employeeCode}</span></td>
+          </tr>
+          <tr>
+            <td class="label">Official Email:</td>
+            <td class="val font-mono">${target.email}</td>
+          </tr>
+          <tr>
+            <td class="label">New Password:</td>
+            <td><span class="pass-badge">${passwordToSet}</span></td>
+          </tr>
+          <tr>
+            <td class="label">Role:</td>
+            <td class="val">Platform Super Admin</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="btn-container">
+        <a href="${platformLoginUrl}" class="btn">Login to Master Console</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p style="margin: 0 0 4px;">For security, please change your password upon logging in.</p>
+      <p style="margin: 0;">JNC CRM Multi-Tenant Cloud Platform</p>
+    </div>
+  </div>
+</body>
+</html>
+      `;
+
+      try {
+        await this.notificationsService.sendEmail({
+          to: target.email,
+          subject: `[JNC CRM] Platform Super Admin Access Credentials Reset`,
+          html: emailHtml,
+          text: `Hello ${target.name},\n\nYour Platform Super Admin credentials for JNC CRM have been updated:\n\nUser ID: ${target.employeeCode}\nEmail: ${target.email}\nNew Password: ${passwordToSet}\nPlatform Login URL: ${platformLoginUrl}\n\nPlease change your password upon logging in.`,
+        });
+        emailDispatched = true;
+        emailStatusMessage = `Credentials email sent successfully to ${target.email}`;
+      } catch (err: any) {
+        emailDispatched = false;
+        emailStatusMessage = `Password updated, but email sending failed: ${err?.message || 'SMTP error'}`;
+      }
+    }
+
     return {
-      message: `Password for platform administrator ${target.name} has been reset.`,
-      tempPassword,
+      success: true,
+      message: `Password for platform administrator ${target.name} has been reset successfully`,
+      emailDispatched,
+      emailStatusMessage,
+      tempPassword: passwordToSet,
       user: target,
     };
   }
