@@ -14,7 +14,7 @@ export const getApiBaseUrl = () => {
       return '/api/v1';
     }
   }
-  return (import.meta as any).env?.VITE_API_URL || 'https://api.jsnc.co.in/api/v1';
+  return (import.meta as any).env?.VITE_API_URL || 'https://jnc-crm-backend.onrender.com/api/v1';
 };
 
 const api = axios.create({
@@ -176,6 +176,7 @@ export const platformApi = {
   createAdmin: (data: any) => api.post('/platform/admins', data),
   toggleAdminActive: (id: string, isActive?: boolean) => api.patch(`/platform/admins/${id}/toggle-active`, { isActive }),
   resetAdminUserPassword: (id: string) => api.post(`/platform/admins/${id}/reset-password`),
+  getSystemInfo: () => api.get('/platform/system-info'),
 };
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────

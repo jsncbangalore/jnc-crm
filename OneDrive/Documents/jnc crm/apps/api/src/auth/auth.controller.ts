@@ -30,6 +30,7 @@ import {
   UpdateProfileDto,
   ChangePasswordDto,
 } from './dto/login.dto';
+import { isAllowedOrigin } from '../common/cors-config';
 import { AuthGuard } from '@nestjs/passport';
 import { CurrentUser } from './current-user.decorator';
 import { Response, Request } from 'express';
@@ -54,16 +55,7 @@ function enforceCsrf(req: Request) {
   // 2. Validate Origin if provided
   const origin = req.headers.origin;
   if (origin) {
-    const allowed = [
-      'https://admin.jsnc.co.in',
-      'https://api.jsnc.co.in',
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:3333',
-      'http://127.0.0.1:5173',
-    ];
-    const isAllowed = allowed.some((a) => origin.startsWith(a));
-    if (!isAllowed) {
+    if (!isAllowedOrigin(origin)) {
       throw new ForbiddenException(`CSRF validation failed: Origin '${origin}' is not permitted.`);
     }
   }

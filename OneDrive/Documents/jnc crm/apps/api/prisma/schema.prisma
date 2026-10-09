@@ -86,6 +86,7 @@ model Tenant {
   auditLogs       AuditLog[]
   paymentRecords  PaymentRecord[]
   stockPositions  ProjectStockPosition[]
+  purchaseBills   PurchaseBill[]
 
   @@index([status])
 }
@@ -142,6 +143,7 @@ model User {
   createdContacts   Contact[]  @relation("CreatedContacts")
   createdLeads      Lead[]     @relation("CreatedLeads")
   createdSuppliers  Supplier[] @relation("CreatedSuppliers")
+  createdPurchaseBills PurchaseBill[] @relation("CreatedPurchaseBills")
   passwordResetTokens PasswordResetToken[]
   refreshSessions   RefreshSession[]
 
@@ -1028,4 +1030,26 @@ model AccountLockout {
   lastAttemptAt  DateTime  @default(now())
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+}
+
+model PurchaseBill {
+  id           String    @id @default(uuid())
+  tenantId     String
+  billNumber   String
+  supplierName String
+  billDate     DateTime  @default(now())
+  amount       Float     @default(0)
+  status       String    @default("received") // received | pending | paid | cancelled
+  documentUrl  String?
+  notes        String?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy    User?     @relation("CreatedPurchaseBills", fields: [createdById], references: [id])
+
+  @@index([tenantId])
+  @@index([billNumber])
 }
