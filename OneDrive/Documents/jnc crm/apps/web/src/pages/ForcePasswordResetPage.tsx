@@ -23,8 +23,8 @@ export default function ForcePasswordResetPage() {
       setError('Please enter your current temporary password.');
       return;
     }
-    if (newPass.length < 8) {
-      setError('New password must be at least 8 characters long.');
+    if (newPass.length < 12) {
+      setError('New password must be at least 12 characters long.');
       return;
     }
     if (newPass !== confirmPass) {

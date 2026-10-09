@@ -227,7 +227,8 @@ export class PlatformService {
     let emailStatusMessage = 'Email not requested';
 
     if (dto.sendEmail !== false) {
-      const loginUrl = dto.appUrl || process.env.APP_URL || 'http://localhost:5173/login';
+      const frontendUrl = dto.appUrl || process.env.FRONTEND_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://admin.jsnc.co.in' : 'http://localhost:5173');
+      const loginUrl = frontendUrl.endsWith('/login') ? frontendUrl : `${frontendUrl}/login`;
 
       const emailHtml = `
 <!DOCTYPE html>
@@ -456,7 +457,7 @@ export class PlatformService {
       impersonatedTenantCode: tenant.code,
     };
 
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '8h' });
 
     // Write audit log entry for impersonation
     try {
@@ -598,7 +599,8 @@ export class PlatformService {
     let emailStatusMessage = 'Email not requested';
 
     if (dto?.sendEmail !== false) {
-      const loginUrl = dto?.appUrl || process.env.APP_URL || 'http://localhost:5173/login';
+      const frontendUrl = dto?.appUrl || process.env.FRONTEND_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://admin.jsnc.co.in' : 'http://localhost:5173');
+      const loginUrl = frontendUrl.endsWith('/login') ? frontendUrl : `${frontendUrl}/login`;
 
       const emailHtml = `
 <!DOCTYPE html>

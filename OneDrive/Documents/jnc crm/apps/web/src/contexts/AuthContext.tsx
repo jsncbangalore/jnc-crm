@@ -120,6 +120,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
     (async () => {
       try {
+        // If currently in impersonation / support mode, preserve client workspace session
+        const storedUserRaw = localStorage.getItem('jnc_user');
+        if (storedUserRaw) {
+          try {
+            const parsed = JSON.parse(storedUserRaw);
+            if (parsed?.isImpersonating && sessionStorage.getItem('jnc_master_token')) {
+              if (isMounted) {
+                setIsLoading(false);
+              }
+              return;
+            }
+          } catch {}
+        }
+
         const { data } = await authApi.refresh();
         if (isMounted && data) {
           _storeSession(data);
