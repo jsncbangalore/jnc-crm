@@ -28,7 +28,7 @@ function runReleasePack() {
   const securityChecks = [
     { name: 'Production CORS Enforcement', file: path.join(rootDir, 'apps/api/src/common/cors-config.ts'), pattern: /isProduction/ },
     { name: 'HTTPS FRONTEND_URL Guard', file: path.join(rootDir, 'apps/api/src/common/env-validation.ts'), pattern: /https:\/\// },
-    { name: 'Email Localhost Sanitization', file: path.join(rootDir, 'apps/api/src/auth/auth.service.ts'), pattern: /FRONTEND_URL/ },
+    { name: 'Email Localhost Sanitization', file: path.join(rootDir, 'apps/api/src/auth/auth.service.ts'), pattern: /getFrontendUrl|FRONTEND_URL/ },
     { name: 'PurchaseBill Prisma Model', file: path.join(rootDir, 'apps/api/prisma/schema.prisma'), pattern: /model PurchaseBill/ },
     { name: 'Inventory Clear-All Confirm & Rate Limit', file: path.join(rootDir, 'apps/api/src/inventory/inventory.service.ts'), pattern: /INVENTORY_CLEAR_ALL/ },
     { name: 'System Info Endpoint', file: path.join(rootDir, 'apps/api/src/platform/platform.controller.ts'), pattern: /SystemInfoController/ },

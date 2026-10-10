@@ -26,6 +26,9 @@ import {
 } from './dto/login.dto';
 import { getRoleRedirectPath } from './roles';
 import { validatePasswordPolicy, needsRehash } from '../common/password-policy';
+import { getFrontendUrl } from '../common/url.util';
+
+import { NotificationsService } from '../notifications/notifications.service';
 
 const GENERIC_ERROR = 'Invalid credentials.';
 
@@ -40,6 +43,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private notificationsService: NotificationsService,
   ) {}
 
   // ─── Lockout helpers ─────────────────────────────────────────────────────────
@@ -449,34 +453,80 @@ export class AuthService {
     });
 
     if (!user) {
-      // Simulate some DB time to prevent timing oracle
-      await this._addArtificialDelay();
       return { message: 'If that email exists, a reset link has been sent.' };
     }
 
-    // Invalidate old tokens
+    // Clean up expired tokens for this user
     await this.prisma.passwordResetToken
-      .updateMany({
-        where: { userId: user.id, usedAt: null },
-        data: { usedAt: new Date() },
+      .deleteMany({
+        where: { userId: user.id, OR: [{ usedAt: { not: null } }, { expiresAt: { lt: new Date() } }] },
       })
       .catch(() => {});
 
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 60 minutes for resilience
 
     await this.prisma.passwordResetToken.create({
       data: { userId: user.id, tokenHash, expiresAt },
     });
 
-    // TODO: integrate email provider. For now log to console in dev.
-    const frontendUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://admin.jsnc.co.in' : 'http://localhost:5173');
+    const frontendUrl = getFrontendUrl();
     const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[DEV] Password reset link for ${lower}: ${resetUrl}`);
-    }
-    // When a real email provider is configured, send here.
+
+    const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
+    .card { max-width: 580px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { background: #0f172a; padding: 24px; text-align: center; color: #ffffff; }
+    .header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.025em; }
+    .header p { margin: 4px 0 0; font-size: 13px; color: #94a3b8; }
+    .body { padding: 28px; }
+    .btn-container { text-align: center; margin: 28px 0 10px; }
+    .btn { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); }
+    .footer { border-top: 1px solid #f1f5f9; padding: 16px 28px; text-align: center; font-size: 12px; color: #94a3b8; background: #fafafa; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>Password Reset Request</h1>
+      <p>JS Network Communication CRM</p>
+    </div>
+    <div class="body">
+      <p>Hello <strong>${user.name}</strong>,</p>
+      <p>We received a request to reset the password for your account (<strong>${user.email}</strong>). Click the button below to set your new password:</p>
+      
+      <div class="btn-container">
+        <a href="${resetUrl}" class="btn">Reset My Password</a>
+      </div>
+
+      <p style="font-size: 12px; color: #64748b; margin-top: 20px;">
+        If you did not request a password reset, you can safely ignore this email. The reset link will expire in 60 minutes.
+      </p>
+    </div>
+    <div class="footer">
+      <p style="margin: 0;">JS Network Communication Enterprise CRM</p>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    // Asynchronously dispatch email so HTTP response returns instantly
+    this.notificationsService.sendEmail({
+      to: user.email,
+      subject: `[JNC CRM] Password Reset Request`,
+      html: emailHtml,
+      text: `Hello ${user.name},\n\nWe received a request to reset your password:\n${resetUrl}\n\nThis link expires in 60 minutes.`,
+      tenantId: user.tenantId || undefined,
+    }).catch((err) => {
+      console.error(`Failed to dispatch reset email to ${user.email}:`, err.message);
+    });
 
     return { message: 'If that email exists, a reset link has been sent.' };
   }
@@ -484,7 +534,8 @@ export class AuthService {
   // ─── POST /auth/reset-password ───────────────────────────────────────────────
 
   async resetPassword(dto: ResetPasswordDto) {
-    const tokenHash = crypto.createHash('sha256').update(dto.token).digest('hex');
+    const rawToken = (dto.token || '').trim();
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
 
     const record = await this.prisma.passwordResetToken.findUnique({
       where: { tokenHash },

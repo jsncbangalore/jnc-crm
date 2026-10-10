@@ -15,6 +15,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { NotificationsService } from '../notifications/notifications.service';
+import { getFrontendUrl } from '../common/url.util';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 
@@ -227,7 +228,7 @@ export class PlatformService {
     let emailStatusMessage = 'Email not requested';
 
     if (dto.sendEmail !== false) {
-      const frontendUrl = dto.appUrl || process.env.FRONTEND_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://admin.jsnc.co.in' : 'http://localhost:5173');
+      const frontendUrl = getFrontendUrl(dto.appUrl);
       const loginUrl = frontendUrl.endsWith('/login') ? frontendUrl : `${frontendUrl}/login`;
 
       const emailHtml = `
@@ -599,7 +600,7 @@ export class PlatformService {
     let emailStatusMessage = 'Email not requested';
 
     if (dto?.sendEmail !== false) {
-      const frontendUrl = dto?.appUrl || process.env.FRONTEND_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://admin.jsnc.co.in' : 'http://localhost:5173');
+      const frontendUrl = getFrontendUrl(dto?.appUrl);
       const loginUrl = frontendUrl.endsWith('/login') ? frontendUrl : `${frontendUrl}/login`;
 
       const emailHtml = `
@@ -807,7 +808,7 @@ export class PlatformService {
     let emailDispatched = false;
     let emailStatusMessage = 'Email dispatch attempted';
 
-    const frontendUrl = process.env.FRONTEND_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://admin.jsnc.co.in' : 'http://localhost:5173');
+    const frontendUrl = getFrontendUrl();
     const loginUrl = `${frontendUrl}/login`;
 
     const emailHtml = `
@@ -1009,7 +1010,7 @@ export class PlatformService {
     let emailStatusMessage = 'Email not requested';
 
     if (dto?.sendEmail !== false) {
-      const frontendUrl = dto?.appUrl || process.env.FRONTEND_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://admin.jsnc.co.in' : 'http://localhost:5173');
+      const frontendUrl = getFrontendUrl(dto?.appUrl);
       const platformLoginUrl = frontendUrl.endsWith('/platform/login') ? frontendUrl : `${frontendUrl}/platform/login`;
 
       const emailHtml = `
@@ -1176,7 +1177,7 @@ export class PlatformService {
    */
   async sendSummaryReport(targetEmail?: string) {
     const analytics = await this.getAnalytics();
-    const recipient = (targetEmail || process.env.PRIMARY_EMAIL_FROM || 'jsnetworkcommunication@gmail.com').trim();
+    const recipient = (targetEmail || process.env.PRIMARY_EMAIL_FROM || 'jsnccrm@gmail.com').trim();
 
     const emailHtml = `
 <!DOCTYPE html>

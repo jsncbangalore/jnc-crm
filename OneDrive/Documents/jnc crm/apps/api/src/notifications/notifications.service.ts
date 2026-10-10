@@ -97,7 +97,7 @@ export class NotificationsService {
     }
 
     // 2. Fallback to env configuration
-    const primaryUser = process.env.SMTP_USER || 'jsnetworkcommunication@gmail.com';
+    const primaryUser = process.env.SMTP_USER || 'jsnccrm@gmail.com';
     const primaryPass = process.env.SMTP_PASS || '';
 
     if (primaryUser && primaryPass) {
@@ -127,7 +127,7 @@ export class NotificationsService {
     // 3. For third-party customer tenants with no SMTP configured: return null
     return {
       transporter: null,
-      fromEmail: 'jsnetworkcommunication@gmail.com',
+      fromEmail: 'jsnccrm@gmail.com',
       senderName: 'System Notification',
     };
   }
@@ -196,9 +196,16 @@ export class NotificationsService {
     let transportInfo: any = null;
 
     if (!transporter) {
-      this.logger.warn(`No SMTP account registered for tenant ${tenantId}. Message logged without outward SMTP transmission.`);
+      const isMissingPass = !process.env.SMTP_PASS;
+      if (isMissingPass) {
+        this.logger.warn(`[SMTP WARN] SMTP_PASS environment variable is missing on server host. Please configure SMTP_PASS in Render Environment Variables.`);
+      } else {
+        this.logger.warn(`No SMTP account registered for tenant ${tenantId}. Message logged without outward SMTP transmission.`);
+      }
       status = 'queued';
-      errorMessage = 'No tenant SMTP account configured. Message stored in in-app log.';
+      errorMessage = isMissingPass
+        ? 'SMTP_PASS missing in server environment variables. Configure SMTP_PASS in Render Dashboard.'
+        : 'No tenant SMTP account configured. Message stored in in-app log.';
     } else {
       try {
         transportInfo = await transporter.sendMail({
@@ -219,9 +226,43 @@ export class NotificationsService {
           this.logger.error(errorMessage);
         }
       } catch (err: any) {
-        this.logger.error(`Failed to send email to ${options.to}: ${err.message}`);
-        status = 'failed';
-        errorMessage = err.message || 'SMTP network or authentication failure';
+        this.logger.warn(`Primary SMTP attempt failed (${err.message}). Attempting Port 587 STARTTLS fallback for ${options.to}...`);
+        
+        // Fallback retry on Port 587 STARTTLS (resilient for cloud environments like Render)
+        try {
+          const fallbackTransporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST || 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            requireTLS: true,
+            auth: {
+              user: process.env.SMTP_USER || 'jsnccrm@gmail.com',
+              pass: process.env.SMTP_PASS || '',
+            },
+            tls: { rejectUnauthorized: false },
+          });
+
+          transportInfo = await fallbackTransporter.sendMail({
+            from: `"${senderDisplayName}" <${fromAddress}>`,
+            to: options.to,
+            subject: options.subject,
+            html: options.html,
+            text: options.text,
+            attachments: options.attachments,
+          });
+
+          if (transportInfo && (transportInfo.accepted?.length > 0 || transportInfo.messageId)) {
+            status = 'sent';
+            this.logger.log(`[EMAIL DISPATCH SUCCESS via Port 587 Fallback] MessageId: ${transportInfo.messageId} | To: ${options.to}`);
+          } else {
+            status = 'failed';
+            errorMessage = err.message || 'SMTP fallback rejected';
+          }
+        } catch (fallbackErr: any) {
+          this.logger.error(`Failed to send email to ${options.to} after fallback: ${fallbackErr.message}`);
+          status = 'failed';
+          errorMessage = fallbackErr.message || 'SMTP network or authentication failure';
+        }
       }
     }
 

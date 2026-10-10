@@ -47,7 +47,11 @@ export default function ResetPasswordPage() {
       setDone(true);
       setTimeout(() => navigate('/login'), 3000);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Reset link is invalid or has expired. Please request a new one.');
+      const serverMsg = err?.response?.data?.message;
+      const formattedError = Array.isArray(serverMsg)
+        ? serverMsg.join('. ')
+        : (typeof serverMsg === 'string' ? serverMsg : 'Reset link is invalid or has expired. Please request a new one.');
+      setError(formattedError);
     } finally {
       setLoading(false);
     }

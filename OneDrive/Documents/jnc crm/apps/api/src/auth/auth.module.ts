@@ -14,6 +14,8 @@ import { JwtStrategy } from './jwt.strategy';
 import { RolesGuard } from './roles.guard';
 import { ScopingService } from './scoping.service';
 
+import { NotificationsModule } from '../notifications/notifications.module';
+
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
