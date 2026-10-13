@@ -11,13 +11,14 @@ import {
   ConflictException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { NotificationsService } from '../notifications/notifications.service';
-import { getFrontendUrl } from '../common/url.util';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+import { ResetTenantAdminPasswordDto } from './dto/platform-admin.dto';
 
 export interface CreateTenantDto {
   code: string;            // e.g. "VERTEX", "ACME"
@@ -56,6 +57,8 @@ export interface UpdateTenantDto {
 
 @Injectable()
 export class PlatformService {
+  private readonly logger = new Logger(PlatformService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -205,7 +208,7 @@ export class PlatformService {
           passwordHash,
           role: 'tenant_admin',
           isActive: true,
-          mustResetPassword: true,
+          mustResetPassword: Boolean(!dto.adminPassword),
         },
       });
 
@@ -226,10 +229,10 @@ export class PlatformService {
     // 3. Dispatch official credentials email to the newly created company's Super Admin
     let emailDispatched = false;
     let emailStatusMessage = 'Email not requested';
+    const baseFrontendUrl = (process.env.FRONTEND_URL || dto?.appUrl || process.env.APP_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
+    const loginUrl = `${baseFrontendUrl}/login`;
 
     if (dto.sendEmail !== false) {
-      const frontendUrl = getFrontendUrl(dto.appUrl);
-      const loginUrl = frontendUrl.endsWith('/login') ? frontendUrl : `${frontendUrl}/login`;
 
       const emailHtml = `
 <!DOCTYPE html>
@@ -308,15 +311,20 @@ export class PlatformService {
       `;
 
       try {
-        await this.notificationsService.sendEmail({
+        const mailRes = await this.notificationsService.sendEmail({
           to: result.adminUser.email,
           subject: `[JNC CRM] Welcome! Your CRM Workspace Access Credentials for ${result.tenant.name}`,
           html: emailHtml,
           text: `Hello ${result.adminUser.name},\n\nYour company's CRM workspace has been provisioned:\n\nCompany: ${result.tenant.name} (${result.tenant.code})\nUser ID: ${result.adminUser.employeeCode}\nEmail: ${result.adminUser.email}\nTemporary Password: ${tempPassword}\nLogin URL: ${loginUrl}\n\nPlease change your temporary password upon first login.`,
           tenantId: result.tenant.id,
         });
-        emailDispatched = true;
-        emailStatusMessage = `Credentials email dispatched successfully to ${result.adminUser.email}`;
+        if (mailRes && mailRes.status === 'sent') {
+          emailDispatched = true;
+          emailStatusMessage = `Credentials email dispatched successfully to ${result.adminUser.email}`;
+        } else {
+          emailDispatched = false;
+          emailStatusMessage = `Company created, but email could not be delivered (${mailRes?.status || 'unconfirmed'})`;
+        }
       } catch (err: any) {
         emailDispatched = false;
         emailStatusMessage = `Company created, but email could not be sent: ${err?.message || 'SMTP error'}`;
@@ -327,6 +335,7 @@ export class PlatformService {
       message: 'Company workspace and Tenant Admin created successfully',
       emailDispatched,
       emailStatusMessage,
+      loginUrl: `${baseFrontendUrl}/login`,
       tenant: result.tenant,
       adminUser: {
         id: result.adminUser.id,
@@ -458,7 +467,7 @@ export class PlatformService {
       impersonatedTenantCode: tenant.code,
     };
 
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '8h' });
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
 
     // Write audit log entry for impersonation
     try {
@@ -521,7 +530,7 @@ export class PlatformService {
    */
   async resetTenantAdminPassword(
     tenantId: string,
-    dto?: { newPassword?: string; adminEmail?: string; sendEmail?: boolean; appUrl?: string },
+    dto?: ResetTenantAdminPasswordDto,
   ) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -550,8 +559,8 @@ export class PlatformService {
     // Determine target email: dto.adminEmail > tenant.email > adminUser.email
     const targetEmail = (dto?.adminEmail?.trim() || tenant.email || adminUser.email).trim().toLowerCase();
 
-    // Generate strong password (minimum 12 chars using crypto.randomInt)
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*()_+';
+    // Generate strong password (minimum 12 chars using crypto.randomInt, HTML and email safe)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789#@!$*-_';
     let generatedPass = '';
     for (let i = 0; i < 14; i++) {
       generatedPass += chars.charAt(crypto.randomInt(0, chars.length));
@@ -560,29 +569,43 @@ export class PlatformService {
 
     const passwordHash = await bcrypt.hash(passwordToSet, 10);
 
-    // Update password, email, increment tokenVersion (invalidates old tokens), and unlock account in database
+    const mustReset = dto?.mustResetPassword !== undefined
+      ? Boolean(dto.mustResetPassword)
+      : (dto?.newPassword ? false : true);
+
+    // Update password, email, increment tokenVersion (invalidates old tokens), reset failed attempts and unlock account in database
     await this.prisma.user.update({
       where: { id: adminUser.id },
       data: {
         email: targetEmail,
         passwordHash,
-        mustResetPassword: true,
+        mustResetPassword: mustReset,
         isActive: true,
+        failedLoginAttempts: 0,
+        lockoutUntil: null,
         tokenVersion: { increment: 1 },
       },
     });
 
-    // Clear any lockout record
+    // Clear all lockout records across all identity key variants
     try {
+      const lockKeys = [
+        targetEmail,
+        targetEmail.toLowerCase(),
+        `${targetEmail}:${tenant.id}`,
+        `${targetEmail.toLowerCase()}:${tenant.id}`,
+        `platform-email:${targetEmail}`,
+        `platform-email:${targetEmail.toLowerCase()}`,
+        adminUser.email.toLowerCase(),
+        `${adminUser.email.toLowerCase()}:${tenant.id}`,
+        `platform-email:${adminUser.email.toLowerCase()}`,
+        adminUser.employeeCode.toLowerCase(),
+        adminUser.employeeCode.toUpperCase(),
+        `${adminUser.employeeCode.toLowerCase()}:${tenant.id}`,
+        `platform-email:${adminUser.employeeCode.toLowerCase()}`,
+      ];
       await this.prisma.accountLockout.deleteMany({
-        where: {
-          OR: [
-            { identityKey: targetEmail },
-            { identityKey: `${targetEmail}:${tenant.id}` },
-            { identityKey: adminUser.email.toLowerCase() },
-            { identityKey: `${adminUser.email.toLowerCase()}:${tenant.id}` },
-          ],
-        },
+        where: { identityKey: { in: lockKeys } },
       });
     } catch {}
 
@@ -598,10 +621,10 @@ export class PlatformService {
 
     let emailDispatched = false;
     let emailStatusMessage = 'Email not requested';
+    const baseFrontendUrl = (process.env.FRONTEND_URL || dto?.appUrl || process.env.APP_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
+    const loginUrl = `${baseFrontendUrl}/login`;
 
     if (dto?.sendEmail !== false) {
-      const frontendUrl = getFrontendUrl(dto?.appUrl);
-      const loginUrl = frontendUrl.endsWith('/login') ? frontendUrl : `${frontendUrl}/login`;
 
       const emailHtml = `
 <!DOCTYPE html>
@@ -676,15 +699,20 @@ export class PlatformService {
       `;
 
       try {
-        await this.notificationsService.sendEmail({
+        const mailRes = await this.notificationsService.sendEmail({
           to: adminUser.email,
           subject: `[JNC CRM] Super Admin Access Credentials for ${tenant.name}`,
           html: emailHtml,
           text: `Hello ${adminUser.name},\n\nYour Super Admin credentials for ${tenant.name} have been updated:\n\nCompany: ${tenant.name} (${tenant.code})\nUser ID: ${adminUser.employeeCode}\nEmail: ${adminUser.email}\nPassword: ${passwordToSet}\nLogin URL: ${loginUrl}\n\nPlease change your password after logging in.`,
           tenantId: tenant.id,
         });
-        emailDispatched = true;
-        emailStatusMessage = `Credentials email sent successfully to ${adminUser.email}`;
+        if (mailRes && mailRes.status === 'sent') {
+          emailDispatched = true;
+          emailStatusMessage = `Credentials email sent successfully to ${adminUser.email}`;
+        } else {
+          emailDispatched = false;
+          emailStatusMessage = `Password updated, but email could not be delivered (${mailRes?.status || 'unconfirmed'})`;
+        }
       } catch (err: any) {
         emailDispatched = false;
         emailStatusMessage = `Password updated, but email sending failed: ${err?.message || 'SMTP error'}`;
@@ -696,6 +724,7 @@ export class PlatformService {
       message: 'Super Admin password reset successfully',
       emailDispatched,
       emailStatusMessage,
+      loginUrl: `${baseFrontendUrl}/login`,
       adminUser: {
         id: adminUser.id,
         employeeCode: adminUser.employeeCode,
@@ -713,19 +742,11 @@ export class PlatformService {
   }
 
   /**
-   * List all platform administrators (tenantId is null)
+   * List all platform super administrators (tenantId is null)
    */
   async listPlatformAdmins() {
     return this.prisma.user.findMany({
       where: {
-        role: {
-          in: [
-            'platform_super_admin',
-            'platform_operations_manager',
-            'platform_account_onboarding',
-            'platform_client_support',
-          ],
-        },
         tenantId: null,
         deletedAt: null,
       },
@@ -746,9 +767,12 @@ export class PlatformService {
   }
 
   /**
-   * Create a new platform administrator account with specific platform sub-role
+   * Create a new platform super administrator account
    */
-  async createPlatformAdmin(dto: { name: string; email: string; phone?: string; role?: string }, actor?: any) {
+  async createPlatformAdmin(
+    dto: { name: string; email: string; phone?: string; role?: string },
+    actor?: any,
+  ) {
     const cleanEmail = dto.email.trim().toLowerCase();
     const existing = await this.prisma.user.findFirst({
       where: { email: cleanEmail },
@@ -757,28 +781,19 @@ export class PlatformService {
       throw new ConflictException(`User with email '${cleanEmail}' already exists`);
     }
 
-    const validPlatformRoles = [
-      'platform_super_admin',
-      'platform_operations_manager',
-      'platform_account_onboarding',
-      'platform_client_support',
-    ];
-    const targetRole = validPlatformRoles.includes(dto.role || '') ? dto.role! : 'platform_super_admin';
-
     const count = await this.prisma.user.count({
-      where: {
-        role: { in: validPlatformRoles },
-        tenantId: null,
-      },
+      where: { tenantId: null },
     });
     const employeeCode = `PSA-${String(count + 1).padStart(3, '0')}`;
 
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*()_+';
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789#@!$*-_';
     let tempPassword = '';
     for (let i = 0; i < 14; i++) {
       tempPassword += chars.charAt(crypto.randomInt(0, chars.length));
     }
     const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    const newUserRole = (dto.role?.trim() || 'platform_super_admin');
 
     const newUser = await this.prisma.user.create({
       data: {
@@ -786,7 +801,7 @@ export class PlatformService {
         email: cleanEmail,
         phone: dto.phone?.trim() || null,
         employeeCode,
-        role: targetRole,
+        role: newUserRole,
         tenantId: null,
         passwordHash,
         isActive: true,
@@ -806,95 +821,44 @@ export class PlatformService {
     });
 
     let emailDispatched = false;
-    let emailStatusMessage = 'Email dispatch attempted';
-
-    const frontendUrl = getFrontendUrl();
-    const loginUrl = `${frontendUrl}/login`;
-
-    const emailHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
-    .card { max-width: 580px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-    .header { background: #0f172a; padding: 24px; text-align: center; color: #ffffff; }
-    .header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.025em; }
-    .header p { margin: 4px 0 0; font-size: 13px; color: #94a3b8; }
-    .body { padding: 28px; }
-    .creds-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 18px; margin: 20px 0; }
-    .table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .table td { padding: 8px 4px; vertical-align: middle; }
-    .label { width: 140px; color: #64748b; font-weight: 600; }
-    .val { color: #0f172a; font-weight: 600; }
-    .code-badge { font-family: monospace; font-size: 15px; font-weight: 700; color: #2563eb; }
-    .pass-badge { font-family: monospace; font-size: 16px; font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 4px 10px; border-radius: 6px; display: inline-block; }
-    .btn-container { text-align: center; margin: 28px 0 10px; }
-    .btn { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); }
-    .footer { border-top: 1px solid #f1f5f9; padding: 16px 28px; text-align: center; font-size: 12px; color: #94a3b8; background: #fafafa; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="header">
-      <h1>Platform Administrator Account Created</h1>
-      <p>JNC Master Control Center Access</p>
-    </div>
-    <div class="body">
-      <p>Hello <strong>${newUser.name}</strong>,</p>
-      <p>Your Platform Administrator account has been provisioned. Below are your official master credentials to sign in:</p>
-      
-      <div class="creds-box">
-        <table class="table">
-          <tr>
-            <td class="label">User ID / Code:</td>
-            <td><span class="code-badge">${employeeCode}</span></td>
-          </tr>
-          <tr>
-            <td class="label">Login Email:</td>
-            <td class="val font-mono">${cleanEmail}</td>
-          </tr>
-          <tr>
-            <td class="label">Temporary Password:</td>
-            <td><span class="pass-badge">${tempPassword}</span></td>
-          </tr>
-          <tr>
-            <td class="label">Access Role:</td>
-            <td class="val">Platform Super Administrator</td>
-          </tr>
-        </table>
-      </div>
-
-      <div class="btn-container">
-        <a href="${loginUrl}" class="btn">Login to Platform Control Center</a>
-      </div>
-    </div>
-    <div class="footer">
-      <p style="margin: 0 0 4px;">For security, please change your temporary password upon your first sign in.</p>
-      <p style="margin: 0;">JNC CRM Enterprise Platform</p>
-    </div>
-  </div>
-</body>
-</html>
-    `;
+    let emailStatusMessage = '';
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
+    const loginUrl = `${frontendUrl}/platform/login`;
 
     try {
       await this.notificationsService.sendEmail({
         to: cleanEmail,
-        subject: `[JNC CRM] Your Platform Administrator Credentials [${employeeCode}]`,
-        html: emailHtml,
-        text: `Hello ${newUser.name},\n\nYour Platform Administrator account has been created:\n\nUser ID: ${employeeCode}\nEmail: ${cleanEmail}\nTemporary Password: ${tempPassword}\nLogin URL: ${loginUrl}\n\nPlease change your password upon first login.`,
+        subject: `[JNC CRM Platform] Welcome - Platform Super Admin Account Created`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+            <h2 style="color: #0f172a; margin-top: 0;">Platform Administrator Account Created</h2>
+            <p>Hello <strong>${newUser.name}</strong>,</p>
+            <p>Your Platform Super Admin account for JNC CRM has been created.</p>
+            <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: monospace; font-size: 14px;">
+              <p style="margin: 4px 0;"><strong>Platform Login Portal:</strong> ${loginUrl}</p>
+              <p style="margin: 4px 0;"><strong>User ID / Code:</strong> ${employeeCode}</p>
+              <p style="margin: 4px 0;"><strong>Login Email:</strong> ${cleanEmail}</p>
+              <p style="margin: 4px 0;"><strong>Temporary Password:</strong> <span style="color: #b91c1c; font-weight: bold;">${tempPassword}</span></p>
+            </div>
+            <p style="margin: 24px 0;">
+              <a href="${loginUrl}" style="background: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Login to Platform Portal</a>
+            </p>
+            <p style="font-size: 12px; color: #64748b;">Note: Super admins must log in at the Platform Portal above. Please change your password upon first login.</p>
+          </div>
+        `,
+        text: `Hello ${newUser.name},\n\nYour Platform Super Admin account for JNC CRM has been created.\n\nLogin Portal: ${loginUrl}\nUser ID: ${employeeCode}\nEmail: ${cleanEmail}\nTemporary Password: ${tempPassword}\n\nPlease change your password after logging in.`,
       });
       emailDispatched = true;
       emailStatusMessage = `Credentials email sent successfully to ${cleanEmail}`;
     } catch (err: any) {
-      emailDispatched = false;
-      emailStatusMessage = `Account created, but email sending failed: ${err?.message || 'SMTP error'}`;
+      this.logger.warn(`Could not send platform admin welcome email to ${cleanEmail}: ${err.message}`);
+      emailStatusMessage = `Account created, but email delivery failed: ${err.message}`;
     }
 
     return {
-      message: 'Platform administrator account created successfully',
+      message: emailDispatched
+        ? `Platform administrator account created successfully. Credentials emailed to ${cleanEmail}.`
+        : `Platform administrator account created, but email delivery failed (${emailStatusMessage}). Please copy the temporary password below manually.`,
       user: newUser,
       tempPassword,
       emailDispatched,
@@ -906,15 +870,8 @@ export class PlatformService {
    * Toggle active state for a platform administrator
    */
   async togglePlatformAdminActive(id: string, requestedState?: boolean) {
-    const validPlatformRoles = [
-      'platform_super_admin',
-      'platform_operations_manager',
-      'platform_account_onboarding',
-      'platform_client_support',
-    ];
-
     const target = await this.prisma.user.findFirst({
-      where: { id, role: { in: validPlatformRoles }, tenantId: null },
+      where: { id, role: 'platform_super_admin', tenantId: null },
     });
     if (!target) throw new NotFoundException('Platform administrator not found');
 
@@ -922,7 +879,7 @@ export class PlatformService {
 
     if (!nextState) {
       const activeCount = await this.prisma.user.count({
-        where: { role: { in: validPlatformRoles }, tenantId: null, isActive: true },
+        where: { role: 'platform_super_admin', tenantId: null, isActive: true },
       });
       if (activeCount <= 1) {
         throw new BadRequestException('Cannot deactivate the last active Platform Administrator.');
@@ -953,326 +910,221 @@ export class PlatformService {
   }
 
   /**
-   * Reset credentials for a platform administrator and send credentials email
+   * Reset credentials for a platform administrator
    */
-  async resetPlatformAdminUserPassword(
-    id: string,
-    dto?: { newPassword?: string; sendEmail?: boolean; appUrl?: string },
-  ) {
+  async resetPlatformAdminUserPassword(id: string) {
     const target = await this.prisma.user.findFirst({
-      where: {
-        id,
-        role: {
-          in: [
-            'platform_super_admin',
-            'platform_operations_manager',
-            'platform_account_onboarding',
-            'platform_client_support',
-          ],
-        },
-        tenantId: null,
-      },
+      where: { id, role: 'platform_super_admin', tenantId: null },
     });
     if (!target) throw new NotFoundException('Platform administrator not found');
 
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*()_+';
-    let generatedPass = '';
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789#@!$*-_';
+    let tempPassword = '';
     for (let i = 0; i < 14; i++) {
-      generatedPass += chars.charAt(crypto.randomInt(0, chars.length));
+      tempPassword += chars.charAt(crypto.randomInt(0, chars.length));
     }
-    const passwordToSet = dto?.newPassword?.trim() || generatedPass;
-    const passwordHash = await bcrypt.hash(passwordToSet, 10);
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
 
     await this.prisma.user.update({
       where: { id },
       data: {
         passwordHash,
         mustResetPassword: true,
-        isActive: true,
+        failedLoginAttempts: 0,
+        lockoutUntil: null,
         tokenVersion: { increment: 1 },
       },
     });
 
-    // Clear any account lockout records
     try {
-      const emailKey = `platform-email:${target.email.toLowerCase()}`;
+      const lockKeys = [
+        target.email.toLowerCase(),
+        `platform-email:${target.email.toLowerCase()}`,
+        target.employeeCode.toLowerCase(),
+        target.employeeCode.toUpperCase(),
+        `platform-email:${target.employeeCode.toLowerCase()}`,
+        `platform-email:${target.employeeCode.toUpperCase()}`,
+      ];
       await this.prisma.accountLockout.deleteMany({
-        where: {
-          OR: [
-            { identityKey: emailKey },
-            { identityKey: target.email.toLowerCase() },
-          ],
-        },
+        where: { identityKey: { in: lockKeys } },
       });
     } catch {}
 
     let emailDispatched = false;
-    let emailStatusMessage = 'Email not requested';
+    let emailStatusMessage = '';
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
+    const loginUrl = `${frontendUrl}/platform/login`;
 
-    if (dto?.sendEmail !== false) {
-      const frontendUrl = getFrontendUrl(dto?.appUrl);
-      const platformLoginUrl = frontendUrl.endsWith('/platform/login') ? frontendUrl : `${frontendUrl}/platform/login`;
-
-      const emailHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
-    .card { max-width: 580px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-    .header { background: #0f172a; padding: 24px; text-align: center; color: #ffffff; }
-    .header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.025em; }
-    .header p { margin: 4px 0 0; font-size: 13px; color: #94a3b8; }
-    .body { padding: 28px; }
-    .creds-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 18px; margin: 20px 0; }
-    .table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .table td { padding: 8px 4px; vertical-align: middle; }
-    .label { width: 140px; color: #64748b; font-weight: 600; }
-    .val { color: #0f172a; font-weight: 600; }
-    .code-badge { font-family: monospace; font-size: 15px; font-weight: 700; color: #2563eb; }
-    .pass-badge { font-family: monospace; font-size: 16px; font-weight: 700; color: #b91c1c; background: #fee2e2; padding: 4px 10px; border-radius: 6px; display: inline-block; }
-    .btn-container { text-align: center; margin: 28px 0 10px; }
-    .btn { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 700; font-size: 14px; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); }
-    .footer { border-top: 1px solid #f1f5f9; padding: 16px 28px; text-align: center; font-size: 12px; color: #94a3b8; background: #fafafa; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="header">
-      <h1>Platform Master Credentials Reset</h1>
-      <p>Platform Super Admin Access for JNC CRM</p>
-    </div>
-    <div class="body">
-      <p>Hello <strong>${target.name}</strong>,</p>
-      <p>Your Platform Super Administrator credentials for the JNC CRM Master Console have been reset. Below are your updated sign-in details:</p>
-      
-      <div class="creds-box">
-        <table class="table">
-          <tr>
-            <td class="label">User ID / Code:</td>
-            <td><span class="code-badge">${target.employeeCode}</span></td>
-          </tr>
-          <tr>
-            <td class="label">Official Email:</td>
-            <td class="val font-mono">${target.email}</td>
-          </tr>
-          <tr>
-            <td class="label">New Password:</td>
-            <td><span class="pass-badge">${passwordToSet}</span></td>
-          </tr>
-          <tr>
-            <td class="label">Role:</td>
-            <td class="val">Platform Super Admin</td>
-          </tr>
-        </table>
-      </div>
-
-      <div class="btn-container">
-        <a href="${platformLoginUrl}" class="btn">Login to Master Console</a>
-      </div>
-    </div>
-    <div class="footer">
-      <p style="margin: 0 0 4px;">For security, please change your password upon logging in.</p>
-      <p style="margin: 0;">JNC CRM Multi-Tenant Cloud Platform</p>
-    </div>
-  </div>
-</body>
-</html>
-      `;
-
-      try {
-        await this.notificationsService.sendEmail({
-          to: target.email,
-          subject: `[JNC CRM] Platform Super Admin Access Credentials Reset`,
-          html: emailHtml,
-          text: `Hello ${target.name},\n\nYour Platform Super Admin credentials for JNC CRM have been updated:\n\nUser ID: ${target.employeeCode}\nEmail: ${target.email}\nNew Password: ${passwordToSet}\nPlatform Login URL: ${platformLoginUrl}\n\nPlease change your password upon logging in.`,
-        });
-        emailDispatched = true;
-        emailStatusMessage = `Credentials email sent successfully to ${target.email}`;
-      } catch (err: any) {
-        emailDispatched = false;
-        emailStatusMessage = `Password updated, but email sending failed: ${err?.message || 'SMTP error'}`;
-      }
+    try {
+      await this.notificationsService.sendEmail({
+        to: target.email,
+        subject: `[JNC CRM Platform] Your Platform Super Admin Password Has Been Reset`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+            <h2 style="color: #0f172a; margin-top: 0;">Platform Administrator Password Reset</h2>
+            <p>Hello <strong>${target.name}</strong>,</p>
+            <p>Your Platform Super Admin password for JNC CRM has been reset.</p>
+            <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: monospace; font-size: 14px;">
+              <p style="margin: 4px 0;"><strong>Platform Login Portal:</strong> ${loginUrl}</p>
+              <p style="margin: 4px 0;"><strong>User ID / Code:</strong> ${target.employeeCode}</p>
+              <p style="margin: 4px 0;"><strong>Login Email:</strong> ${target.email}</p>
+              <p style="margin: 4px 0;"><strong>New Temporary Password:</strong> <span style="color: #b91c1c; font-weight: bold;">${tempPassword}</span></p>
+            </div>
+            <p style="margin: 24px 0;">
+              <a href="${loginUrl}" style="background: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Login to Platform Portal</a>
+            </p>
+            <p style="font-size: 12px; color: #64748b;">Please change your password upon logging in.</p>
+          </div>
+        `,
+        text: `Hello ${target.name},\n\nYour Platform Super Admin password for JNC CRM has been reset.\n\nLogin Portal: ${loginUrl}\nUser ID: ${target.employeeCode}\nEmail: ${target.email}\nTemporary Password: ${tempPassword}\n\nPlease change your password after logging in.`,
+      });
+      emailDispatched = true;
+      emailStatusMessage = `Password reset email sent to ${target.email}`;
+    } catch (err: any) {
+      this.logger.warn(`Could not send platform admin reset email to ${target.email}: ${err.message}`);
+      emailStatusMessage = `Password reset, but email delivery failed: ${err.message}`;
     }
 
     return {
-      success: true,
-      message: `Password for platform administrator ${target.name} has been reset successfully`,
+      message: emailDispatched
+        ? `Password for platform administrator ${target.name} has been reset and emailed to ${target.email}.`
+        : `Password for platform administrator ${target.name} has been reset, but email delivery failed (${emailStatusMessage}). Please copy the temporary password below manually.`,
+      tempPassword,
       emailDispatched,
       emailStatusMessage,
-      tempPassword: passwordToSet,
       user: target,
     };
   }
 
   /**
-   * Real-time Platform Analytics Metrics for Super Admin Dashboard
+   * Delete a platform administrator account
    */
-  async getAnalytics() {
-    const totalCompanies = await this.prisma.tenant.count({
-      where: { isInternal: false },
+  async deletePlatformAdmin(id: string) {
+    const target = await this.prisma.user.findFirst({
+      where: { id, role: 'platform_super_admin', tenantId: null },
     });
-    const activeCompanies = await this.prisma.tenant.count({
-      where: { isInternal: false, status: 'active' },
+    if (!target) throw new NotFoundException('Platform administrator not found');
+
+    const totalAdmins = await this.prisma.user.count({
+      where: { role: 'platform_super_admin', tenantId: null, deletedAt: null },
     });
-    const suspendedCompanies = await this.prisma.tenant.count({
-      where: { isInternal: false, status: 'suspended' },
-    });
-    const trialCompanies = await this.prisma.tenant.count({
-      where: { isInternal: false, status: 'trial' },
+    if (totalAdmins <= 1) {
+      throw new BadRequestException('Cannot delete the last remaining Platform Administrator.');
+    }
+
+    await this.prisma.user.delete({ where: { id } }).catch(async () => {
+      await this.prisma.user.update({
+        where: { id },
+        data: { deletedAt: new Date(), isActive: false },
+      });
     });
 
-    const tenants = await this.prisma.tenant.findMany({
-      where: { isInternal: false },
-      select: { maxUsers: true, planTier: true },
-    });
+    return { message: `Platform administrator ${target.name} (${target.email}) deleted successfully.` };
+  }
 
-    const totalLicenses = tenants.reduce((acc, t) => acc + (t.maxUsers || 0), 0);
+  /**
+   * List users/employees of a client company workspace
+   */
+  async listTenantUsers(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException('Client company workspace not found');
 
-    const totalActiveUsers = await this.prisma.user.count({
-      where: {
-        tenantId: { not: null },
-        isActive: true,
-        deletedAt: null,
-      },
-    });
-
-    const planTierBreakdown = tenants.reduce((acc: Record<string, number>, t) => {
-      const tier = t.planTier || 'standard';
-      acc[tier] = (acc[tier] || 0) + 1;
-      return acc;
-    }, {});
-
-    const recentTenants = await this.prisma.tenant.findMany({
-      where: { isInternal: false },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
+    return this.prisma.user.findMany({
+      where: { tenantId, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
       select: {
         id: true,
-        code: true,
+        employeeCode: true,
         name: true,
         email: true,
-        status: true,
-        planTier: true,
-        maxUsers: true,
+        phone: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        lastLoginAt: true,
+      },
+    });
+  }
+
+  /**
+   * Add a user/employee to a client company workspace with a specific role
+   */
+  async addTenantUser(
+    tenantId: string,
+    dto: { name: string; email: string; phone?: string; role?: string; employeeCode?: string; password?: string },
+  ) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException('Client company workspace not found');
+
+    const cleanEmail = dto.email.trim().toLowerCase();
+    const existing = await this.prisma.user.findFirst({
+      where: { tenantId, email: cleanEmail, deletedAt: null },
+    });
+    if (existing) {
+      throw new ConflictException(`A user with email '${cleanEmail}' already exists in this company.`);
+    }
+
+    const totalUsers = await this.prisma.user.count({
+      where: { tenantId, deletedAt: null },
+    });
+    if (tenant.maxUsers && totalUsers >= tenant.maxUsers) {
+      throw new BadRequestException(`Maximum user seat limit (${tenant.maxUsers}) reached for ${tenant.name}.`);
+    }
+
+    const count = totalUsers + 1;
+    const userRole = dto.role || 'employee';
+    const empCode = dto.employeeCode?.trim() || `${tenant.code}-EMP-${String(count).padStart(3, '0')}`;
+    const rawPass = dto.password || 'Jsnc@2024jsn';
+    const passwordHash = await bcrypt.hash(rawPass, 10);
+
+    const newUser = await this.prisma.user.create({
+      data: {
+        tenantId,
+        employeeCode: empCode,
+        name: dto.name.trim(),
+        email: cleanEmail,
+        phone: dto.phone?.trim() || null,
+        passwordHash,
+        role: userRole,
+        isActive: true,
+        mustResetPassword: true,
+      },
+      select: {
+        id: true,
+        employeeCode: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        isActive: true,
         createdAt: true,
       },
     });
 
     return {
-      totalCompanies,
-      activeCompanies,
-      suspendedCompanies,
-      trialCompanies,
-      totalLicenses,
-      totalActiveUsers,
-      planTierBreakdown,
-      recentTenants,
+      message: `User ${newUser.name} added to ${tenant.name} successfully`,
+      user: newUser,
+      tempPassword: rawPass,
     };
   }
 
   /**
-   * Dispatch summary report email of all platform analytics directly to Super Admin
+   * Remove/delete a user/employee from a client company workspace
    */
-  async sendSummaryReport(targetEmail?: string) {
-    const analytics = await this.getAnalytics();
-    const recipient = (targetEmail || process.env.PRIMARY_EMAIL_FROM || 'jsnccrm@gmail.com').trim();
+  async deleteTenantUser(tenantId: string, userId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, tenantId, deletedAt: null },
+    });
+    if (!user) throw new NotFoundException('User account not found in this company workspace');
 
-    const emailHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
-    .card { max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-    .header { background: #0f172a; padding: 24px; text-align: center; color: #ffffff; }
-    .header h1 { margin: 0; font-size: 20px; font-weight: 700; }
-    .header p { margin: 4px 0 0; font-size: 13px; color: #94a3b8; }
-    .body { padding: 28px; }
-    .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
-    .metric-card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; text-align: center; }
-    .metric-num { font-size: 22px; font-weight: 800; color: #2563eb; }
-    .metric-label { font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 700; margin-top: 4px; }
-    .table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 16px; }
-    .table th { background: #f1f5f9; padding: 8px; text-align: left; color: #475569; font-weight: 700; }
-    .table td { padding: 8px; border-bottom: 1px solid #f1f5f9; }
-    .footer { border-top: 1px solid #f1f5f9; padding: 16px 28px; text-align: center; font-size: 12px; color: #94a3b8; background: #fafafa; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="header">
-      <h1>JNC CRM SaaS Platform Executive Report</h1>
-      <p>Real-Time Client Analytics & Operational Metrics</p>
-    </div>
-    <div class="body">
-      <p>Hello Super Administrator,</p>
-      <p>Here is your real-time SaaS client platform operational summary:</p>
-
-      <div class="metric-grid">
-        <div class="metric-card">
-          <div class="metric-num">${analytics.totalCompanies}</div>
-          <div class="metric-label">Client Companies</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-num" style="color: #16a34a;">${analytics.activeCompanies}</div>
-          <div class="metric-label">Active Workspaces</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-num" style="color: #ea580c;">${analytics.totalActiveUsers}</div>
-          <div class="metric-label">Active User Accounts</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-num" style="color: #9333ea;">${analytics.totalLicenses}</div>
-          <div class="metric-label">License Seats Allocated</div>
-        </div>
-      </div>
-
-      <h3 style="font-size: 14px; font-weight: 700; margin-top: 24px;">Recent Client Company Provisioning</h3>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Company</th>
-            <th>Code</th>
-            <th>Plan</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${analytics.recentTenants.map(t => `
-            <tr>
-              <td><strong>${t.name}</strong><br><span style="font-size:11px; color:#64748b;">${t.email}</span></td>
-              <td><code>${t.code}</code></td>
-              <td style="text-transform: capitalize;">${t.planTier}</td>
-              <td style="text-transform: capitalize; color: ${t.status === 'active' ? '#16a34a' : '#dc2626'}; font-weight: bold;">${t.status}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-    <div class="footer">
-      <p style="margin: 0;">Generated automatically by JNC CRM Platform Engine</p>
-    </div>
-  </div>
-</body>
-</html>
-    `;
-
-    await this.notificationsService.sendEmail({
-      to: recipient,
-      subject: `[JNC CRM] Executive Platform Analytics Report — ${analytics.activeCompanies} Active Companies`,
-      html: emailHtml,
-      text: `Executive SaaS Platform Analytics:\nTotal Companies: ${analytics.totalCompanies}\nActive Workspaces: ${analytics.activeCompanies}\nActive Users: ${analytics.totalActiveUsers}\nTotal Licenses Allocated: ${analytics.totalLicenses}`,
+    await this.prisma.user.delete({ where: { id: userId } }).catch(async () => {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { deletedAt: new Date(), isActive: false },
+      });
     });
 
-    return {
-      success: true,
-      recipient,
-      message: `Executive analytics report successfully sent to ${recipient}`,
-      analytics,
-    };
+    return { message: `User ${user.name} removed from company successfully.` };
   }
 }
 

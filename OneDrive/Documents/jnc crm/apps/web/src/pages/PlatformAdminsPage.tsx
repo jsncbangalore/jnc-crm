@@ -7,12 +7,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, RefreshCw, KeyRound, Power, X, Check, Copy } from 'lucide-react';
+import { Plus, RefreshCw, KeyRound, Power, X, Check, Copy, Trash2 } from 'lucide-react';
 import { platformApi } from '../services/api';
 import { User } from '../types';
 import { usePopup } from '../contexts/PopupContext';
 import { format } from 'date-fns';
-import { ROLE_LABELS } from '../utils/roles';
 
 export default function PlatformAdminsPage() {
   const { showAlert, showConfirm } = usePopup();
@@ -34,6 +33,8 @@ export default function PlatformAdminsPage() {
   const [createdResult, setCreatedResult] = useState<{
     user: any;
     tempPassword?: string;
+    emailDispatched?: boolean;
+    emailStatusMessage?: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -101,19 +102,21 @@ export default function PlatformAdminsPage() {
 
   const handleResetCredentials = async (admin: User) => {
     showConfirm(
-      `Reset credentials for ${admin.name} (${admin.email})? A new temporary password will be generated and dispatched via email.`,
+      `Reset credentials for ${admin.name}? A new temporary password will be generated and emailed to ${admin.email}.`,
       async () => {
         try {
-          const { data } = await platformApi.resetAdminUserPassword(admin.id, {
-            sendEmail: true,
-            appUrl: window.location.origin + '/platform/login',
-          });
+          const { data } = await platformApi.resetAdminUserPassword(admin.id);
           setCreatedResult({
             user: admin,
             tempPassword: data.tempPassword,
             emailDispatched: data.emailDispatched,
             emailStatusMessage: data.emailStatusMessage,
           });
+          if (data.emailDispatched) {
+            showAlert('Credentials Emailed', `New temporary password emailed to ${admin.email}.`, 'success');
+          } else {
+            showAlert('Password Reset Completed', data.emailStatusMessage || 'Password reset, but email could not be delivered. Please copy credentials manually.', 'warning');
+          }
           fetchAdmins();
         } catch (err: any) {
           const msg = err?.response?.data?.message || (err.response ? `Server Error (${err.response.status}): ${err.response.statusText || 'Could not reset credentials'}` : 'Unable to connect to server');
@@ -122,6 +125,24 @@ export default function PlatformAdminsPage() {
       },
       'Reset Admin Credentials',
       'Reset & Send Email'
+    );
+  };
+
+  const handleDeleteAdmin = async (admin: User) => {
+    showConfirm(
+      `Are you sure you want to delete platform administrator "${admin.name}" (${admin.email})? This action cannot be undone.`,
+      async () => {
+        try {
+          await platformApi.deleteAdmin(admin.id);
+          showAlert('Deleted', `Platform administrator ${admin.name} deleted successfully.`, 'success');
+          fetchAdmins();
+        } catch (err: any) {
+          const msg = err?.response?.data?.message || 'Could not delete platform administrator';
+          showAlert('Delete Failed', msg, 'error');
+        }
+      },
+      'Delete Platform Administrator',
+      'Delete'
     );
   };
 
@@ -233,13 +254,15 @@ export default function PlatformAdminsPage() {
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
                         admin.role === 'platform_super_admin'
                           ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                          : admin.role === 'platform_operations_manager'
-                          ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
-                          : admin.role === 'platform_account_onboarding'
+                          : admin.role === 'platform_admin'
+                          ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                          : admin.role === 'platform_billing'
                           ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                          : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
                       }`}>
-                        {ROLE_LABELS[admin.role] || admin.role || 'Platform Admin'}
+                        {(admin.role || 'platform_super_admin')
+                          .replace(/_/g, ' ')
+                          .replace(/\b\w/g, (l) => l.toUpperCase())}
                       </span>
                     </td>
 
@@ -278,12 +301,20 @@ export default function PlatformAdminsPage() {
                           onClick={() => handleToggleActive(admin)}
                           className={`btn p-1.5 rounded-lg text-xs font-semibold ${
                             admin.isActive
-                              ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20'
+                              ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-900/20'
                               : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/20'
                           }`}
                           title={admin.isActive ? 'Deactivate administrator' : 'Activate administrator'}
                         >
                           <Power size={14} />
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteAdmin(admin)}
+                          className="btn p-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20"
+                          title="Delete platform administrator"
+                        >
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </td>
@@ -336,7 +367,7 @@ export default function PlatformAdminsPage() {
                   <input
                     type="email"
                     className="input text-xs font-mono"
-                    placeholder="admin@jsnetwork.com"
+                    placeholder="admin@jsnc.co.in"
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                     required
@@ -355,17 +386,18 @@ export default function PlatformAdminsPage() {
                 </div>
 
                 <div>
-                  <label className="label">Platform Role *</label>
+                  <label className="label">Platform Role / Job Designation *</label>
                   <select
-                    className="input text-xs"
+                    className="input text-xs font-medium"
                     value={form.role}
                     onChange={(e) => setForm({ ...form, role: e.target.value })}
                     required
                   >
-                    <option value="platform_super_admin">👑 Platform Super Administrator (SA)</option>
-                    <option value="platform_operations_manager">📊 Platform Operations Manager</option>
-                    <option value="platform_account_onboarding">🔑 Account Onboarding Team</option>
-                    <option value="platform_client_support">🎧 Client Support Team</option>
+                    <option value="platform_super_admin">Platform Super Admin (Full Platform Access)</option>
+                    <option value="platform_admin">Platform Administrator (Company & User Management)</option>
+                    <option value="platform_support">Platform Support Specialist (Client Diagnostics)</option>
+                    <option value="platform_billing">Platform Billing Manager (Subscriptions & Billing)</option>
+                    <option value="platform_developer">Platform Developer Lead (API & System Integrations)</option>
                   </select>
                 </div>
 
@@ -406,15 +438,15 @@ export default function PlatformAdminsPage() {
                 Platform Administrator Credentials
               </h2>
 
-              {(createdResult as any).emailStatusMessage && (
-                <div className={`p-3 rounded-xl border text-xs ${
-                  (createdResult as any).emailDispatched
-                    ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
-                    : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
-                }`}>
-                  {(createdResult as any).emailStatusMessage}
+              {createdResult.emailDispatched ? (
+                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 text-xs">
+                  <span className="font-bold">✓ Credentials Email Sent:</span> Dispatched to <strong>{createdResult.user.email}</strong>.
                 </div>
-              )}
+              ) : createdResult.emailStatusMessage ? (
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs">
+                  <span className="font-bold">⚠ Delivery Notice:</span> {createdResult.emailStatusMessage}
+                </div>
+              ) : null}
 
               <div className="bg-slate-50 dark:bg-[#1E2230] p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-2 text-xs font-mono">
                 <div className="flex justify-between">
@@ -432,14 +464,21 @@ export default function PlatformAdminsPage() {
                 {createdResult.tempPassword && (
                   <div className="flex justify-between">
                     <span className="text-slate-500">Password:</span>
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 select-all">
                       {createdResult.tempPassword}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between pt-1 border-t border-slate-200 dark:border-slate-800">
                   <span className="text-slate-500">Login Portal:</span>
-                  <span className="text-crm-blue font-bold">{window.location.origin}/platform/login</span>
+                  <a
+                    href="/platform/login"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-crm-blue font-bold hover:underline"
+                  >
+                    {window.location.origin}/platform/login &nearr;
+                  </a>
                 </div>
               </div>
 
