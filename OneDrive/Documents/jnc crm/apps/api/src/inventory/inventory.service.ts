@@ -5,7 +5,7 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BackupService } from '../backup/backup.service';
 import { ScopedUser } from '../auth/scoping.service';
@@ -18,6 +18,8 @@ import * as fs from 'fs';
 
 @Injectable()
 export class InventoryService {
+  private lastClearAllTimestampPerTenant: Map<string, number> = new Map();
+
   constructor(
     private prisma: PrismaService,
     private scopingService: ScopingService,
@@ -270,6 +272,7 @@ export class InventoryService {
           },
         },
         orderLines: {
+          where: { order: { tenantId } },
           orderBy: { order: { confirmedAt: 'desc' } },
           take: 50,
           include: {
@@ -436,7 +439,7 @@ export class InventoryService {
 
     // Handle Quantity adjustments via StockMovement Ledger
     if (quantityOnHand !== undefined) {
-      let stockItem = await this.prisma.stockItem.findFirst({ where: { skuId: id } });
+      let stockItem = await this.prisma.stockItem.findFirst({ where: { skuId: id, warehouse: { tenantId } } });
       if (!stockItem) {
         let defaultWarehouse = await this.prisma.warehouse.findFirst({ where: { tenantId } });
         if (!defaultWarehouse) {
@@ -1898,54 +1901,49 @@ export class InventoryService {
   /**
    * Clear all inventory data completely fresh for the tenant (SKUs, Stock Items, Movements, Transfers, Project Stock Positions)
    */
-  private clearAllRateLimit = new Map<string, number>();
-
-  /**
-   * Clear all inventory items, stock movements, and purchase bills for a tenant.
-   * Requires strict confirmation payload and enforces 1-hour rate limit per tenant.
-   */
-  async clearAllInventory(confirmText: string, user: ScopedUser) {
+  async clearAllInventory(confirmMessage: string, user: ScopedUser) {
     const tenantId = requireTenantId(user);
 
-    // Fetch tenant code for confirmation validation
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { code: true, name: true },
+      select: { id: true, code: true },
     });
-    const companyCode = tenant?.code || 'JNC';
 
-    const expectedConfirm = `DELETE ALL INVENTORY OF ${companyCode}`;
-    if (!confirmText || confirmText.trim().toUpperCase() !== expectedConfirm.toUpperCase()) {
-      throw new BadRequestException(`Invalid confirmation. Expected payload: {"confirm": "${expectedConfirm}"}`);
+    if (!tenant) throw new NotFoundException('Tenant organization not found.');
+
+    const expectedConfirm = `DELETE ALL INVENTORY OF ${tenant.code.toUpperCase()}`;
+    if (!confirmMessage || confirmMessage.trim() !== expectedConfirm) {
+      throw new BadRequestException(`Confirmation message invalid. Body must equal: {"confirm": "${expectedConfirm}"}`);
     }
 
-    // Rate limit: 1 request per hour per tenant
-    const now = Date.now();
-    const lastCleared = this.clearAllRateLimit.get(tenantId) || 0;
-    if (now - lastCleared < 60 * 60 * 1000) {
-      const remainingMinutes = Math.ceil((60 * 60 * 1000 - (now - lastCleared)) / 60000);
-      throw new ForbiddenException(`Inventory clear-all rate limit exceeded. Please try again in ${remainingMinutes} minute(s).`);
+    // Enforce 1-hour rate limit per company via persistent AuditLog query
+    const latestAuditLog = await this.prisma.auditLog.findFirst({
+      where: { tenantId, action: 'INVENTORY_CLEAR_ALL' },
+      orderBy: { timestamp: 'desc' },
+    });
+
+    if (latestAuditLog && latestAuditLog.timestamp) {
+      const lastClearedTime = new Date(latestAuditLog.timestamp).getTime();
+      const elapsedMs = Date.now() - lastClearedTime;
+      if (elapsedMs < 3600000) {
+        const remainingMins = Math.ceil((3600000 - elapsedMs) / 60000);
+        throw new HttpException(
+          `Clear all inventory rate limited. Maximum 1 call per hour per company. Try again in ${remainingMins} minutes.`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
     }
-    this.clearAllRateLimit.set(tenantId, now);
 
-    // Safety backup
-    await this.backupService.createBackup(user).catch(() => {});
+    // 0. Trigger a fresh backup as a safety net
+    await this.backupService.createBackup(user);
 
-    // Audit Log
-    await this.auditService.log({
-      tenantId,
-      actorId: user.id,
-      actorName: (user as any)?.name || user.employeeCode,
-      action: 'INVENTORY_CLEAR_ALL',
-      entityName: 'Inventory',
-      entityId: tenantId,
-      afterState: JSON.stringify({ companyCode, clearedAt: new Date().toISOString() }),
-    }).catch(() => {});
-
-    // Clear inventory tables
+    // 1. Delete stock positions for this tenant
     await this.prisma.projectStockPosition.deleteMany({ where: { tenantId } });
+
+    // 2. Delete stock transfers for this tenant
     await this.prisma.stockTransfer.deleteMany({ where: { tenantId } });
 
+    // 3. Delete stock movements and items for SKUs belonging to this tenant
     const tenantSkus = await this.prisma.sku.findMany({
       where: { tenantId },
       select: { id: true },
@@ -1956,57 +1954,99 @@ export class InventoryService {
       await this.prisma.stockMovement.deleteMany({
         where: { skuId: { in: tenantSkuIds } },
       });
+
       await this.prisma.stockItem.deleteMany({
         where: { skuId: { in: tenantSkuIds } },
       });
     }
 
-    await this.prisma.sku.deleteMany({ where: { tenantId } });
-    await (this.prisma as any).purchaseBill.deleteMany({ where: { tenantId } });
+    // 4. Unlink SKUs from existing orders/invoices/quotations if any, or soft-delete unused
+    const orderLines = await this.prisma.orderLine.findMany({
+      where: { order: { tenantId } },
+      select: { skuId: true },
+    });
+    const invoiceLines = await this.prisma.invoiceLine.findMany({
+      where: { invoice: { tenantId } },
+      select: { skuId: true },
+    });
+    const quoteLines = await this.prisma.quotationLine.findMany({
+      where: { quotation: { tenantId } },
+      select: { skuId: true },
+    });
 
-    return {
-      success: true,
-      message: `All inventory data for ${companyCode} cleared successfully.`,
-    };
-  }
+    const referencedSkuIds = new Set([
+      ...orderLines.map((l) => l.skuId),
+      ...invoiceLines.map((l) => l.skuId).filter(Boolean) as string[],
+      ...quoteLines.map((l) => l.skuId).filter(Boolean) as string[],
+    ]);
 
-  // ─── Purchase Bills & Soft Copies Repository (Prisma Table) ──────────────────
-
-  async getPurchaseBills(user: ScopedUser, params?: any) {
-    const tenantId = requireTenantId(user);
-    const where: any = { tenantId, deletedAt: null };
-
-    if (params?.search) {
-      const q = params.search.trim();
-      where.OR = [
-        { billNumber: { contains: q, mode: 'insensitive' } },
-        { supplierName: { contains: q, mode: 'insensitive' } },
-        { notes: { contains: q, mode: 'insensitive' } },
-      ];
-    }
-
-    const bills = await (this.prisma as any).purchaseBill.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        createdBy: {
-          select: { id: true, name: true, employeeCode: true },
-        },
+    // Delete all SKUs not locked by orders for this tenant
+    await this.prisma.sku.deleteMany({
+      where: {
+        tenantId,
+        id: { notIn: Array.from(referencedSkuIds) },
       },
     });
 
-    return { data: bills, total: bills.length };
+    // For any SKUs locked by historical orders, mark them soft-deleted so inventory catalog is 100% clean
+    await this.prisma.sku.updateMany({
+      where: {
+        tenantId,
+        id: { in: Array.from(referencedSkuIds) },
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId,
+        actorId: user.id,
+        actorName: (user as any)?.name || user.employeeCode || 'Administrator',
+        action: 'INVENTORY_CLEAR_ALL',
+        entityName: 'Inventory',
+        entityId: tenantId,
+        afterState: JSON.stringify({ confirmMessage, clearedAt: new Date().toISOString() }),
+      },
+    }).catch(() => {});
+
+    return {
+      success: true,
+      message: `All inventory data for company ${tenant.code} cleared fresh.`,
+    };
+  }
+
+  // ─── Purchase Bills & Soft Copies Repository (Database Backed) ───────────────
+
+  async getPurchaseBills(user: ScopedUser, params?: any) {
+    const tenantId = requireTenantId(user);
+    const where: any = {
+      tenantId,
+      deletedAt: null,
+    };
+    if (params?.search) {
+      const q = String(params.search).trim();
+      where.OR = [
+        { invoiceNumber: { contains: q, mode: 'insensitive' } },
+        { vendorName: { contains: q, mode: 'insensitive' } },
+        { project: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+    const [data, total] = await Promise.all([
+      this.prisma.purchaseBill.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.purchaseBill.count({ where }),
+    ]);
+    return { data, total };
   }
 
   async getPurchaseBill(id: string, user: ScopedUser) {
     const tenantId = requireTenantId(user);
-    const bill = await (this.prisma as any).purchaseBill.findFirst({
+    const bill = await this.prisma.purchaseBill.findFirst({
       where: { id, tenantId, deletedAt: null },
-      include: {
-        createdBy: {
-          select: { id: true, name: true, employeeCode: true },
-        },
-      },
     });
     if (!bill) throw new NotFoundException(`Purchase bill ${id} not found`);
     return bill;
@@ -2014,70 +2054,78 @@ export class InventoryService {
 
   async createPurchaseBill(data: any, user: ScopedUser) {
     const tenantId = requireTenantId(user);
-    const billNumber = data.invoiceNumber || data.billNumber || `BILL-${Date.now().toString().slice(-6)}`;
-    const supplierName = data.vendorName || data.supplierName || 'Supplier / Vendor';
-    const amount = Number(data.grandTotal || data.amount || data.subtotal || 0);
-    const billDate = data.invoiceDate || data.billDate ? new Date(data.invoiceDate || data.billDate) : new Date();
+    const invoiceNumber = (data.invoiceNumber || `INV-${Date.now().toString().slice(-6)}`).trim();
 
-    const newBill = await (this.prisma as any).purchaseBill.create({
+    const newBill = await this.prisma.purchaseBill.create({
       data: {
         tenantId,
-        billNumber,
-        supplierName,
-        billDate,
-        amount,
-        status: data.status || 'received',
+        invoiceNumber,
+        vendorName: data.vendorName || 'Supplier / Vendor',
+        vendorGstin: data.vendorGstin || null,
+        vendorAddress: data.vendorAddress || null,
+        invoiceDate: data.invoiceDate || new Date().toISOString().slice(0, 10),
+        project: data.project || 'General Inventory',
+        items: Array.isArray(data.items) ? data.items : [],
+        subtotal: Number(data.subtotal || 0),
+        taxRate: Number(data.taxRate || 18),
+        cgst: Number(data.cgst || 0),
+        sgst: Number(data.sgst || 0),
+        igst: Number(data.igst || 0),
+        totalTax: Number(data.totalTax || 0),
+        grandTotal: Number(data.grandTotal || 0),
         documentUrl: data.documentUrl || null,
-        notes: data.notes || (data.project ? `Project: ${data.project}` : null),
-        createdById: user.id,
-      },
-      include: {
-        createdBy: { select: { id: true, name: true, employeeCode: true } },
+        rawText: data.rawText || null,
+        notes: data.notes || null,
+        createdById: user?.id || null,
       },
     });
+
+    // Also update physical stock for items present in the bill
+    if (Array.isArray(data.items) && data.items.length > 0) {
+      for (const item of data.items) {
+        if (item.skuCode || item.name) {
+          try {
+            // Find existing position or SKU to increase stock
+            const existingPos = await this.prisma.projectStockPosition.findFirst({
+              where: {
+                tenantId,
+                OR: [
+                  { itemCode: item.skuCode },
+                  { partValue: item.name },
+                ],
+              },
+            });
+            if (existingPos) {
+              await this.prisma.projectStockPosition.updateMany({
+                where: { id: existingPos.id, tenantId },
+                data: {
+                  inflow: { increment: Number(item.quantity || 0) },
+                  presentStock: { increment: Number(item.quantity || 0) },
+                  notes: newBill.documentUrl ? `Invoice: ${newBill.invoiceNumber} | BillDoc: ${newBill.documentUrl}` : existingPos.notes,
+                },
+              });
+            }
+          } catch (e) {
+            // Ignore if position doesn't exist
+          }
+        }
+      }
+    }
 
     return newBill;
   }
 
   async deletePurchaseBill(id: string, user: ScopedUser) {
     const tenantId = requireTenantId(user);
-    const bill = await (this.prisma as any).purchaseBill.findFirst({
+    const bill = await this.prisma.purchaseBill.findFirst({
       where: { id, tenantId, deletedAt: null },
     });
     if (!bill) throw new NotFoundException(`Purchase bill ${id} not found`);
-
-    await (this.prisma as any).purchaseBill.update({
-      where: { id },
+    await this.prisma.purchaseBill.update({
+      where: { id: bill.id },
       data: { deletedAt: new Date() },
     });
-
-    return { success: true, message: `Bill ${bill.billNumber} deleted` };
-  }
-
-  async uploadPurchaseBillDocument(file: any, user: ScopedUser) {
-    if (!file) throw new BadRequestException('No document file uploaded');
-    const tenantId = requireTenantId(user);
-
-    // Sanitize tenant ID to prevent directory traversal
-    const safeTenantId = tenantId.replace(/[^a-zA-Z0-9_-]/g, '');
-    const uploadDir = path.resolve(process.cwd(), 'storage', safeTenantId, 'purchase_documents');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-
-    const ext = path.extname(file.originalname).toLowerCase();
-    const safeExt = ['.pdf', '.png', '.jpg', '.jpeg', '.webp'].includes(ext) ? ext : '.bin';
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}${safeExt}`;
-    const filePath = path.join(uploadDir, fileName);
-
-    // Path traversal check
-    if (!filePath.startsWith(uploadDir)) {
-      throw new BadRequestException('Invalid filename path traversal attempt');
-    }
-
-    fs.writeFileSync(filePath, file.buffer);
-    const documentUrl = `/storage/${safeTenantId}/purchase_documents/${fileName}`;
-    return { documentUrl, filename: fileName };
+    return { success: true, message: `Bill ${bill.invoiceNumber} deleted` };
   }
 
   async scanBillOcr(body: { rawText?: string; filename?: string; fileUrl?: string }) {

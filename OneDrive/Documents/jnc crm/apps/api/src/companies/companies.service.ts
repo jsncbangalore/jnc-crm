@@ -150,7 +150,7 @@ export class CompaniesService {
       orderBy: { name: 'asc' },
       include: {
         contacts: {
-          where: { deletedAt: null, tenantId: scope.tenantId },
+          where: { deletedAt: null, ...this.scopingService.getContactScope(user) },
           orderBy: { isPrimary: 'desc' },
         },
         _count: {
@@ -166,7 +166,7 @@ export class CompaniesService {
       where: { id, ...scope, deletedAt: null },
       include: {
         contacts: {
-          where: { deletedAt: null, tenantId: scope.tenantId },
+          where: { deletedAt: null, ...this.scopingService.getContactScope(user) },
           orderBy: { isPrimary: 'desc' },
         },
         leads: {
@@ -217,6 +217,16 @@ export class CompaniesService {
     });
     if (res.count === 0) throw new NotFoundException('Company not found');
     return { success: true };
+  }
+
+  async getContacts(companyId: string, user: ScopedUser) {
+    await this.findOne(companyId, user);
+    const tenantId = requireTenantId(user);
+    const scope = this.scopingService.getContactScope(user);
+    return this.prisma.contact.findMany({
+      where: { companyId, tenantId, ...scope, deletedAt: null },
+      orderBy: { isPrimary: 'desc' },
+    });
   }
 
   async addContact(companyId: string, dto: CreateContactDto, user: ScopedUser) {

@@ -9,7 +9,7 @@ import {
   Building2, FileText, Shield, Bell, ChevronDown, Settings, ShieldCheck,
   Receipt, Sun, Moon, ClipboardList, Search, Plus, Star, Grid,
   CheckCircle2, ArrowRight, ExternalLink, Sparkles, X, UserPlus,
-  FilePlus, ShoppingBag, Box, UserCheck, HelpCircle, Layers, Bookmark
+  FilePlus, ShoppingBag, Box, UserCheck, HelpCircle, Layers, Bookmark, Sliders
 } from 'lucide-react';
 import { isPlatformOwner as checkIsPlatformOwner } from '../../utils/roles';
 
@@ -61,6 +61,18 @@ const clientOrgNavItems: NavTabItem[] = [
     ],
   },
   {
+    to: '/quotations',
+    icon: FileText,
+    label: 'Quotations',
+    roles: ['tenant_admin', 'admin', 'sub_admin', 'employee'],
+    pageKey: 'quotations',
+    subItems: [
+      { label: '+ New Quotation', to: '/quotations?action=create', isAction: true },
+      { label: 'All Quotations', to: '/quotations' },
+      { label: 'Pending Approvals', to: '/quotations?filter=pending' },
+    ],
+  },
+  {
     to: '/orders',
     icon: ShoppingCart,
     label: 'Orders',
@@ -100,18 +112,6 @@ const clientOrgNavItems: NavTabItem[] = [
     ],
   },
   {
-    to: '/suppliers',
-    icon: Building2,
-    label: 'Suppliers',
-    roles: ['tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'],
-    pageKey: 'suppliers',
-    subItems: [
-      { label: '+ Add Supplier', to: '/suppliers?action=create', isAction: true },
-      { label: 'All Suppliers', to: '/suppliers' },
-      { label: 'Active Vendor Accounts', to: '/suppliers?filter=active' },
-    ],
-  },
-  {
     to: '/shipments',
     icon: Truck,
     label: 'Shipments',
@@ -122,18 +122,6 @@ const clientOrgNavItems: NavTabItem[] = [
       { label: 'All Dispatches', to: '/shipments' },
       { label: 'In Transit', to: '/shipments?filter=transit' },
       { label: 'Delivered', to: '/shipments?filter=delivered' },
-    ],
-  },
-  {
-    to: '/quotations',
-    icon: FileText,
-    label: 'Quotations',
-    roles: ['tenant_admin', 'admin', 'sub_admin', 'employee'],
-    pageKey: 'quotations',
-    subItems: [
-      { label: '+ New Quotation', to: '/quotations?action=create', isAction: true },
-      { label: 'All Quotations', to: '/quotations' },
-      { label: 'Pending Approvals', to: '/quotations?filter=pending' },
     ],
   },
   {
@@ -149,13 +137,13 @@ const clientOrgNavItems: NavTabItem[] = [
   },
   {
     to: '/users',
-    icon: Shield,
-    label: 'Team & Users',
+    icon: ShieldCheck,
+    label: 'Users',
     roles: ['tenant_admin', 'admin'],
     pageKey: 'users',
     subItems: [
-      { label: '+ Add Team Member', to: '/users?action=create', isAction: true },
-      { label: 'All Staff Members', to: '/users' },
+      { label: '+ Add User', to: '/users?action=create', isAction: true },
+      { label: 'All Users', to: '/users' },
       { label: 'Department Teams & Roles', to: '/users?tab=teams' },
     ],
   },
@@ -171,8 +159,6 @@ export default function Navbar() {
   // Dropdown states
   const [profileOpen, setProfileOpen] = useState(false);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
-  const [favoritesOpen, setFavoritesOpen] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(false);
   const [appLauncherOpen, setAppLauncherOpen] = useState(false);
   const [activeTabDropdown, setActiveTabDropdown] = useState<string | null>(null);
 
@@ -197,8 +183,6 @@ export default function Navbar() {
       if (navRef.current && !navRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
         setQuickCreateOpen(false);
-        setFavoritesOpen(false);
-        setSetupOpen(false);
         setAppLauncherOpen(false);
         setActiveTabDropdown(null);
         setSearchFocused(false);
@@ -220,8 +204,6 @@ export default function Navbar() {
         setSearchFocused(false);
         setActiveTabDropdown(null);
         setQuickCreateOpen(false);
-        setFavoritesOpen(false);
-        setSetupOpen(false);
         setProfileOpen(false);
         setAppLauncherOpen(false);
       }
@@ -234,8 +216,6 @@ export default function Navbar() {
   useEffect(() => {
     setProfileOpen(false);
     setQuickCreateOpen(false);
-    setFavoritesOpen(false);
-    setSetupOpen(false);
     setAppLauncherOpen(false);
     setActiveTabDropdown(null);
     setSearchFocused(false);
@@ -278,8 +258,6 @@ export default function Navbar() {
               onClick={() => {
                 setAppLauncherOpen(!appLauncherOpen);
                 setQuickCreateOpen(false);
-                setFavoritesOpen(false);
-                setSetupOpen(false);
                 setProfileOpen(false);
               }}
               title="App Launcher"
@@ -335,8 +313,8 @@ export default function Navbar() {
           >
             <div className="h-7 px-1.5 py-0.5 rounded-md bg-white flex items-center justify-center shadow-xs border border-slate-200 dark:border-transparent">
               <img
-                src={branding.companyLogoUrl || '/jnc-logo.jpg'}
-                alt={branding.companyDisplayName}
+                src="/jnc-logo.jpg"
+                alt="JS Network Communication"
                 className="h-5 w-auto object-contain"
               />
             </div>
@@ -414,75 +392,19 @@ export default function Navbar() {
         )}
 
         {/* Right: Global Utility Actions */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           
-          {/* Favorites Star Dropdown (Tenant Only) */}
-          {!isPlatformOwner && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  setFavoritesOpen(!favoritesOpen);
-                  setQuickCreateOpen(false);
-                  setSetupOpen(false);
-                  setProfileOpen(false);
-                  setAppLauncherOpen(false);
-                }}
-                title="Favorites & Bookmarks"
-                className={`h-8 px-2 rounded-lg flex items-center gap-1 border transition-all text-xs font-semibold ${
-                  favoritesOpen
-                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-500'
-                    : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-white/5'
-                }`}
-              >
-                <Star size={14} className="fill-amber-400 text-amber-500" />
-                <ChevronDown size={11} className={`transition-transform duration-200 ${favoritesOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              <AnimatePresence>
-                {favoritesOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                    className="absolute right-0 mt-2 w-56 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-1.5 z-50"
-                  >
-                    <p className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pinned Favorites</p>
-                    <NavLink to="/invoices" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                      <Receipt size={13} className="text-emerald-500" />
-                      <span>Invoices & Billing</span>
-                    </NavLink>
-                    <NavLink to="/leads" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                      <Users size={13} className="text-crm-blue" />
-                      <span>Active Leads Pipeline</span>
-                    </NavLink>
-                    <NavLink to="/orders" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                      <ShoppingCart size={13} className="text-amber-500" />
-                      <span>Production Orders</span>
-                    </NavLink>
-                    <NavLink to="/inventory" onClick={() => setFavoritesOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                      <Package size={13} className="text-crm-violet" />
-                      <span>Component Stock Positions</span>
-                    </NavLink>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
-
-          {/* Global Quick Create Button (Tenant Only) */}
+          {/* Global Quick Create (+) & Pinned Access (Tenant Only) */}
           {!isPlatformOwner && (
             <div className="relative">
               <button
                 type="button"
                 onClick={() => {
                   setQuickCreateOpen(!quickCreateOpen);
-                  setFavoritesOpen(false);
-                  setSetupOpen(false);
                   setProfileOpen(false);
                   setAppLauncherOpen(false);
                 }}
-                title="Global Quick Create (+)"
+                title="Quick Create & Pinned Access (+)"
                 className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold transition-all ${
                   quickCreateOpen
                     ? 'bg-crm-blue text-white shadow-sm'
@@ -500,96 +422,24 @@ export default function Navbar() {
                     exit={{ opacity: 0, y: 6, scale: 0.96 }}
                     className="absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-2 z-50 space-y-1"
                   >
+                    {/* Team & Setup Actions */}
                     <p className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quick Actions</p>
-                    <NavLink to="/invoices?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-emerald-500/10 text-slate-800 dark:text-slate-200 hover:text-emerald-600 transition-colors">
-                      <Receipt size={14} className="text-emerald-500" />
-                      <span>New Tax Invoice</span>
-                    </NavLink>
-                    <NavLink to="/leads?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-crm-blue/10 text-slate-800 dark:text-slate-200 hover:text-crm-blue transition-colors">
-                      <Users size={14} className="text-crm-blue" />
-                      <span>New Lead / Customer</span>
-                    </NavLink>
-                    <NavLink to="/orders?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-amber-500/10 text-slate-800 dark:text-slate-200 hover:text-amber-600 transition-colors">
-                      <ShoppingCart size={14} className="text-amber-500" />
-                      <span>New Customer Order</span>
-                    </NavLink>
-                    <NavLink to="/quotations?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-indigo-500/10 text-slate-800 dark:text-slate-200 hover:text-indigo-600 transition-colors">
-                      <FileText size={14} className="text-indigo-500" />
-                      <span>New Quotation</span>
-                    </NavLink>
-                    <NavLink to="/inventory?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-purple-500/10 text-slate-800 dark:text-slate-200 hover:text-purple-600 transition-colors">
-                      <Package size={14} className="text-purple-500" />
-                      <span>Add Inventory Component</span>
-                    </NavLink>
                     {isAdmin && (
-                      <NavLink to="/users?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-blue-500/10 text-slate-800 dark:text-slate-200 hover:text-blue-600 transition-colors border-t border-slate-100 dark:border-white/5 pt-2">
+                      <NavLink to="/users?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-500/10 text-slate-800 dark:text-slate-200 hover:text-blue-600 transition-colors">
                         <UserPlus size={14} className="text-blue-500" />
-                        <span>Add Team Member</span>
+                        <span>Add User</span>
                       </NavLink>
                     )}
+
+                    <NavLink to="/lead-flow" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-crm-teal/10 text-slate-800 dark:text-slate-200 hover:text-crm-teal transition-colors border-t border-slate-100 dark:border-white/5 mt-1 pt-2">
+                      <Sliders size={14} className="text-crm-teal" />
+                      <span>Setup & Flow Controller</span>
+                    </NavLink>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
           )}
-
-          {/* Setup / Configuration Gear */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                setSetupOpen(!setupOpen);
-                setQuickCreateOpen(false);
-                setFavoritesOpen(false);
-                setProfileOpen(false);
-                setAppLauncherOpen(false);
-              }}
-              title="Setup & Administration"
-              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
-                setupOpen
-                  ? 'bg-slate-200 dark:bg-white/15 text-slate-900 dark:text-white'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-white/5'
-              }`}
-            >
-              <Settings size={16} />
-            </button>
-
-            <AnimatePresence>
-              {setupOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                  className="absolute right-0 mt-2 w-60 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-1.5 z-50"
-                >
-                  <p className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Setup & Settings</p>
-                  {isPlatformOwner ? (
-                    <>
-                      <NavLink to="/platform/companies" onClick={() => setSetupOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                        <Building2 size={13} className="text-crm-blue" />
-                        <span>Client Companies</span>
-                      </NavLink>
-                      <NavLink to="/platform/admins" onClick={() => setSetupOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                        <Shield size={13} className="text-purple-600" />
-                        <span>Platform Admins</span>
-                      </NavLink>
-                    </>
-                  ) : (
-                    <>
-                      <NavLink to="/settings/branding" onClick={() => setSetupOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                        <Building2 size={13} className="text-crm-teal" />
-                        <span>Company Branding & GST</span>
-                      </NavLink>
-                      <NavLink to="/users" onClick={() => setSetupOpen(false)} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-200">
-                        <Shield size={13} className="text-crm-blue" />
-                        <span>Team & Role Permissions</span>
-                      </NavLink>
-                    </>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
 
           {/* Theme Switcher */}
           <button
@@ -601,26 +451,28 @@ export default function Navbar() {
             {isDark ? <Sun size={16} className="text-amber-400" /> : <Moon size={16} className="text-indigo-600" />}
           </button>
 
-          {/* User Profile Avatar with Slide Drawer */}
+          {/* User Profile Avatar with Name Under */}
           <div className="relative">
             <button
               type="button"
               onClick={() => {
                 setProfileOpen(!profileOpen);
                 setQuickCreateOpen(false);
-                setFavoritesOpen(false);
-                setSetupOpen(false);
                 setAppLauncherOpen(false);
               }}
-              className={`flex items-center gap-1.5 p-1 rounded-full border transition-all ${
+              className={`flex flex-col items-center justify-center px-1.5 py-0.5 rounded-xl border transition-all cursor-pointer ${
                 profileOpen
-                  ? 'border-crm-blue ring-2 ring-crm-blue/20'
-                  : 'border-slate-300 dark:border-[#2A3042] hover:border-crm-blue'
+                  ? 'bg-crm-blue/10 border-crm-blue ring-1 ring-crm-blue/30 text-crm-blue'
+                  : 'border-transparent hover:bg-slate-200/60 dark:hover:bg-white/5 hover:border-slate-300 dark:hover:border-[#2A3042] text-slate-700 dark:text-slate-300'
               }`}
+              title={`Signed in as ${user?.name || 'User'}`}
             >
-              <div className="w-6 h-6 rounded-full bg-crm-blue flex items-center justify-center text-white font-bold text-[11px]">
+              <div className="w-6 h-6 rounded-full bg-crm-blue flex items-center justify-center text-white font-bold text-[11px] shadow-xs shrink-0">
                 {user?.name?.charAt(0).toUpperCase() || 'U'}
               </div>
+              <span className="text-[10px] font-bold tracking-tight max-w-[70px] truncate leading-tight mt-0.5 text-center text-slate-800 dark:text-slate-200">
+                {user?.name || 'User'}
+              </span>
             </button>
 
             <AnimatePresence>
@@ -651,16 +503,37 @@ export default function Navbar() {
                     </div>
                   </div>
 
-                  {/* Company Business Details Link (Tenant Only) */}
-                  {!isPlatformOwner && isAdmin && (
-                    <NavLink
-                      to="/settings/branding"
-                      onClick={() => setProfileOpen(false)}
-                      className="w-full flex items-center gap-2 px-2.5 py-2 mb-1 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-                    >
-                      <Building2 size={14} className="text-crm-teal" />
-                      <span>Company Profile & Details</span>
-                    </NavLink>
+                  {/* Organization & Setup Links (Accessible here) */}
+                  {isPlatformOwner ? (
+                    <div className="space-y-0.5 mb-1 pb-1 border-b border-slate-100 dark:border-white/5">
+                      <NavLink
+                        to="/platform/companies"
+                        onClick={() => setProfileOpen(false)}
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                      >
+                        <Building2 size={13} className="text-crm-blue" />
+                        <span>Client Companies</span>
+                      </NavLink>
+                      <NavLink
+                        to="/platform/admins"
+                        onClick={() => setProfileOpen(false)}
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                      >
+                        <Shield size={13} className="text-purple-600" />
+                        <span>Platform Admins</span>
+                      </NavLink>
+                    </div>
+                  ) : isAdmin && (
+                    <div className="space-y-0.5 mb-1 pb-1 border-b border-slate-100 dark:border-white/5">
+                      <NavLink
+                        to="/settings/branding"
+                        onClick={() => setProfileOpen(false)}
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                      >
+                        <Building2 size={13} className="text-crm-teal" />
+                        <span>Company Branding & GST</span>
+                      </NavLink>
+                    </div>
                   )}
 
                   {/* Logout Session */}
@@ -772,16 +645,6 @@ export default function Navbar() {
           </nav>
         </div>
 
-        {/* Right: Personalize Tabs Icon */}
-        <div className="flex items-center gap-2 shrink-0 pl-2">
-          <button
-            type="button"
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-            title="Personalize Navigation Bar"
-          >
-            <Settings size={13} />
-          </button>
-        </div>
       </div>
     </header>
   );

@@ -23,14 +23,16 @@ import {
   Calculator,
   TrendingUp,
   PackageCheck,
+  BarChart2,
 } from 'lucide-react';
-import { inventoryApi } from '../../services/api';
+import { inventoryApi, fetchPrivateFileBlobUrl } from '../../services/api';
 import { SmartBillScannerModal } from './SmartBillScannerModal';
 import { DigitalSoftCopyModal } from './DigitalSoftCopyModal';
 
 interface PurchaseBillsHubProps {
   existingProjects?: string[];
   onStockUpdated: () => void;
+  onRecordPurchase?: () => void;
 }
 
 export const formatImageUrl = (url?: string) => {
@@ -43,15 +45,35 @@ export const formatImageUrl = (url?: string) => {
 
 export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
   onStockUpdated,
+  onRecordPurchase,
 }) => {
   const [bills, setBills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
+  // KPI display toggle (persisted)
+  const [showBillsKpis, setShowBillsKpis] = useState<boolean>(() => {
+    return localStorage.getItem('jnc_show_bills_kpis') !== 'false';
+  });
+
+  const toggleBillsKpis = () => {
+    setShowBillsKpis((prev) => {
+      const next = !prev;
+      localStorage.setItem('jnc_show_bills_kpis', String(next));
+      return next;
+    });
+  };
+
   // Modals & Actions
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [selectedSoftCopyBill, setSelectedSoftCopyBill] = useState<any | null>(null);
   const [previewScanImage, setPreviewScanImage] = useState<{ url: string; title: string } | null>(null);
+  const handleCloseScanPreview = () => {
+    if (previewScanImage?.url && previewScanImage.url.startsWith('blob:')) {
+      URL.revokeObjectURL(previewScanImage.url);
+    }
+    setPreviewScanImage(null);
+  };
   const [deleteConfirmBill, setDeleteConfirmBill] = useState<{ id: string; invoiceNumber: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -108,72 +130,101 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* KPI METRICS */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-        {/* Card 1: Archived Bills */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-              Archived Bills
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center border border-blue-200 dark:border-transparent">
-              <Receipt size={16} />
+      {/* KPI METRICS (COMPACT & REMOVABLE) */}
+      {showBillsKpis && (
+        <div className="relative group">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+            {/* Card 1: Archived Bills */}
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-transparent">
+                  <Receipt size={13} />
+                </div>
+                <div className="truncate">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                    Archived Bills
+                  </span>
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                    Receipts Vault
+                  </span>
+                </div>
+              </div>
+              <p className="text-base sm:text-lg font-black text-slate-950 dark:text-white mt-0 tabular-nums font-mono shrink-0 ml-1">
+                {totalBillsCount} <span className="text-xs font-normal text-slate-500">Invoices</span>
+              </p>
             </div>
-          </div>
-          <p className="text-2xl font-black text-slate-950 dark:text-white mt-2 tabular-nums font-mono">
-            {totalBillsCount} <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">Invoices</span>
-          </p>
-          <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Supplier Receipts Vault</span>
-        </div>
 
-        {/* Card 2: Total Inward Value */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-              Total Inward Value
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-200 dark:border-transparent">
-              <TrendingUp size={16} />
+            {/* Card 2: Total Inward Value */}
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200/60 dark:border-transparent">
+                  <TrendingUp size={13} />
+                </div>
+                <div className="truncate">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                    Inward Value
+                  </span>
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                    Grand Total GST
+                  </span>
+                </div>
+              </div>
+              <p className="text-base sm:text-lg font-black text-emerald-700 dark:text-emerald-400 tabular-nums font-mono shrink-0 ml-1">
+                ₹{Math.round(totalExpenditure).toLocaleString('en-IN')}
+              </p>
             </div>
-          </div>
-          <p className="text-2xl font-black text-slate-950 dark:text-white mt-2 tabular-nums font-mono">
-            ₹{Math.round(totalExpenditure).toLocaleString('en-IN')}
-          </p>
-          <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Grand Total with GST</span>
-        </div>
 
-        {/* Card 3: Total GST Paid */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-              Total GST Paid
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 flex items-center justify-center border border-amber-200 dark:border-transparent">
-              <Calculator size={16} />
+            {/* Card 3: Total GST Paid */}
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-200/60 dark:border-transparent">
+                  <Calculator size={13} />
+                </div>
+                <div className="truncate">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                    GST Paid
+                  </span>
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                    Input Credit
+                  </span>
+                </div>
+              </div>
+              <p className="text-base sm:text-lg font-black text-amber-700 dark:text-amber-400 tabular-nums font-mono shrink-0 ml-1">
+                ₹{Math.round(totalGstPaid).toLocaleString('en-IN')}
+              </p>
             </div>
-          </div>
-          <p className="text-2xl font-black text-amber-700 dark:text-amber-400 mt-2 tabular-nums font-mono">
-            ₹{Math.round(totalGstPaid).toLocaleString('en-IN')}
-          </p>
-          <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">CGST + SGST Input Credit</span>
-        </div>
 
-        {/* Card 4: Units Inwarded */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-              Units Inwarded
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-200 dark:border-transparent">
-              <PackageCheck size={16} />
+            {/* Card 4: Units Inwarded */}
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200/60 dark:border-transparent">
+                  <PackageCheck size={13} />
+                </div>
+                <div className="truncate">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                    Units Inwarded
+                  </span>
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                    Replenished
+                  </span>
+                </div>
+              </div>
+              <p className="text-base sm:text-lg font-black text-slate-950 dark:text-white tabular-nums font-mono shrink-0 ml-1">
+                {totalItemsInwarded.toLocaleString('en-IN')} <span className="text-xs font-normal text-slate-500">Nos</span>
+              </p>
             </div>
           </div>
-          <p className="text-2xl font-black text-slate-950 dark:text-white mt-2 tabular-nums font-mono">
-            {totalItemsInwarded.toLocaleString('en-IN')} <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">Nos</span>
-          </p>
-          <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Stock Replenished</span>
+
+          {/* Quick Remove / Dismiss button */}
+          <button
+            onClick={toggleBillsKpis}
+            className="absolute -top-2.5 -right-2 w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 dark:bg-[#2A3042] dark:hover:bg-[#343B52] text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] shadow-sm transition-all border border-slate-300 dark:border-slate-600"
+            title="Remove summary cards"
+          >
+            <X size={11} />
+          </button>
         </div>
-      </div>
+      )}
 
       {/* ACTION & SEARCH BAR */}
       <div className="flex items-center justify-between gap-3 flex-wrap bg-white dark:bg-[#181B26] p-3.5 rounded-2xl border border-slate-200 dark:border-[#2A3042] shadow-sm">
@@ -188,14 +239,42 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
           />
         </div>
 
-        {/* Scan & Add Bill Button */}
-        <button
-          onClick={() => setShowScannerModal(true)}
-          className="btn-primary text-xs px-4 py-2 font-bold shadow-sm flex items-center gap-2"
-        >
-          <Camera size={14} />
-          <span>Scan & Add New Bill</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Toggle KPI button */}
+          <button
+            onClick={toggleBillsKpis}
+            className={`btn text-xs py-2 px-2.5 gap-1.5 shadow-sm border transition-all ${
+              showBillsKpis
+                ? 'bg-white dark:bg-[#181B26] text-slate-700 dark:text-slate-300 border-slate-300 dark:border-[#2A3042] hover:bg-slate-100'
+                : 'bg-blue-50 dark:bg-crm-blue/15 text-crm-blue border-blue-300 dark:border-crm-blue/30 font-bold'
+            }`}
+            title={showBillsKpis ? 'Hide summary boxes' : 'Show summary boxes'}
+          >
+            <BarChart2 size={13} />
+            <span>{showBillsKpis ? 'Hide Stats' : 'Stats'}</span>
+          </button>
+
+          {/* Record Purchase Button */}
+          {onRecordPurchase && (
+            <button
+              onClick={onRecordPurchase}
+              className="btn bg-white dark:bg-[#1E2230] hover:bg-slate-100 dark:hover:bg-[#202534] text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-[#2A3042] text-xs px-3.5 py-2 font-bold shadow-sm flex items-center gap-1.5"
+              title="Record a purchase invoice / bill"
+            >
+              <Receipt size={14} className="text-crm-blue" />
+              <span>Record Purchase</span>
+            </button>
+          )}
+
+          {/* Scan & Add Bill Button */}
+          <button
+            onClick={() => setShowScannerModal(true)}
+            className="btn-primary text-xs px-4 py-2 font-bold shadow-sm flex items-center gap-2"
+          >
+            <Camera size={14} />
+            <span>Scan & Add New Bill</span>
+          </button>
+        </div>
       </div>
 
       {/* BILLS REPOSITORY TABLE */}
@@ -291,12 +370,17 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
                     {b.documentUrl ? (
                       <button
                         type="button"
-                        onClick={() =>
-                          setPreviewScanImage({
-                            url: formatImageUrl(b.documentUrl),
-                            title: `Original Bill Scan: #${b.invoiceNumber} (${b.vendorName})`,
-                          })
-                        }
+                        onClick={async () => {
+                          try {
+                            const url = await fetchPrivateFileBlobUrl(b.documentUrl);
+                            setPreviewScanImage({
+                              url,
+                              title: `Original Bill Scan: #${b.invoiceNumber} (${b.vendorName})`,
+                            });
+                          } catch (err) {
+                            console.error('Failed to load bill document', err);
+                          }
+                        }}
                         className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#1E2230] hover:bg-slate-100 dark:hover:bg-[#2A3042] text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-[#2A3042] text-[11px] font-bold inline-flex items-center gap-1 transition-all shadow-sm"
                         title="View original scanned bill image directly in popup"
                       >
@@ -447,7 +531,7 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setPreviewScanImage(null)}
+                  onClick={handleCloseScanPreview}
                   className="p-1.5 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                 >
                   <X size={18} />
@@ -475,7 +559,7 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
               <div className="p-3 border-t border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230] flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setPreviewScanImage(null)}
+                  onClick={handleCloseScanPreview}
                   className="btn-primary text-xs px-5 py-1.5 font-bold shadow-glow-blue"
                 >
                   Close Viewer

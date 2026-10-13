@@ -50,6 +50,11 @@ export class CompaniesController {
     return this.companiesService.delete(id, user);
   }
 
+  @Get(':id/contacts')
+  async getContacts(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
+    return this.companiesService.getContacts(id, user);
+  }
+
   @Post(':id/contacts')
   @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))

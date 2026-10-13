@@ -33,10 +33,11 @@ import {
   Zap,
   Coins,
   Calculator,
+  BarChart2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
-import { inventoryApi } from '../services/api';
+import { inventoryApi, fetchPrivateFileBlobUrl } from '../services/api';
 import { Sku, ProjectStockPosition } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { AddComponentModal } from '../components/inventory/AddComponentModal';
@@ -102,6 +103,30 @@ export default function InventoryPage() {
   const [shortageOnly, setShortageOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // KPI display toggles (persisted)
+  const [showStockKpis, setShowStockKpis] = useState<boolean>(() => {
+    return localStorage.getItem('jnc_show_stock_kpis') !== 'false';
+  });
+  const [showBuyListKpis, setShowBuyListKpis] = useState<boolean>(() => {
+    return localStorage.getItem('jnc_show_buylist_kpis') !== 'false';
+  });
+
+  const toggleStockKpis = () => {
+    setShowStockKpis((prev) => {
+      const next = !prev;
+      localStorage.setItem('jnc_show_stock_kpis', String(next));
+      return next;
+    });
+  };
+
+  const toggleBuyListKpis = () => {
+    setShowBuyListKpis((prev) => {
+      const next = !prev;
+      localStorage.setItem('jnc_show_buylist_kpis', String(next));
+      return next;
+    });
+  };
+
   // Modals
   const [showAddComponentModal, setShowAddComponentModal] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
@@ -113,6 +138,31 @@ export default function InventoryPage() {
   const [purchaseItem, setPurchaseItem] = useState<ProjectStockPosition | null>(null);
   const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
   const [previewDocTitle, setPreviewDocTitle] = useState<string>('');
+  const [previewDocIsPdf, setPreviewDocIsPdf] = useState(false);
+  const [loadingDoc, setLoadingDoc] = useState(false);
+
+  const handleViewDocument = async (docUrl: string, itemName: string) => {
+    try {
+      setLoadingDoc(true);
+      const isPdf = docUrl.toLowerCase().includes('.pdf');
+      setPreviewDocIsPdf(isPdf);
+      const blobUrl = await fetchPrivateFileBlobUrl(docUrl);
+      setPreviewDocUrl(blobUrl);
+      setPreviewDocTitle(`${itemName} - Purchase GST Invoice`);
+    } catch (err) {
+      console.error('Failed to securely fetch purchase document:', err);
+      alert('Unable to load private document. Please ensure you are authenticated.');
+    } finally {
+      setLoadingDoc(false);
+    }
+  };
+
+  const handleClosePreview = () => {
+    if (previewDocUrl && previewDocUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewDocUrl);
+    }
+    setPreviewDocUrl(null);
+  };
 
   // Secure Wipe Modal
   const [showClearModal, setShowClearModal] = useState(false);
@@ -255,9 +305,16 @@ export default function InventoryPage() {
         const totalWithGst = Number((baseRate + gstAmount).toFixed(2));
 
         let extractedDoc: string | null = null;
-        if (pos.notes && typeof pos.notes === 'string' && pos.notes.includes('data:image')) {
-          const match = pos.notes.match(/data:image[^"'\s]+/);
-          if (match) extractedDoc = match[0];
+        if ((pos as any).documentUrl || (pos as any).purchaseDocumentUrl) {
+          extractedDoc = (pos as any).documentUrl || (pos as any).purchaseDocumentUrl;
+        } else if (pos.notes && typeof pos.notes === 'string') {
+          if (pos.notes.includes('/api/v1/inventory/purchase-documents/')) {
+            const match = pos.notes.match(/\/api\/v1\/inventory\/purchase-documents\/[^\s"')]+/);
+            if (match) extractedDoc = match[0];
+          } else if (pos.notes.includes('data:image')) {
+            const match = pos.notes.match(/data:image[^"'\s]+/);
+            if (match) extractedDoc = match[0];
+          }
         }
 
         const present = Number(pos.presentStock ?? pos.openingStock ?? 0);
@@ -577,16 +634,48 @@ export default function InventoryPage() {
           </button>
         </div>
 
-        {/* Quick Shortage Alert Link */}
-        {totalShortagesCount > 0 && activeTab === 'master_stock' && (
-          <button
-            onClick={handleAddAllShortagesToBuyList}
-            className="btn bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 text-xs px-3.5 py-2 font-bold gap-1.5 shadow-sm"
-          >
-            <Sparkles size={14} className="text-amber-600 dark:text-amber-400" />
-            <span>Queue {totalShortagesCount} Deficits to Buy List</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {activeTab === 'master_stock' && (
+            <button
+              onClick={toggleStockKpis}
+              className={`btn text-xs py-1.5 px-2.5 gap-1.5 shadow-sm border transition-all ${
+                showStockKpis
+                  ? 'bg-white dark:bg-[#181B26] text-slate-700 dark:text-slate-300 border-slate-300 dark:border-[#2A3042] hover:bg-slate-100'
+                  : 'bg-blue-50 dark:bg-crm-blue/15 text-crm-blue border-blue-300 dark:border-crm-blue/30 font-bold'
+              }`}
+              title={showStockKpis ? 'Hide summary boxes' : 'Show summary boxes'}
+            >
+              <BarChart2 size={13} />
+              <span>{showStockKpis ? 'Hide Stats' : 'Stats'}</span>
+            </button>
+          )}
+
+          {activeTab === 'buy_list' && (
+            <button
+              onClick={toggleBuyListKpis}
+              className={`btn text-xs py-1.5 px-2.5 gap-1.5 shadow-sm border transition-all ${
+                showBuyListKpis
+                  ? 'bg-white dark:bg-[#181B26] text-slate-700 dark:text-slate-300 border-slate-300 dark:border-[#2A3042] hover:bg-slate-100'
+                  : 'bg-blue-50 dark:bg-crm-blue/15 text-crm-blue border-blue-300 dark:border-crm-blue/30 font-bold'
+              }`}
+              title={showBuyListKpis ? 'Hide summary boxes' : 'Show summary boxes'}
+            >
+              <BarChart2 size={13} />
+              <span>{showBuyListKpis ? 'Hide Stats' : 'Stats'}</span>
+            </button>
+          )}
+
+          {/* Quick Shortage Alert Link */}
+          {totalShortagesCount > 0 && activeTab === 'master_stock' && (
+            <button
+              onClick={handleAddAllShortagesToBuyList}
+              className="btn bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 text-xs px-3.5 py-1.5 font-bold gap-1.5 shadow-sm"
+            >
+              <Sparkles size={14} className="text-amber-600 dark:text-amber-400" />
+              <span>Queue {totalShortagesCount} Deficits</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════ */}
@@ -594,90 +683,111 @@ export default function InventoryPage() {
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'master_stock' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-          {/* KPI CARDS (Focused on physical inventory) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-            {/* Card 1: Total Components */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-                  Total Components
-                </span>
-                <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center border border-blue-200 dark:border-transparent">
-                  <Boxes size={16} />
+          {/* KPI CARDS (COMPACT & REMOVABLE) */}
+          {showStockKpis && (
+            <div className="relative group">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {/* Card 1: Total Components */}
+                <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-transparent">
+                      <Boxes size={13} />
+                    </div>
+                    <div className="truncate">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                        Total SKUs
+                      </span>
+                      <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                        Master Catalog
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-base sm:text-lg font-black text-slate-950 dark:text-white tabular-nums font-mono shrink-0 ml-1">
+                    {totalComponentsCount}
+                  </p>
                 </div>
-              </div>
-              <p className="text-2xl font-black text-slate-950 dark:text-white mt-2 tabular-nums font-mono">
-                {totalComponentsCount}
-              </p>
-              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Master Catalog SKUs</span>
-            </div>
 
-            {/* Card 2: Total Store Stock */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-                  Total Store Stock
-                </span>
-                <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-200 dark:border-transparent">
-                  <PackageCheck size={16} />
+                {/* Card 2: Total Store Stock */}
+                <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200/60 dark:border-transparent">
+                      <PackageCheck size={13} />
+                    </div>
+                    <div className="truncate">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                        Store Stock
+                      </span>
+                      <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                        In Warehouse
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-base sm:text-lg font-black text-emerald-700 dark:text-emerald-400 tabular-nums font-mono shrink-0 ml-1">
+                    {totalStockUnits.toLocaleString('en-IN')}
+                  </p>
                 </div>
-              </div>
-              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-2 tabular-nums font-mono">
-                {totalStockUnits.toLocaleString('en-IN')}
-              </p>
-              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Physical items in warehouse</span>
-            </div>
 
-            {/* Card 3: Active Systems & BOMs */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-                  Active Projects / BOMs
-                </span>
-                <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-200 dark:border-transparent">
-                  <Layers size={16} />
+                {/* Card 3: Active Systems & BOMs */}
+                <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 border border-purple-200/60 dark:border-transparent">
+                      <Layers size={13} />
+                    </div>
+                    <div className="truncate">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                        Active BOMs
+                      </span>
+                      <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                        Loaded Boards
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-base sm:text-lg font-black text-purple-700 dark:text-purple-400 tabular-nums font-mono shrink-0 ml-1">
+                    {totalProjectsCount} <span className="text-xs font-normal">Sys</span>
+                  </p>
                 </div>
-              </div>
-              <p className="text-2xl font-black text-purple-700 dark:text-purple-400 mt-2 tabular-nums font-mono">
-                {totalProjectsCount} Systems
-              </p>
-              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Loaded Electronic Boards</span>
-            </div>
 
-            {/* Card 4: Deficits / To Restock */}
-            <div
-              onClick={() => setShortageOnly(!shortageOnly)}
-              className={`p-4 rounded-2xl border cursor-pointer transition-all shadow-sm flex flex-col justify-between ${
-                shortageOnly
-                  ? 'bg-red-50 dark:bg-red-500/15 border-red-300 dark:border-red-500/40 ring-1 ring-red-400 shadow-glow-coral'
-                  : totalShortagesCount > 0
-                  ? 'bg-white dark:bg-[#181B26] border-slate-200 dark:border-[#2A3042] hover:border-red-300 hover:bg-red-50/40 dark:hover:bg-red-500/5'
-                  : 'bg-white dark:bg-[#181B26] border-slate-200 dark:border-[#2A3042]'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-                  Shortages / Restock
-                </span>
-                <div className="w-8 h-8 rounded-xl bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-400 flex items-center justify-center border border-red-200 dark:border-transparent">
-                  <AlertTriangle size={16} />
+                {/* Card 4: Deficits / To Restock */}
+                <div
+                  onClick={() => setShortageOnly(!shortageOnly)}
+                  className={`p-2.5 px-3 rounded-xl border cursor-pointer transition-all shadow-sm flex items-center justify-between gap-2 ${
+                    shortageOnly
+                      ? 'bg-red-50 dark:bg-red-500/15 border-red-300 dark:border-red-500/40 ring-1 ring-red-400 shadow-glow-coral'
+                      : totalShortagesCount > 0
+                      ? 'bg-white dark:bg-[#181B26] border-slate-200 dark:border-[#2A3042] hover:border-red-300 hover:bg-red-50/40 dark:hover:bg-red-500/5'
+                      : 'bg-white dark:bg-[#181B26] border-slate-200 dark:border-[#2A3042]'
+                  }`}
+                  title="Click to toggle shortage filter"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0 border border-red-200/60 dark:border-transparent">
+                      <AlertTriangle size={13} />
+                    </div>
+                    <div className="truncate">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                        Shortages
+                      </span>
+                      <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                        {shortageOnly ? 'Filter Active' : 'Deficit Alert'}
+                      </span>
+                    </div>
+                  </div>
+                  <p className={`text-base sm:text-lg font-black tabular-nums font-mono shrink-0 ml-1 ${totalShortagesCount > 0 ? 'text-red-700 dark:text-crm-coral' : 'text-slate-700 dark:text-slate-400'}`}>
+                    {totalShortagesCount}
+                  </p>
                 </div>
               </div>
-              <div className="flex items-baseline gap-2 mt-2">
-                <p className={`text-2xl font-black tabular-nums font-mono ${totalShortagesCount > 0 ? 'text-red-700 dark:text-crm-coral' : 'text-slate-700 dark:text-slate-400'}`}>
-                  {totalShortagesCount}
-                </p>
-                {totalShortagesCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300 border border-red-200 dark:border-red-500/30">
-                    Deficit Items
-                  </span>
-                )}
-              </div>
-              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
-                {shortageOnly ? 'Filter Active (Click to Show All)' : 'Click to filter shortages'}
-              </span>
+
+              {/* Quick Remove / Dismiss button */}
+              <button
+                onClick={toggleStockKpis}
+                className="absolute -top-2.5 -right-2 w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 dark:bg-[#2A3042] dark:hover:bg-[#343B52] text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] shadow-sm transition-all border border-slate-300 dark:border-slate-600"
+                title="Remove summary cards"
+              >
+                <X size={11} />
+              </button>
             </div>
-          </div>
+          )}
 
           {/* CONTROLS & ACTION BAR */}
           <div className="flex items-center justify-between gap-3 flex-wrap bg-white dark:bg-[#181B26] p-3 rounded-2xl border border-slate-200 dark:border-[#2A3042] shadow-sm">
@@ -737,13 +847,6 @@ export default function InventoryPage() {
                     className="btn-primary text-xs font-bold gap-1.5 px-4 py-2 shadow-glow-blue"
                   >
                     <Plus size={14} /> Add Component
-                  </button>
-
-                  <button
-                    onClick={() => setShowRecordPurchaseModal(true)}
-                    className="btn bg-white dark:bg-[#1E2230] hover:bg-slate-100 dark:hover:bg-[#202534] text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-[#2A3042] text-xs gap-1.5 font-bold px-3.5 py-2 shadow-sm"
-                  >
-                    <Receipt size={14} className="text-crm-blue" /> Record Purchase
                   </button>
 
                   <button
@@ -830,70 +933,7 @@ export default function InventoryPage() {
             </div>
           )}
 
-          {/* ─── TOP TABLE NAVIGATOR TOOLBAR (Scroll or Pan) ────────────────── */}
-          <div className="flex items-center justify-between bg-white dark:bg-[#181B26] p-2 rounded-xl border border-slate-200 dark:border-[#2A3042] flex-wrap gap-2 text-xs shadow-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-700 dark:text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <SlidersHorizontal size={12} className="text-crm-blue" />
-                Table Navigator (Scroll or Pan):
-              </span>
-              <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-0.5 rounded-lg border border-slate-200 dark:border-[#2A3042]">
-                <button
-                  type="button"
-                  onClick={() => setDensity('compact')}
-                  className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-                    density === 'compact' ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-                  }`}
-                >
-                  Compact
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDensity('normal')}
-                  className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-                    density === 'normal' ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-                  }`}
-                >
-                  Normal
-                </button>
-              </div>
-            </div>
 
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => scrollTable('start')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-crm-blue text-slate-800 dark:text-slate-300 flex items-center gap-1 font-bold shadow-sm"
-                title="Scroll to Start (Component & SKU)"
-              >
-                <ChevronsLeft size={13} /> Start (Component & SKU)
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollTable('left')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-                title="Pan Left"
-              >
-                <ChevronLeft size={13} /> Left
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollTable('right')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-                title="Pan Right"
-              >
-                Right <ChevronRight size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollTable('end')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-amber-500 text-amber-700 dark:text-crm-amber flex items-center gap-1 font-bold shadow-sm"
-                title="Scroll to End (Actions & Add List)"
-              >
-                End (Actions & Bill) <ChevronsRight size={13} />
-              </button>
-            </div>
-          </div>
 
           {/* MASTER TABLE (NO PRICING AMOUNTS - CLEAN INVENTORY VIEW) */}
           <div className="table-wrapper border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-hidden shadow-2xl bg-white dark:bg-[#141722]">
@@ -1032,11 +1072,9 @@ export default function InventoryPage() {
                           <td className={`text-center border-r border-slate-200 dark:border-[#2A3042]/30 ${density === 'compact' ? 'px-2 py-1.5' : 'px-3 py-2'}`}>
                             {item.documentUrl ? (
                               <button
-                                onClick={() => {
-                                  setPreviewDocUrl(item.documentUrl || null);
-                                  setPreviewDocTitle(`${item.name} - Purchase GST Invoice`);
-                                }}
-                                className="px-2 py-1 rounded bg-crm-blue/15 hover:bg-crm-blue/25 text-crm-blue border border-crm-blue/30 text-[11px] font-bold inline-flex items-center gap-1 shadow-sm transition-all"
+                                onClick={() => handleViewDocument(item.documentUrl!, item.name)}
+                                disabled={loadingDoc}
+                                className="px-2 py-1 rounded bg-crm-blue/15 hover:bg-crm-blue/25 text-crm-blue border border-crm-blue/30 text-[11px] font-bold inline-flex items-center gap-1 shadow-sm transition-all disabled:opacity-50"
                               >
                                 <Eye size={12} /> View Bill
                               </button>
@@ -1142,46 +1180,9 @@ export default function InventoryPage() {
             </div>
           </div>
 
-          {/* ─── BOTTOM TABLE NAVIGATOR TOOLBAR ─────────────────────────────── */}
-          <div className="flex items-center justify-between bg-white dark:bg-[#181B26] p-2.5 rounded-xl border border-slate-200 dark:border-[#2A3042] flex-wrap gap-2 text-xs shadow-sm">
-            <span className="text-[11px] text-slate-700 dark:text-slate-400 font-mono font-medium">
-              Showing {filteredList.length} component records
-            </span>
-
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => scrollTable('start')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-crm-blue text-slate-800 dark:text-slate-300 flex items-center gap-1 font-bold shadow-sm"
-                title="Scroll to Start"
-              >
-                <ChevronsLeft size={13} /> Start (Component & SKU)
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollTable('left')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-                title="Pan Left"
-              >
-                <ChevronLeft size={13} /> Left
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollTable('right')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-                title="Pan Right"
-              >
-                Right <ChevronRight size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollTable('end')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-amber-500 text-amber-700 dark:text-crm-amber flex items-center gap-1 font-bold shadow-sm"
-                title="Scroll to End"
-              >
-                End (Actions & Bill) <ChevronsRight size={13} />
-              </button>
-            </div>
+          {/* ─── BOTTOM RECORD COUNTER ──────────────────────────────────────── */}
+          <div className="flex items-center justify-between px-3 py-2 text-xs text-slate-500 font-mono">
+            <span>Showing {filteredList.length} component records</span>
           </div>
         </motion.div>
       )}
@@ -1191,72 +1192,101 @@ export default function InventoryPage() {
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'buy_list' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-          {/* BUY LIST SUMMARY KPI CARDS */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-            {/* Card 1: Items in Buy Cart */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-                  Items in Buy Cart
-                </span>
-                <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center border border-blue-200 dark:border-transparent">
-                  <ShoppingCart size={16} />
+          {/* BUY LIST SUMMARY KPI CARDS (COMPACT & REMOVABLE) */}
+          {showBuyListKpis && (
+            <div className="relative group">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {/* Card 1: Items in Buy Cart */}
+                <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-transparent">
+                      <ShoppingCart size={13} />
+                    </div>
+                    <div className="truncate">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                        In Cart
+                      </span>
+                      <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                        Queued for PO
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-base sm:text-lg font-black text-slate-950 dark:text-white tabular-nums font-mono shrink-0 ml-1">
+                    {buyList.length} <span className="text-xs font-normal text-slate-500">({buyListUnitsCount} u)</span>
+                  </p>
                 </div>
-              </div>
-              <p className="text-2xl font-black text-slate-950 dark:text-white mt-2 tabular-nums font-mono">
-                {buyList.length} <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">({buyListUnitsCount} Units)</span>
-              </p>
-              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Queued for Vendor PO</span>
-            </div>
 
-            {/* Card 2: Estimated Base Amount */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-                  Estimated Base Amount
-                </span>
-                <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-200 dark:border-transparent">
-                  <Coins size={16} />
+                {/* Card 2: Estimated Base Amount */}
+                <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200/60 dark:border-transparent">
+                      <Coins size={13} />
+                    </div>
+                    <div className="truncate">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                        Base Total
+                      </span>
+                      <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                        Excl. GST
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-base sm:text-lg font-black text-emerald-700 dark:text-emerald-400 tabular-nums font-mono shrink-0 ml-1">
+                    ₹{Math.round(buyListBaseTotal).toLocaleString('en-IN')}
+                  </p>
                 </div>
-              </div>
-              <p className="text-2xl font-black text-slate-950 dark:text-white mt-2 tabular-nums font-mono">
-                ₹{Math.round(buyListBaseTotal).toLocaleString('en-IN')}
-              </p>
-              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Excluding GST</span>
-            </div>
 
-            {/* Card 3: Estimated GST Total */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-                  Estimated GST Total
-                </span>
-                <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 flex items-center justify-center border border-amber-200 dark:border-transparent">
-                  <Calculator size={16} />
+                {/* Card 3: Estimated GST Total */}
+                <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-200/60 dark:border-transparent">
+                      <Calculator size={13} />
+                    </div>
+                    <div className="truncate">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                        GST Total
+                      </span>
+                      <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                        Input Tax Credit
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-base sm:text-lg font-black text-amber-700 dark:text-amber-400 tabular-nums font-mono shrink-0 ml-1">
+                    +₹{Math.round(buyListGstTotal).toLocaleString('en-IN')}
+                  </p>
                 </div>
-              </div>
-              <p className="text-2xl font-black text-amber-700 dark:text-amber-400 mt-2 tabular-nums font-mono">
-                +₹{Math.round(buyListGstTotal).toLocaleString('en-IN')}
-              </p>
-              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Input Tax Credit</span>
-            </div>
 
-            {/* Card 4: Grand Purchase Total */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400">
-                  Grand Purchase Total
-                </span>
-                <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-200 dark:border-transparent">
-                  <Receipt size={16} />
+                {/* Card 4: Grand Purchase Total */}
+                <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200/60 dark:border-transparent">
+                      <Receipt size={13} />
+                    </div>
+                    <div className="truncate">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
+                        Grand Total
+                      </span>
+                      <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                        PO Commitment
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-base sm:text-lg font-black text-slate-950 dark:text-white tabular-nums font-mono shrink-0 ml-1">
+                    ₹{Math.round(buyListGrandTotal).toLocaleString('en-IN')}
+                  </p>
                 </div>
               </div>
-              <p className="text-2xl font-black text-slate-950 dark:text-white mt-2 tabular-nums font-mono">
-                ₹{Math.round(buyListGrandTotal).toLocaleString('en-IN')}
-              </p>
-              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Total PO Commitment</span>
+
+              {/* Quick Remove / Dismiss button */}
+              <button
+                onClick={toggleBuyListKpis}
+                className="absolute -top-2.5 -right-2 w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 dark:bg-[#2A3042] dark:hover:bg-[#343B52] text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] shadow-sm transition-all border border-slate-300 dark:border-slate-600"
+                title="Remove summary cards"
+              >
+                <X size={11} />
+              </button>
             </div>
-          </div>
+          )}
 
           {/* BUY LIST ACTION BAR */}
           <div className="flex items-center justify-between gap-3 flex-wrap bg-white dark:bg-[#181B26] p-3.5 rounded-2xl border border-slate-200 dark:border-[#2A3042] shadow-sm">
@@ -1312,70 +1342,7 @@ export default function InventoryPage() {
             </div>
           </div>
 
-          {/* ─── TOP TABLE NAVIGATOR TOOLBAR FOR PROCUREMENT CART ────────── */}
-          <div className="flex items-center justify-between bg-white dark:bg-[#181B26] p-2 rounded-xl border border-slate-200 dark:border-[#2A3042] flex-wrap gap-2 text-xs shadow-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-700 dark:text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <SlidersHorizontal size={12} className="text-crm-blue" />
-                Table Navigator (Scroll or Pan):
-              </span>
-              <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-0.5 rounded-lg border border-slate-200 dark:border-[#2A3042]">
-                <button
-                  type="button"
-                  onClick={() => setDensity('compact')}
-                  className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-                    density === 'compact' ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-                  }`}
-                >
-                  Compact
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDensity('normal')}
-                  className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-                    density === 'normal' ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-                  }`}
-                >
-                  Normal
-                </button>
-              </div>
-            </div>
 
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => scrollBuyListTable('start')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-crm-blue text-slate-800 dark:text-slate-300 flex items-center gap-1 font-bold shadow-sm"
-                title="Scroll to Start (Component & SKU)"
-              >
-                <ChevronsLeft size={13} /> Start (Component & SKU)
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollBuyListTable('left')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-                title="Pan Left"
-              >
-                <ChevronLeft size={13} /> Left
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollBuyListTable('right')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-                title="Pan Right"
-              >
-                Right <ChevronRight size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollBuyListTable('end')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-amber-500 text-amber-700 dark:text-crm-amber flex items-center gap-1 font-bold shadow-sm"
-                title="Scroll to End (Actions & Inward)"
-              >
-                End (Actions & Bill) <ChevronsRight size={13} />
-              </button>
-            </div>
-          </div>
 
           {/* BUY LIST TABLE */}
           <div className="table-wrapper border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-hidden shadow-sm bg-white dark:bg-[#141722]">
@@ -1545,46 +1512,9 @@ export default function InventoryPage() {
             </div>
           </div>
 
-          {/* ─── BOTTOM TABLE NAVIGATOR TOOLBAR FOR PROCUREMENT CART ─────────── */}
-          <div className="flex items-center justify-between bg-white dark:bg-[#181B26] p-2.5 rounded-xl border border-slate-200 dark:border-[#2A3042] flex-wrap gap-2 text-xs shadow-sm">
-            <span className="text-[11px] text-slate-700 dark:text-slate-400 font-mono font-medium">
-              Showing {buyList.length} items queued in Buy Cart ({buyListUnitsCount} units)
-            </span>
-
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => scrollBuyListTable('start')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-crm-blue text-slate-800 dark:text-slate-300 flex items-center gap-1 font-bold shadow-sm"
-                title="Scroll to Start"
-              >
-                <ChevronsLeft size={13} /> Start (Component & SKU)
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollBuyListTable('left')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-                title="Pan Left"
-              >
-                <ChevronLeft size={13} /> Left
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollBuyListTable('right')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-                title="Pan Right"
-              >
-                Right <ChevronRight size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollBuyListTable('end')}
-                className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-amber-500 text-amber-700 dark:text-crm-amber flex items-center gap-1 font-bold shadow-sm"
-                title="Scroll to End"
-              >
-                End (Actions & Bill) <ChevronsRight size={13} />
-              </button>
-            </div>
+          {/* ─── BOTTOM RECORD COUNTER FOR PROCUREMENT CART ─────────────────── */}
+          <div className="flex items-center justify-between px-3 py-2 text-xs text-slate-500 font-mono">
+            <span>Showing {buyList.length} items queued in Buy Cart ({buyListUnitsCount} units)</span>
           </div>
         </motion.div>
       )}
@@ -1597,6 +1527,7 @@ export default function InventoryPage() {
           <PurchaseBillsHub
             existingProjects={existingProjects}
             onStockUpdated={fetchData}
+            onRecordPurchase={() => setShowRecordPurchaseModal(true)}
           />
         </motion.div>
       )}
@@ -1688,7 +1619,7 @@ export default function InventoryPage() {
                   <h3 className="text-sm font-bold text-slate-950 dark:text-white truncate">{previewDocTitle}</h3>
                 </div>
                 <button
-                  onClick={() => setPreviewDocUrl(null)}
+                  onClick={handleClosePreview}
                   className="p-1 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                 >
                   <X size={18} />
@@ -1696,17 +1627,17 @@ export default function InventoryPage() {
               </div>
 
               <div className="p-4 flex-1 overflow-auto flex items-center justify-center bg-black/40 min-h-[300px]">
-                {previewDocUrl.startsWith('data:image') || previewDocUrl.endsWith('.png') || previewDocUrl.endsWith('.jpg') ? (
-                  <img
-                    src={previewDocUrl}
-                    alt="GST Invoice"
-                    className="max-w-full max-h-[70vh] rounded-lg shadow-xl object-contain border border-slate-200 dark:border-[#2A3042]"
-                  />
-                ) : (
+                {previewDocIsPdf ? (
                   <iframe
                     src={previewDocUrl}
                     title="Invoice Document"
                     className="w-full h-[70vh] rounded-lg border border-slate-200 dark:border-[#2A3042]"
+                  />
+                ) : (
+                  <img
+                    src={previewDocUrl}
+                    alt="GST Invoice"
+                    className="max-w-full max-h-[70vh] rounded-lg shadow-xl object-contain border border-slate-200 dark:border-[#2A3042]"
                   />
                 )}
               </div>
@@ -1720,7 +1651,7 @@ export default function InventoryPage() {
                   <Download size={13} /> Download Bill
                 </a>
                 <button
-                  onClick={() => setPreviewDocUrl(null)}
+                  onClick={handleClosePreview}
                   className="btn-ghost text-xs px-4 py-1.5"
                 >
                   Close
