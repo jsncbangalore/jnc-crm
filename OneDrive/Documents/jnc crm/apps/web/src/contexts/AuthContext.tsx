@@ -1,3 +1,10 @@
+/* --- C2PA CONTENT CREDENTIALS & PROVENANCE NOTICE ---
+ * c2pa.action: 'c2pa.created'
+ * c2pa.ai_training: 'disallowed'
+ * c2pa.do_not_train: true
+ * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
+ * ----------------------------------------------------- */
+
 import React, {
   createContext,
   useContext,
@@ -8,8 +15,14 @@ import React, {
   ReactNode,
 } from 'react';
 import { User } from '../types';
-import { authApi, setAccessToken } from '../services/api';
-import { AlertCircle, Clock } from 'lucide-react';
+import {
+  authApi,
+  platformAuthApi,
+  setStaffAccessToken,
+  setPlatformAccessToken,
+  setStoredRefreshToken,
+} from '../services/api';
+import { Clock } from 'lucide-react';
 
 export interface CompanyChoice {
   code: string;
@@ -23,6 +36,8 @@ export interface SelectionPending {
 
 interface AuthContextType {
   user: User | null;
+  staffUser: User | null;
+  platformUser: User | null;
   isLoading: boolean;
   /** Returns user on success, or `{ requiresCompanySelection, companies, selectionToken }` if more than one company matched */
   login: (
@@ -35,7 +50,10 @@ interface AuthContextType {
   >;
   /** Complete multi-company login after user picks a company */
   selectCompany: (selectionToken: string, companyCode: string) => Promise<User & { redirectPath?: string }>;
+  platformLogin: (email: string, password: string) => Promise<User & { redirectPath?: string }>;
   logout: () => Promise<void>;
+  logoutStaff: () => Promise<void>;
+  logoutPlatform: () => Promise<void>;
   logoutAll: () => Promise<void>;
   updateUser: (updatedFields: Partial<User>) => void;
   isAuthenticated: boolean;
@@ -43,22 +61,26 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-// 30 minutes total inactivity timeout; warning appears at 28 minutes (2 minutes remaining)
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
-const WARNING_THRESHOLD_MS = 2 * 60 * 1000;
+// 12 hours total inactivity timeout (covers full workday shift); warning appears at 5 minutes remaining
+const INACTIVITY_TIMEOUT_MS = 12 * 60 * 60 * 1000;
+const WARNING_THRESHOLD_MS = 5 * 60 * 1000;
+
+function clearStorageExceptTheme() {
+  try {
+    const savedTheme = localStorage.getItem('jnc_theme');
+    localStorage.clear();
+    if (savedTheme) {
+      localStorage.setItem('jnc_theme', savedTheme);
+    }
+    sessionStorage.clear();
+  } catch {
+    // ignore
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const stored = localStorage.getItem('jnc_user');
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch {
-      localStorage.removeItem('jnc_user');
-    }
-    return null;
-  });
+  const [staffUser, setStaffUser] = useState<User | null>(null);
+  const [platformUser, setPlatformUser] = useState<User | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [showInactivityModal, setShowInactivityModal] = useState(false);
@@ -67,37 +89,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const lastActivityRef = useRef<number>(Date.now());
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const _storeSession = (data: any) => {
-    // Keep access token in memory only; reset inactivity timestamp for new session
-    lastActivityRef.current = Date.now();
-    setAccessToken(data.accessToken);
-    if (data.user) {
-      localStorage.setItem('jnc_user', JSON.stringify(data.user));
-      setUser(data.user);
-    }
-    return { ...data.user, redirectPath: data.redirectPath } as User & { redirectPath?: string };
-  };
+  const isPlatform =
+    typeof window !== 'undefined' && window.location.pathname.startsWith('/platform');
+  const user = isPlatform ? (platformUser || staffUser) : (staffUser || platformUser);
 
-  const logout = useCallback(async () => {
+  const logoutStaff = useCallback(async () => {
     try {
       await authApi.logout();
     } catch {
       // ignore
     } finally {
-      setAccessToken(null);
-      localStorage.removeItem('jnc_user');
-      localStorage.removeItem('jnc_access_token');
-      localStorage.removeItem('jnc_refresh_token');
-      setUser(null);
+      setStaffAccessToken(null);
+      setStoredRefreshToken(null, false);
+      setStaffUser(null);
       setShowInactivityModal(false);
-      if (
-        window.location.pathname !== '/login' &&
-        window.location.pathname !== '/platform/login'
-      ) {
+      clearStorageExceptTheme();
+      if (window.location.pathname !== '/login') {
+        window.history.replaceState(null, '', '/login');
         window.location.href = '/login';
       }
     }
   }, []);
+
+  const logoutPlatform = useCallback(async () => {
+    try {
+      await platformAuthApi.logout();
+    } catch {
+      // ignore
+    } finally {
+      setPlatformAccessToken(null);
+      setStoredRefreshToken(null, true);
+      setPlatformUser(null);
+      setShowInactivityModal(false);
+      if (window.location.pathname !== '/platform/login') {
+        window.history.replaceState(null, '', '/platform/login');
+        window.location.href = '/platform/login';
+      }
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/platform')) {
+      await logoutPlatform();
+    } else {
+      await logoutStaff();
+    }
+  }, [logoutPlatform, logoutStaff]);
 
   const logoutAll = useCallback(async () => {
     try {
@@ -105,51 +142,137 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore
     } finally {
-      setAccessToken(null);
-      localStorage.removeItem('jnc_user');
-      localStorage.removeItem('jnc_access_token');
-      localStorage.removeItem('jnc_refresh_token');
-      setUser(null);
+      setStaffAccessToken(null);
+      setStaffUser(null);
+      setPlatformAccessToken(null);
+      setPlatformUser(null);
       setShowInactivityModal(false);
+      clearStorageExceptTheme();
+      window.history.replaceState(null, '', '/login');
       window.location.href = '/login';
     }
   }, []);
 
-  // 1. Silent token refresh on initial page load using HttpOnly cookie
+  // 1. Silent token refresh on initial page load:
+  // /platform/* restores only the platform session; everything else restores only staff session.
   useEffect(() => {
     let isMounted = true;
+
+    // Purge legacy storage entries on load
+    try {
+      localStorage.removeItem('jnc_user');
+      localStorage.removeItem('jnc_access_token');
+      localStorage.removeItem('jnc_refresh_token');
+    } catch {
+      // ignore
+    }
+
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+    const isPublicInquiry = currentPath === '/inquiry' || currentPath === '/quote-request';
+    if (isPublicInquiry) {
+      setIsLoading(false);
+      return;
+    }
+
+    const isPlatformRoute = currentPath.startsWith('/platform');
+
     (async () => {
       try {
-        // If currently in impersonation / support mode, preserve client workspace session
-        const storedUserRaw = localStorage.getItem('jnc_user');
-        if (storedUserRaw) {
+        if (isPlatformRoute) {
+          // Restore primary platform session
           try {
-            const parsed = JSON.parse(storedUserRaw);
-            if (parsed?.isImpersonating && sessionStorage.getItem('jnc_master_token')) {
-              if (isMounted) {
-                setIsLoading(false);
+            const { data } = await platformAuthApi.refresh();
+            if (isMounted && data) {
+              lastActivityRef.current = Date.now();
+              setPlatformAccessToken(data.accessToken);
+              if (data.refreshToken) {
+                setStoredRefreshToken(data.refreshToken, true);
               }
-              return;
+              if (data.user) {
+                setPlatformUser(data.user);
+              }
             }
-          } catch {}
-        }
+          } catch {
+            // If platform refresh fails, check if a staff user is logged in
+            // so PlatformOwnerGuard can display the "client-company portal" notice without redirect loop
+            try {
+              const { data: staffData } = await authApi.refresh();
+              if (isMounted && staffData) {
+                lastActivityRef.current = Date.now();
+                setStaffAccessToken(staffData.accessToken);
+                if (staffData.refreshToken) {
+                  setStoredRefreshToken(staffData.refreshToken, false);
+                }
+                if (staffData.user) {
+                  setStaffUser(staffData.user);
+                }
+              }
+            } catch {
+              if (isMounted) {
+                setPlatformAccessToken(null);
+                setPlatformUser(null);
+              }
+            }
+          }
+        } else {
+          // Restore primary staff session
+          const impToken =
+            typeof window !== 'undefined'
+              ? sessionStorage.getItem('jnc_impersonate_token')
+              : null;
+          if (impToken) {
+            setStaffAccessToken(impToken);
+            try {
+              const meRes = await authApi.me();
+              if (isMounted && meRes.data) {
+                lastActivityRef.current = Date.now();
+                setStaffUser(meRes.data);
+                setIsLoading(false);
+                return;
+              }
+            } catch {
+              sessionStorage.removeItem('jnc_impersonate_token');
+            }
+          }
 
-        const { data } = await authApi.refresh();
-        if (isMounted && data) {
-          _storeSession(data);
-        }
-      } catch {
-        if (isMounted) {
-          setAccessToken(null);
-          // If on protected page without session, clear user
-          const isPublicPage =
-            window.location.pathname.startsWith('/login') ||
-            window.location.pathname.startsWith('/forgot-password') ||
-            window.location.pathname.startsWith('/reset-password') ||
-            window.location.pathname.startsWith('/platform/login');
-          if (!isPublicPage) {
-            setUser(null);
-            localStorage.removeItem('jnc_user');
+          try {
+            const { data } = await authApi.refresh();
+            if (isMounted && data) {
+              lastActivityRef.current = Date.now();
+              setStaffAccessToken(data.accessToken);
+              if (data.refreshToken) {
+                setStoredRefreshToken(data.refreshToken, false);
+              }
+              if (data.user) {
+                setStaffUser(data.user);
+              } else {
+                const meRes = await authApi.me();
+                if (isMounted && meRes.data) {
+                  setStaffUser(meRes.data);
+                }
+              }
+            }
+          } catch {
+            // If staff refresh fails, check if a platform admin is logged in
+            // so CrmRouteGuard can display the "Impersonation Required" notice
+            try {
+              const { data: platData } = await platformAuthApi.refresh();
+              if (isMounted && platData) {
+                lastActivityRef.current = Date.now();
+                setPlatformAccessToken(platData.accessToken);
+                if (platData.refreshToken) {
+                  setStoredRefreshToken(platData.refreshToken, true);
+                }
+                if (platData.user) {
+                  setPlatformUser(platData.user);
+                }
+              }
+            } catch {
+              if (isMounted) {
+                setStaffAccessToken(null);
+                setStaffUser(null);
+              }
+            }
           }
         }
       } finally {
@@ -175,16 +298,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return;
 
-    // Reset timestamp and modal state whenever active user is present
     lastActivityRef.current = Date.now();
-    setShowInactivityModal(false);
 
     const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
     const handleActivity = () => {
       lastActivityRef.current = Date.now();
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        lastActivityRef.current = Date.now();
+      }
+    };
+
     activityEvents.forEach((evt) => window.addEventListener(evt, handleActivity, { passive: true }));
+    window.addEventListener('visibilitychange', handleVisibilityChange, { passive: true });
+    window.addEventListener('focus', handleActivity, { passive: true });
 
     timerRef.current = setInterval(() => {
       const elapsed = Date.now() - lastActivityRef.current;
@@ -202,6 +331,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       activityEvents.forEach((evt) => window.removeEventListener(evt, handleActivity));
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleActivity);
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [user, logout]);
@@ -221,31 +352,79 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    return _storeSession(data);
+    lastActivityRef.current = Date.now();
+    setStaffAccessToken(data.accessToken);
+    if (data.refreshToken) {
+      setStoredRefreshToken(data.refreshToken, false);
+    }
+    if (data.user) {
+      setStaffUser(data.user);
+      if (data.user.role === 'platform_super_admin') {
+        setPlatformAccessToken(data.accessToken);
+        setPlatformUser(data.user);
+      }
+    }
+    return { ...data.user, redirectPath: data.redirectPath } as User & { redirectPath?: string };
+  };
+
+  const platformLogin = async (email: string, password: string) => {
+    const { data } = await platformAuthApi.login(email, password);
+    lastActivityRef.current = Date.now();
+    setPlatformAccessToken(data.accessToken);
+    setStaffAccessToken(data.accessToken);
+    if (data.refreshToken) {
+      setStoredRefreshToken(data.refreshToken, true);
+    }
+    if (data.user) {
+      setPlatformUser(data.user);
+      setStaffUser(data.user);
+    }
+    return {
+      ...data.user,
+      redirectPath: data.redirectPath || '/platform/companies',
+    } as User & { redirectPath?: string };
   };
 
   const selectCompany = async (selectionToken: string, companyCode: string) => {
     const { data } = await authApi.selectCompany(selectionToken, companyCode);
-    return _storeSession(data);
+    lastActivityRef.current = Date.now();
+    setStaffAccessToken(data.accessToken);
+    if (data.refreshToken) {
+      setStoredRefreshToken(data.refreshToken, false);
+    }
+    if (data.user) {
+      setStaffUser(data.user);
+    }
+    return { ...data.user, redirectPath: data.redirectPath } as User & { redirectPath?: string };
   };
 
   const updateUser = (updatedFields: Partial<User>) => {
-    setUser((prev) => {
-      if (!prev) return null;
-      const merged = { ...prev, ...updatedFields };
-      localStorage.setItem('jnc_user', JSON.stringify(merged));
-      return merged;
-    });
+    if (isPlatform) {
+      setPlatformUser((prev) => {
+        if (!prev) return updatedFields as User;
+        return { ...prev, ...updatedFields };
+      });
+    } else {
+      setStaffUser((prev) => {
+        if (!prev) return updatedFields as User;
+        return { ...prev, ...updatedFields };
+      });
+    }
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        staffUser,
+        platformUser,
         isLoading,
         login,
+        platformLogin,
         selectCompany,
         logout,
+        logoutStaff,
+        logoutPlatform,
         logoutAll,
         updateUser,
         isAuthenticated: !!user,

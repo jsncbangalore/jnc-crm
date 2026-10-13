@@ -9,12 +9,25 @@ import axios from 'axios';
 
 export const getApiBaseUrl = () => {
   if (typeof window !== 'undefined') {
+    const isTestTwoOrigin =
+      window.location.port === '4173' &&
+      (window.location.search.includes('originB=3333') ||
+        sessionStorage.getItem('jnc_origin_b') === '3333' ||
+        Boolean((window as any).__ORIGIN_B__));
+    if (isTestTwoOrigin) {
+      return `${window.location.protocol}//${window.location.hostname}:3333/api/v1`;
+    }
+  }
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  if (typeof window !== 'undefined') {
     const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
+    if (host === '127.0.0.1' || !host.includes('.')) {
       return '/api/v1';
     }
   }
-  return (import.meta as any).env?.VITE_API_URL || 'https://jnc-crm-backend.onrender.com/api/v1';
+  return 'https://api.jsnc.co.in/api/v1';
 };
 
 const api = axios.create({
@@ -26,43 +39,150 @@ const api = axios.create({
   withCredentials: true,
 });
 
-let _inMemoryAccessToken: string | null = null;
-
-export const setAccessToken = (token: string | null) => {
-  _inMemoryAccessToken = token;
+export const resolveFileUrl = (url: string | null | undefined): string => {
+  if (!url) return '';
+  if (url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  const apiBase = getApiBaseUrl();
+  let apiOrigin = '';
+  try {
+    apiOrigin = new URL(apiBase, typeof window !== 'undefined' ? window.location.origin : 'https://api.jsnc.co.in').origin;
+  } catch {
+    apiOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  }
+  if (url.startsWith('/')) {
+    if (url === '/jnc-logo.jpg' || url.startsWith('/assets/')) {
+      return url;
+    }
+    return `${apiOrigin}${url}`;
+  }
+  return `${apiBase}/${url}`;
 };
 
-export const getAccessToken = () => _inMemoryAccessToken;
+export const fetchPrivateFileBlobUrl = async (url: string): Promise<string> => {
+  if (!url) return '';
+  if (url.startsWith('blob:') || url.startsWith('data:')) {
+    return url;
+  }
+  let path = url;
+  const apiBase = getApiBaseUrl();
+  if (path.startsWith(apiBase)) {
+    path = path.substring(apiBase.length);
+  }
+  if (path.startsWith('/api/v1/')) {
+    path = path.substring('/api/v1'.length);
+  }
+  if (!path.startsWith('/') && !path.startsWith('http://') && !path.startsWith('https://')) {
+    path = '/' + path;
+  }
+  const res = await api.get(path, { responseType: 'blob' });
+  return URL.createObjectURL(res.data);
+};
+
+let _inMemoryStaffToken: string | null = null;
+let _inMemoryPlatformToken: string | null = null;
+
+export const isPlatformPath = (pathname?: string): boolean => {
+  const p = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
+  return p.startsWith('/platform');
+};
+
+export const setAccessToken = (token: string | null, forcePlatform?: boolean) => {
+  const isPlatform = forcePlatform !== undefined ? forcePlatform : isPlatformPath();
+  if (isPlatform) {
+    _inMemoryPlatformToken = token;
+  } else {
+    _inMemoryStaffToken = token;
+  }
+};
+
+export const setStaffAccessToken = (token: string | null) => {
+  _inMemoryStaffToken = token;
+};
+
+export const setPlatformAccessToken = (token: string | null) => {
+  _inMemoryPlatformToken = token;
+};
+
+export const getAccessToken = (forcePlatform?: boolean) => {
+  if (typeof window !== 'undefined') {
+    const impToken = sessionStorage.getItem('jnc_impersonate_token');
+    if (impToken) {
+      return impToken;
+    }
+  }
+  const isPlatform = forcePlatform !== undefined ? forcePlatform : isPlatformPath();
+  return isPlatform ? _inMemoryPlatformToken : _inMemoryStaffToken;
+};
+
+const STAFF_REFRESH_KEY = 'jnc_refresh_token_fb';
+const PLATFORM_REFRESH_KEY = 'jnc_platform_refresh_token_fb';
+
+export const getStoredRefreshToken = (isPlatform?: boolean): string | null => {
+  if (typeof window === 'undefined') return null;
+  const key = isPlatform ? PLATFORM_REFRESH_KEY : STAFF_REFRESH_KEY;
+  try {
+    return sessionStorage.getItem(key) || localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+export const setStoredRefreshToken = (token: string | null, isPlatform?: boolean) => {
+  if (typeof window === 'undefined') return;
+  const key = isPlatform ? PLATFORM_REFRESH_KEY : STAFF_REFRESH_KEY;
+  try {
+    if (token) {
+      sessionStorage.setItem(key, token);
+      localStorage.setItem(key, token);
+    } else {
+      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // ignore
+  }
+};
 
 // Attach token to every request
 api.interceptors.request.use((config) => {
-  if (_inMemoryAccessToken) {
-    config.headers.Authorization = `Bearer ${_inMemoryAccessToken}`;
+  const isPlatformReq =
+    config.url?.startsWith('/platform') ||
+    config.url?.startsWith('/platform-auth') ||
+    isPlatformPath();
+  const token = getAccessToken(isPlatformReq);
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   config.headers['X-Requested-With'] = 'XMLHttpRequest';
   return config;
 });
 
 // Single-flight token refresh — queues concurrent 401s and replays them after one refresh
-let _refreshing: Promise<string> | null = null;
+let _refreshingStaff: Promise<string> | null = null;
+let _refreshingPlatform: Promise<string> | null = null;
 type QueueEntry = { resolve: (token: string) => void; reject: (e: unknown) => void };
-const _refreshQueue: QueueEntry[] = [];
+const _staffQueue: QueueEntry[] = [];
+const _platformQueue: QueueEntry[] = [];
 
-function _flushQueue(token: string | null, error?: unknown) {
-  _refreshQueue.forEach((entry) => {
+function _flushQueue(queue: QueueEntry[], token: string | null, error?: unknown) {
+  queue.forEach((entry) => {
     if (token) entry.resolve(token);
     else entry.reject(error);
   });
-  _refreshQueue.length = 0;
+  queue.length = 0;
 }
 
 // Auth endpoints that must never trigger a refresh redirect
 const AUTH_BYPASS_URLS = [
   '/auth/login',
   '/auth/refresh',
-  '/auth/platform-login',
   '/auth/forgot-password',
   '/auth/reset-password',
+  '/platform-auth/login',
+  '/platform-auth/refresh',
+  '/platform-auth/logout',
 ];
 
 // Auto-refresh on 401
@@ -80,58 +200,126 @@ api.interceptors.response.use(
     if (err.response?.status === 401 && !original._retry) {
       original._retry = true;
 
-      if (_refreshing) {
-        // Another refresh is already in-flight — queue this request
-        return new Promise<string>((resolve, reject) => {
-          _refreshQueue.push({ resolve, reject });
-        }).then((newToken) => {
+      const isPlatformReq =
+        url.startsWith('/platform') ||
+        url.startsWith('/platform-auth') ||
+        isPlatformPath();
+
+      if (isPlatformReq) {
+        if (_refreshingPlatform) {
+          return new Promise<string>((resolve, reject) => {
+            _platformQueue.push({ resolve, reject });
+          }).then((newToken) => {
+            original.headers.Authorization = `Bearer ${newToken}`;
+            return api(original);
+          });
+        }
+
+        _refreshingPlatform = (async () => {
+          try {
+            const refreshUrl = `${getApiBaseUrl()}/platform-auth/refresh`;
+            const fallbackToken = getStoredRefreshToken(true);
+            const { data } = await axios.post(
+              refreshUrl,
+              fallbackToken ? { refreshToken: fallbackToken } : {},
+              {
+                withCredentials: true,
+                timeout: 60000,
+                headers: {
+                  'X-Requested-With': 'XMLHttpRequest',
+                  'Content-Type': 'application/json',
+                },
+              },
+            );
+            setPlatformAccessToken(data.accessToken);
+            if (data.refreshToken) {
+              setStoredRefreshToken(data.refreshToken, true);
+            }
+            _flushQueue(_platformQueue, data.accessToken);
+            return data.accessToken as string;
+          } catch (refreshErr: any) {
+            _flushQueue(_platformQueue, null, refreshErr);
+            const isAuthFailure = refreshErr?.response?.status === 401 || refreshErr?.response?.status === 403;
+            if (isAuthFailure) {
+              setPlatformAccessToken(null);
+              setStoredRefreshToken(null, true);
+              if (window.location.pathname !== '/platform/login') {
+                window.history.replaceState(null, '', '/platform/login');
+                window.location.href = '/platform/login';
+              }
+            }
+            throw refreshErr;
+          } finally {
+            _refreshingPlatform = null;
+          }
+        })();
+
+        try {
+          const newToken = await _refreshingPlatform;
           original.headers.Authorization = `Bearer ${newToken}`;
           return api(original);
-        });
-      }
-
-      _refreshing = (async () => {
-        try {
-          const refreshUrl = `${getApiBaseUrl()}/auth/refresh`;
-          const { data } = await axios.post(
-            refreshUrl,
-            {},
-            {
-              withCredentials: true,
-              headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-              },
-            },
-          );
-          setAccessToken(data.accessToken);
-          if (data.user) {
-            localStorage.setItem('jnc_user', JSON.stringify(data.user));
-          }
-          _flushQueue(data.accessToken);
-          return data.accessToken as string;
-        } catch (refreshErr) {
-          _flushQueue(null, refreshErr);
-          setAccessToken(null);
-          localStorage.removeItem('jnc_user');
-          if (
-            window.location.pathname !== '/login' &&
-            window.location.pathname !== '/platform/login'
-          ) {
-            window.location.href = '/login';
-          }
-          throw refreshErr;
-        } finally {
-          _refreshing = null;
+        } catch {
+          return Promise.reject(err);
         }
-      })();
+      } else {
+        if (_refreshingStaff) {
+          return new Promise<string>((resolve, reject) => {
+            _staffQueue.push({ resolve, reject });
+          }).then((newToken) => {
+            original.headers.Authorization = `Bearer ${newToken}`;
+            return api(original);
+          });
+        }
 
-      try {
-        const newToken = await _refreshing;
-        original.headers.Authorization = `Bearer ${newToken}`;
-        return api(original);
-      } catch {
-        return Promise.reject(err);
+        _refreshingStaff = (async () => {
+          try {
+            const refreshUrl = `${getApiBaseUrl()}/auth/refresh`;
+            const fallbackToken = getStoredRefreshToken(false);
+            const { data } = await axios.post(
+              refreshUrl,
+              fallbackToken ? { refreshToken: fallbackToken } : {},
+              {
+                withCredentials: true,
+                timeout: 60000,
+                headers: {
+                  'X-Requested-With': 'XMLHttpRequest',
+                  'Content-Type': 'application/json',
+                },
+              },
+            );
+            setStaffAccessToken(data.accessToken);
+            if (data.refreshToken) {
+              setStoredRefreshToken(data.refreshToken, false);
+            }
+            _flushQueue(_staffQueue, data.accessToken);
+            return data.accessToken as string;
+          } catch (refreshErr: any) {
+            _flushQueue(_staffQueue, null, refreshErr);
+            const isAuthFailure = refreshErr?.response?.status === 401 || refreshErr?.response?.status === 403;
+            if (isAuthFailure) {
+              setStaffAccessToken(null);
+              setStoredRefreshToken(null, false);
+              if (
+                window.location.pathname !== '/login' &&
+                window.location.pathname !== '/platform/login'
+              ) {
+                window.history.replaceState(null, '', '/login');
+                window.location.href = '/login';
+              }
+            }
+            throw refreshErr;
+          } finally {
+            _refreshingStaff = null;
+          }
+        })();
+
+        try {
+          const newToken = await _refreshingStaff;
+          original.headers.Authorization = `Bearer ${newToken}`;
+          return api(original);
+        } catch {
+          return Promise.reject(err);
+        }
       }
     }
     return Promise.reject(err);
@@ -140,26 +328,120 @@ api.interceptors.response.use(
 
 export default api;
 
+export type ColdStartListener = (isWakingUp: boolean) => void;
+const coldStartListeners: Set<ColdStartListener> = new Set();
+
+export const subscribeColdStart = (listener: ColdStartListener) => {
+  coldStartListeners.add(listener);
+  return () => {
+    coldStartListeners.delete(listener);
+  };
+};
+
+const notifyColdStart = (isWakingUp: boolean) => {
+  coldStartListeners.forEach((fn) => fn(isWakingUp));
+};
+
+export async function requestWithColdStartRetry<T>(
+  requestFn: () => Promise<T>,
+  options: { retries?: number; timeoutMs?: number } = {}
+): Promise<T> {
+  const retries = options.retries ?? 2;
+  let lastError: any = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    let timer: NodeJS.Timeout | null = null;
+    let isWaking = false;
+
+    timer = setTimeout(() => {
+      isWaking = true;
+      notifyColdStart(true);
+    }, 2500);
+
+    try {
+      const result = await requestFn();
+      if (timer) clearTimeout(timer);
+      if (isWaking) notifyColdStart(false);
+      return result;
+    } catch (err: any) {
+      if (timer) clearTimeout(timer);
+      if (isWaking) notifyColdStart(false);
+      lastError = err;
+
+      const isNetworkOrTimeout =
+        !err.response ||
+        err.code === 'ERR_NETWORK' ||
+        err.code === 'ECONNABORTED' ||
+        err.message?.includes('timeout') ||
+        [502, 503, 504].includes(err.response?.status);
+
+      if (isNetworkOrTimeout && attempt < retries) {
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      break;
+    }
+  }
+
+  throw lastError;
+}
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: (identifier: string, password: string, companyCode?: string) =>
-    api.post('/auth/login', { identifier, password, companyCode }),
+    requestWithColdStartRetry(() =>
+      api.post('/auth/login', { identifier, password, companyCode }, { timeout: 60000 })
+    ),
   selectCompany: (selectionToken: string, companyCode: string) =>
     api.post('/auth/login/select-company', { selectionToken, companyCode }),
   platformLogin: (email: string, password: string) =>
-    api.post('/auth/platform-login', { email, password }),
+    requestWithColdStartRetry(() =>
+      api.post('/platform-auth/login', { email, password }, { timeout: 60000 })
+    ),
   forgotPassword: (email: string) =>
-    api.post('/auth/forgot-password', { email }),
+    requestWithColdStartRetry(() =>
+      api.post('/auth/forgot-password', { email }, { timeout: 60000 })
+    ),
   resetPassword: (token: string, newPassword: string) =>
     api.post('/auth/reset-password', { token, newPassword }),
   me: () => api.get('/auth/me'),
-  refresh: () => api.post('/auth/refresh', {}),
-  logout: () => api.post('/auth/logout', {}),
-  logoutAll: () => api.post('/auth/logout-all', {}),
+  refresh: () => {
+    const fallbackToken = getStoredRefreshToken(false);
+    return requestWithColdStartRetry(() =>
+      api.post('/auth/refresh', fallbackToken ? { refreshToken: fallbackToken } : {}, { timeout: 60000 })
+    );
+  },
+  logout: () => {
+    setStoredRefreshToken(null, false);
+    return api.post('/auth/logout', {});
+  },
+  logoutAll: () => {
+    setStoredRefreshToken(null, false);
+    setStoredRefreshToken(null, true);
+    return api.post('/auth/logout-all', {});
+  },
   updateProfile: (data: { name?: string; phone?: string }) =>
     api.patch('/auth/profile', data),
   changePassword: (currentPass: string, newPass: string) =>
     api.post('/auth/change-password', { currentPass, newPass }),
+};
+
+// ─── Platform Auth ───────────────────────────────────────────────────────────
+export const platformAuthApi = {
+  login: (email: string, password: string) =>
+    requestWithColdStartRetry(() =>
+      api.post('/platform-auth/login', { email, password }, { timeout: 60000 })
+    ),
+  refresh: () => {
+    const fallbackToken = getStoredRefreshToken(true);
+    return requestWithColdStartRetry(() =>
+      api.post('/platform-auth/refresh', fallbackToken ? { refreshToken: fallbackToken } : {}, { timeout: 60000 })
+    );
+  },
+  logout: () => {
+    setStoredRefreshToken(null, true);
+    return api.post('/platform-auth/logout', {});
+  },
 };
 
 // ─── Platform Multi-Tenant Master Portal ──────────────────────────────────────
@@ -170,15 +452,19 @@ export const platformApi = {
   updateTenant: (id: string, data: any) => api.put(`/platform/tenants/${id}`, data),
   deleteTenant: (id: string) => api.delete(`/platform/tenants/${id}`),
   impersonateTenant: (id: string) => api.post(`/platform/tenants/${id}/impersonate`),
-  resetAdminPassword: (id: string, data?: { newPassword?: string; sendEmail?: boolean; appUrl?: string; adminEmail?: string }) =>
+  resetAdminPassword: (id: string, data?: { newPassword?: string; sendEmail?: boolean; mustResetPassword?: boolean; appUrl?: string; adminEmail?: string }) =>
     api.post(`/platform/tenants/${id}/reset-admin-password`, data || {}),
+  listTenantUsers: (tenantId: string) => api.get(`/platform/tenants/${tenantId}/users`),
+  addTenantUser: (tenantId: string, data: any) => api.post(`/platform/tenants/${tenantId}/users`, data),
+  deleteTenantUser: (tenantId: string, userId: string) => api.delete(`/platform/tenants/${tenantId}/users/${userId}`),
   listAdmins: () => api.get('/platform/admins'),
   createAdmin: (data: any) => api.post('/platform/admins', data),
   toggleAdminActive: (id: string, isActive?: boolean) => api.patch(`/platform/admins/${id}/toggle-active`, { isActive }),
   resetAdminUserPassword: (id: string) => api.post(`/platform/admins/${id}/reset-password`),
+  deleteAdmin: (id: string) => api.delete(`/platform/admins/${id}`),
   getSystemInfo: () => api.get('/platform/system-info'),
-  getAnalytics: () => api.get('/platform/analytics'),
-  sendSummaryReport: (recipientEmail?: string) => api.post('/platform/analytics/send-summary', { recipientEmail }),
+  getMailStatus: () => api.get('/platform/mail-status'),
+  sendMailTest: () => api.post('/platform/mail-test'),
 };
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -348,7 +634,7 @@ export const invoicesApi = {
 
 // ─── Company Branding & Settings ───────────────────────────────────────────────
 export const brandingApi = {
-  get: () => api.get('/settings/branding'),
+  get: (tenantId?: string) => api.get('/settings/branding', { params: tenantId ? { tenantId } : undefined }),
   update: (data: {
     companyDisplayName?: string;
     companyPhone?: string;

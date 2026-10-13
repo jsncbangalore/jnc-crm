@@ -652,8 +652,8 @@ export class AuthService {
     if (!session || session.isRevoked) {
       if (session && session.isRevoked) {
         const timeSinceRevocation = Date.now() - new Date(session.updatedAt).getTime();
-        // 60-second grace window to absorb multi-tab / concurrent request race conditions
-        if (timeSinceRevocation < 60000) {
+        // 120-second grace window to absorb multi-tab / concurrent request race conditions
+        if (timeSinceRevocation < 120000) {
           const latestActiveSession = await this.prisma.refreshSession.findFirst({
             where: { familyId: session.familyId, isRevoked: false },
             orderBy: { createdAt: 'desc' },
@@ -701,7 +701,7 @@ export class AuthService {
               };
               const accessToken = this.jwtService.sign(accessPayload, {
                 secret: process.env.JWT_SECRET,
-                expiresIn: '15m',
+                expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '2h',
                 algorithm: 'HS256',
                 issuer: 'jnc-crm-api',
                 audience: 'jnc-crm-client',
@@ -715,6 +715,10 @@ export class AuthService {
             }
           }
         }
+      }
+
+      if (!session) {
+        throw new UnauthorizedException('Refresh session not found or expired. Please sign in again.');
       }
 
       const familyId = payload.familyId || session?.familyId;
@@ -813,7 +817,7 @@ export class AuthService {
     // Issue rotated token in same family
     const newTokens = this.generateTokens(user, session.familyId);
     const newTokenHash = crypto.createHash('sha256').update(newTokens.refreshToken).digest('hex');
-    const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const newExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await this.prisma.refreshSession.create({
       data: {
@@ -909,7 +913,7 @@ export class AuthService {
     // Generate fresh tokens using incremented tokenVersion so the user session stays active without 401 kickout
     const tokens = this.generateTokens(updatedUser);
     const tokenHash = crypto.createHash('sha256').update(tokens.refreshToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     if (this.prisma.refreshSession) {
       await this.prisma.refreshSession.create({
@@ -1033,7 +1037,7 @@ export class AuthService {
 
     const tokens = this.generateTokens(resolvedUser);
     const tokenHash = crypto.createHash('sha256').update(tokens.refreshToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     if (this.prisma.refreshSession) {
       await this.prisma.refreshSession.create({
@@ -1116,7 +1120,7 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(payload, {
       secret: process.env.JWT_SECRET,
-      expiresIn: '15m',
+      expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '2h',
       algorithm: 'HS256',
       issuer: 'jnc-crm-api',
       audience: 'jnc-crm-client',
@@ -1124,7 +1128,7 @@ export class AuthService {
 
     const refreshToken = this.jwtService.sign(payload, {
       secret: process.env.JWT_REFRESH_SECRET,
-      expiresIn: '7d',
+      expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
       algorithm: 'HS256',
       issuer: 'jnc-crm-api',
       audience: 'jnc-crm-client',

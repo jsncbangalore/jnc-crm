@@ -17,33 +17,44 @@ import {
   UsePipes,
   ValidationPipe,
   ForbiddenException,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { AuthService } from './auth.service';
+import { AuthService, formatAuthUser } from './auth.service';
 import {
   LoginDto,
   SelectCompanyDto,
-  PlatformLoginDto,
   ForgotPasswordDto,
   ResetPasswordDto,
   RefreshTokenDto,
   UpdateProfileDto,
   ChangePasswordDto,
 } from './dto/login.dto';
-import { isAllowedOrigin } from '../common/cors-config';
 import { AuthGuard } from '@nestjs/passport';
 import { CurrentUser } from './current-user.decorator';
 import { Response, Request } from 'express';
+import { isAllowedOrigin } from '../common/cors-config';
 
 const REFRESH_COOKIE_NAME = 'jnc_refresh_token';
 
-const REFRESH_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  path: '/api/v1/auth',
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-};
+function getRefreshCookieOptions() {
+  const isSecure =
+    process.env.COOKIE_SECURE === 'false'
+      ? false
+      : (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging');
+  const cookieDomain =
+    process.env.COOKIE_DOMAIN ||
+    (process.env.NODE_ENV === 'production' ? '.jsnc.co.in' : undefined);
+  return {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'lax' as const,
+    path: '/api/v1',
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
+  };
+}
 
 function enforceCsrf(req: Request) {
   // 1. Require custom header X-Requested-With
@@ -54,10 +65,8 @@ function enforceCsrf(req: Request) {
 
   // 2. Validate Origin if provided
   const origin = req.headers.origin;
-  if (origin) {
-    if (!isAllowedOrigin(origin)) {
-      throw new ForbiddenException(`CSRF validation failed: Origin '${origin}' is not permitted.`);
-    }
+  if (origin && !isAllowedOrigin(origin, process.env.FRONTEND_URL)) {
+    throw new ForbiddenException(`CSRF validation failed: Origin '${origin}' is not permitted.`);
   }
 }
 
@@ -66,8 +75,9 @@ function enforceCsrf(req: Request) {
 export class AuthController {
   constructor(private authService: AuthService) {}
 
-  /** Staff login — IP rate limit: 10 attempts / 15 min */
-  @Throttle({ default: { limit: 10, ttl: 900000 } })
+  /** Staff login — IP rate limit: 10 attempts / 15 min (relaxed in dev/test) */
+  @Throttle({ default: { limit: process.env.NODE_ENV === 'production' ? 10 : 100, ttl: 900000 } })
+  @HttpCode(HttpStatus.OK)
   @Post('login')
   async login(
     @Body() loginDto: LoginDto,
@@ -78,13 +88,15 @@ export class AuthController {
     const result: any = await this.authService.login(loginDto, ip);
 
     if (result && result.refreshToken) {
-      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTIONS);
+      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions());
+      return result;
     }
     return result;
   }
 
   /** Second step when multiple companies match — exchange selectionToken for real tokens */
   @Throttle({ default: { limit: 10, ttl: 900000 } })
+  @HttpCode(HttpStatus.OK)
   @Post('login/select-company')
   async selectCompany(
     @Body() dto: SelectCompanyDto,
@@ -95,30 +107,14 @@ export class AuthController {
     const result: any = await this.authService.selectCompany(dto, ip);
 
     if (result && result.refreshToken) {
-      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTIONS);
+      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions());
+      return result;
     }
     return result;
   }
 
-  /** Platform super-admin only — rate limit: 5 attempts / 15 min */
-  @Throttle({ default: { limit: 5, ttl: 900000 } })
-  @Post('platform-login')
-  async platformLogin(
-    @Body() dto: PlatformLoginDto,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const ip = req.ip || req.socket?.remoteAddress;
-    const result: any = await this.authService.platformLogin(dto, ip);
-
-    if (result && result.refreshToken) {
-      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTIONS);
-    }
-    return result;
-  }
-
-  /** Forgot password — sends reset link if email exists (no reveal) — rate limit: 5 / 15 min */
-  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  /** Forgot password — sends reset link if email exists (no reveal) — rate limit: 15 / 15 min */
+  @Throttle({ default: { limit: 15, ttl: 900000 } })
   @Post('forgot-password')
   async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
     const ip = req.ip || req.socket?.remoteAddress;
@@ -133,6 +129,7 @@ export class AuthController {
   }
 
   /** Refresh token rotation with CSRF protection */
+  @HttpCode(HttpStatus.OK)
   @Post('refresh')
   async refresh(
     @Body() refreshDto: RefreshTokenDto,
@@ -148,7 +145,8 @@ export class AuthController {
     const result = await this.authService.refreshToken(rawRefreshToken, ip);
 
     if (result && result.refreshToken) {
-      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTIONS);
+      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions());
+      return result;
     }
     return result;
   }
@@ -165,7 +163,24 @@ export class AuthController {
     const ip = req.ip || req.socket?.remoteAddress;
     await this.authService.logout(tokenFromCookie, undefined, ip);
 
-    res.clearCookie(REFRESH_COOKIE_NAME, { path: '/api/v1/auth' });
+    const cookieOpts = getRefreshCookieOptions();
+    res.clearCookie(REFRESH_COOKIE_NAME, {
+      path: '/api/v1',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: cookieOpts.secure,
+      ...(cookieOpts.domain ? { domain: cookieOpts.domain } : {}),
+    });
+    res.clearCookie(REFRESH_COOKIE_NAME, {
+      path: '/api/v1/auth',
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: cookieOpts.secure,
+    });
+    res.setHeader('Clear-Site-Data', '"cache", "storage"');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     return { success: true, message: 'Logged out successfully' };
   }
 
@@ -182,14 +197,24 @@ export class AuthController {
     const ip = req.ip || req.socket?.remoteAddress;
     await this.authService.logoutAll(user.id, ip);
 
-    res.clearCookie(REFRESH_COOKIE_NAME, { path: '/api/v1/auth' });
+    const cookieOpts = getRefreshCookieOptions();
+    res.clearCookie(REFRESH_COOKIE_NAME, {
+      path: '/api/v1/auth',
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: cookieOpts.secure,
+    });
+    res.setHeader('Clear-Site-Data', '"cache", "storage"');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     return { success: true, message: 'Signed out of all devices successfully' };
   }
 
   @UseGuards(AuthGuard('jwt'))
   @Get('me')
   async getProfile(@CurrentUser() user: any) {
-    return user;
+    return formatAuthUser(user);
   }
 
   @UseGuards(AuthGuard('jwt'))
@@ -206,7 +231,18 @@ export class AuthController {
   async changePassword(
     @CurrentUser() user: any,
     @Body() body: ChangePasswordDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.authService.changePassword(user.id, body.currentPass, body.newPass);
+    const ip = req.ip || req.socket?.remoteAddress;
+    const result: any = await this.authService.changePassword(user.id, body.currentPass, body.newPass, ip);
+
+    if (result && result.refreshToken) {
+      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions());
+      const { refreshToken, ...rest } = result;
+      return rest;
+    }
+
+    return result;
   }
 }
