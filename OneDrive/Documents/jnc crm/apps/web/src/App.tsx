@@ -8,6 +8,7 @@ import { isPlatformOwner, getRoleRedirectPath } from './utils/roles';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import LeadsPage from './pages/LeadsPage';
+import LeadFlowPage from './pages/LeadFlowPage';
 import OrdersPage from './pages/OrdersPage';
 import InventoryPage from './pages/InventoryPage';
 import SuppliersPage from './pages/SuppliersPage';
@@ -56,7 +57,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    const isPlatformPath = typeof window !== 'undefined' && window.location.pathname.startsWith('/platform');
+    return <Navigate to={isPlatformPath ? "/platform/login" : "/login"} replace />;
   }
 
   if (user?.mustResetPassword) {
@@ -67,9 +69,66 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function PlatformOwnerGuard({ children }: { children: React.ReactNode }) {
+  const { user, staffUser } = useAuth();
+  const currentUser = user || staffUser;
+
+  if (!currentUser || !isPlatformOwner(currentUser)) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-[#0F1117] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl text-center space-y-4">
+          <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto">
+            <span className="text-xl font-bold">!</span>
+          </div>
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">
+            Portal Access Notice
+          </h3>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            This is the client-company portal. Use the team login.
+          </p>
+          <div>
+            <a
+              href="/login"
+              className="inline-block px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-all"
+            >
+              Go to Team Login
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
+function CrmRouteGuard({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  if (!isPlatformOwner(user)) {
-    return <Navigate to="/" replace />;
+  const isImpersonating =
+    typeof window !== 'undefined' && !!sessionStorage.getItem('jnc_impersonate_token');
+
+  if (isPlatformOwner(user) && !isImpersonating) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-[#0F1117] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl text-center space-y-4">
+          <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+            <span className="text-xl font-bold">!</span>
+          </div>
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">
+            Impersonation Required
+          </h3>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Impersonate a company from the client-companies portal to view CRM records.
+          </p>
+          <div>
+            <a
+              href="/platform/companies"
+              className="inline-block px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-all"
+            >
+              Go to Client Companies
+            </a>
+          </div>
+        </div>
+      </div>
+    );
   }
   return <>{children}</>;
 }
@@ -78,9 +137,6 @@ function RootLandingRoute() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
 
-  if (isPlatformOwner(user)) {
-    return <Navigate to="/platform/companies" replace />;
-  }
   if (['developer', 'developer_lead', 'project_manager'].includes(user?.role || '')) {
     return <Navigate to="/daily-activities" replace />;
   }
@@ -97,11 +153,26 @@ function AppRoutes() {
     <Routes>
       <Route
         path="/login"
-        element={isAuthenticated ? <Navigate to={getRoleRedirectPath(user)} replace /> : <LoginPage />}
+        element={
+          isAuthenticated ? (
+            <Navigate to={isPlatformOwner(user) ? "/platform/companies" : getRoleRedirectPath(user)} replace />
+          ) : (
+            <LoginPage />
+          )
+        }
       />
       <Route path="/inquiry" element={<PublicInquiryPage />} />
       <Route path="/quote-request" element={<PublicInquiryPage />} />
-      <Route path="/platform/login" element={<PlatformLoginPage />} />
+      <Route
+        path="/platform/login"
+        element={
+          isAuthenticated ? (
+            <Navigate to={isPlatformOwner(user) ? "/platform/companies" : getRoleRedirectPath(user)} replace />
+          ) : (
+            <PlatformLoginPage />
+          )
+        }
+      />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route
@@ -112,24 +183,26 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<TeamPageGuard pageKey="dashboard"><RootLandingRoute /></TeamPageGuard>} />
-        <Route path="leads" element={<TeamPageGuard pageKey="leads"><LeadsPage /></TeamPageGuard>} />
-        <Route path="notifications" element={<TeamPageGuard pageKey="dashboard"><NotificationsPage /></TeamPageGuard>} />
-        <Route path="orders" element={<TeamPageGuard pageKey="orders"><OrdersPage /></TeamPageGuard>} />
-        <Route path="invoices" element={<TeamPageGuard pageKey="invoices"><InvoicesPage /></TeamPageGuard>} />
-        <Route path="inventory" element={<TeamPageGuard pageKey="inventory"><InventoryPage /></TeamPageGuard>} />
-        <Route path="suppliers" element={<TeamPageGuard pageKey="suppliers"><SuppliersPage /></TeamPageGuard>} />
-        <Route path="shipments" element={<TeamPageGuard pageKey="shipments"><ShipmentsPage /></TeamPageGuard>} />
-        <Route path="quotations" element={<TeamPageGuard pageKey="quotations"><QuotationsPage /></TeamPageGuard>} />
-        <Route path="users" element={<TeamPageGuard pageKey="users"><UsersPage /></TeamPageGuard>} />
+        <Route index element={<TeamPageGuard pageKey="dashboard"><CrmRouteGuard><RootLandingRoute /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="leads" element={<TeamPageGuard pageKey="leads"><CrmRouteGuard><LeadsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="lead-flow" element={<TeamPageGuard pageKey="leads"><CrmRouteGuard><LeadFlowPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="lead-setup" element={<Navigate to="/lead-flow" replace />} />
+        <Route path="notifications" element={<TeamPageGuard pageKey="dashboard"><CrmRouteGuard><NotificationsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="orders" element={<TeamPageGuard pageKey="orders"><CrmRouteGuard><OrdersPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="invoices" element={<TeamPageGuard pageKey="invoices"><CrmRouteGuard><InvoicesPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="inventory" element={<TeamPageGuard pageKey="inventory"><CrmRouteGuard><InventoryPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="suppliers" element={<TeamPageGuard pageKey="suppliers"><CrmRouteGuard><SuppliersPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="shipments" element={<TeamPageGuard pageKey="shipments"><CrmRouteGuard><ShipmentsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="quotations" element={<TeamPageGuard pageKey="quotations"><CrmRouteGuard><QuotationsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="users" element={<TeamPageGuard pageKey="users"><CrmRouteGuard><UsersPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="platform/companies" element={<PlatformOwnerGuard><PlatformCompaniesPage /></PlatformOwnerGuard>} />
         <Route path="platform/admins" element={<PlatformOwnerGuard><PlatformAdminsPage /></PlatformOwnerGuard>} />
-        <Route path="settings/branding" element={<TeamPageGuard pageKey="users"><BrandingSettingsPage /></TeamPageGuard>} />
-        <Route path="automation" element={<TeamPageGuard pageKey="automation"><AutomationPage /></TeamPageGuard>} />
-        <Route path="setup/objects" element={<TeamPageGuard pageKey="custom_objects"><ObjectManagerPage /></TeamPageGuard>} />
-        <Route path="setup/objects/:objectId" element={<TeamPageGuard pageKey="custom_objects"><ObjectManagerPage /></TeamPageGuard>} />
-        <Route path="objects/:objectApiName" element={<TeamPageGuard pageKey="custom_objects"><CustomObjectRecordsPage /></TeamPageGuard>} />
-        <Route path="daily-activities" element={<TeamPageGuard pageKey="daily_activities"><DailyActivitiesPage /></TeamPageGuard>} />
+        <Route path="settings/branding" element={<TeamPageGuard pageKey="users"><CrmRouteGuard><BrandingSettingsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="automation" element={<TeamPageGuard pageKey="automation"><CrmRouteGuard><AutomationPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="setup/objects" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="setup/objects/:objectId" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="objects/:objectApiName" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><CustomObjectRecordsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="daily-activities" element={<TeamPageGuard pageKey="daily_activities"><CrmRouteGuard><DailyActivitiesPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
