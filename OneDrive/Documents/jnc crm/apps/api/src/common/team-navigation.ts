@@ -12,7 +12,8 @@ export const PAGE_KEY_TO_ROUTE: Record<string, string> = {
   orders: '/orders',
   invoices: '/invoices',
   inventory: '/inventory',
-  suppliers: '/suppliers',
+  suppliers: '/purchase-bills',
+  purchase_bills: '/purchase-bills',
   shipments: '/shipments',
   quotations: '/quotations',
   users: '/users',
@@ -79,7 +80,11 @@ export function resolveTeamNavigation(user: any, pageKey: string): NavigationDec
       return { action: 'no_pages' };
     }
 
-    if (!allowedPages.includes(pageKey)) {
+    const hasAccess =
+      allowedPages.includes(pageKey) ||
+      (pageKey === 'purchase_bills' && (allowedPages.includes('suppliers') || allowedPages.includes('inventory')));
+
+    if (!hasAccess) {
       // Redirect to the FIRST page the team is allowed to access
       const firstAllowed = allowedPages.find((p) => PAGE_KEY_TO_ROUTE[p]);
       return { action: 'redirect', targetRoute: PAGE_KEY_TO_ROUTE[firstAllowed || ''] || '/' };

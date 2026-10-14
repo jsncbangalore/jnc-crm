@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useBranding } from '../../contexts/BrandingContext';
 import {
   LayoutDashboard, Users, ShoppingCart, Package,
-  Truck, LogOut, Zap, Building2, FileText, Shield, ClipboardList
+  Truck, LogOut, Zap, Building2, FileText, Shield, ClipboardList, Receipt
 } from 'lucide-react';
 import { isPlatformOwner } from '../../utils/roles';
 
@@ -22,11 +22,11 @@ const clientOrgNavItems = [
   { to: '/orders',            icon: ShoppingCart,    label: 'Orders',           roles: ['tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'orders' },
   { to: '/invoices',          icon: FileText,        label: 'Invoices',         roles: ['tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'invoices' },
   { to: '/inventory',         icon: Package,         label: 'Inventory',        roles: ['tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'inventory' },
-  { to: '/suppliers',         icon: Building2,       label: 'Suppliers',        roles: ['tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'suppliers' },
+  { to: '/purchase-bills',    icon: Receipt,         label: 'Purchase Bills',   roles: ['tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'purchase_bills' },
   { to: '/shipments',         icon: Truck,           label: 'Shipments',        roles: ['tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager'], pageKey: 'shipments' },
   { to: '/quotations',        icon: FileText,        label: 'Quotations',       roles: ['tenant_admin', 'admin', 'sub_admin', 'employee'], pageKey: 'quotations' },
   { to: '/daily-activities',  icon: ClipboardList,   label: 'Daily Activities', roles: ['tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer'] as string[], pageKey: 'daily_activities' },
-  { to: '/users',             icon: Shield,          label: 'Team & Users',     roles: ['tenant_admin', 'admin'], pageKey: 'users' },
+  { to: '/users',             icon: Users,           label: 'Users',            roles: ['tenant_admin', 'admin'], pageKey: 'users' },
 ];
 
 const colorForPath: Record<string, string> = {
@@ -35,6 +35,7 @@ const colorForPath: Record<string, string> = {
   '/orders':            'text-amber-600 dark:text-crm-amber',
   '/invoices':          'text-emerald-500',
   '/inventory':         'text-purple-600 dark:text-crm-violet',
+  '/purchase-bills':    'text-emerald-600 dark:text-emerald-400',
   '/suppliers':         'text-indigo-600 dark:text-crm-violet-light',
   '/shipments':         'text-teal-600 dark:text-crm-teal',
   '/quotations':        'text-amber-600 dark:text-crm-amber-light',
@@ -79,8 +80,8 @@ export default function Sidebar() {
         <div className="flex items-center gap-3">
           <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center p-0.5 border border-slate-200 shadow-sm overflow-hidden shrink-0">
             <img
-              src={branding.companyLogoUrl || '/jnc-logo.jpg'}
-              alt={branding.companyDisplayName}
+              src="/jnc-logo.jpg"
+              alt="JS Network Communication"
               className="max-h-full max-w-full object-contain"
             />
           </div>

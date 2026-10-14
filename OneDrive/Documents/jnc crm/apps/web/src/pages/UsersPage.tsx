@@ -36,6 +36,8 @@ export default function UsersPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [companies, setCompanies] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'users' | 'teams'>('users');
   const [teams, setTeams] = useState<any[]>([]);
 
@@ -90,6 +92,16 @@ export default function UsersPage() {
     } catch(e) {}
   };
 
+  const fetchCompanies = async () => {
+    if (!isPlatform) return;
+    try {
+      const { data } = await api.get('/platform/tenants');
+      setCompanies(data || []);
+    } catch (e) {
+      console.error('Failed to load companies list:', e);
+    }
+  };
+
   const fetchUsers = async () => {
     try {
       setLoading(true);
@@ -97,6 +109,7 @@ export default function UsersPage() {
         search,
         role: roleFilter,
         isActive: statusFilter,
+        tenantId: companyFilter || undefined,
       });
       setUsers(data.items || []);
     } catch (err) {
@@ -108,14 +121,17 @@ export default function UsersPage() {
 
   useEffect(() => {
     fetchTeams();
-  }, []);
+    if (isPlatform) {
+      fetchCompanies();
+    }
+  }, [isPlatform]);
 
   useEffect(() => {
     if (canManageUsers) {
       const t = setTimeout(fetchUsers, search ? 300 : 0);
       return () => clearTimeout(t);
     }
-  }, [search, roleFilter, statusFilter]);
+  }, [search, roleFilter, statusFilter, companyFilter]);
 
   // If user is not Super Admin or Admin, block view
   if (!canManageUsers) {
@@ -372,10 +388,10 @@ export default function UsersPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2.5">
-            <Users size={24} className="text-crm-blue" /> Team & User Management
+            <Users size={24} className="text-crm-blue" /> User Management
           </h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">
-            Configure system users, role-based access, team assignments, and secure credential provisioning
+            Configure system users, credentials, role assignments, and team module access permissions
           </p>
         </div>
 
@@ -465,6 +481,21 @@ export default function UsersPage() {
                 <option value="true">Active Only</option>
                 <option value="false">Inactive Only</option>
               </select>
+
+              {isPlatform && (
+                <select
+                  className="input w-48 text-xs font-semibold text-blue-600 dark:text-blue-400 border-blue-500/40"
+                  value={companyFilter}
+                  onChange={(e) => setCompanyFilter(e.target.value)}
+                >
+                  <option value="">All Client Companies</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.code})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">
@@ -478,6 +509,7 @@ export default function UsersPage() {
               <thead>
                 <tr>
                   <th>Employee / Name</th>
+                  {isPlatform && <th>Company</th>}
                   <th>Employee Code</th>
                   <th>Role</th>
                   <th>Team & Warehouse</th>
@@ -537,6 +569,20 @@ export default function UsersPage() {
                           )}
                         </div>
                       </td>
+
+                      {/* Company (Platform Admin Only) */}
+                      {isPlatform && (
+                        <td>
+                          {u.tenant ? (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{u.tenant.name}</p>
+                              <p className="text-[10px] font-mono text-slate-500">{u.tenant.code}</p>
+                            </div>
+                          ) : (
+                            <span className="text-xs font-mono text-purple-600 dark:text-purple-400 font-semibold">Platform Core</span>
+                          )}
+                        </td>
+                      )}
 
                       {/* Employee Code */}
                       <td className="font-mono text-xs font-bold text-purple-600 dark:text-crm-violet-light">

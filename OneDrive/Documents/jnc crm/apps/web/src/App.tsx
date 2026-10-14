@@ -12,6 +12,7 @@ import LeadFlowPage from './pages/LeadFlowPage';
 import OrdersPage from './pages/OrdersPage';
 import InventoryPage from './pages/InventoryPage';
 import SuppliersPage from './pages/SuppliersPage';
+import PurchaseBillsPage from './pages/PurchaseBillsPage';
 import ShipmentsPage from './pages/ShipmentsPage';
 import QuotationsPage from './pages/QuotationsPage';
 import AutomationPage from './pages/AutomationPage';
@@ -191,7 +192,8 @@ function AppRoutes() {
         <Route path="orders" element={<TeamPageGuard pageKey="orders"><CrmRouteGuard><OrdersPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="invoices" element={<TeamPageGuard pageKey="invoices"><CrmRouteGuard><InvoicesPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="inventory" element={<TeamPageGuard pageKey="inventory"><CrmRouteGuard><InventoryPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="suppliers" element={<TeamPageGuard pageKey="suppliers"><CrmRouteGuard><SuppliersPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="purchase-bills" element={<TeamPageGuard pageKey="purchase_bills"><CrmRouteGuard><PurchaseBillsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="suppliers" element={<Navigate to="/purchase-bills" replace />} />
         <Route path="shipments" element={<TeamPageGuard pageKey="shipments"><CrmRouteGuard><ShipmentsPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="quotations" element={<TeamPageGuard pageKey="quotations"><CrmRouteGuard><QuotationsPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="users" element={<TeamPageGuard pageKey="users"><CrmRouteGuard><UsersPage /></CrmRouteGuard></TeamPageGuard>} />
