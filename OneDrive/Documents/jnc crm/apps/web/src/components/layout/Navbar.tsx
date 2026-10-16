@@ -135,18 +135,6 @@ const clientOrgNavItems: NavTabItem[] = [
       { label: 'Developer Activity Feed', to: '/daily-activities?filter=dev' },
     ],
   },
-  {
-    to: '/users',
-    icon: ShieldCheck,
-    label: 'Users',
-    roles: ['tenant_admin', 'admin'],
-    pageKey: 'users',
-    subItems: [
-      { label: '+ Add User', to: '/users?action=create', isAction: true },
-      { label: 'All Users', to: '/users' },
-      { label: 'Department Teams & Roles', to: '/users?tab=teams' },
-    ],
-  },
 ];
 
 export default function Navbar() {
@@ -344,7 +332,7 @@ export default function Navbar() {
                 className="w-full h-8 pl-8 pr-16 rounded-lg bg-white dark:bg-[#1E2230] border border-slate-300/80 dark:border-[#2A3042] text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden focus:border-crm-blue focus:ring-1 focus:ring-crm-blue shadow-2xs transition-all"
               />
               <kbd className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-slate-400 bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded">
-                ⌘K
+                Ctrl K
               </kbd>
             </div>
 
@@ -422,19 +410,33 @@ export default function Navbar() {
                     exit={{ opacity: 0, y: 6, scale: 0.96 }}
                     className="absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-2 z-50 space-y-1"
                   >
-                    {/* Team & Setup Actions */}
                     <p className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quick Actions</p>
+                    <NavLink to="/invoices?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-emerald-500/10 text-slate-800 dark:text-slate-200 hover:text-emerald-600 transition-colors">
+                      <Receipt size={14} className="text-emerald-500" />
+                      <span>New Tax Invoice</span>
+                    </NavLink>
+                    <NavLink to="/leads?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-crm-blue/10 text-slate-800 dark:text-slate-200 hover:text-crm-blue transition-colors">
+                      <Users size={14} className="text-crm-blue" />
+                      <span>New Lead / Customer</span>
+                    </NavLink>
+                    <NavLink to="/orders?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-amber-500/10 text-slate-800 dark:text-slate-200 hover:text-amber-600 transition-colors">
+                      <ShoppingCart size={14} className="text-amber-500" />
+                      <span>New Customer Order</span>
+                    </NavLink>
+                    <NavLink to="/quotations?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-indigo-500/10 text-slate-800 dark:text-slate-200 hover:text-indigo-600 transition-colors">
+                      <FileText size={14} className="text-indigo-500" />
+                      <span>New Quotation</span>
+                    </NavLink>
+                    <NavLink to="/inventory?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-purple-500/10 text-slate-800 dark:text-slate-200 hover:text-purple-600 transition-colors">
+                      <Package size={14} className="text-purple-500" />
+                      <span>Add Inventory Component</span>
+                    </NavLink>
                     {isAdmin && (
-                      <NavLink to="/users?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-500/10 text-slate-800 dark:text-slate-200 hover:text-blue-600 transition-colors">
+                      <NavLink to="/users?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-blue-500/10 text-slate-800 dark:text-slate-200 hover:text-blue-600 transition-colors border-t border-slate-100 dark:border-white/5 pt-2">
                         <UserPlus size={14} className="text-blue-500" />
-                        <span>Add User</span>
+                        <span>Add Team Member</span>
                       </NavLink>
                     )}
-
-                    <NavLink to="/lead-flow" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-crm-teal/10 text-slate-800 dark:text-slate-200 hover:text-crm-teal transition-colors border-t border-slate-100 dark:border-white/5 mt-1 pt-2">
-                      <Sliders size={14} className="text-crm-teal" />
-                      <span>Setup & Flow Controller</span>
-                    </NavLink>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -526,12 +528,28 @@ export default function Navbar() {
                   ) : isAdmin && (
                     <div className="space-y-0.5 mb-1 pb-1 border-b border-slate-100 dark:border-white/5">
                       <NavLink
+                        to="/users"
+                        onClick={() => setProfileOpen(false)}
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                      >
+                        <ShieldCheck size={13} className="text-crm-blue" />
+                        <span>Team & Users</span>
+                      </NavLink>
+                      <NavLink
                         to="/settings/branding"
                         onClick={() => setProfileOpen(false)}
                         className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
                       >
                         <Building2 size={13} className="text-crm-teal" />
                         <span>Company Branding & GST</span>
+                      </NavLink>
+                      <NavLink
+                        to="/start-setup"
+                        onClick={() => setProfileOpen(false)}
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                      >
+                        <Sliders size={13} className="text-crm-blue" />
+                        <span>Start Setup</span>
                       </NavLink>
                     </div>
                   )}

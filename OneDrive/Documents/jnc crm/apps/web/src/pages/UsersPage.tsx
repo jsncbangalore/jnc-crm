@@ -1,16 +1,28 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams, NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, UserPlus, Search, RefreshCw, KeyRound, ShieldAlert,
   CheckCircle2, X, Lock, Mail, Phone, Building2, MapPin, Copy,
-  Check, UserCheck, UserX, Edit3, Shield, AlertTriangle, Trash2
+  Check, UserCheck, UserX, Edit3, Shield, AlertTriangle, Trash2, Clock,
+  Upload, Download, FileSpreadsheet, Sliders, FileText
 } from 'lucide-react';
-import api, { usersApi } from '../services/api';
+import api, { usersApi, authApi } from '../services/api';
 import { User, Role } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import TeamsTab from './TeamsTab';
 import { ROLE_RANKS, ROLE_LABELS, getAllowedAssignableRoles, isPlatformOwner } from '../utils/roles';
+
+const ROLE_CODE_MAP: Record<string, string> = {
+  platform_super_admin: 'PSA',
+  tenant_admin: 'TAD',
+  admin: 'ADM',
+  sub_admin: 'SUB',
+  project_manager: 'PM',
+  store_manager: 'STM',
+  employee: 'EMP',
+};
 
 const safeFormatDate = (dateVal: any, formatStr = 'dd MMM yyyy, HH:mm') => {
   if (!dateVal) return null;
@@ -24,6 +36,7 @@ const safeFormatDate = (dateVal: any, formatStr = 'dd MMM yyyy, HH:mm') => {
 };
 
 export default function UsersPage() {
+  const [searchParams] = useSearchParams();
   const { user: currentUser, updateUser } = useAuth();
   const isPlatform = isPlatformOwner(currentUser);
   const isTenantAdmin = currentUser?.role === 'tenant_admin';
@@ -38,8 +51,18 @@ export default function UsersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [companies, setCompanies] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'teams'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'teams' | 'signins'>('users');
   const [teams, setTeams] = useState<any[]>([]);
+  const [recentSignIns, setRecentSignIns] = useState<any[]>([]);
+  const [loadingSignIns, setLoadingSignIns] = useState(false);
+  const [showMyProfile, setShowMyProfile] = useState(false);
+
+  // Filter out current user's profile and platform super admin so only employee/staff profiles are shown
+  const visibleUsers = users.filter((u) => {
+    if (!showMyProfile && u.id === currentUser?.id) return false;
+    if (!isPlatform && u.role === 'platform_super_admin') return false;
+    return true;
+  });
 
   // Create User Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -85,6 +108,101 @@ export default function UsersPage() {
     variant?: 'error' | 'success';
   } | null>(null);
 
+  // Bulk Import State
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importCsvText, setImportCsvText] = useState('');
+  const [previewingImport, setPreviewingImport] = useState(false);
+  const [committingImport, setCommittingImport] = useState(false);
+  const [importPreviewData, setImportPreviewData] = useState<any | null>(null);
+  const [importResult, setImportResult] = useState<any | null>(null);
+
+  const parseCsvUsers = (text: string) => {
+    const lines = text.trim().split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length <= 1) return [];
+    const headers = lines[0].split(',').map((h) => h.trim().replace(/^["']|["']$/g, ''));
+    return lines.slice(1).map((line) => {
+      const parts = line.split(',').map((p) => p.trim().replace(/^["']|["']$/g, ''));
+      const obj: Record<string, string> = {};
+      headers.forEach((h, idx) => {
+        obj[h] = parts[idx] || '';
+      });
+      return {
+        name: obj['Full Name'] || obj['name'] || parts[0] || '',
+        email: obj['Email Address'] || obj['email'] || parts[1] || '',
+        phone: obj['Phone Number'] || obj['phone'] || parts[2] || '',
+        role: obj['Role'] || obj['role'] || parts[3] || 'employee',
+        teamName: obj['Team Name'] || obj['team'] || parts[4] || '',
+      };
+    });
+  };
+
+  const handleDownloadTemplateCsv = async () => {
+    try {
+      const res = await usersApi.downloadTemplate();
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'jnc_users_import_template.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e: any) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Download Failed',
+        message: 'Could not download users CSV template: ' + (e?.message || 'Error'),
+        variant: 'error',
+      });
+    }
+  };
+
+  const handlePreviewImport = async () => {
+    const records = parseCsvUsers(importCsvText);
+    if (records.length === 0) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Empty Import',
+        message: 'Please provide CSV rows with at least one record.',
+        variant: 'error',
+      });
+      return;
+    }
+    setPreviewingImport(true);
+    try {
+      const { data } = await usersApi.importPreview(records);
+      setImportPreviewData(data);
+    } catch (e: any) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Preview Failed',
+        message: e?.response?.data?.message || e.message || 'Error parsing CSV',
+        variant: 'error',
+      });
+    } finally {
+      setPreviewingImport(false);
+    }
+  };
+
+  const handleCommitImport = async () => {
+    if (!importPreviewData || !importPreviewData.valid) return;
+    setCommittingImport(true);
+    try {
+      const { data } = await usersApi.importCommit(importPreviewData.valid);
+      setImportResult(data);
+      setImportPreviewData(null);
+      await fetchUsers();
+    } catch (e: any) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Import Failed',
+        message: e?.response?.data?.message || e.message || 'Error creating imported users',
+        variant: 'error',
+      });
+    } finally {
+      setCommittingImport(false);
+    }
+  };
+
   const fetchTeams = async () => {
     try {
       const { data } = await api.get('/teams');
@@ -119,6 +237,18 @@ export default function UsersPage() {
     }
   };
 
+  const fetchRecentSignIns = async () => {
+    try {
+      setLoadingSignIns(true);
+      const { data } = await authApi.getRecentSignIns();
+      setRecentSignIns(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load recent sign-ins:', err);
+    } finally {
+      setLoadingSignIns(false);
+    }
+  };
+
   useEffect(() => {
     fetchTeams();
     if (isPlatform) {
@@ -132,6 +262,21 @@ export default function UsersPage() {
       return () => clearTimeout(t);
     }
   }, [search, roleFilter, statusFilter, companyFilter]);
+
+  useEffect(() => {
+    if (activeTab === 'signins' && canManageUsers) {
+      fetchRecentSignIns();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (searchParams.get('action') === 'create') {
+      setShowCreateModal(true);
+    }
+    if (searchParams.get('tab') === 'teams') {
+      setActiveTab('teams');
+    }
+  }, [searchParams]);
 
   // If user is not Super Admin or Admin, block view
   if (!canManageUsers) {
@@ -329,11 +474,22 @@ export default function UsersPage() {
       return;
     }
 
-    if (!isPlatform && (ROLE_RANKS[currentUser?.role || ''] || 0) <= (ROLE_RANKS[targetUser.role] || 0)) {
+    const isCompanyAdmin = isPlatform || currentUser?.role === 'tenant_admin';
+    if (!isCompanyAdmin && (ROLE_RANKS[currentUser?.role || ''] || 0) <= (ROLE_RANKS[targetUser.role] || 0)) {
       setAlertDialog({
         isOpen: true,
         title: 'Action Blocked',
         message: 'Security Policy: You can only delete users whose role rank is strictly below your own.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    if (currentUser?.role === 'tenant_admin' && targetUser.role === 'platform_super_admin') {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Action Blocked',
+        message: 'Security Policy: You cannot delete a platform administrator.',
         variant: 'error',
       });
       return;
@@ -406,6 +562,7 @@ export default function UsersPage() {
               <KeyRound size={13} className={actionLoadingId === 'all' ? 'animate-spin' : ''} /> Force Reset All Passwords
             </button>
           )}
+
           {activeTab === 'users' && (
             <button
               onClick={() => setShowCreateModal(true)}
@@ -420,7 +577,7 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Navigation Sub-Tabs (Users vs Teams) */}
+      {/* Navigation Sub-Tabs (Users vs Teams vs Recent Sign-ins) */}
       <div className="flex border-b border-slate-200 dark:border-[#2A3042] gap-4">
         <button
           onClick={() => setActiveTab('users')}
@@ -430,7 +587,7 @@ export default function UsersPage() {
               : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
           }`}
         >
-          <Users size={16} /> All Active Users ({users.length})
+          <Users size={16} /> All Active Employees ({visibleUsers.length})
         </button>
         <button
           onClick={() => setActiveTab('teams')}
@@ -442,10 +599,109 @@ export default function UsersPage() {
         >
           <Shield size={16} /> Module Access Teams ({teams.length})
         </button>
+        {(isPlatform || isTenantAdmin || isAdmin) && (
+          <button
+            onClick={() => setActiveTab('signins')}
+            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${
+              activeTab === 'signins'
+                ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Clock size={16} /> Recent Sign-ins
+          </button>
+        )}
       </div>
 
       {activeTab === 'teams' ? (
         <TeamsTab />
+      ) : activeTab === 'signins' ? (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-900/40 text-xs text-blue-800 dark:text-blue-300 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldAlert size={16} className="text-crm-blue shrink-0" />
+              <span>
+                Audited sign-in attempts for this workspace. Identifiers and IP addresses are masked (first two octets). No passwords, hashes, or session tokens are ever logged or displayed.
+              </span>
+            </div>
+            <button
+              onClick={fetchRecentSignIns}
+              disabled={loadingSignIns}
+              className="btn-ghost text-xs gap-1.5 shrink-0"
+              title="Refresh sign-in logs"
+            >
+              <RefreshCw size={13} className={loadingSignIns ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
+
+          <div className="table-container overflow-x-auto">
+            <table className="table w-full">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Masked Identifier</th>
+                  <th>IP Address</th>
+                  <th>Client / Browser</th>
+                  <th>Reason / Event</th>
+                  <th>Portal</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingSignIns ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8 text-slate-400">
+                      <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-crm-blue" />
+                      Loading sign-in history...
+                    </td>
+                  </tr>
+                ) : recentSignIns.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-8 text-slate-400 italic">
+                      No sign-in records found.
+                    </td>
+                  </tr>
+                ) : (
+                  recentSignIns.map((item) => (
+                    <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02]">
+                      <td>
+                        {item.status === 'SUCCESS' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
+                            <CheckCircle2 size={12} /> SUCCESS
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-red-500/10 text-red-600 dark:text-crm-coral border border-red-500/20">
+                            <X size={12} /> FAILED
+                          </span>
+                        )}
+                      </td>
+                      <td className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                        {item.maskedIdentifier}
+                      </td>
+                      <td className="font-mono text-xs text-slate-600 dark:text-slate-400">
+                        {item.ipAddress}
+                      </td>
+                      <td className="text-xs text-slate-600 dark:text-slate-400 max-w-xs truncate" title={item.userAgent}>
+                        {item.userAgent}
+                      </td>
+                      <td>
+                        <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          {item.reasonCode}
+                        </span>
+                      </td>
+                      <td className="text-xs font-semibold uppercase text-slate-500">
+                        {item.portal}
+                      </td>
+                      <td className="font-mono text-xs text-slate-500">
+                        {safeFormatDate(item.timestamp)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
         <>
           {/* Filter & Search Bar */}
@@ -498,8 +754,22 @@ export default function UsersPage() {
               )}
             </div>
 
-            <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-              Total Users: <strong className="text-slate-900 dark:text-white">{users.length}</strong>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowMyProfile(!showMyProfile)}
+                className={`text-[11px] px-2.5 py-1 rounded-lg border font-semibold transition-all cursor-pointer ${
+                  showMyProfile
+                    ? 'bg-crm-blue/10 border-crm-blue text-crm-blue shadow-2xs'
+                    : 'bg-white dark:bg-[#1E2230] border-slate-300 dark:border-[#2A3042] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+                title={showMyProfile ? 'Showing your own profile' : 'Hiding your own admin profile'}
+              >
+                {showMyProfile ? 'Showing My Profile' : 'My Profile: Hidden'}
+              </button>
+              <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                Total Employees: <strong className="text-slate-900 dark:text-white">{visibleUsers.length}</strong>
+              </div>
             </div>
           </div>
 
@@ -520,14 +790,22 @@ export default function UsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u, i) => {
+                {visibleUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={isPlatform ? 9 : 8} className="p-8 text-center text-slate-400 text-xs">
+                      No employee profiles found matching current filters. Click &quot;+ Create New User&quot; to onboard staff.
+                    </td>
+                  </tr>
+                ) : (
+                  visibleUsers.map((u, i) => {
                   const isCurrentUser = u.id === currentUser?.id;
+                  const isCompanyAdmin = isPlatform || currentUser?.role === 'tenant_admin';
                   const myRank = ROLE_RANKS[currentUser?.role || ''] || 0;
                   const targetRank = ROLE_RANKS[u.role] || 0;
                   const isStrictlyHigher = isPlatform || myRank > targetRank;
-                  const canActOnUser = isStrictlyHigher;
-                  const canEditUser = isCurrentUser || isStrictlyHigher;
-                  const canDeleteUser = !isCurrentUser && isStrictlyHigher;
+                  const canActOnUser = isCompanyAdmin ? (!isCurrentUser && u.role !== 'platform_super_admin') : isStrictlyHigher;
+                  const canEditUser = isCurrentUser || isCompanyAdmin || isStrictlyHigher;
+                  const canDeleteUser = !isCurrentUser && (isCompanyAdmin ? u.role !== 'platform_super_admin' : isStrictlyHigher);
 
                   const roleBadgeColors: Record<string, string> = {
                     platform_super_admin: 'bg-purple-500/10 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/20 dark:border-purple-500/30',
@@ -704,7 +982,7 @@ export default function UsersPage() {
                       </td>
                     </motion.tr>
                   );
-                })}
+                }))}
               </tbody>
             </table>
           </div>
@@ -789,6 +1067,14 @@ export default function UsersPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Live Auto-Generated ID Preview */}
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-500 font-medium">Auto-Generated Employee ID:</span>
+                  <span className="font-mono text-xs font-bold text-crm-blue bg-crm-blue/10 px-2 py-0.5 rounded border border-crm-blue/20">
+                    JNC-{(currentUser?.tenant?.code || 'TENANT').replace(/^JNC-/, '')}-{ROLE_CODE_MAP[createForm.role] || 'EMP'}-XXX
+                  </span>
                 </div>
 
                 {/* Team & Warehouse Scoping */}
@@ -972,7 +1258,7 @@ export default function UsersPage() {
                     className="input text-xs font-medium"
                     value={editingUser.role}
                     onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as Role })}
-                    disabled={editingUser.id === currentUser?.id || (!isPlatform && (ROLE_RANKS[currentUser?.role || ''] || 0) <= (ROLE_RANKS[editingUser.role] || 0))}
+                    disabled={editingUser.id === currentUser?.id || (!isPlatform && currentUser?.role !== 'tenant_admin' && (ROLE_RANKS[currentUser?.role || ''] || 0) <= (ROLE_RANKS[editingUser.role] || 0))}
                   >
                     {!assignableRoles.includes(editingUser.role) && (
                       <option value={editingUser.role}>
@@ -1007,21 +1293,36 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#2A3042]">
-                  <button
-                    type="button"
-                    onClick={() => setEditingUser(null)}
-                    className="btn-ghost text-xs"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={updating}
-                    className="btn-primary text-xs px-5 shadow-glow-blue"
-                  >
-                    {updating ? 'Saving...' : 'Save Changes'}
-                  </button>
+                <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-[#2A3042]">
+                  {editingUser.id !== currentUser?.id && (isPlatform || currentUser?.role === 'tenant_admin' || (ROLE_RANKS[currentUser?.role || ''] || 0) > (ROLE_RANKS[editingUser.role] || 0)) ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = editingUser;
+                        setEditingUser(null);
+                        handleDeleteUser(target);
+                      }}
+                      className="btn bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 text-xs gap-1.5 py-1.5 px-3"
+                    >
+                      <Trash2 size={13} /> Delete User
+                    </button>
+                  ) : <div />}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingUser(null)}
+                      className="btn-ghost text-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={updating}
+                      className="btn-primary text-xs px-5 shadow-glow-blue"
+                    >
+                      {updating ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
                 </div>
               </form>
             </motion.div>
@@ -1128,6 +1429,216 @@ export default function UsersPage() {
                 >
                   Dismiss
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── MODAL: Bulk User Import ───────────────────────────────────────── */}
+      <AnimatePresence>
+        {showImportModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden my-auto"
+            >
+              <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230]">
+                <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Upload size={18} className="text-crm-blue" /> Bulk Onboard Client Users
+                </h2>
+                <button
+                  onClick={() => setShowImportModal(false)}
+                  className="w-7 h-7 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {!importResult ? (
+                  <>
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="label">CSV Records (Paste or Upload)</label>
+                        <button
+                          type="button"
+                          onClick={handleDownloadTemplateCsv}
+                          className="text-xs text-crm-blue hover:underline flex items-center gap-1 font-semibold"
+                        >
+                          <Download size={12} /> Download Sample Template
+                        </button>
+                      </div>
+                      <textarea
+                        className="input font-mono text-xs h-36"
+                        placeholder="Full Name,Email Address,Phone Number,Role,Team Name&#10;Rajesh Sharma,rajesh.sharma@example.com,+91 98450 12345,employee,Sales Team Alpha"
+                        value={importCsvText}
+                        onChange={(e) => {
+                          setImportCsvText(e.target.value);
+                          setImportPreviewData(null);
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <label className="btn-ghost text-xs cursor-pointer gap-1.5 border border-slate-300 dark:border-white/10">
+                        <FileSpreadsheet size={13} /> Upload .CSV File
+                        <input
+                          type="file"
+                          accept=".csv,text/csv"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = (evt) => {
+                              const text = evt.target?.result as string;
+                              if (text) {
+                                setImportCsvText(text);
+                                setImportPreviewData(null);
+                              }
+                            };
+                            reader.readAsText(file);
+                          }}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={handlePreviewImport}
+                        disabled={previewingImport || !importCsvText.trim()}
+                        className="btn bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 text-xs px-4 py-2 font-bold disabled:opacity-50"
+                      >
+                        {previewingImport ? 'Validating Rows...' : 'Preview Validation & Codes'}
+                      </button>
+                    </div>
+
+                    {importPreviewData && (
+                      <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-[#2A3042]">
+                        <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">
+                            Validation: <strong className="text-emerald-600">{importPreviewData.validRows} valid</strong>, <strong className="text-red-500">{importPreviewData.errorRows} errors</strong>
+                          </span>
+                          <span className="text-slate-500">
+                            Available Plan Slots: {importPreviewData.availableSlots} / {importPreviewData.maxUsers}
+                          </span>
+                        </div>
+
+                        {importPreviewData.errors.length > 0 && (
+                          <div className="p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-300 max-h-28 overflow-y-auto space-y-1">
+                            {importPreviewData.errors.map((err: any, idx: number) => (
+                              <p key={idx}>Row {err.row} ({err.data.email || 'No email'}): {err.errors.join(', ')}</p>
+                            ))}
+                          </div>
+                        )}
+
+                        {importPreviewData.valid.length > 0 && (
+                          <div className="max-h-40 overflow-y-auto border border-slate-200 dark:border-[#2A3042] rounded-xl text-xs">
+                            <table className="w-full text-left">
+                              <thead className="bg-slate-50 dark:bg-[#1E2230] text-slate-500 font-semibold border-b border-slate-200 dark:border-[#2A3042]">
+                                <tr>
+                                  <th className="p-2">Name</th>
+                                  <th className="p-2">Email</th>
+                                  <th className="p-2">Role</th>
+                                  <th className="p-2">Assigned Code</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-200 dark:divide-[#2A3042]">
+                                {importPreviewData.valid.map((u: any, idx: number) => (
+                                  <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-white/5">
+                                    <td className="p-2 font-medium">{u.name}</td>
+                                    <td className="p-2 font-mono text-[11px]">{u.email}</td>
+                                    <td className="p-2 capitalize">{u.role}</td>
+                                    <td className="p-2 font-mono font-bold text-crm-blue text-[11px]">{u.previewCode}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowImportModal(false)}
+                            className="btn-ghost text-xs px-4"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCommitImport}
+                            disabled={committingImport || importPreviewData.valid.length === 0 || importPreviewData.capacityExceeded}
+                            className="btn-primary text-xs px-5 shadow-glow-blue font-bold disabled:opacity-50"
+                          >
+                            {committingImport ? 'Creating Accounts...' : `Confirm & Onboard ${importPreviewData.valid.length} Users`}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-4 text-center py-4">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 flex items-center justify-center mx-auto">
+                      <CheckCircle2 size={24} />
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">{importResult.message}</h3>
+                    <p className="text-xs text-slate-500">
+                      Generated credentials for {importResult.count} new users with mandatory password reset on first login.
+                    </p>
+
+                    <div className="max-h-48 overflow-y-auto border border-slate-200 dark:border-[#2A3042] rounded-xl text-xs text-left">
+                      <table className="w-full">
+                        <thead className="bg-slate-50 dark:bg-[#1E2230] text-slate-500 font-semibold border-b border-slate-200 dark:border-[#2A3042]">
+                          <tr>
+                            <th className="p-2">Employee Code</th>
+                            <th className="p-2">User</th>
+                            <th className="p-2">Temporary Password</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-[#2A3042]">
+                          {importResult.users.map((item: any, idx: number) => (
+                            <tr key={idx}>
+                              <td className="p-2 font-mono font-bold text-crm-blue">{item.user.employeeCode}</td>
+                              <td className="p-2">{item.user.name} ({item.user.email})</td>
+                              <td className="p-2 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{item.tempPassword}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const csvOut = 'Employee Code,Name,Email,Temporary Password\n' +
+                            importResult.users.map((i: any) => `${i.user.employeeCode},${i.user.name},${i.user.email},${i.tempPassword}`).join('\n');
+                          const blob = new Blob([csvOut], { type: 'text/csv' });
+                          const url = window.URL.createObjectURL(blob);
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.setAttribute('download', 'onboarded_users_credentials.csv');
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        className="btn-ghost text-xs gap-1.5 border border-slate-300 dark:border-white/10"
+                      >
+                        <Download size={13} /> Export Credentials CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowImportModal(false)}
+                        className="btn-primary text-xs px-5"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>

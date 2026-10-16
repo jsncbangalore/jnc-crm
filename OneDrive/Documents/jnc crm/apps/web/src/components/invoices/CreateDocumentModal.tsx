@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Plus, Trash2, FileText, Truck, FileSpreadsheet, ShieldAlert,
@@ -9,6 +9,19 @@ import { DocumentType, Invoice } from '../../types';
 import { invoicesApi, inventoryApi, companiesApi } from '../../services/api';
 import { numberToIndianWords } from './InvoiceModal';
 import { validateLutStatus } from '../../utils/lut-validator';
+import FullCalendarPicker from '../common/FullCalendarPicker';
+
+const PAYMENT_TERMS_OPTIONS = [
+  'Advance',
+  'Immediate',
+  'Within 7 Days',
+  'Within 15 Days',
+  'Within 30 Days',
+  'Within 45 Days',
+  'Within 60 Days',
+  '50% Advance & 50% Against Dispatch',
+  'Against Delivery / COD',
+];
 
 interface CreateDocumentModalProps {
   isOpen: boolean;
@@ -23,8 +36,8 @@ interface FormLineItem {
   description: string;
   hsnCode: string;
   unit: string;
-  quantity: number;
-  unitPrice: number;
+  quantity: number | string;
+  unitPrice: number | string;
   taxRate: number;
 }
 
@@ -44,6 +57,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
   const [docType, setDocType] = useState<DocumentType>('tax_invoice');
   const [loadingNumber, setLoadingNumber] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [skus, setSkus] = useState<any[]>([]);
 
   // Form State
@@ -53,7 +67,10 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
   const [poDate, setPoDate] = useState('');
   const [buyerOrderNo, setBuyerOrderNo] = useState('');
   const [referenceNo, setReferenceNo] = useState('');
-  const [paymentTerms, setPaymentTerms] = useState('Advance');
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const [isCustomPaymentTerms, setIsCustomPaymentTerms] = useState(false);
+  const paymentTermsInputRef = useRef<HTMLInputElement>(null);
+  const [paymentStatus, setPaymentStatus] = useState<'unpaid' | 'paid' | 'partial'>('unpaid');
   const [deliverySchedule, setDeliverySchedule] = useState('');
 
   // SEZ LUT State
@@ -85,9 +102,9 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
       id: '1',
       description: '',
       hsnCode: '',
-      unit: "No's",
-      quantity: 1,
-      unitPrice: 0,
+      unit: '',
+      quantity: '',
+      unitPrice: '',
       taxRate: 18,
     },
   ]);
@@ -104,7 +121,10 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         setPoDate(editInvoice.poDate ? new Date(editInvoice.poDate).toISOString().split('T')[0] : '');
         setBuyerOrderNo(editInvoice.buyerOrderNo || '');
         setReferenceNo(editInvoice.referenceNo || '');
-        setPaymentTerms(editInvoice.paymentTerms || 'Advance');
+        const terms = editInvoice.paymentTerms || '';
+        setPaymentTerms(terms);
+        setIsCustomPaymentTerms(!!terms && !PAYMENT_TERMS_OPTIONS.includes(terms));
+        setPaymentStatus((editInvoice.paymentStatus as any) || 'unpaid');
         setDeliverySchedule(editInvoice.deliverySchedule || '');
         setLutBondNo(editInvoice.lutBondNo || 'AD290525013648T');
         setLutValidity(editInvoice.lutValidity || 'From : 10/05/2025 To: 09/05/2026');
@@ -126,9 +146,9 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
               skuId: l.skuId,
               description: l.description || '',
               hsnCode: l.hsnCode || '',
-              unit: l.unit || "No's",
-              quantity: Number(l.quantity) || 1,
-              unitPrice: Number(l.unitPrice) || 0,
+              unit: l.unit || '',
+              quantity: l.quantity !== undefined ? l.quantity : '',
+              unitPrice: l.unitPrice !== undefined ? l.unitPrice : '',
               taxRate: l.taxRate !== undefined ? Number(l.taxRate) : 18,
             }))
           );
@@ -140,7 +160,9 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         setPoDate('');
         setBuyerOrderNo('');
         setReferenceNo('');
-        setPaymentTerms('Advance');
+        setPaymentTerms('');
+        setIsCustomPaymentTerms(false);
+        setPaymentStatus('unpaid');
         setDeliverySchedule('');
         setCustomerName('');
         setCustomerPhone('');
@@ -158,9 +180,9 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
             id: '1',
             description: '',
             hsnCode: '',
-            unit: "No's",
-            quantity: 1,
-            unitPrice: 0,
+            unit: '',
+            quantity: '',
+            unitPrice: '',
             taxRate: 18,
           },
         ]);
@@ -200,9 +222,9 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         id: String(Date.now()),
         description: '',
         hsnCode: '',
-        unit: docType === 'delivery_challan' ? 'No' : "No's",
-        quantity: 1,
-        unitPrice: 0,
+        unit: '',
+        quantity: '',
+        unitPrice: '',
         taxRate: docType === 'delivery_challan' ? 0 : 18,
       },
     ]);
@@ -288,19 +310,29 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
   const amountWords = numberToIndianWords(grandTotal);
   const lutStatus = validateLutStatus(lutBondNo, lutValidity, invoiceDate);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setFormError(null);
+
+    if (!invoiceNumber.trim()) {
+      setFormError('Please enter document number.');
+      return;
+    }
+    if (!invoiceDate) {
+      setFormError('Please select document date.');
+      return;
+    }
     if (!customerName.trim()) {
-      alert('Please enter customer or company name');
+      setFormError('Please enter customer or company name.');
       return;
     }
     if (lines.some((l) => !l.description.trim())) {
-      alert('Please enter a description for all line items');
+      setFormError('Please enter a description for all line items.');
       return;
     }
 
     if (isSEZ && (lutStatus.isExpired || lutStatus.isExpiringSoon) && !lutAcknowledged) {
-      alert(`LUT Compliance Acknowledgment Required:\n\n${lutStatus.warningMessage}\n\nPlease check the acknowledgment box in the SEZ LUT section to confirm before proceeding.`);
+      setFormError(`LUT Compliance Acknowledgment Required: ${lutStatus.warningMessage}. Please check the confirmation box below.`);
       return;
     }
 
@@ -315,6 +347,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         buyerOrderNo: buyerOrderNo.trim() || undefined,
         referenceNo: referenceNo.trim() || undefined,
         paymentTerms: paymentTerms.trim(),
+        paymentStatus: !isDC ? paymentStatus : 'unpaid',
         deliverySchedule: docType === 'purchase_order' ? deliverySchedule.trim() : undefined,
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim() || '9999999999',
@@ -354,7 +387,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
       onCreated(data);
       onClose();
     } catch (err: any) {
-      alert(`Failed to ${editInvoice ? 'update' : 'create'} document: ` + (err?.response?.data?.message || err.message));
+      setFormError(`Failed to ${editInvoice ? 'update' : 'create'} document: ` + (err?.response?.data?.message || err.message));
     } finally {
       setSubmitting(false);
     }
@@ -393,8 +426,28 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
           </button>
         </div>
 
-        {/* Modal Body Form */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+        {/* In-app Error Banner */}
+        {formError && (
+          <div className="mx-4 sm:mx-6 mt-4 p-3.5 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-400 text-xs flex items-center gap-2.5 font-medium">
+            <AlertCircle size={16} className="shrink-0 text-red-600 dark:text-red-400" />
+            <span className="flex-1">{formError}</span>
+            <button
+              type="button"
+              onClick={() => setFormError(null)}
+              className="p-1 hover:bg-red-200/50 dark:hover:bg-red-500/20 rounded"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Modal Body Container (Div container to prevent Chromium identity/license autofill hijacking) */}
+        <div
+          className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-xs"
+          data-lpignore="true"
+          data-1p-ignore="true"
+          data-form-type="other"
+        >
           {/* 1. DOCUMENT TYPE SELECTOR */}
           <div>
             <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-2 block">
@@ -472,6 +525,13 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 </label>
                 <input
                   type="text"
+                  name="jnc_tax_doc_number"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
                   required
                   className="input text-xs font-mono"
                   placeholder={isDC ? 'e.g. DC-001' : isCreditNote ? 'e.g. CN-001' : isPO ? 'e.g. PO-001' : 'e.g. INV-001'}
@@ -480,32 +540,161 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 />
               </div>
 
-              <div>
-                <label className="label">Document Date *</label>
-                <input
-                  type="date"
-                  required
-                  className="input text-xs"
-                  value={invoiceDate}
-                  onChange={(e) => setInvoiceDate(e.target.value)}
-                />
-              </div>
+              <FullCalendarPicker
+                label="Document Date"
+                required
+                name="jnc_tax_doc_date"
+                value={invoiceDate}
+                onChange={(val) => setInvoiceDate(val)}
+                placeholder="YYYY-MM-DD"
+                minYear={1990}
+                maxYear={3000}
+              />
+
+              {!isDC && (
+                <div>
+                  <label className="label font-bold flex items-center justify-between">
+                    <span>Payment Status *</span>
+                    <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                      paymentStatus === 'paid'
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-green-500/15 dark:text-green-400 border-emerald-300 dark:border-green-500/30'
+                        : paymentStatus === 'partial'
+                        ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 border-amber-300 dark:border-amber-500/30'
+                        : 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-400 border-slate-300 dark:border-slate-500/30'
+                    }`}>
+                      {paymentStatus}
+                    </span>
+                  </label>
+                  <select
+                    name="jnc_tax_doc_paystatus"
+                    className="input text-xs font-bold"
+                    value={paymentStatus}
+                    onChange={(e) => setPaymentStatus(e.target.value as any)}
+                  >
+                    <option value="unpaid">Unpaid (Payment Pending)</option>
+                    <option value="paid">Paid (Fully Settled)</option>
+                    <option value="partial">Partial (Partially Paid)</option>
+                  </select>
+                </div>
+              )}
 
               <div>
-                <label className="label">Payment Terms</label>
-                <input
-                  type="text"
-                  className="input text-xs"
-                  placeholder="e.g. Advance / 30 days"
-                  value={paymentTerms}
-                  onChange={(e) => setPaymentTerms(e.target.value)}
-                />
+                <label className="label flex items-center justify-between">
+                  <span className="font-semibold">Payment Terms</span>
+                  <span className="text-[10px] text-slate-500 font-normal">Choose option or type text</span>
+                </label>
+                <div className="space-y-2">
+                  <select
+                    name="jnc_tax_doc_payterms_select"
+                    className="input text-xs font-bold cursor-pointer"
+                    value={
+                      PAYMENT_TERMS_OPTIONS.includes(paymentTerms)
+                        ? paymentTerms
+                        : paymentTerms
+                        ? 'custom'
+                        : ''
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'custom') {
+                        setIsCustomPaymentTerms(true);
+                        setTimeout(() => paymentTermsInputRef.current?.focus(), 50);
+                      } else if (val) {
+                        setIsCustomPaymentTerms(false);
+                        setPaymentTerms(val);
+                      } else {
+                        setIsCustomPaymentTerms(false);
+                        setPaymentTerms('');
+                      }
+                    }}
+                  >
+                    <option value="">-- Choose Payment Terms Option --</option>
+                    <option value="custom">Custom Text (Type your own)...</option>
+                    {PAYMENT_TERMS_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="flex flex-wrap gap-1">
+                    {['Advance', 'Immediate', 'Within 7 Days', 'Within 15 Days', 'Within 30 Days'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          setPaymentTerms(preset);
+                          setIsCustomPaymentTerms(false);
+                        }}
+                        className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                          paymentTerms === preset
+                            ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      ref={paymentTermsInputRef}
+                      type="text"
+                      name="jnc_tax_doc_payterms"
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-form-type="other"
+                      className="input text-xs pr-8 font-medium"
+                      placeholder="Type custom payment terms or edit above selection..."
+                      value={paymentTerms}
+                      onChange={(e) => {
+                        setPaymentTerms(e.target.value);
+                        if (!PAYMENT_TERMS_OPTIONS.includes(e.target.value)) {
+                          setIsCustomPaymentTerms(true);
+                        }
+                      }}
+                    />
+                    {paymentTerms && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentTerms('');
+                          setIsCustomPaymentTerms(false);
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 text-xs px-1 font-bold"
+                        title="Clear payment terms"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                    Select a preset above to auto-fill, or type your own custom payment terms directly in the text box.
+                  </p>
+                </div>
               </div>
+
+              <FullCalendarPicker
+                label="Due Date (Optional)"
+                name="jnc_tax_doc_duedate"
+                value={dueDate}
+                onChange={(val) => setDueDate(val)}
+                placeholder="Optional due date"
+                minYear={1990}
+                maxYear={3000}
+              />
 
               <div>
                 <label className="label">{isDC ? 'PO Order No.' : isCreditNote ? 'Buyer PO Ref' : isPO ? 'Internal Ref' : "Buyer's Order No. / PO"}</label>
                 <input
                   type="text"
+                  name="jnc_tax_doc_buyerpo"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
                   className="input text-xs font-mono"
                   placeholder="e.g. PO-001"
                   value={buyerOrderNo}
@@ -513,20 +702,25 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 />
               </div>
 
-              <div>
-                <label className="label">{isDC ? 'Order-Dated' : 'PO-Dated'}</label>
-                <input
-                  type="date"
-                  className="input text-xs"
-                  value={poDate}
-                  onChange={(e) => setPoDate(e.target.value)}
-                />
-              </div>
+              <FullCalendarPicker
+                label={isDC ? 'Order-Dated' : 'PO-Dated'}
+                name="jnc_tax_doc_podate"
+                value={poDate}
+                onChange={(val) => setPoDate(val)}
+                placeholder="Optional PO date"
+                minYear={1990}
+                maxYear={3000}
+              />
 
               <div>
                 <label className="label">{isCreditNote ? 'Original Invoice No. & Date *' : 'Reference No. & Date'}</label>
                 <input
                   type="text"
+                  name="jnc_tax_doc_refnum"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
                   className="input text-xs"
                   placeholder={isCreditNote ? 'e.g. INV-001 01-01-2026' : 'Optional internal ref'}
                   value={referenceNo}
@@ -680,6 +874,11 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">{isPO ? 'Vendor / Supplier Name *' : 'Customer / Company Name *'}</label>
                 <input
                   type="text"
+                  name="jnc_cust_company_name"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
                   required
                   className="input text-xs"
                   placeholder={isPO ? 'Enter vendor / supplier name' : 'Enter customer or company name'}
@@ -692,6 +891,11 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">Customer Phone</label>
                 <input
                   type="text"
+                  name="jnc_cust_company_phone"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
                   className="input text-xs"
                   placeholder="Enter phone number"
                   value={customerPhone}
@@ -703,6 +907,11 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">Customer Email (For Invoice Dispatch)</label>
                 <input
                   type="email"
+                  name="jnc_cust_company_email"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
                   className="input text-xs font-mono"
                   placeholder="billing@customer.com"
                   value={customerEmail}
@@ -714,6 +923,11 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">GST Number (GSTIN)</label>
                 <input
                   type="text"
+                  name="jnc_cust_company_gstin"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
                   className="input text-xs font-mono uppercase"
                   placeholder="e.g. 29ABCDE1234F1Z5"
                   value={customerGstin}
@@ -838,6 +1052,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                       <input
                         type="text"
                         className="input text-xs text-center"
+                        placeholder="No's"
                         value={line.unit}
                         onChange={(e) => handleUpdateLine(line.id, 'unit', e.target.value)}
                       />
@@ -850,8 +1065,9 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                         min="1"
                         required
                         className="input text-xs text-center font-bold"
-                        value={line.quantity}
-                        onChange={(e) => handleUpdateLine(line.id, 'quantity', Number(e.target.value) || 1)}
+                        placeholder="Qty"
+                        value={line.quantity === 0 || line.quantity === '' ? '' : line.quantity}
+                        onChange={(e) => handleUpdateLine(line.id, 'quantity', e.target.value === '' ? '' : (Number(e.target.value) || e.target.value))}
                       />
                     </div>
 
@@ -863,8 +1079,9 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                           step="any"
                           required
                           className="input text-xs text-right font-mono font-bold"
-                          value={line.unitPrice}
-                          onChange={(e) => handleUpdateLine(line.id, 'unitPrice', Number(e.target.value) || 0)}
+                          placeholder="0.00"
+                          value={line.unitPrice === 0 || line.unitPrice === '' ? '' : line.unitPrice}
+                          onChange={(e) => handleUpdateLine(line.id, 'unitPrice', e.target.value === '' ? '' : (Number(e.target.value) || e.target.value))}
                         />
                       </div>
                     )}
@@ -970,14 +1187,15 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
               Cancel
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={() => handleSubmit()}
               disabled={submitting}
               className="btn-primary text-xs px-6 py-2.5 shadow-glow-blue flex items-center gap-2 font-bold"
             >
               <Check size={15} /> {submitting ? 'Saving Document...' : editInvoice ? 'Update & Save Changes' : 'Save & Generate Document'}
             </button>
           </div>
-        </form>
+        </div>
       </motion.div>
     </div>
   );

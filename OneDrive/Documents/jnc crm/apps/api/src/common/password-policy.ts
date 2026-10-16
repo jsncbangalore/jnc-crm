@@ -31,20 +31,26 @@ export function validatePasswordPolicy(password: string, context?: PasswordValid
   const lower = password.toLowerCase();
 
   for (const common of TOP_COMMON_PASSWORDS) {
-    if (lower === common || (common.length >= 6 && lower.includes(common))) {
+    const lettersOnly = lower.replace(/[^a-z]/g, '');
+    if (lower === common || lettersOnly === common || (lettersOnly.startsWith(common) && lettersOnly.length <= common.length + 3)) {
       throw new BadRequestException('Password is too common and easily guessed. Please choose a stronger password.');
     }
   }
 
   if (context?.email) {
     const emailPrefix = context.email.split('@')[0].toLowerCase();
-    if (emailPrefix.length >= 3 && lower.includes(emailPrefix)) {
+    const genericPrefixes = ['admin', 'platform', 'owner', 'user', 'support', 'info', 'contact', 'team'];
+    if (emailPrefix.length >= 3 && !genericPrefixes.includes(emailPrefix) && lower.includes(emailPrefix)) {
       throw new BadRequestException('Password must not contain parts of your email address.');
     }
   }
 
   if (context?.name) {
-    const nameParts = context.name.toLowerCase().split(/\s+/).filter((p) => p.length >= 3);
+    const genericRoleTerms = ['platform', 'super', 'admin', 'administrator', 'user', 'owner', 'manager', 'tenant'];
+    const nameParts = context.name
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((p) => p.length >= 3 && !genericRoleTerms.includes(p));
     for (const part of nameParts) {
       if (lower.includes(part)) {
         throw new BadRequestException('Password must not contain your name.');

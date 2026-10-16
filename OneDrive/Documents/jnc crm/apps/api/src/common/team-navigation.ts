@@ -22,12 +22,39 @@ export const PAGE_KEY_TO_ROUTE: Record<string, string> = {
   daily_activities: '/daily-activities',
 };
 
-/** Roles restricted to a specific page */
+/** Roles restricted to a specific page (single page locked roles) */
 export const ROLE_ONLY_PAGE: Record<string, string> = {
   project_manager: 'daily_activities',
   developer_lead: 'daily_activities',
   developer: 'daily_activities',
-  store_manager: 'inventory',
+};
+
+/** Strict role-to-page baseline access rules */
+export const ROLE_ALLOWED_PAGES: Record<string, string[]> = {
+  tenant_admin: ['dashboard', 'leads', 'quotations', 'orders', 'invoices', 'inventory', 'purchase_bills', 'shipments', 'daily_activities', 'users', 'automation', 'custom_objects'],
+  admin: ['dashboard', 'leads', 'quotations', 'orders', 'invoices', 'inventory', 'purchase_bills', 'shipments', 'daily_activities', 'users', 'automation', 'custom_objects'],
+  sub_admin: ['dashboard', 'leads', 'quotations', 'orders', 'invoices', 'inventory', 'purchase_bills', 'shipments', 'daily_activities', 'users', 'automation', 'custom_objects'],
+  employee: ['dashboard', 'leads', 'quotations', 'orders'],
+  store_manager: ['dashboard', 'orders', 'inventory', 'purchase_bills', 'shipments'],
+  finance: ['dashboard', 'quotations', 'orders', 'invoices'],
+  accountant: ['dashboard', 'quotations', 'orders', 'invoices'],
+  developer: ['daily_activities'],
+  developer_lead: ['daily_activities'],
+  project_manager: ['daily_activities'],
+};
+
+/** Default landing route per role upon login */
+export const ROLE_DEFAULT_LANDING: Record<string, string> = {
+  tenant_admin: '/',
+  admin: '/',
+  sub_admin: '/',
+  employee: '/leads',
+  store_manager: '/inventory',
+  finance: '/invoices',
+  accountant: '/invoices',
+  developer: '/daily-activities',
+  developer_lead: '/daily-activities',
+  project_manager: '/daily-activities',
 };
 
 export interface NavigationDecision {
@@ -55,13 +82,26 @@ export function resolveTeamNavigation(user: any, pageKey: string): NavigationDec
     return { action: 'allow' };
   }
 
-  // Roles locked to a single page
+  // Roles locked strictly to single page
   const onlyPage = ROLE_ONLY_PAGE[user.role || ''];
   if (onlyPage) {
     if (pageKey !== onlyPage) {
-      return { action: 'redirect', targetRoute: PAGE_KEY_TO_ROUTE[onlyPage] || '/' };
+      return { action: 'redirect', targetRoute: PAGE_KEY_TO_ROUTE[onlyPage] || '/daily-activities' };
     }
     return { action: 'allow' };
+  }
+
+  // Role-level baseline access check
+  const roleAllowed = ROLE_ALLOWED_PAGES[user.role || ''];
+  if (roleAllowed) {
+    const hasRoleAccess =
+      roleAllowed.includes(pageKey) ||
+      (pageKey === 'purchase_bills' && (roleAllowed.includes('suppliers') || roleAllowed.includes('inventory')));
+
+    if (!hasRoleAccess) {
+      const defaultLanding = ROLE_DEFAULT_LANDING[user.role || ''] || '/';
+      return { action: 'redirect', targetRoute: defaultLanding };
+    }
   }
 
   // Team-scoped access: check allowedPages

@@ -26,8 +26,20 @@ export default function ForgotPasswordPage() {
       await authApi.forgotPassword(email.trim());
       setSent(true);
     } catch (err: any) {
-      // Server always returns 200, so any error here is a network issue
-      setError('Unable to send reset link. Please try again.');
+      if (err.response?.status === 429) {
+        setError('Too many password reset attempts. Please wait a few minutes before trying again.');
+      } else if (
+        !err?.response ||
+        err.code === 'ERR_NETWORK' ||
+        err.code === 'ECONNABORTED' ||
+        err.message?.includes('Network Error')
+      ) {
+        setError('Cannot reach the server. Check your connection and try again.');
+      } else {
+        const rawMsg = err.response?.data?.message;
+        const msg = Array.isArray(rawMsg) ? rawMsg.join(', ') : rawMsg || 'Unable to send reset link. Please try again.';
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -78,7 +90,7 @@ export default function ForgotPasswordPage() {
               </Link>
             </motion.div>
           ) : (
-            <motion.form key="form" onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <motion.form key="form" onSubmit={handleSubmit} className="space-y-5" noValidate autoComplete="off">
               <div>
                 <label
                   htmlFor="forgot-email"
@@ -86,10 +98,15 @@ export default function ForgotPasswordPage() {
                 >
                   Email
                 </label>
+                {/* Browsers may still autofill despite these attributes */}
                 <input
                   id="forgot-email"
+                  name="jnc-identity"
                   type="email"
-                  autoComplete="email"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                   className="w-full h-11 px-3.5 text-[16px] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
                   placeholder="your@email.com"

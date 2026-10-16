@@ -11,6 +11,115 @@ import { decryptAtRest } from '../common/encryption.util';
 import { BRAND_CONFIG } from '../common/brand';
 import * as nodemailer from 'nodemailer';
 
+export type MailDeliveryStatus = 'sent' | 'failed' | 'not_configured';
+
+export type MailReasonCode =
+  | 'domain_not_verified'
+  | 'invalid_api_key'
+  | 'test_sender_restricted'
+  | 'timeout'
+  | 'rate_limited'
+  | 'smtp_blocked'
+  | 'missing_configuration'
+  | 'network_error'
+  | 'validation_error'
+  | null;
+
+export interface MailDispatchResult {
+  status: MailDeliveryStatus;
+  reason: MailReasonCode;
+  provider: string;
+  recipient: string;
+  messageId?: string;
+  error?: string;
+  success?: boolean;
+}
+
+export function maskRecipient(email: string): string {
+  if (!email || !email.includes('@')) return '***@unknown';
+  const [local, domain] = email.trim().toLowerCase().split('@');
+  const prefix = local.length >= 3 ? local.slice(0, 3) : (local.length > 0 ? local.slice(0, Math.min(local.length, 2)) : '');
+  return `${prefix}***@${domain}`;
+}
+
+export function mapProviderError(
+  provider: string,
+  httpStatus: number | null,
+  errorMessage: string | null,
+): MailReasonCode {
+  const msg = (errorMessage || '').toLowerCase();
+
+  if (provider === 'resend') {
+    if (httpStatus === 403 || msg.includes('domain') || msg.includes('verify') || msg.includes('not verified')) {
+      if (
+        msg.includes('only send testing') ||
+        msg.includes('testing emails') ||
+        msg.includes('sandbox') ||
+        msg.includes('restriction') ||
+        msg.includes('account owner')
+      ) {
+        return 'test_sender_restricted';
+      }
+      return 'domain_not_verified';
+    }
+    if (httpStatus === 401 || msg.includes('api key') || msg.includes('unauthorized') || msg.includes('invalid_api_key')) {
+      return 'invalid_api_key';
+    }
+    if (httpStatus === 422 || msg.includes('validation')) {
+      return 'validation_error';
+    }
+    if (httpStatus === 429 || msg.includes('rate') || msg.includes('quota') || msg.includes('limit')) {
+      return 'rate_limited';
+    }
+    if (msg.includes('timeout') || msg.includes('timed out') || msg.includes('etimedout')) {
+      return 'timeout';
+    }
+    if (msg.includes('network') || msg.includes('fetch failed') || msg.includes('enotfound') || msg.includes('econnreset')) {
+      return 'network_error';
+    }
+  }
+
+  if (provider === 'brevo') {
+    if (httpStatus === 403 || httpStatus === 400 || msg.includes('domain') || msg.includes('unverified') || msg.includes('sender')) {
+      return 'domain_not_verified';
+    }
+    if (httpStatus === 401 || msg.includes('unauthorized') || msg.includes('api-key') || msg.includes('key not found')) {
+      return 'invalid_api_key';
+    }
+    if (httpStatus === 429 || msg.includes('rate') || msg.includes('quota')) {
+      return 'rate_limited';
+    }
+    if (httpStatus === 422 || msg.includes('validation')) {
+      return 'validation_error';
+    }
+    if (msg.includes('timeout') || msg.includes('timed out')) {
+      return 'timeout';
+    }
+    if (msg.includes('network') || msg.includes('fetch failed')) {
+      return 'network_error';
+    }
+  }
+
+  // SMTP or generic fallback
+  if (msg.includes('timeout') || msg.includes('timedout') || msg.includes('etimedout') || msg.includes('esocket')) {
+    return 'timeout';
+  }
+  if (msg.includes('refused') || msg.includes('econnrefused') || msg.includes('ehostunreach') || msg.includes('blocked')) {
+    return 'smtp_blocked';
+  }
+  if (msg.includes('invalid login') || msg.includes('auth') || msg.includes('eauth') || msg.includes('535') || msg.includes('credentials')) {
+    return 'invalid_api_key';
+  }
+  if (msg.includes('missing') || msg.includes('not configured')) {
+    return 'missing_configuration';
+  }
+  if (msg.includes('network') || msg.includes('enotfound') || msg.includes('dns')) {
+    return 'network_error';
+  }
+
+  return null;
+}
+
 export interface SendEmailOptions {
   to: string;
   subject: string;
@@ -20,6 +129,8 @@ export interface SendEmailOptions {
   tenantId?: string;
   senderType?: 'primary' | 'invoice' | 'sales';
   requestId?: string;
+  purpose?: string;
+  throwOnError?: boolean;
   attachments?: Array<{
     filename: string;
     content?: any;
@@ -44,6 +155,7 @@ export interface MailTestResult {
   status: 'sent' | 'failed';
   errorText?: string;
   messageId?: string;
+  reason?: MailReasonCode;
 }
 
 @Injectable()
@@ -167,10 +279,14 @@ export class NotificationsService {
   /**
    * HTTPS REST API dispatch via Brevo (https://api.brevo.com/v3/smtp/email)
    */
-  private async sendViaBrevo(options: SendEmailOptions, fromEmail: string, senderName: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  private async sendViaBrevo(
+    options: SendEmailOptions,
+    fromEmail: string,
+    senderName: string,
+  ): Promise<{ success: boolean; messageId?: string; error?: string; reason?: MailReasonCode; status?: number }> {
     const apiKey = process.env.BREVO_API_KEY;
     if (!apiKey || !apiKey.trim()) {
-      return { success: false, error: 'BREVO_API_KEY environment variable is not configured' };
+      return { success: false, error: 'BREVO_API_KEY environment variable is not configured', reason: 'missing_configuration' };
     }
 
     const payload = {
@@ -198,19 +314,25 @@ export class NotificationsService {
       }
 
       const errMsg = data.message || data.code || `Brevo HTTP ${res.status}`;
-      return { success: false, error: errMsg };
+      const reason = mapProviderError('brevo', res.status, errMsg);
+      return { success: false, error: errMsg, reason, status: res.status };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Brevo HTTPS network request failed' };
+      const reason = mapProviderError('brevo', null, err.message);
+      return { success: false, error: err.message || 'Brevo HTTPS network request failed', reason };
     }
   }
 
   /**
    * HTTPS REST API dispatch via Resend (https://api.resend.com/emails)
    */
-  private async sendViaResend(options: SendEmailOptions, fromEmail: string, senderName: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  private async sendViaResend(
+    options: SendEmailOptions,
+    fromEmail: string,
+    senderName: string,
+  ): Promise<{ success: boolean; messageId?: string; error?: string; reason?: MailReasonCode; status?: number }> {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey || !apiKey.trim()) {
-      return { success: false, error: 'RESEND_API_KEY environment variable is not configured' };
+      return { success: false, error: 'RESEND_API_KEY environment variable is not configured', reason: 'missing_configuration' };
     }
 
     const configuredFrom = process.env.RESEND_FROM;
@@ -248,7 +370,7 @@ export class NotificationsService {
           ...payload,
           from: `JNC CRM <onboarding@resend.dev>`,
         };
-        res = await fetch('https://api.resend.com/emails', {
+        const fallbackRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${apiKey.trim()}`,
@@ -256,16 +378,21 @@ export class NotificationsService {
           },
           body: JSON.stringify(fallbackPayload),
         });
-        data = await res.json().catch(() => ({}));
-        if (res.ok && data.id) {
-          return { success: true, messageId: data.id };
+        const fallbackData = await fallbackRes.json().catch(() => ({}));
+        if (fallbackRes.ok && fallbackData.id) {
+          return { success: true, messageId: fallbackData.id };
         }
+        const fallbackErr = fallbackData.message || fallbackData.name || data.message || `Resend HTTP ${fallbackRes.status}`;
+        const fallbackReason = mapProviderError('resend', fallbackRes.status, fallbackErr);
+        return { success: false, error: fallbackErr, reason: fallbackReason, status: fallbackRes.status };
       }
 
       const errMsg = data.message || data.name || `Resend HTTP ${res.status}`;
-      return { success: false, error: errMsg };
+      const reason = mapProviderError('resend', res.status, errMsg);
+      return { success: false, error: errMsg, reason, status: res.status };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Resend HTTPS network request failed' };
+      const reason = mapProviderError('resend', null, err.message);
+      return { success: false, error: err.message || 'Resend HTTPS network request failed', reason };
     }
   }
 
@@ -288,7 +415,7 @@ export class NotificationsService {
         if (tenant) {
           return {
             companyDisplayName: tenant.name || 'JNC CRM',
-            companyPhone: tenant.phone || '+91 9663421455',
+            companyPhone: tenant.phone || '+91 9876543210',
             companyLogoUrl: tenant.logoUrl || '/jnc-logo.jpg',
           };
         }
@@ -297,7 +424,7 @@ export class NotificationsService {
 
     return {
       companyDisplayName: BRAND_CONFIG.displayName,
-      companyPhone: '+91 9663421455',
+      companyPhone: '+91 9876543210',
       companyLogoUrl: '/jnc-logo.jpg',
     };
   }
@@ -316,7 +443,7 @@ export class NotificationsService {
   /**
    * Single unified entry point for sending emails across forgot-password, reset-password, welcome emails and notifications.
    */
-  async sendEmail(options: SendEmailOptions) {
+  async sendEmail(options: SendEmailOptions): Promise<MailDispatchResult> {
     const tenantId = await this.resolveNotificationTenantId(options.tenantId);
     const isInvoice = options.senderType === 'invoice' || options.relatedEntityType === 'invoice';
     const branding = await this.getBranding(tenantId);
@@ -331,10 +458,11 @@ export class NotificationsService {
     const senderName = options.from ? branding.companyDisplayName : tenantTransporterInfo.senderName;
     const mailProvider = this.getMailProvider();
 
-    let status = 'failed';
+    let status: MailDeliveryStatus = 'failed';
     let errorMessage: string | null = null;
     let messageId: string | null = null;
     let providerUsed: string = mailProvider;
+    let detectedReason: MailReasonCode = null;
 
     // 1. If tenant has a custom registered MailAccount in DB, use SMTP
     if (tenantTransporterInfo.isCustomTenantAccount && tenantTransporterInfo.transporter) {
@@ -356,11 +484,13 @@ export class NotificationsService {
         } else {
           status = 'failed';
           errorMessage = 'Tenant SMTP rejected recipient';
+          detectedReason = 'domain_not_verified';
           this.logger.error(`[MAIL ERROR] ReqId: ${reqId} | Provider: smtp-tenant | To: ${options.to} | Reason: ${errorMessage}`);
         }
       } catch (err: any) {
         status = 'failed';
         errorMessage = err.message || 'Tenant SMTP connection failed';
+        detectedReason = mapProviderError('smtp', null, errorMessage);
         this.logger.error(`[MAIL ERROR] ReqId: ${reqId} | Provider: smtp-tenant | To: ${options.to} | Reason: ${errorMessage}`);
       }
     }
@@ -372,8 +502,9 @@ export class NotificationsService {
         messageId = result.messageId || null;
         this.logger.log(`[MAIL DISPATCH SUCCESS] ReqId: ${reqId} | Provider: brevo | To: ${options.to} | MessageId: ${messageId}`);
       } else {
-        status = 'failed';
+        status = result.reason === 'missing_configuration' ? 'not_configured' : 'failed';
         errorMessage = result.error || 'Brevo API sending failed';
+        detectedReason = result.reason || mapProviderError('brevo', result.status || null, errorMessage);
         this.logger.error(`[MAIL ERROR] ReqId: ${reqId} | Provider: brevo | To: ${options.to} | Reason: ${errorMessage}`);
       }
     }
@@ -385,8 +516,9 @@ export class NotificationsService {
         messageId = result.messageId || null;
         this.logger.log(`[MAIL DISPATCH SUCCESS] ReqId: ${reqId} | Provider: resend | To: ${options.to} | MessageId: ${messageId}`);
       } else {
-        status = 'failed';
+        status = result.reason === 'missing_configuration' ? 'not_configured' : 'failed';
         errorMessage = result.error || 'Resend API sending failed';
+        detectedReason = result.reason || mapProviderError('resend', result.status || null, errorMessage);
         this.logger.error(`[MAIL ERROR] ReqId: ${reqId} | Provider: resend | To: ${options.to} | Reason: ${errorMessage}`);
       }
     }
@@ -394,7 +526,8 @@ export class NotificationsService {
     else {
       if (!tenantTransporterInfo.transporter) {
         const isMissingPass = !process.env.SMTP_PASS;
-        status = 'queued';
+        status = 'not_configured';
+        detectedReason = 'missing_configuration';
         errorMessage = isMissingPass
           ? 'SMTP_PASS missing in server environment variables. Configure SMTP_PASS or set MAIL_PROVIDER=brevo/resend.'
           : 'No system SMTP transporter configured.';
@@ -417,11 +550,13 @@ export class NotificationsService {
           } else {
             status = 'failed';
             errorMessage = 'System SMTP rejected recipient';
+            detectedReason = 'domain_not_verified';
             this.logger.error(`[MAIL ERROR] ReqId: ${reqId} | Provider: smtp | To: ${options.to} | Reason: ${errorMessage}`);
           }
         } catch (err: any) {
           status = 'failed';
           errorMessage = err.message || 'System SMTP connection failed';
+          detectedReason = mapProviderError('smtp', null, errorMessage);
           this.logger.error(`[MAIL ERROR] ReqId: ${reqId} | Provider: smtp | To: ${options.to} | Reason: ${errorMessage}`);
         }
       }
@@ -439,6 +574,7 @@ export class NotificationsService {
           messageId = resendResult.messageId || null;
           providerUsed = 'resend';
           errorMessage = null;
+          detectedReason = null;
           this.logger.log(`[MAIL DISPATCH SUCCESS via Fallback] Provider: resend | To: ${options.to} | MessageId: ${messageId}`);
         }
       }
@@ -451,6 +587,7 @@ export class NotificationsService {
           messageId = brevoResult.messageId || null;
           providerUsed = 'brevo';
           errorMessage = null;
+          detectedReason = null;
           this.logger.log(`[MAIL DISPATCH SUCCESS via Fallback] Provider: brevo | To: ${options.to} | MessageId: ${messageId}`);
         }
       }
@@ -471,6 +608,7 @@ export class NotificationsService {
             messageId = fallbackInfo.messageId;
             providerUsed = 'smtp';
             errorMessage = null;
+            detectedReason = null;
             this.logger.log(`[MAIL DISPATCH SUCCESS via Fallback] Provider: smtp | To: ${options.to} | MessageId: ${messageId}`);
           }
         } catch {}
@@ -486,18 +624,46 @@ export class NotificationsService {
         recipient: options.to,
         subject: options.subject,
         body: sanitizedBody,
-        status,
+        status: status === 'sent' ? 'sent' : 'failed',
         errorMessage,
         relatedEntityType: options.relatedEntityType,
         relatedEntityId: options.relatedEntityId,
       },
     }).catch(() => {});
 
-    if (status === 'failed' || status === 'queued') {
+    // Save to MailLog with masked recipient and no tokens or raw bodies
+    const maskedRecipient = maskRecipient(options.to);
+    const finalReason = status === 'sent' ? null : (detectedReason || mapProviderError(providerUsed, null, errorMessage));
+
+    await this.prisma.mailLog.create({
+      data: {
+        tenantId: tenantId || null,
+        purpose: options.purpose || options.relatedEntityType || 'general_notification',
+        provider: providerUsed,
+        status,
+        reason: finalReason,
+        recipient: maskedRecipient,
+        reqId: reqId !== 'no-req-id' ? reqId : null,
+      },
+    }).catch((logErr) => {
+      this.logger.warn(`Failed to create MailLog entry: ${logErr?.message}`);
+    });
+
+    const result: MailDispatchResult = {
+      success: status === 'sent',
+      status,
+      reason: finalReason,
+      provider: providerUsed,
+      recipient: options.to,
+      messageId: messageId || undefined,
+      error: errorMessage || undefined,
+    };
+
+    if (status !== 'sent' && options.throwOnError !== false) {
       throw new BadRequestException(errorMessage || `Failed to deliver email to ${options.to}`);
     }
 
-    return { success: true, recipient: options.to, messageId, status, provider: providerUsed };
+    return result;
   }
 
   /**
@@ -514,27 +680,77 @@ export class NotificationsService {
       </div>
     `;
 
-    try {
-      const res = await this.sendEmail({
-        to: targetEmail,
-        subject: testSubject,
-        html: testHtml,
-        text: `Mail Provider Test (${provider.toUpperCase()}) - ${new Date().toISOString()}`,
-        requestId,
-      });
+    const res = await this.sendEmail({
+      to: targetEmail,
+      subject: testSubject,
+      html: testHtml,
+      text: `Mail Provider Test (${provider.toUpperCase()}) - ${new Date().toISOString()}`,
+      requestId,
+      purpose: 'mail_test',
+      throwOnError: false,
+    });
 
-      return {
-        provider,
-        status: 'sent',
-        messageId: res.messageId || undefined,
-      };
-    } catch (err: any) {
-      return {
-        provider,
-        status: 'failed',
-        errorText: err.message || 'Test email dispatch failed',
-      };
+    return {
+      provider: res.provider,
+      status: res.status === 'sent' ? 'sent' : 'failed',
+      reason: res.reason,
+      errorText: res.error,
+      messageId: res.messageId,
+    };
+  }
+
+  /**
+   * Get Platform Mail Configuration & Diagnostics Status
+   */
+  async getMailStatus() {
+    const provider = this.getMailProvider();
+    const fromEmail = process.env.EMAIL_FROM || process.env.PRIMARY_EMAIL_FROM || 'noreply@jsnc.co.in';
+    const domainMatch = fromEmail.match(/@(.+)$/);
+    const senderDomain = domainMatch ? domainMatch[1] : 'unknown';
+
+    let isConfigured = false;
+    let apiKeyConfigured = false;
+    let smtpPortBlockedWarning = false;
+
+    if (provider === 'resend') {
+      apiKeyConfigured = Boolean(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim());
+      isConfigured = apiKeyConfigured;
+    } else if (provider === 'brevo') {
+      apiKeyConfigured = Boolean(process.env.BREVO_API_KEY && process.env.BREVO_API_KEY.trim());
+      isConfigured = apiKeyConfigured;
+    } else {
+      isConfigured = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+      smtpPortBlockedWarning = true;
     }
+
+    const [recentFailures, totalSent, totalFailed, totalNotConfigured] = await Promise.all([
+      this.prisma.mailLog.findMany({
+        where: { status: { in: ['failed', 'not_configured'] } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }).catch(() => []),
+      this.prisma.mailLog.count({ where: { status: 'sent' } }).catch(() => 0),
+      this.prisma.mailLog.count({ where: { status: 'failed' } }).catch(() => 0),
+      this.prisma.mailLog.count({ where: { status: 'not_configured' } }).catch(() => 0),
+    ]);
+
+    return {
+      provider,
+      senderDomain,
+      senderEmail: fromEmail,
+      isConfigured,
+      apiKeyConfigured,
+      smtpPortBlockedWarning,
+      warningMessage: smtpPortBlockedWarning
+        ? "Outbound SMTP (ports 25, 465, 587) is blocked on Render free tier. Use RESEND or BREVO HTTPS APIs for guaranteed delivery."
+        : null,
+      recentFailures,
+      stats: {
+        totalSent,
+        totalFailed,
+        totalNotConfigured,
+      },
+    };
   }
 
   async createInAppTask(options: CreateInAppTaskOptions) {

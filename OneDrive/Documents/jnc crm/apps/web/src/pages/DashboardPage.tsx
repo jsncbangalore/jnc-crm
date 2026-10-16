@@ -214,7 +214,7 @@ export default function DashboardPage() {
                     Master SaaS Platform
                   </span>
                   <span className="text-[11px] text-slate-400 font-mono">
-                    Owner: Jayaraj JNC Master
+                    Owner: {user?.name || user?.employeeCode || 'Platform Administrator'}
                   </span>
                 </div>
                 <h3 className="text-base font-black text-white mt-0.5">
@@ -321,13 +321,13 @@ export default function DashboardPage() {
       )}
 
       {/* ─── KPI SUMMARY ROW ──────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
         <KpiCard
           index={0}
           title="Leads Today"
           value={kpis.leadsToday.total}
           color="blue"
-          icon={<Users size={18} />}
+          icon={<Users size={15} />}
           subtitle="across all sources"
           breakdown={[
             { label: 'IndiaMART', value: kpis.leadsToday.breakdown.indiamart, color: 'text-orange-700 dark:text-orange-400 font-bold' },
@@ -341,7 +341,7 @@ export default function DashboardPage() {
           title="Pending Follow-ups"
           value={kpis.pendingFollowUps}
           color="coral"
-          icon={<TrendingUp size={18} />}
+          icon={<TrendingUp size={15} />}
           subtitle="tasks awaiting action"
         />
         <KpiCard
@@ -349,7 +349,7 @@ export default function DashboardPage() {
           title="Orders in Transit"
           value={kpis.ordersInTransit}
           color="amber"
-          icon={<ShoppingCart size={18} />}
+          icon={<ShoppingCart size={15} />}
           subtitle="confirmed, processing, or dispatched"
         />
         <KpiCard
@@ -357,7 +357,7 @@ export default function DashboardPage() {
           title="Low Stock SKUs"
           value={kpis.lowStockSkus}
           color="violet"
-          icon={<Package size={18} />}
+          icon={<Package size={15} />}
           subtitle="below reorder point"
         />
         <KpiCard
@@ -365,7 +365,7 @@ export default function DashboardPage() {
           title="Active Suppliers"
           value={kpis.activeSuppliers}
           color="teal"
-          icon={<Building2 size={18} />}
+          icon={<Building2 size={15} />}
           subtitle="supplier companies registered"
         />
       </div>

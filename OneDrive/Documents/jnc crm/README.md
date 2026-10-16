@@ -77,6 +77,20 @@ BACKUP_ENCRYPTION_KEY="<YOUR_AES_256_BACKUP_KEY>"
 BACKUP_OFFSITE_PATH="backups/offsite"
 ```
 
+### 🔐 Generating Cryptographic Secrets
+Use Node.js `crypto.randomBytes` to generate strong, unique secrets for production and staging:
+
+```bash
+# JWT_SECRET and JWT_REFRESH_SECRET (256-bit secure hex string):
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# ENCRYPTION_KEY / BACKUP_ENCRYPTION_KEY (32-byte AES-256 key):
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# Webhook Secrets & CSRF Tokens:
+node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
+```
+
 ---
 
 ## 🚀 Getting Started

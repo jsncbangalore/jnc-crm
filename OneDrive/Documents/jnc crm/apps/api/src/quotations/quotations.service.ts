@@ -11,6 +11,9 @@ import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { AuditService } from '../audit/audit.service';
 import { OrdersService } from '../orders/orders.service';
 import { requireTenantId } from '../common/tenant.util';
+import { parsePagination } from '../common/pagination.util';
+import { sanitizeHtml } from '../common/html-sanitize.util';
+
 
 import { IsString, IsNotEmpty, IsOptional, IsArray, IsNumber } from 'class-validator';
 
@@ -177,7 +180,7 @@ export class QuotationsService {
     const taxAmount = (subtotal * taxRate) / 100;
     const totalAmount = subtotal + taxAmount;
 
-    const validUntil = dto.validUntil ? new Date(dto.validUntil) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const validUntil = dto.validUntil ? new Date(dto.validUntil) : new Date(Date.now() + 30 * 86_400_000); // 30 days validity
 
     const quotation = await this.prisma.quotation.create({
       data: {
@@ -192,9 +195,10 @@ export class QuotationsService {
         taxAmount,
         totalAmount,
         validUntil,
-        notes: dto.notes,
-        terms: dto.terms || '1. 100% advance or approved credit terms.\n2. Delivery within 7–10 days of confirmation.\n3. Prices inclusive/exclusive of GST as indicated.',
+        notes: sanitizeHtml(dto.notes),
+        terms: sanitizeHtml(dto.terms) || '1. 100% advance or approved credit terms.\n2. Delivery within 7–10 days of confirmation.\n3. Prices inclusive/exclusive of GST as indicated.',
         lines: {
+
           create: resolvedLines,
         },
       },
@@ -246,15 +250,13 @@ export class QuotationsService {
       }
     }
 
-    const page = Number(query.page) || 1;
-    const limit = Number(query.limit) || 50;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip, take } = parsePagination(query, 25, 100);
 
     const [items, total] = await Promise.all([
       this.prisma.quotation.findMany({
         where,
         skip,
-        take: limit,
+        take,
         orderBy: { createdAt: 'desc' },
         include: {
           lines: { include: { sku: true } },

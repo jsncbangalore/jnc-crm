@@ -9,9 +9,34 @@
     "start:api": "npm --workspace=apps/api run start:dev",
     "start:web": "npm --workspace=apps/web run dev",
     "build": "npm --workspace=apps/api run build && npm --workspace=apps/web run build",
-    "seed": "npm --workspace=apps/api run prisma:seed"
+    "seed": "npm --workspace=apps/api run prisma:seed",
+    "postinstall": "npm --workspace=apps/api run prisma:generate",
+    "env:check": "npm --workspace=apps/api run env:check",
+    "bundle:api": "node scripts/bundle-api.js",
+    "bundle:test-linux": "node scripts/bundle-test-linux.js",
+    "release:pack": "node scripts/release-pack.js",
+    "verify:live": "node scripts/verify-live.js",
+    "db:preflight-live": "node scripts/db-preflight-live.js",
+    "db:predeploy-guard": "node scripts/render-predeploy-guard.js",
+    "bootstrap:live": "node scripts/bootstrap-live.js",
+    "db:backup": "node scripts/db-backup.js",
+    "dev:live": "node scripts/dev-live.js",
+    "live:status": "node scripts/live-status.js",
+    "live:reset-account": "node scripts/live-reset-account.js",
+    "live:rls-check": "node scripts/live-rls-check.js",
+    "staging:migrate": "node scripts/staging-cmd.js migrate staging",
+    "staging:status": "node scripts/staging-cmd.js status staging",
+    "check:prisma-fields": "node scripts/check-prisma-fields.js",
+    "mail:test": "node scripts/mail-test.js",
+    "host:env": "node scripts/host-env.js"
   },
   "devDependencies": {
-    "playwright-core": "^1.62.1"
+    "adm-zip": "^0.6.1",
+    "playwright": "^1.63.0",
+    "playwright-core": "^1.62.1",
+    "supertest": "^7.3.1"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
   }
 }

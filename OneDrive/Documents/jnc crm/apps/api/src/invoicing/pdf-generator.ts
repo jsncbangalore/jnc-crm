@@ -9,9 +9,11 @@ const PDFDocument = require('pdfkit');
 import * as fs from 'fs';
 import * as path from 'path';
 import { JSNC_COMPANY_PROFILE, numberToIndianWords } from './invoice-config';
+import { BRAND_CONFIG } from '../common/brand';
 
 export interface PdfDocumentOptions {
   templateType?: string;
+  copyLabel?: string;
   companyProfile?: {
     companyName?: string;
     tradeName?: string;
@@ -34,6 +36,7 @@ export interface PdfDocumentOptions {
     logoUrl?: string | null;
   };
   signatorySettings?: {
+    companyName?: string;
     signatoryName?: string;
     signatoryDesignation?: string;
     signatureImage?: string | null;
@@ -55,21 +58,33 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', (err: any) => reject(err));
 
+      // Defensive sanitization: replace any stray Unicode ₹ in text fields with Rs. to prevent PDFKit Helvetica glyph corruption
+      if (invoice) {
+        if (typeof invoice.paymentTerms === 'string') invoice.paymentTerms = invoice.paymentTerms.replace(/₹/g, 'Rs. ');
+        if (typeof invoice.transactionRef === 'string') invoice.transactionRef = invoice.transactionRef.replace(/₹/g, 'Rs. ');
+        if (typeof invoice.notes === 'string') invoice.notes = invoice.notes.replace(/₹/g, 'Rs. ');
+        if (Array.isArray(invoice.lines)) {
+          invoice.lines.forEach((line: any) => {
+            if (line && typeof line.description === 'string') line.description = line.description.replace(/₹/g, 'Rs. ');
+          });
+        }
+      }
+
       // Resolve Dynamic Tenant Profile & Signatory Settings
       const profile = options?.companyProfile || invoice.companyProfile || JSNC_COMPANY_PROFILE;
-      const companyName = profile.companyName || 'JS Network Communication';
+      const companyName = options?.signatorySettings?.companyName || invoice?.signatorySettings?.companyName || profile.companyName || BRAND_CONFIG.displayName;
       const companyAddress = profile.address || 'No, 18/19, 2nd Floor, Coconut Avenue, 3rd cross, 8th Phase JP Nagar, Bangalore 76.';
       const companyCity = profile.city || 'Bengaluru';
       const companyState = profile.state || 'Karnataka';
       const companyPincode = profile.pincode || '560076';
-      const companyGstin = profile.gstin || '29AZWPJ2622A1ZD';
-      const companyEmail = profile.email || 'Info@jsnc.co.in';
-      const companyPhone = profile.phone || '+91 9663421455 / 9964219891';
+      const companyGstin = profile.gstin || '29ABCDE1234F1Z5';
+      const companyEmail = profile.email || 'accounts@example.com';
+      const companyPhone = profile.phone || '+91 9876543210';
 
-      const bankName = profile.bankName || 'Karnataka Bank';
-      const bankAccountNo = profile.bankAccountNumber || '9222000100091501';
-      const bankIfsc = profile.bankIfsc || 'KARB0000922';
-      const bankBranch = profile.bankBranch || 'J P Nagar 7th Phase';
+      const bankName = profile.bankName || 'Sample Bank';
+      const bankAccountNo = profile.bankAccountNumber || '00001234567890';
+      const bankIfsc = profile.bankIfsc || 'HDFC0000001';
+      const bankBranch = profile.bankBranch || 'Main Branch';
       const bankHolder = profile.bankAccountHolder || companyName;
 
       const signatoryName = options?.signatorySettings?.signatoryName || profile.signatoryName || 'Authorized Signatory';
@@ -105,31 +120,25 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         return `${day}/${month}/${year}`;
       };
 
-      // Resolve official Logo (Tenant uploaded logo, base64 data URI, or disk fallback)
+      // Resolve official Logo (Always prioritize official JNC Brand Logo)
       let resolvedLogo: any = null;
-      if (profile.logoUrl) {
-        if (profile.logoUrl.startsWith('data:image/')) {
-          try {
-            const b64Data = profile.logoUrl.split(',')[1];
-            if (b64Data) resolvedLogo = Buffer.from(b64Data, 'base64');
-          } catch (e) {}
-        } else if (fs.existsSync(profile.logoUrl)) {
-          resolvedLogo = profile.logoUrl;
+      const possibleLogoPaths = [
+        path.join(process.cwd(), 'apps/web/public/jnc-logo.jpg'),
+        path.join(process.cwd(), 'public/jnc-logo.jpg'),
+        path.join(process.cwd(), '../web/public/jnc-logo.jpg'),
+        path.join(process.cwd(), '../../apps/web/public/jnc-logo.jpg'),
+      ];
+      for (const p of possibleLogoPaths) {
+        if (fs.existsSync(p)) {
+          resolvedLogo = p;
+          break;
         }
       }
 
-      if (!resolvedLogo) {
-        const possibleLogoPaths = [
-          path.join(process.cwd(), 'apps/web/public/jnc-logo.jpg'),
-          path.join(process.cwd(), 'public/jnc-logo.jpg'),
-          path.join(process.cwd(), '../web/public/jnc-logo.jpg'),
-          path.join(process.cwd(), '../../apps/web/public/jnc-logo.jpg'),
-        ];
-        for (const p of possibleLogoPaths) {
-          if (fs.existsSync(p)) {
-            resolvedLogo = p;
-            break;
-          }
+      // If official JNC logo file was not on disk, check custom tenant path (non-base64)
+      if (!resolvedLogo && profile.logoUrl && !profile.logoUrl.startsWith('data:')) {
+        if (fs.existsSync(profile.logoUrl)) {
+          resolvedLogo = profile.logoUrl;
         }
       }
 
@@ -237,7 +246,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         // Table Columns
         const poCols = [
           { title: 'SLNO', width: 35, align: 'center' as const },
-          { title: 'ITEM DISCRIPTION', width: 240, align: 'left' as const },
+          { title: 'ITEM DESCRIPTION', width: 240, align: 'left' as const },
           { title: 'Unit', width: 45, align: 'center' as const },
           { title: 'QTY', width: 45, align: 'center' as const },
           { title: 'UNIT RATE', width: 85, align: 'right' as const },
@@ -391,10 +400,11 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           .fillColor('#000000')
           .text('Tax Invoice', startX, currentY, { width: pageWidth, align: 'center' });
 
+        const copyBadge = options?.copyLabel || 'Original Copy';
         doc
           .font('Helvetica-Bold')
           .fontSize(7.5)
-          .text('Original Copy', rightX - 80, currentY + 3, { width: 75, align: 'right' });
+          .text(copyBadge, rightX - 160, currentY + 3, { width: 155, align: 'right' });
 
         currentY += 16;
 
@@ -416,10 +426,11 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           .fillColor('#000000')
           .text('Credit Note', startX, currentY, { width: pageWidth, align: 'center' });
 
+        const copyBadge = options?.copyLabel || 'Original Copy';
         doc
           .font('Helvetica-Bold')
           .fontSize(7.5)
-          .text('Original Copy', rightX - 80, currentY + 3, { width: 75, align: 'right' });
+          .text(copyBadge, rightX - 160, currentY + 3, { width: 155, align: 'right' });
 
         currentY += 20;
       } else {
@@ -434,6 +445,12 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           .fontSize(13)
           .fillColor('#000000')
           .text(titleText, startX, currentY, { width: pageWidth, align: 'center' });
+
+        const copyBadge = options?.copyLabel || (isDC ? 'Delivery Copy' : 'Original for Recipient');
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(7.5)
+          .text(copyBadge, rightX - 160, currentY + 3, { width: 155, align: 'right' });
 
         currentY += 20;
       }
@@ -519,7 +536,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
       doc
         .font('Helvetica-Bold')
         .fontSize(7)
-        .text('Mode/ Termes of Payment:', colQuarterX + 5, currentY + metaRowH + 3)
+        .text('Mode/ Terms of Payment:', colQuarterX + 5, currentY + metaRowH + 3)
         .font('Helvetica')
         .fontSize(7)
         .text(invoice.paymentTerms || (isDC ? 'Immediately' : 'Advance'), colQuarterX + 5, currentY + metaRowH + 13, { width: colRightW / 2 - 8 });
@@ -584,7 +601,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
       doc
         .font('Helvetica-Bold')
         .fontSize(7)
-        .text('Dellivery Address :', midX + 6, currentY + 3.5)
+        .text('Delivery Address :', midX + 6, currentY + 3.5)
         .font('Helvetica-Bold')
         .fontSize(8)
         .text(invoice.shippingName || invoice.customerName || '-', midX + 6, currentY + 13)
@@ -594,20 +611,21 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
 
       currentY += addrBoxH;
 
-      // Line Items Table
+      // Line Items Table - Column widths calibrated so the divider between Description
+      // and HSN/SAC aligns EXACTLY with midX (272.5pt from startX), creating a continuous vertical line!
       const cols = isDC
         ? [
-            { title: 'Sl No', width: 35, align: 'center' as const },
-            { title: 'Description of Goods', width: 320, align: 'left' as const },
+            { title: 'Sl No', width: 32.5, align: 'center' as const },
+            { title: 'Description of Goods', width: 240, align: 'left' as const },
             { title: 'UNIT', width: 50, align: 'center' as const },
             { title: 'Qty', width: 50, align: 'center' as const },
-            { title: 'Remarks/Rate', width: 90, align: 'right' as const },
+            { title: 'Remarks/Rate', width: 172.5, align: 'right' as const },
           ]
         : [
             { title: 'Sl No', width: 30, align: 'center' as const },
-            { title: 'Description of Goods', width: 235, align: 'left' as const },
-            { title: 'HSN/ SAC', width: 55, align: 'center' as const },
-            { title: 'Unit', width: 40, align: 'center' as const },
+            { title: 'Description of Goods', width: 242.5, align: 'left' as const },
+            { title: 'HSN/ SAC', width: 52.5, align: 'center' as const },
+            { title: 'Unit', width: 35, align: 'center' as const },
             { title: 'Unit Rate', width: 65, align: 'right' as const },
             { title: 'Qty', width: 40, align: 'center' as const },
             { title: 'Amount', width: 80, align: 'right' as const },
@@ -654,14 +672,14 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           doc.font('Helvetica').fontSize(7.5).text(line.unit || "No's", colX, rowStartY + 5, { width: cols[3].width, align: 'center' });
           colX += cols[3].width;
 
-          doc.font('Helvetica').fontSize(7.5).text(`₹${Math.round(line.unitPrice || 0).toLocaleString('en-IN')}`, colX, rowStartY + 5, { width: cols[4].width - 4, align: 'right' });
+          doc.font('Helvetica').fontSize(7.5).text(`Rs. ${Math.round(line.unitPrice || 0).toLocaleString('en-IN')}`, colX, rowStartY + 5, { width: cols[4].width - 4, align: 'right' });
           colX += cols[4].width;
 
           doc.font('Helvetica-Bold').fontSize(7.5).text(String(line.quantity || 1), colX, rowStartY + 5, { width: cols[5].width, align: 'center' });
           colX += cols[5].width;
 
           const amt = (line.quantity || 1) * (line.unitPrice || 0);
-          doc.font('Helvetica-Bold').fontSize(7.5).text(`₹${amt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, colX, rowStartY + 5, { width: cols[6].width - 4, align: 'right' });
+          doc.font('Helvetica-Bold').fontSize(7.5).text(`Rs. ${amt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, colX, rowStartY + 5, { width: cols[6].width - 4, align: 'right' });
         } else {
           doc.font('Helvetica').fontSize(7.5).text(line.unit || 'No', colX, rowStartY + 5, { width: cols[2].width, align: 'center' });
           colX += cols[2].width;
@@ -690,9 +708,12 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         if (isProforma && invoice.advanceAmount) {
           totalsBlockHeight += 14;
         }
+        if (!isDC && !isProforma && !isCreditNote && invoice.advanceAdjusted && invoice.advanceAdjusted > 0) {
+          totalsBlockHeight += 14 + 15; // advAdjRowH (14) + balRowH (15)
+        }
       }
 
-      const declBoxH = 86;
+      const declBoxH = 88;
       const footerH = 14;
       const targetPageBottomY = 818;
       const nonTableFixedHeights = (currentY - startY) + totalsBlockHeight + declBoxH + footerH;
@@ -723,7 +744,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         doc
           .font('Helvetica-Bold')
           .fontSize(7.5)
-          .text(`₹${invoice.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
+          .text(`Rs. ${invoice.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
 
         currentY += subtotalRowH;
 
@@ -740,7 +761,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           doc
             .font('Helvetica')
             .fontSize(7.5)
-            .text('₹0.00', rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
+            .text('Rs. 0.00', rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
 
           currentY += taxRowH;
         } else if (isInterState) {
@@ -755,7 +776,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           doc
             .font('Helvetica-Bold')
             .fontSize(7.5)
-            .text(`₹${invoice.igstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
+            .text(`Rs. ${invoice.igstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
 
           currentY += taxRowH;
         } else {
@@ -770,7 +791,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           doc
             .font('Helvetica-Bold')
             .fontSize(7.5)
-            .text(`₹${invoice.cgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3, { width: cols[cols.length - 1].width - 4, align: 'right' });
+            .text(`Rs. ${invoice.cgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3, { width: cols[cols.length - 1].width - 4, align: 'right' });
           currentY += taxRowH;
 
           // SGST 9%
@@ -783,7 +804,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           doc
             .font('Helvetica-Bold')
             .fontSize(7.5)
-            .text(`₹${invoice.sgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3, { width: cols[cols.length - 1].width - 4, align: 'right' });
+            .text(`Rs. ${invoice.sgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3, { width: cols[cols.length - 1].width - 4, align: 'right' });
           currentY += taxRowH;
         }
 
@@ -813,7 +834,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           doc
             .font('Helvetica-Bold')
             .fontSize(7.5)
-            .text(`₹${invoice.advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
+            .text(`Rs. ${invoice.advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
           currentY += advRowH;
         }
 
@@ -829,7 +850,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           doc
             .font('Helvetica-Bold')
             .fontSize(7.5)
-            .text(`- ₹${invoice.advanceAdjusted.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
+            .text(`- Rs. ${invoice.advanceAdjusted.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
           currentY += advAdjRowH;
 
           // Balance Due Row
@@ -843,7 +864,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           doc
             .font('Helvetica-Bold')
             .fontSize(8.5)
-            .text(`₹${(invoice.balanceDue ?? (invoice.totalAmount - invoice.advanceAdjusted)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
+            .text(`Rs. ${(invoice.balanceDue ?? (invoice.totalAmount - invoice.advanceAdjusted)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 3.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
           currentY += balRowH;
         }
       }
@@ -860,7 +881,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
       doc
         .font('Helvetica-Bold')
         .fontSize(9.5)
-        .text(isDC ? '-' : `₹${invoice.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 4.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
+        .text(isDC ? '-' : `Rs. ${invoice.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - cols[cols.length - 1].width, currentY + 4.5, { width: cols[cols.length - 1].width - 4, align: 'right' });
 
       currentY += grandTotalRowH;
 
@@ -906,10 +927,10 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           if (i > 0) doc.moveTo(sX, currentY + 12).lineTo(sX, currentY + sezTableH).stroke('#000000');
           let val = '';
           if (i === 0) val = distinctHsn;
-          else if (i === 1) val = `₹${invoice.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+          else if (i === 1) val = `Rs. ${invoice.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
           else if (i === 2) val = '18%';
-          else if (i === 3) val = `₹${calcTax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-          else if (i === 4) val = `₹${calcTax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+          else if (i === 3) val = `Rs. ${calcTax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+          else if (i === 4) val = `Rs. ${calcTax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
           doc.font(i === 4 ? 'Helvetica-Bold' : 'Helvetica').fontSize(6.5).text(val, sX + 2, currentY + 15, { width: col.width - 4, align: col.align });
           sX += col.width;
@@ -929,11 +950,11 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         doc
           .font('Helvetica-Bold')
           .fontSize(6.5)
-          .text(`₹${invoice.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, startX + sCols[0].width + 2, currentY + 3.5, { width: sCols[1].width - 4, align: 'right' });
+          .text(`Rs. ${invoice.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, startX + sCols[0].width + 2, currentY + 3.5, { width: sCols[1].width - 4, align: 'right' });
         doc
           .font('Helvetica-Bold')
           .fontSize(6.5)
-          .text(`₹${calcTax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - sCols[4].width + 2, currentY + 3.5, { width: sCols[4].width - 4, align: 'right' });
+          .text(`Rs. ${calcTax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, rightX - sCols[4].width + 2, currentY + 3.5, { width: sCols[4].width - 4, align: 'right' });
         currentY += summaryTotalH;
       }
 
@@ -944,23 +965,20 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
       // Left: Declaration (Dynamic with company name)
       const declarationTitle = 'Declaration:';
       const declarationText =
-        '1. Any complaints should be reported within 2days on receipt\n' +
-        'of material after which no complaint will be entertained.\n' +
+        '1. Any complaints should be reported within 2 days on receipt of material after which no complaint will be entertained.\n' +
         '2. Goods once sold will not be exchanged or taken back.\n' +
         '3. Payment should be made strictly as per terms mentioned.\n' +
-        `4. If non payment as per terms agreed, ${companyName}\n` +
-        'will have rights to seize the materials & take back.\n' +
-        '5. Advance amount will not be refunded for any\n' +
-        'circumstances.';
+        `4. If non payment as per terms agreed, ${companyName} will have rights to seize the materials & take back.\n` +
+        '5. Advance amount will not be refunded for any circumstances.';
 
       doc
         .font('Helvetica-Bold')
         .fontSize(7.5)
         .text(declarationTitle, startX + 6, currentY + 4)
         .font('Helvetica')
-        .fontSize(6.5)
-        .lineGap(1.2)
-        .text(declarationText, startX + 6, currentY + 15, { width: pageWidth / 2 - 12 });
+        .fontSize(6.0)
+        .lineGap(0.8)
+        .text(declarationText, startX + 6, currentY + 14, { width: pageWidth / 2 - 12 });
 
       // Right: Bank Details
       if (!isDC) {

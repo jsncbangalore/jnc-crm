@@ -214,11 +214,11 @@ export class CustomObjectsService {
       type: 'Custom Object',
       description: obj.description || 'No description provided',
       isStandard: false,
-      fieldsCount: obj.fields.length,
-      createdAt: obj.createdAt,
-      updatedAt: obj.updatedAt,
-      lastModified: obj.updatedAt.toISOString(),
-      createdBy: obj.createdBy,
+      fieldsCount: (obj.fields || []).length,
+      createdAt: obj.createdAt || new Date(),
+      updatedAt: obj.updatedAt || new Date(),
+      lastModified: obj.updatedAt ? (typeof obj.updatedAt === 'string' ? obj.updatedAt : obj.updatedAt.toISOString()) : new Date().toISOString(),
+      createdBy: obj.createdBy || null,
     }));
 
     return {

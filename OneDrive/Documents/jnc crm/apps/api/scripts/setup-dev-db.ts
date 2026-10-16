@@ -8,8 +8,7 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
-
-const PROD_HOST = 'aws-0-ap-southeast-1.pooler.supabase.com';
+import { assertNotProductionDb } from './safety-check';
 
 function generateSecurePassword(): string {
   // Generate a cryptographically secure random password with upper, lower, digit, special char
@@ -18,12 +17,7 @@ function generateSecurePassword(): string {
 }
 
 async function main() {
-  const dbUrl = process.env.DATABASE_URL || '';
-  if (dbUrl.includes(PROD_HOST)) {
-    console.error('\n[SECURITY ERROR] setup-dev-db refused to run on production database!');
-    console.error(`Host: ${PROD_HOST}\n`);
-    process.exit(1);
-  }
+  assertNotProductionDb('setup-dev-db');
 
   const prisma = new PrismaClient();
 

@@ -8,16 +8,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Load .env variables into process.env
+// Load .env variables strictly from application root directory only (NEVER traverse into parent directories)
 try {
-  const possiblePaths = [
-    path.resolve(process.cwd(), '.env'),
-    path.resolve(process.cwd(), '../../.env'),
-    path.resolve(process.cwd(), '../.env'),
-    path.resolve(__dirname, '../../.env'),
-    path.resolve(__dirname, '../../../.env'),
-  ];
-  const envPath = possiblePaths.find((p) => fs.existsSync(p));
+  const appRootEnv = path.resolve(process.cwd(), '.env');
+  const distParentEnv = path.resolve(__dirname, '../.env'); // When running as node dist/main.js
+  const envPath = fs.existsSync(appRootEnv)
+    ? appRootEnv
+    : fs.existsSync(distParentEnv)
+      ? distParentEnv
+      : null;
+
   if (envPath) {
     const envContent = fs.readFileSync(envPath, 'utf8');
     envContent.split('\n').forEach((line) => {
@@ -26,8 +26,8 @@ try {
         const idx = trimmed.indexOf('=');
         const key = trimmed.substring(0, idx).trim();
         let val = trimmed.substring(idx + 1).trim();
-        if (val.startsWith('"') && val.endsWith('"')) {
-          val = val.substring(1, val.length - 1);
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
         }
         if (process.env[key] === undefined) {
           process.env[key] = val;
@@ -39,47 +39,60 @@ try {
   // ignore
 }
 
+import { validateEnvironmentOrExit } from './common/env-validation';
+
+// 1. Strict Startup Secrets Validation Guard — Fail fast before loading framework or modules
+validateEnvironmentOrExit();
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { json, urlencoded } from 'express';
 import helmet from 'helmet';
 import * as cookieParser from 'cookie-parser';
-import { validateEnvironmentOrExit } from './common/env-validation';
-import { corsOriginCallback } from './common/cors-config';
+import { corsOriginCallback, getCorsOriginsCount, getAllowedCorsHosts } from './common/cors-config';
+import { getFrontendUrl, getDatabaseProjectRef } from './common/url.util';
 import { requestIdMiddleware } from './common/request-id.middleware';
 import { GlobalHttpExceptionFilter } from './common/http-exception.filter';
 import { SanitizeResponseInterceptor } from './common/sanitize-response.interceptor';
+import { CacheControlInterceptor } from './common/cache-control.interceptor';
+import { StripTenantPayloadInterceptor } from './common/strip-tenant-payload.interceptor';
+import { parseTrustProxy } from './common/trust-proxy.util';
 
 async function bootstrap() {
-  // 1. Strict Startup Secrets Validation Guard — Fail fast if mandatory secrets are missing
-  validateEnvironmentOrExit();
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const mailProvider = (process.env.MAIL_PROVIDER || 'smtp').trim().toLowerCase();
+  const corsOriginsCount = getCorsOriginsCount();
+  const corsHosts = getAllowedCorsHosts();
+  const dbProjectRef = getDatabaseProjectRef();
+
+  const emailFrom = process.env.EMAIL_FROM || process.env.PRIMARY_EMAIL_FROM || 'noreply@jsnc.co.in';
+  const fromDomain = emailFrom.includes('@') ? emailFrom.split('@')[1] : 'unknown';
+
+  console.log(
+    `Startup Config | NODE_ENV: ${nodeEnv} | Mail Provider: ${mailProvider} | From Domain: ${fromDomain} | CORS Origins Count: ${corsOriginsCount} | Allowed CORS Hosts: [${corsHosts.join(', ')}] | DB Project Ref: ${dbProjectRef}`
+  );
 
   // 2. Log DB connection info (no password)
   const dbUrl = process.env.DATABASE_URL || '';
-  let projectRef = 'unknown';
-  let host = 'localhost';
-  try {
-    const matchHost = dbUrl.match(/@([^:\/]+)/);
-    if (matchHost) host = matchHost[1];
-    const matchRef = dbUrl.match(/postgres\.([a-z0-9]+)|db\.([a-z0-9]+)\.supabase|org\/([a-z0-9]+)/i);
-    if (matchRef) {
-      projectRef = matchRef[1] || matchRef[2] || matchRef[3];
-    } else if (host.includes('supabase.com')) {
-      projectRef = host.split('.')[0];
-    } else {
-      projectRef = process.env.NEW_PROJECT_REF || 'dev-local';
-    }
-  } catch (err) {}
-  console.log(`Database project ${projectRef} @ ${host}`);
+  const match = dbUrl.match(/postgresql:\/\/[^@]+@([^/:]+)[:\/](.+?)(?:\?|$)/);
+  if (match) {
+    const host = match[1];
+    const dbName = match[2];
+    console.log(`Database: ${dbName} @ ${host}`);
+  } else {
+    console.log('Database: <unknown>');
+  }
 
   const app = await NestFactory.create(AppModule);
 
-  // 2. Behind proxy: configure Express trust proxy so Throttler and logs identify client IP correctly
+  // 2. Behind proxy: configure Express trust proxy so Throttler, audit logs, and rate limiters identify client IP correctly
   const expressApp = app.getHttpAdapter().getInstance();
-  expressApp.set('trust proxy', 1);
+  const isProd = process.env.NODE_ENV === 'production';
+  const trustProxyHops = parseTrustProxy(process.env.TRUST_PROXY, isProd);
+  expressApp.set('trust proxy', trustProxyHops);
 
-  // 3. HTTP Security via Helmet: HSTS (1 year + subdomains), CSP 'none', noSniff, frameguard deny, no-referrer
+  // 3. HTTP Security via Helmet: HSTS, strict CSP, noSniff, frameguard deny, strict-origin-when-cross-origin
   app.use(
     helmet({
       hsts: {
@@ -90,20 +103,66 @@ async function bootstrap() {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'none'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'blob:'],
+          fontSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+          baseUri: ["'self'"],
         },
       },
+      crossOriginResourcePolicy: { policy: 'same-site' },
       noSniff: true,
       frameguard: { action: 'deny' },
-      referrerPolicy: { policy: 'no-referrer' },
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
       hidePoweredBy: true,
     }),
   );
+
 
   // 4. Parse cookies for HttpOnly refresh tokens
   app.use(cookieParser());
 
   // 5. Request ID tracking & secure logging (never log secrets/tokens/credentials)
   app.use(requestIdMiddleware);
+
+  // 5b. Strict Cache Headers: no-store on private routes, public cross-origin on branding, private no-store on file downloads
+  app.use((req: any, res: any, next: any) => {
+    const url = (req.originalUrl || req.url || '').toLowerCase();
+    const isPublicBranding =
+      url.includes('/settings/branding/logo') ||
+      url.includes('/settings/branding/stamp');
+
+    if (isPublicBranding) {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      return next();
+    }
+
+    const isPrivateFileDownload =
+      url.includes('/download') ||
+      url.includes('/export') ||
+      url.includes('/pdf') ||
+      url.includes('/uploads') ||
+      url.includes('/purchase-documents');
+
+    if (isPrivateFileDownload) {
+      res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    } else {
+      res.setHeader(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate',
+      );
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+    next();
+  });
 
   // 6. Body Size Limits: 1MB globally; 50MB only for spreadsheet import routes (leads and inventory)
   const defaultJsonParser = json({
@@ -154,7 +213,11 @@ async function bootstrap() {
 
   // 9. Global Error Masking in Production & Response Secret Sanitizer
   app.useGlobalFilters(new GlobalHttpExceptionFilter());
-  app.useGlobalInterceptors(new SanitizeResponseInterceptor());
+  app.useGlobalInterceptors(
+    new SanitizeResponseInterceptor(),
+    new CacheControlInterceptor(),
+    new StripTenantPayloadInterceptor(),
+  );
 
   // 10. CORS Configuration
   app.enableCors({

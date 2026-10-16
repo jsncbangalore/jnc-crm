@@ -15,7 +15,7 @@ type ProjectAssignment = {
   id: string;
   userId: string;
   roleInProject?: string;
-  user?: { id: string; name: string; employeeCode: string; role: string };
+  user?: { id: string; name: string; employeeCode: string; role: string; email?: string };
 };
 
 type Project = {
@@ -24,7 +24,7 @@ type Project = {
   description?: string;
   status: string;
   createdAt: string;
-  createdBy?: { id: string; name: string; employeeCode: string };
+  createdBy?: { id: string; name: string; employeeCode: string; email?: string };
   assignments?: ProjectAssignment[];
   _count?: { dailyLogs: number };
 };
@@ -37,7 +37,7 @@ type DailyLog = {
   taskSummary?: string;
   recordsJson: string;
   createdAt: string;
-  uploadedBy?: { id: string; name: string; employeeCode: string; role: string };
+  uploadedBy?: { id: string; name: string; employeeCode: string; role: string; email?: string };
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -47,11 +47,15 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const ROLE_LABEL: Record<string, string> = {
+  platform_super_admin: 'Super Admin',
   tenant_admin: 'Company Admin',
   admin: 'Admin',
-  project_manager: 'PM',
+  sub_admin: 'Sub Admin',
+  project_manager: 'PM / Manager',
   developer_lead: 'Dev Lead',
   developer: 'Developer',
+  employee: 'Employee',
+  store_manager: 'Store Manager',
 };
 
 export default function DailyActivitiesPage() {
@@ -59,8 +63,8 @@ export default function DailyActivitiesPage() {
   const { showAlert } = usePopup();
 
   // Role permissions
-  const canCreateProject = ['tenant_admin', 'admin', 'project_manager'].includes(user?.role || '');
-  const canAssignMembers = ['tenant_admin', 'admin', 'project_manager', 'developer_lead'].includes(user?.role || '');
+  const canCreateProject = ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager'].includes(user?.role || '');
+  const canAssignMembers = ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead'].includes(user?.role || '');
   const isIndividualDev = user?.role === 'developer';
 
   // ─── State ────────────────────────────────────────────────────────────────────
@@ -78,7 +82,7 @@ export default function DailyActivitiesPage() {
   const [projectForm, setProjectForm] = useState({ name: '', description: '', status: 'active' });
   const [savingProject, setSavingProject] = useState(false);
 
-  // Assign Developers Modal State
+  // Assign Developers & Admins Modal State
   const [assignModal, setAssignModal] = useState(false);
   const [assigningProject, setAssigningProject] = useState<Project | null>(null);
   const [assignableUsers, setAssignableUsers] = useState<any[]>([]);
@@ -96,6 +100,21 @@ export default function DailyActivitiesPage() {
   // Log preview modal
   const [viewLogModal, setViewLogModal] = useState(false);
   const [viewingLog, setViewingLog] = useState<DailyLog | null>(null);
+
+  // Member Work Review Modal
+  const [memberWorkModal, setMemberWorkModal] = useState<{
+    show: boolean;
+    member: { id: string; name: string; employeeCode: string; role: string; email?: string } | null;
+    projects: { id: string; name: string; status: string }[];
+    logs: DailyLog[];
+    loading: boolean;
+  }>({
+    show: false,
+    member: null,
+    projects: [],
+    logs: [],
+    loading: false,
+  });
 
   // ─── Fetch Projects ───────────────────────────────────────────────────────────
   const fetchProjects = async () => {
@@ -218,6 +237,61 @@ export default function DailyActivitiesPage() {
     setLogs([]);
   };
 
+  // ─── Open Member Work Action ──────────────────────────────────────────────────
+  const openMemberWork = async (m: { user: any; projects: any[] }) => {
+    setMemberWorkModal({
+      show: true,
+      member: m.user,
+      projects: m.projects,
+      logs: [],
+      loading: true,
+    });
+
+    try {
+      const logPromises = m.projects.map((p) =>
+        activitiesApi.listLogs(p.id).then((res) => ({ projectId: p.id, projectName: p.name, logs: res.data || [] })).catch(() => ({ projectId: p.id, projectName: p.name, logs: [] }))
+      );
+      const results = await Promise.all(logPromises);
+      const allLogs: any[] = [];
+      results.forEach((r) => {
+        (r.logs || []).forEach((l: any) => {
+          if (l.uploadedBy?.id === m.user.id || (l as any).uploadedById === m.user.id) {
+            allLogs.push({ ...l, projectName: r.projectName });
+          }
+        });
+      });
+      allLogs.sort((a, b) => new Date(b.logDate).getTime() - new Date(a.logDate).getTime());
+      setMemberWorkModal((prev) => ({ ...prev, logs: allLogs, loading: false }));
+    } catch {
+      setMemberWorkModal((prev) => ({ ...prev, logs: [], loading: false }));
+    }
+  };
+
+  // Extract all distinct working members across projects
+  const workingMembersMap = new Map<string, {
+    user: { id: string; name: string; employeeCode: string; role: string; email?: string };
+    projects: { id: string; name: string; status: string }[];
+  }>();
+
+  projects.forEach((p) => {
+    (p.assignments || []).forEach((a) => {
+      if (!a.user) return;
+      const existing = workingMembersMap.get(a.user.id);
+      if (existing) {
+        if (!existing.projects.some((proj) => proj.id === p.id)) {
+          existing.projects.push({ id: p.id, name: p.name, status: p.status });
+        }
+      } else {
+        workingMembersMap.set(a.user.id, {
+          user: a.user,
+          projects: [{ id: p.id, name: p.name, status: p.status }],
+        });
+      }
+    });
+  });
+
+  const workingMembers = Array.from(workingMembersMap.values());
+
   // ─── Upload Log ───────────────────────────────────────────────────────────────
   const handleFileChange = (file: File | null) => {
     setUploadFile(file);
@@ -319,21 +393,20 @@ export default function DailyActivitiesPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {view === 'projects' ? (
-            canCreateProject && (
-              <button
-                onClick={openCreateProject}
-                className="btn-primary text-xs gap-1.5 px-4 font-bold"
-              >
-                <Plus size={14} /> New Project
-              </button>
-            )
-          ) : (
+          {canCreateProject && (
+            <button
+              onClick={openCreateProject}
+              className="btn-primary text-xs gap-1.5 px-4 font-bold flex items-center shadow-glow-blue"
+            >
+              <Plus size={14} /> New Project
+            </button>
+          )}
+          {view === 'logs' && (
             <button
               onClick={() => setUploadModal(true)}
-              className="btn-primary text-xs gap-1.5 px-4 font-bold"
+              className="btn bg-crm-teal hover:bg-crm-teal-hover text-black font-bold text-xs gap-1.5 px-4 shadow-glow-teal flex items-center"
             >
-              <Plus size={14} /> Add Daily Activity Log
+              <Upload size={14} /> Add Daily Activity Log
             </button>
           )}
         </div>
@@ -423,23 +496,24 @@ export default function DailyActivitiesPage() {
                     {canAssignMembers && (
                       <button
                         onClick={() => openAssignModal(p)}
-                        className="flex-1 text-[11px] font-bold py-1.5 rounded-lg border border-crm-blue/30 text-crm-blue hover:bg-crm-blue/10 transition-colors flex items-center justify-center gap-1"
+                        className="flex-1 text-[11px] font-bold py-1.5 rounded-lg border border-crm-blue/30 text-crm-blue hover:bg-crm-blue/10 transition-colors flex items-center justify-center gap-1 cursor-pointer"
                       >
-                        <UserPlus size={12} /> Assign Devs
+                        <UserPlus size={12} /> Assign Members
                       </button>
                     )}
                     {canCreateProject && (
                       <button
                         onClick={() => openEditProject(p)}
-                        className="px-3 text-[11px] font-bold py-1.5 rounded-lg border border-slate-200 dark:border-[#2A3042] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+                        className="px-3 text-[11px] font-bold py-1.5 rounded-lg border border-slate-200 dark:border-[#2A3042] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
                       >
                         Edit
                       </button>
                     )}
-                    {(user?.role === 'tenant_admin' || user?.role === 'admin') && (
+                    {['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin'].includes(user?.role || '') && (
                       <button
                         onClick={() => deleteProject(p)}
-                        className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-slate-200 dark:border-[#2A3042] transition-colors"
+                        className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-slate-200 dark:border-[#2A3042] transition-colors cursor-pointer"
+                        title="Delete project"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -449,6 +523,108 @@ export default function DailyActivitiesPage() {
               ))}
             </div>
           )}
+
+          {/* ─── Working Team Members & Project Directory Table ─────────────────────── */}
+          <div className="mt-8 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="text-base font-black text-slate-950 dark:text-white flex items-center gap-2">
+                  <Users size={18} className="text-crm-blue" />
+                  Working Team Members & Project Directory
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  All assigned admins, project managers, and team members with their IDs, emails, and work records
+                </p>
+              </div>
+              <div className="text-xs font-bold text-slate-400">
+                Total Active Members: <span className="text-crm-blue font-mono font-bold">{workingMembers.length}</span>
+              </div>
+            </div>
+
+            {workingMembers.length === 0 ? (
+              <div className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-xl p-8 text-center text-slate-400">
+                <Users size={32} className="mx-auto mb-2 opacity-40" />
+                <p className="text-sm font-bold">No members assigned to projects yet</p>
+                <p className="text-xs mt-1">Assign team members or co-admins to projects to view their work directory here</p>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-xl shadow-sm overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#141722]">
+                    <tr>
+                      {['Member Name', 'Employee ID', 'Email Address', 'Role / Access', 'Assigned Projects', 'Work Records', 'Actions'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-[#2A3042]">
+                    {workingMembers.map(m => (
+                      <tr key={m.user.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-crm-blue/10 text-crm-blue flex items-center justify-center font-bold text-xs">
+                              {m.user.name?.charAt(0)?.toUpperCase() || 'U'}
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-900 dark:text-white">{m.user.name}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 font-mono text-slate-700 dark:text-slate-300 font-bold">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-[#202534] border border-slate-200 dark:border-white/5">
+                            {m.user.employeeCode || '—'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-600 dark:text-slate-400 font-medium">
+                          {m.user.email ? (
+                            <a href={`mailto:${m.user.email}`} className="hover:text-crm-blue hover:underline">
+                              {m.user.email}
+                            </a>
+                          ) : '—'}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                            ['admin', 'tenant_admin', 'platform_super_admin'].includes(m.user.role)
+                              ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
+                              : m.user.role === 'project_manager'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                              : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                          }`}>
+                            {ROLE_LABEL[m.user.role] || m.user.role}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex flex-wrap gap-1 max-w-xs">
+                            {m.projects.map(p => (
+                              <span
+                                key={p.id}
+                                className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 flex items-center gap-1"
+                              >
+                                <FolderOpen size={9} className="text-crm-blue" />
+                                {p.name}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 font-mono font-bold text-slate-600 dark:text-slate-300">
+                          {m.projects.length} project{m.projects.length !== 1 ? 's' : ''}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <button
+                            type="button"
+                            onClick={() => openMemberWork(m)}
+                            className="btn text-[11px] font-bold px-3 py-1.5 rounded-lg bg-crm-blue hover:bg-crm-blue-hover text-white shadow-glow-blue flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <FolderOpen size={12} /> Open Work
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -636,7 +812,7 @@ export default function DailyActivitiesPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-slate-950 dark:text-white flex items-center gap-2">
-                    <UserPlus size={18} className="text-crm-blue" /> Assign Developers to Project
+                    <UserPlus size={18} className="text-crm-blue" /> Assign Team & Admins to Project
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">{assigningProject.name}</p>
                 </div>
@@ -646,9 +822,9 @@ export default function DailyActivitiesPage() {
               </div>
 
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Select Developers & Leads</label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Select Team Members, Co-Admins & Leads</label>
                 {assignableUsers.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic py-4 text-center">No active developers or leads found in team setup.</p>
+                  <p className="text-xs text-slate-400 italic py-4 text-center">No active team members found in team setup.</p>
                 ) : (
                   assignableUsers.map(u => {
                     const isChecked = selectedMemberIds.includes(u.id);
@@ -856,6 +1032,154 @@ export default function DailyActivitiesPage() {
                     </table>
                   );
                 })()}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Member Work Review Modal ─────────────────────────────────────────── */}
+      <AnimatePresence>
+        {memberWorkModal.show && memberWorkModal.member && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-3xl max-h-[85vh] flex flex-col bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl shadow-2xl overflow-hidden"
+            >
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#141722] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-crm-blue/10 text-crm-blue flex items-center justify-center font-bold">
+                    <User size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-950 dark:text-white flex items-center gap-2">
+                      {memberWorkModal.member.name}
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-crm-blue/15 text-crm-blue border border-crm-blue/30 font-mono">
+                        {memberWorkModal.member.employeeCode || 'ID —'}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                      <span>{memberWorkModal.member.email || 'No email registered'}</span>
+                      <span>•</span>
+                      <span className="font-medium text-slate-600 dark:text-slate-300">
+                        {ROLE_LABEL[memberWorkModal.member.role] || memberWorkModal.member.role}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setMemberWorkModal({ ...memberWorkModal, show: false })}
+                  className="w-7 h-7 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-400 flex items-center justify-center"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Assigned Projects Badges */}
+              <div className="px-5 py-2.5 bg-slate-100/50 dark:bg-[#181B26]/50 border-b border-slate-200 dark:border-[#2A3042] flex items-center gap-2 flex-wrap text-xs">
+                <span className="font-bold text-slate-500 text-[11px] uppercase tracking-wider">Assigned Projects:</span>
+                {memberWorkModal.projects.map((p) => (
+                  <span
+                    key={p.id}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-[#202534] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-medium text-[11px]"
+                  >
+                    <FolderOpen size={10} className="text-crm-blue" />
+                    {p.name}
+                  </span>
+                ))}
+              </div>
+
+              {/* Logs Content List */}
+              <div className="flex-1 overflow-auto p-5">
+                {memberWorkModal.loading ? (
+                  <div className="flex justify-center py-16">
+                    <div className="flex gap-1">
+                      {[0, 1, 2].map((i) => (
+                        <div key={i} className="w-2 h-2 rounded-full bg-crm-blue animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                      ))}
+                    </div>
+                  </div>
+                ) : memberWorkModal.logs.length === 0 ? (
+                  <div className="text-center py-16 text-slate-400">
+                    <FileSpreadsheet size={36} className="mx-auto mb-2 opacity-40" />
+                    <p className="font-bold text-sm">No work records submitted yet</p>
+                    <p className="text-xs mt-1 text-slate-500">
+                      When {memberWorkModal.member.name} submits daily activity logs or reports, they will be listed here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-1">
+                      <span>Submitted Work & Activity Records ({memberWorkModal.logs.length})</span>
+                    </div>
+                    <div className="border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-slate-50 dark:bg-[#141722] border-b border-slate-200 dark:border-[#2A3042]">
+                          <tr>
+                            {['Date', 'Project', 'Work Summary', 'Attachment / File', 'Actions'].map((h) => (
+                              <th key={h} className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-[#2A3042]">
+                          {memberWorkModal.logs.map((log: any) => {
+                            let rowCount = 0;
+                            try { rowCount = JSON.parse(log.recordsJson || '[]').length; } catch {}
+                            return (
+                              <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
+                                <td className="px-3 py-2.5 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                  {format(new Date(log.logDate), 'dd MMM yyyy')}
+                                </td>
+                                <td className="px-3 py-2.5 font-bold text-crm-blue whitespace-nowrap">
+                                  {log.projectName || 'Project'}
+                                </td>
+                                <td className="px-3 py-2.5 text-slate-700 dark:text-slate-200 max-w-xs font-medium">
+                                  {log.taskSummary || <span className="italic text-slate-400">No summary note</span>}
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  {log.fileName ? (
+                                    <span className="flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+                                      <FileSpreadsheet size={12} />
+                                      {log.fileName} <span className="font-mono text-[10px] text-slate-400">({rowCount} rows)</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 italic">No File</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setViewingLog(log);
+                                      setViewLogModal(true);
+                                    }}
+                                    className="px-2.5 py-1 text-[11px] font-bold rounded bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-slate-300 transition"
+                                  >
+                                    View Details
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 bg-slate-50 dark:bg-[#141722] border-t border-slate-200 dark:border-[#2A3042] flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setMemberWorkModal({ ...memberWorkModal, show: false })}
+                  className="btn-ghost text-xs px-5"
+                >
+                  Close
+                </button>
               </div>
             </motion.div>
           </div>

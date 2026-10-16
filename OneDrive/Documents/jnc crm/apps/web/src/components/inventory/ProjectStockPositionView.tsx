@@ -14,6 +14,8 @@ import { ProjectStockPosition, Sku } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import Papa from 'papaparse';
 import { CompanyComponentLibraryModal } from './CompanyComponentLibraryModal';
+import { ValidationErrorPanel } from '../common/ValidationErrorPanel';
+import { parseValidationErrors, ParsedValidationError, jumpToErrorField } from '../../utils/validationErrorHandler';
 
 export default function ProjectStockPositionView() {
   const { user } = useAuth();
@@ -43,6 +45,7 @@ export default function ProjectStockPositionView() {
   // Add / Edit Modal
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<ProjectStockPosition | null>(null);
+  const [formErrors, setFormErrors] = useState<ParsedValidationError[]>([]);
   const [formData, setFormData] = useState({
     project: '',
     reference: '',
@@ -106,9 +109,18 @@ export default function ProjectStockPositionView() {
   }, [selectedProject, selectedStatus, shortageOnly, search]);
 
   // Recalculate derived fields when user edits inputs in form
-  const handleFormNumberChange = (field: string, val: number) => {
+  const handleFormNumberChange = (field: string, rawVal: any) => {
+    let cleanVal: any = rawVal;
+    if (typeof rawVal === 'string') {
+      if (rawVal === '') {
+        cleanVal = '';
+      } else {
+        cleanVal = rawVal.replace(/^0+([1-9])/, '$1');
+      }
+    }
+    const val = cleanVal === '' ? 0 : Number(cleanVal);
     setFormData((prev) => {
-      const next = { ...prev, [field]: val };
+      const next = { ...prev, [field]: cleanVal };
       const bomQty = field === 'bomQtyPerUnit' ? val : Number(next.bomQtyPerUnit) || 1;
       const batch = field === 'batchQty' ? val : Number(next.batchQty) || 1;
       const planned = bomQty * batch;
@@ -143,6 +155,7 @@ export default function ProjectStockPositionView() {
 
   const handleOpenAddModal = () => {
     setEditingItem(null);
+    setFormErrors([]);
     setFormData({
       project: selectedProject !== 'all' ? selectedProject : (projectsList[0] || '2 CTBS- 20 Zone -Controller'),
       reference: '1',
@@ -167,6 +180,7 @@ export default function ProjectStockPositionView() {
 
   const handleOpenEditModal = (item: ProjectStockPosition) => {
     setEditingItem(item);
+    setFormErrors([]);
     setFormData({
       project: item.project,
       reference: item.reference,
@@ -191,16 +205,33 @@ export default function ProjectStockPositionView() {
 
   const handleSavePosition = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormErrors([]);
     try {
+      const sanitized = {
+        ...formData,
+        quantity: Number(formData.quantity) || 1,
+        bomQtyPerUnit: Number(formData.bomQtyPerUnit) || 1,
+        batchQty: Number(formData.batchQty) || 1,
+        plannedRequirement: Number(formData.plannedRequirement) || 1,
+        openingStock: Number(formData.openingStock) || 0,
+        inflow: Number(formData.inflow) || 0,
+        outflow: Number(formData.outflow) || 0,
+        presentStock: Number(formData.presentStock) || 0,
+      };
       if (editingItem) {
-        await inventoryApi.updateProjectStock(editingItem.id, formData);
+        await inventoryApi.updateProjectStock(editingItem.id, sanitized);
       } else {
-        await inventoryApi.createProjectStock(formData);
+        await inventoryApi.createProjectStock(sanitized);
       }
       setShowModal(false);
       fetchData();
     } catch (err: any) {
-      alert('Failed to save position: ' + (err?.response?.data?.message || err.message));
+      const parsed = parseValidationErrors(err);
+      setFormErrors(parsed);
+      // Automatically jump to the first problem field for immediate user action
+      if (parsed.length > 0 && parsed[0].domId) {
+        setTimeout(() => jumpToErrorField(parsed[0].domId), 100);
+      }
     }
   };
 
@@ -774,6 +805,14 @@ export default function ProjectStockPositionView() {
               </div>
 
               <form onSubmit={handleSavePosition} className="space-y-4 text-xs">
+                {/* Discrete, High-Visibility Validation Error Panel */}
+                {formErrors.length > 0 && (
+                  <ValidationErrorPanel
+                    errors={formErrors}
+                    onClear={() => setFormErrors([])}
+                  />
+                )}
+
                 {/* Quick Auto-Fill from Company Component Library */}
                 <div className="p-3.5 rounded-xl bg-gradient-to-r from-crm-blue/15 to-crm-teal/15 border border-crm-blue/30 space-y-2">
                   <div className="flex items-center justify-between text-xs">
@@ -786,6 +825,7 @@ export default function ProjectStockPositionView() {
                     </span>
                   </div>
                   <select
+                    id="pos-field-sku-select"
                     className="input text-xs w-full bg-slate-100 dark:bg-[#141722] text-white font-medium border-crm-blue/40"
                     value=""
                     onChange={(e) => {
@@ -827,8 +867,9 @@ export default function ProjectStockPositionView() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="label">Finished Product Name *</label>
+                    <label className="label" htmlFor="pos-field-project">Finished Product Name *</label>
                     <input
+                      id="pos-field-project"
                       type="text"
                       required
                       placeholder="Enter product / model name"
@@ -839,8 +880,9 @@ export default function ProjectStockPositionView() {
                   </div>
 
                   <div>
-                    <label className="label">Circuit / PCB / BOM Tag</label>
+                    <label className="label" htmlFor="pos-field-reference">Circuit / PCB / BOM Tag</label>
                     <input
+                      id="pos-field-reference"
                       type="text"
                       placeholder="Enter tag or reference"
                       value={formData.reference}
@@ -852,8 +894,9 @@ export default function ProjectStockPositionView() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="label">Item Code / SKU *</label>
+                    <label className="label" htmlFor="pos-field-itemCode">Item Code / SKU *</label>
                     <input
+                      id="pos-field-itemCode"
                       type="text"
                       required
                       placeholder="Enter item code / SKU"
@@ -864,8 +907,9 @@ export default function ProjectStockPositionView() {
                   </div>
 
                   <div>
-                    <label className="label">Part Value / Specs</label>
+                    <label className="label" htmlFor="pos-field-partValue">Part Value / Specs</label>
                     <input
+                      id="pos-field-partValue"
                       type="text"
                       placeholder="Enter part value / specifications"
                       value={formData.partValue}
@@ -875,8 +919,9 @@ export default function ProjectStockPositionView() {
                   </div>
 
                   <div>
-                    <label className="label">Package / Mounting</label>
+                    <label className="label" htmlFor="pos-field-package">Package / Mounting</label>
                     <input
+                      id="pos-field-package"
                       type="text"
                       placeholder="Enter package type"
                       value={formData.package}
@@ -888,19 +933,26 @@ export default function ProjectStockPositionView() {
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-3.5 rounded-xl bg-slate-100 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042]">
                   <div>
-                    <label className="label">Base Quantity</label>
+                    <label className="label" htmlFor="pos-field-quantity">Base Quantity</label>
                     <input
+                      id="pos-field-quantity"
                       type="number"
                       min="1"
-                      value={formData.quantity}
-                      onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
+                      placeholder="1"
+                      value={!formData.quantity ? '' : formData.quantity}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setFormData({ ...formData, quantity: e.target.value === '' ? ('' as any) : (e.target.value.replace(/^0+([1-9])/, '$1') as any) })}
+                      onBlur={() => {
+                        if (!formData.quantity) setFormData({ ...formData, quantity: 1 });
+                      }}
                       className="input"
                     />
                   </div>
 
                   <div>
-                    <label className="label">Unit</label>
+                    <label className="label" htmlFor="pos-field-unit">Unit</label>
                     <select
+                      id="pos-field-unit"
                       value={formData.unit}
                       onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                       className="input"
@@ -913,24 +965,36 @@ export default function ProjectStockPositionView() {
                   </div>
 
                   <div>
-                    <label className="label">BOM Qty / Unit</label>
+                    <label className="label" htmlFor="pos-field-bomQtyPerUnit">BOM Qty / Unit</label>
                     <input
+                      id="pos-field-bomQtyPerUnit"
                       type="number"
                       min="0.01"
                       step="any"
-                      value={formData.bomQtyPerUnit}
-                      onChange={(e) => handleFormNumberChange('bomQtyPerUnit', Number(e.target.value))}
+                      placeholder="1"
+                      value={!formData.bomQtyPerUnit ? '' : formData.bomQtyPerUnit}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => handleFormNumberChange('bomQtyPerUnit', e.target.value)}
+                      onBlur={() => {
+                        if (!formData.bomQtyPerUnit) handleFormNumberChange('bomQtyPerUnit', 1);
+                      }}
                       className="input font-bold"
                     />
                   </div>
 
                   <div>
-                    <label className="label">Batch Qty</label>
+                    <label className="label" htmlFor="pos-field-batchQty">Batch Qty</label>
                     <input
+                      id="pos-field-batchQty"
                       type="number"
                       min="1"
-                      value={formData.batchQty}
-                      onChange={(e) => handleFormNumberChange('batchQty', Number(e.target.value))}
+                      placeholder="1"
+                      value={!formData.batchQty ? '' : formData.batchQty}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => handleFormNumberChange('batchQty', e.target.value)}
+                      onBlur={() => {
+                        if (!formData.batchQty) handleFormNumberChange('batchQty', 1);
+                      }}
                       className="input font-bold"
                     />
                   </div>
@@ -939,41 +1003,60 @@ export default function ProjectStockPositionView() {
                 {/* Stock Inflow / Outflow */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-3.5 rounded-xl bg-slate-100 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042]">
                   <div>
-                    <label className="label">Opening Stock</label>
+                    <label className="label" htmlFor="pos-field-openingStock">Opening Stock</label>
                     <input
+                      id="pos-field-openingStock"
                       type="number"
                       min="0"
-                      value={formData.openingStock}
-                      onChange={(e) => handleFormNumberChange('openingStock', Number(e.target.value))}
+                      placeholder="0"
+                      value={!formData.openingStock ? '' : formData.openingStock}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => handleFormNumberChange('openingStock', e.target.value)}
+                      onBlur={() => {
+                        if (!formData.openingStock) handleFormNumberChange('openingStock', 0);
+                      }}
                       className="input"
                     />
                   </div>
 
                   <div>
-                    <label className="label text-emerald-400">Inflow (+)</label>
+                    <label className="label text-emerald-400" htmlFor="pos-field-inflow">Inflow (+)</label>
                     <input
+                      id="pos-field-inflow"
                       type="number"
                       min="0"
-                      value={formData.inflow}
-                      onChange={(e) => handleFormNumberChange('inflow', Number(e.target.value))}
+                      placeholder="0"
+                      value={!formData.inflow ? '' : formData.inflow}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => handleFormNumberChange('inflow', e.target.value)}
+                      onBlur={() => {
+                        if (!formData.inflow) handleFormNumberChange('inflow', 0);
+                      }}
                       className="input text-emerald-400"
                     />
                   </div>
 
                   <div>
-                    <label className="label text-crm-coral">Outflow (-)</label>
+                    <label className="label text-crm-coral" htmlFor="pos-field-outflow">Outflow (-)</label>
                     <input
+                      id="pos-field-outflow"
                       type="number"
                       min="0"
-                      value={formData.outflow}
-                      onChange={(e) => handleFormNumberChange('outflow', Number(e.target.value))}
+                      placeholder="0"
+                      value={!formData.outflow ? '' : formData.outflow}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => handleFormNumberChange('outflow', e.target.value)}
+                      onBlur={() => {
+                        if (!formData.outflow) handleFormNumberChange('outflow', 0);
+                      }}
                       className="input text-crm-coral"
                     />
                   </div>
 
                   <div>
-                    <label className="label text-slate-400">Status</label>
+                    <label className="label text-slate-400" htmlFor="pos-field-status">Status</label>
                     <select
+                      id="pos-field-status"
                       value={formData.status}
                       onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                       className="input font-bold"
@@ -1009,8 +1092,9 @@ export default function ProjectStockPositionView() {
                 </div>
 
                 <div>
-                  <label className="label">Procurement Remarks / Supplier PO Notes</label>
+                  <label className="label" htmlFor="pos-field-notes">Procurement Remarks / Supplier PO Notes</label>
                   <textarea
+                    id="pos-field-notes"
                     rows={2}
                     placeholder="Enter procurement remarks / notes"
                     value={formData.notes}

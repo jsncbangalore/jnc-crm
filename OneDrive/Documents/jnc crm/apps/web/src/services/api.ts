@@ -116,30 +116,22 @@ export const getAccessToken = (forcePlatform?: boolean) => {
   return isPlatform ? _inMemoryPlatformToken : _inMemoryStaffToken;
 };
 
+// Refresh tokens are transported exclusively via HttpOnly, SameSite=Strict cookies.
+// Tokens are NEVER stored in localStorage or accessible to JavaScript, preventing token theft.
 const STAFF_REFRESH_KEY = 'jnc_refresh_token_fb';
 const PLATFORM_REFRESH_KEY = 'jnc_platform_refresh_token_fb';
 
-export const getStoredRefreshToken = (isPlatform?: boolean): string | null => {
-  if (typeof window === 'undefined') return null;
-  const key = isPlatform ? PLATFORM_REFRESH_KEY : STAFF_REFRESH_KEY;
-  try {
-    return sessionStorage.getItem(key) || localStorage.getItem(key);
-  } catch {
-    return null;
-  }
+export const getStoredRefreshToken = (_isPlatform?: boolean): string | null => {
+  return null;
 };
 
-export const setStoredRefreshToken = (token: string | null, isPlatform?: boolean) => {
+export const setStoredRefreshToken = (_token: string | null, isPlatform?: boolean) => {
   if (typeof window === 'undefined') return;
   const key = isPlatform ? PLATFORM_REFRESH_KEY : STAFF_REFRESH_KEY;
   try {
-    if (token) {
-      sessionStorage.setItem(key, token);
-      localStorage.setItem(key, token);
-    } else {
-      sessionStorage.removeItem(key);
-      localStorage.removeItem(key);
-    }
+    // Purge any legacy token entries from browser storage
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
   } catch {
     // ignore
   }
@@ -159,29 +151,200 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Single-flight token refresh — queues concurrent 401s and replays them after one refresh
-let _refreshingStaff: Promise<string> | null = null;
-let _refreshingPlatform: Promise<string> | null = null;
-type QueueEntry = { resolve: (token: string) => void; reject: (e: unknown) => void };
-const _staffQueue: QueueEntry[] = [];
-const _platformQueue: QueueEntry[] = [];
+// Singleton mutex promises for in-flight refresh requests (Staff and Platform)
+let _activeStaffRefreshPromise: Promise<any> | null = null;
+let _activePlatformRefreshPromise: Promise<any> | null = null;
 
-function _flushQueue(queue: QueueEntry[], token: string | null, error?: unknown) {
-  queue.forEach((entry) => {
-    if (token) entry.resolve(token);
-    else entry.reject(error);
-  });
-  queue.length = 0;
-}
+export const performStaffRefresh = async (): Promise<any> => {
+  if (_activeStaffRefreshPromise) {
+    return _activeStaffRefreshPromise;
+  }
 
-// Auth endpoints that must never trigger a refresh redirect
-const AUTH_BYPASS_URLS = [
+  _activeStaffRefreshPromise = (async () => {
+    try {
+      const refreshUrl = `${getApiBaseUrl()}/auth/refresh`;
+      const fallbackToken = getStoredRefreshToken(false);
+      const res = await axios.post(
+        refreshUrl,
+        fallbackToken ? { refreshToken: fallbackToken } : {},
+        {
+          withCredentials: true,
+          timeout: 60000,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const data = res.data;
+      if (typeof window !== 'undefined' && data?.user) {
+        const tabUserId = sessionStorage.getItem('jnc_tab_user_id');
+        if (tabUserId && tabUserId !== data.user.id) {
+          window.dispatchEvent(
+            new CustomEvent('jnc:session-conflict', {
+              detail: {
+                expectedUser: {
+                  id: tabUserId,
+                  email: sessionStorage.getItem('jnc_tab_user_email') || '',
+                  tenantId: sessionStorage.getItem('jnc_tab_tenant_id') || '',
+                  tenantName: sessionStorage.getItem('jnc_tab_tenant_name') || '',
+                  tenantCode: sessionStorage.getItem('jnc_tab_tenant_code') || '',
+                  portal: 'staff',
+                },
+                incomingUser: data.user,
+                incomingAccessToken: data.accessToken,
+                incomingRefreshToken: data.refreshToken,
+              },
+            })
+          );
+          const err = new Error('CROSS_TAB_SESSION_CONFLICT');
+          (err as any).isCrossTabConflict = true;
+          throw err;
+        }
+      }
+
+      if (data?.accessToken) {
+        setStaffAccessToken(data.accessToken);
+      }
+      if (data?.refreshToken) {
+        setStoredRefreshToken(data.refreshToken, false);
+      }
+      if (typeof window !== 'undefined' && data?.user && !sessionStorage.getItem('jnc_tab_user_id')) {
+        sessionStorage.setItem('jnc_tab_user_id', data.user.id);
+        sessionStorage.setItem('jnc_tab_user_email', data.user.email);
+        sessionStorage.setItem('jnc_tab_tenant_id', data.user.tenantId || '');
+        sessionStorage.setItem('jnc_tab_tenant_name', data.user.tenant?.name || '');
+        sessionStorage.setItem('jnc_tab_tenant_code', data.user.tenant?.code || '');
+        sessionStorage.setItem('jnc_tab_portal', 'staff');
+      }
+      return res;
+    } catch (err: any) {
+      if (err?.isCrossTabConflict || err?.message === 'CROSS_TAB_SESSION_CONFLICT') {
+        throw err;
+      }
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        setStaffAccessToken(null);
+        setStoredRefreshToken(null, false);
+        if (typeof document !== 'undefined') {
+          document.cookie = 'jnc_session_active=; Path=/; Max-Age=0; SameSite=Lax';
+        }
+        if (
+          typeof window !== 'undefined' &&
+          window.location.pathname !== '/login' &&
+          window.location.pathname !== '/platform/login' &&
+          !window.location.pathname.startsWith('/reset-password')
+        ) {
+          try {
+            sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');
+          } catch {}
+          window.history.replaceState(null, '', '/login?expired=1');
+          window.location.href = '/login?expired=1';
+        }
+      }
+      throw err;
+    } finally {
+      _activeStaffRefreshPromise = null;
+    }
+  })();
+
+  return _activeStaffRefreshPromise;
+};
+
+export const performPlatformRefresh = async (): Promise<any> => {
+  if (_activePlatformRefreshPromise) {
+    return _activePlatformRefreshPromise;
+  }
+
+  _activePlatformRefreshPromise = (async () => {
+    try {
+      const refreshUrl = `${getApiBaseUrl()}/platform-auth/refresh`;
+      const fallbackToken = getStoredRefreshToken(true);
+      const res = await axios.post(
+        refreshUrl,
+        fallbackToken ? { refreshToken: fallbackToken } : {},
+        {
+          withCredentials: true,
+          timeout: 60000,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const data = res.data;
+      if (typeof window !== 'undefined' && data?.user) {
+        const tabPlatformUserId = sessionStorage.getItem('jnc_tab_platform_user_id');
+        if (tabPlatformUserId && tabPlatformUserId !== data.user.id) {
+          window.dispatchEvent(
+            new CustomEvent('jnc:session-conflict', {
+              detail: {
+                expectedUser: {
+                  id: tabPlatformUserId,
+                  email: sessionStorage.getItem('jnc_tab_platform_user_email') || '',
+                  tenantName: 'Platform Management',
+                  portal: 'platform',
+                },
+                incomingUser: data.user,
+                incomingAccessToken: data.accessToken,
+                incomingRefreshToken: data.refreshToken,
+              },
+            })
+          );
+          const err = new Error('CROSS_TAB_SESSION_CONFLICT');
+          (err as any).isCrossTabConflict = true;
+          throw err;
+        }
+      }
+
+      if (data?.accessToken) {
+        setPlatformAccessToken(data.accessToken);
+      }
+      if (data?.refreshToken) {
+        setStoredRefreshToken(data.refreshToken, true);
+      }
+      if (typeof window !== 'undefined' && data?.user && !sessionStorage.getItem('jnc_tab_platform_user_id')) {
+        sessionStorage.setItem('jnc_tab_platform_user_id', data.user.id);
+        sessionStorage.setItem('jnc_tab_platform_user_email', data.user.email);
+        sessionStorage.setItem('jnc_tab_portal', 'platform');
+      }
+      return res;
+    } catch (err: any) {
+      if (err?.isCrossTabConflict || err?.message === 'CROSS_TAB_SESSION_CONFLICT') {
+        throw err;
+      }
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        setPlatformAccessToken(null);
+        setStoredRefreshToken(null, true);
+        if (typeof document !== 'undefined') {
+          document.cookie = 'jnc_platform_session_active=; Path=/; Max-Age=0; SameSite=Lax';
+        }
+        if (typeof window !== 'undefined' && window.location.pathname !== '/platform/login') {
+          try {
+            sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');
+          } catch {}
+          window.history.replaceState(null, '', '/platform/login?expired=1');
+          window.location.href = '/platform/login?expired=1';
+        }
+      }
+      throw err;
+    } finally {
+      _activePlatformRefreshPromise = null;
+    }
+  })();
+
+  return _activePlatformRefreshPromise;
+};
+
+// Auth endpoints that should not trigger auto-refresh retry loop
+const AUTH_NO_RETRY_URLS = [
   '/auth/login',
-  '/auth/refresh',
   '/auth/forgot-password',
   '/auth/reset-password',
   '/platform-auth/login',
-  '/platform-auth/refresh',
   '/platform-auth/logout',
 ];
 
@@ -191,9 +354,45 @@ api.interceptors.response.use(
   async (err) => {
     const original = err.config;
     const url: string = original?.url || '';
+    const status = err.response?.status;
 
-    // Never intercept auth endpoints — let the caller receive the raw error
-    if (AUTH_BYPASS_URLS.some((p) => url.includes(p))) {
+    // Handle 401/403 directly on the refresh endpoints: session is permanently expired/invalidated
+    if ((status === 401 || status === 403) && (url.includes('/auth/refresh') || url.includes('/platform-auth/refresh'))) {
+      const isPlatform = url.includes('/platform-auth/refresh') || isPlatformPath();
+      if (isPlatform) {
+        setPlatformAccessToken(null);
+        setStoredRefreshToken(null, true);
+        if (typeof document !== 'undefined') {
+          document.cookie = 'jnc_platform_session_active=; Path=/; Max-Age=0; SameSite=Lax';
+        }
+        if (typeof window !== 'undefined' && window.location.pathname !== '/platform/login') {
+          try {
+            sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');
+          } catch {}
+          window.location.href = '/platform/login?expired=1';
+        }
+      } else {
+        setStaffAccessToken(null);
+        setStoredRefreshToken(null, false);
+        if (typeof document !== 'undefined') {
+          document.cookie = 'jnc_session_active=; Path=/; Max-Age=0; SameSite=Lax';
+        }
+        if (
+          typeof window !== 'undefined' &&
+          window.location.pathname !== '/login' &&
+          !window.location.pathname.startsWith('/reset-password')
+        ) {
+          try {
+            sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');
+          } catch {}
+          window.location.href = '/login?expired=1';
+        }
+      }
+      return Promise.reject(err);
+    }
+
+    // Never retry credentials/login endpoints — let the caller handle error displays
+    if (AUTH_NO_RETRY_URLS.some((p) => url.includes(p))) {
       return Promise.reject(err);
     }
 
@@ -206,115 +405,18 @@ api.interceptors.response.use(
         isPlatformPath();
 
       if (isPlatformReq) {
-        if (_refreshingPlatform) {
-          return new Promise<string>((resolve, reject) => {
-            _platformQueue.push({ resolve, reject });
-          }).then((newToken) => {
-            original.headers.Authorization = `Bearer ${newToken}`;
-            return api(original);
-          });
-        }
-
-        _refreshingPlatform = (async () => {
-          try {
-            const refreshUrl = `${getApiBaseUrl()}/platform-auth/refresh`;
-            const fallbackToken = getStoredRefreshToken(true);
-            const { data } = await axios.post(
-              refreshUrl,
-              fallbackToken ? { refreshToken: fallbackToken } : {},
-              {
-                withCredentials: true,
-                timeout: 60000,
-                headers: {
-                  'X-Requested-With': 'XMLHttpRequest',
-                  'Content-Type': 'application/json',
-                },
-              },
-            );
-            setPlatformAccessToken(data.accessToken);
-            if (data.refreshToken) {
-              setStoredRefreshToken(data.refreshToken, true);
-            }
-            _flushQueue(_platformQueue, data.accessToken);
-            return data.accessToken as string;
-          } catch (refreshErr: any) {
-            _flushQueue(_platformQueue, null, refreshErr);
-            const isAuthFailure = refreshErr?.response?.status === 401 || refreshErr?.response?.status === 403;
-            if (isAuthFailure) {
-              setPlatformAccessToken(null);
-              setStoredRefreshToken(null, true);
-              if (window.location.pathname !== '/platform/login') {
-                window.history.replaceState(null, '', '/platform/login');
-                window.location.href = '/platform/login';
-              }
-            }
-            throw refreshErr;
-          } finally {
-            _refreshingPlatform = null;
-          }
-        })();
-
         try {
-          const newToken = await _refreshingPlatform;
+          const res = await performPlatformRefresh();
+          const newToken = res.data?.accessToken;
           original.headers.Authorization = `Bearer ${newToken}`;
           return api(original);
         } catch {
           return Promise.reject(err);
         }
       } else {
-        if (_refreshingStaff) {
-          return new Promise<string>((resolve, reject) => {
-            _staffQueue.push({ resolve, reject });
-          }).then((newToken) => {
-            original.headers.Authorization = `Bearer ${newToken}`;
-            return api(original);
-          });
-        }
-
-        _refreshingStaff = (async () => {
-          try {
-            const refreshUrl = `${getApiBaseUrl()}/auth/refresh`;
-            const fallbackToken = getStoredRefreshToken(false);
-            const { data } = await axios.post(
-              refreshUrl,
-              fallbackToken ? { refreshToken: fallbackToken } : {},
-              {
-                withCredentials: true,
-                timeout: 60000,
-                headers: {
-                  'X-Requested-With': 'XMLHttpRequest',
-                  'Content-Type': 'application/json',
-                },
-              },
-            );
-            setStaffAccessToken(data.accessToken);
-            if (data.refreshToken) {
-              setStoredRefreshToken(data.refreshToken, false);
-            }
-            _flushQueue(_staffQueue, data.accessToken);
-            return data.accessToken as string;
-          } catch (refreshErr: any) {
-            _flushQueue(_staffQueue, null, refreshErr);
-            const isAuthFailure = refreshErr?.response?.status === 401 || refreshErr?.response?.status === 403;
-            if (isAuthFailure) {
-              setStaffAccessToken(null);
-              setStoredRefreshToken(null, false);
-              if (
-                window.location.pathname !== '/login' &&
-                window.location.pathname !== '/platform/login'
-              ) {
-                window.history.replaceState(null, '', '/login');
-                window.location.href = '/login';
-              }
-            }
-            throw refreshErr;
-          } finally {
-            _refreshingStaff = null;
-          }
-        })();
-
         try {
-          const newToken = await _refreshingStaff;
+          const res = await performStaffRefresh();
+          const newToken = res.data?.accessToken;
           original.headers.Authorization = `Bearer ${newToken}`;
           return api(original);
         } catch {
@@ -388,15 +490,15 @@ export async function requestWithColdStartRetry<T>(
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
-  login: (identifier: string, password: string, companyCode?: string) =>
+  login: (identifier: string, password: string, companyCode?: string, keepSignedIn?: boolean) =>
     requestWithColdStartRetry(() =>
-      api.post('/auth/login', { identifier, password, companyCode }, { timeout: 60000 })
+      api.post('/auth/login', { identifier, password, companyCode, keepSignedIn }, { timeout: 60000 })
     ),
   selectCompany: (selectionToken: string, companyCode: string) =>
     api.post('/auth/login/select-company', { selectionToken, companyCode }),
-  platformLogin: (email: string, password: string) =>
+  platformLogin: (email: string, password: string, keepSignedIn?: boolean) =>
     requestWithColdStartRetry(() =>
-      api.post('/platform-auth/login', { email, password }, { timeout: 60000 })
+      api.post('/platform-auth/login', { email, password, keepSignedIn }, { timeout: 60000 })
     ),
   forgotPassword: (email: string) =>
     requestWithColdStartRetry(() =>
@@ -405,12 +507,8 @@ export const authApi = {
   resetPassword: (token: string, newPassword: string) =>
     api.post('/auth/reset-password', { token, newPassword }),
   me: () => api.get('/auth/me'),
-  refresh: () => {
-    const fallbackToken = getStoredRefreshToken(false);
-    return requestWithColdStartRetry(() =>
-      api.post('/auth/refresh', fallbackToken ? { refreshToken: fallbackToken } : {}, { timeout: 60000 })
-    );
-  },
+  getRecentSignIns: () => api.get('/auth/recent-signins'),
+  refresh: () => performStaffRefresh(),
   logout: () => {
     setStoredRefreshToken(null, false);
     return api.post('/auth/logout', {});
@@ -428,16 +526,11 @@ export const authApi = {
 
 // ─── Platform Auth ───────────────────────────────────────────────────────────
 export const platformAuthApi = {
-  login: (email: string, password: string) =>
+  login: (email: string, password: string, keepSignedIn?: boolean) =>
     requestWithColdStartRetry(() =>
-      api.post('/platform-auth/login', { email, password }, { timeout: 60000 })
+      api.post('/platform-auth/login', { email, password, keepSignedIn }, { timeout: 60000 })
     ),
-  refresh: () => {
-    const fallbackToken = getStoredRefreshToken(true);
-    return requestWithColdStartRetry(() =>
-      api.post('/platform-auth/refresh', fallbackToken ? { refreshToken: fallbackToken } : {}, { timeout: 60000 })
-    );
-  },
+  refresh: () => performPlatformRefresh(),
   logout: () => {
     setStoredRefreshToken(null, true);
     return api.post('/platform-auth/logout', {});
@@ -465,6 +558,7 @@ export const platformApi = {
   getSystemInfo: () => api.get('/platform/system-info'),
   getMailStatus: () => api.get('/platform/mail-status'),
   sendMailTest: () => api.post('/platform/mail-test'),
+  getRecentSignIns: () => api.get('/platform/recent-signins'),
 };
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -508,6 +602,12 @@ export const ordersApi = {
   createShipment: (data: any) => api.post('/orders/shipments', data),
   updateShipmentStatus: (id: string, status: string) =>
     api.patch(`/orders/shipments/${id}/status`, { status }),
+  updateShipment: (id: string, data: any) =>
+    api.patch(`/orders/shipments/${id}`, data),
+  verifyLiveTrackingUrl: (data: { trackingUrl?: string; courierName?: string; trackingNumber?: string }) =>
+    api.post('/orders/shipments/verify-live-url', data),
+  syncShipmentTracking: (id: string) => api.post(`/orders/shipments/${id}/sync-tracking`),
+  getShipmentLiveTimeline: (id: string) => api.get(`/orders/shipments/${id}/live-timeline`),
   recordPayment: (id: string, data: any) => api.post(`/orders/${id}/payments`, data),
 };
 
@@ -570,7 +670,8 @@ export const inventoryApi = {
   recordProjectStockPurchase: (id: string, data: any) =>
     api.post(`/inventory/project-stock/${id}/purchase`, data),
   bulkImportProjectStock: (rows: any[]) => api.post('/inventory/project-stock/bulk', { rows }),
-  clearAll: () => api.delete('/inventory/clear-all'),
+  clearAll: (confirmPhrase = 'WIPE-INVENTORY', password = '') =>
+    api.post('/inventory/clear-all', { confirmPhrase, password }),
   getProducts: () => api.get('/inventory/products'),
   seedProducts: () => api.post('/inventory/seed-products'),
   getDashboard: () => api.get('/inventory/dashboard'),
@@ -578,6 +679,11 @@ export const inventoryApi = {
     const fd = new FormData();
     fd.append('file', file);
     return api.post('/inventory/purchase-documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  extractPurchaseDocument: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/inventory/purchase-documents/extract', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
   },
   getSupplierPurchases: (supplierId: string) => api.get(`/inventory/suppliers/${supplierId}/purchases`),
   recordSupplierPurchase: (supplierId: string, data: any) => api.post(`/inventory/suppliers/${supplierId}/purchase`, data),
@@ -591,6 +697,7 @@ export const inventoryApi = {
     ids?: string[];
     skuIds?: string[];
     updates?: Record<string, any>;
+    rowUpdates?: any[];
   }) => api.post('/inventory/bulk-edit', data),
 };
 
@@ -630,6 +737,27 @@ export const invoicesApi = {
     signatureImage?: string | null;
     stampImage?: string | null;
   }) => api.post('/invoices/settings/signatory', data),
+  getPrinters: () =>
+    api.get<{
+      printers: Array<{ deviceId: string; name: string; paperSizes?: string[] }>;
+      defaultPrinter: { deviceId: string; name: string } | null;
+    }>('/invoices/printers'),
+  directPrintToPrinter: (
+    id: string,
+    data: {
+      printerName?: string;
+      copies?: number;
+      copyType?: string;
+      templateType?: string;
+      paperSize?: string;
+    },
+  ) =>
+    api.post<{
+      success: boolean;
+      message: string;
+      printer: string;
+      copies: number;
+    }>(`/invoices/${id}/print-direct`, data),
 };
 
 // ─── Company Branding & Settings ───────────────────────────────────────────────
@@ -642,6 +770,20 @@ export const brandingApi = {
   }) => api.post('/settings/branding', data),
   getProfile: () => api.get('/settings/company-profile'),
   updateProfile: (data: any) => api.post('/settings/company-profile', data),
+  uploadLogo: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post<{ success: boolean; message: string; logoUrl: string }>('/settings/branding/logo', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  uploadFavicon: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post<{ success: boolean; message: string; faviconUrl: string }>('/settings/branding/favicon', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 export const mailAccountsApi = {
@@ -671,6 +813,9 @@ export const usersApi = {
   toggleActive: (id: string, isActive: boolean) =>
     api.patch(`/users/${id}/toggle-active`, { isActive }),
   delete: (id: string) => api.delete(`/users/${id}`),
+  downloadTemplate: () => api.get('/users/template-csv', { responseType: 'blob' }),
+  importPreview: (records: any[]) => api.post('/users/import-preview', { records }),
+  importCommit: (records: any[]) => api.post('/users/import-commit', { records }),
 };
 
 // ─── Audit ───────────────────────────────────────────────────────────────────

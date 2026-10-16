@@ -9,8 +9,36 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const PROD_HOST = 'aws-0-ap-southeast-1.pooler.supabase.com';
 const LOCAL_HOSTS = ['localhost', '127.0.0.1', '::1', 'host.docker.internal'];
+
+function extractSupabaseProjectRef(urlStr) {
+  if (!urlStr) return null;
+  try {
+    const parsed = new URL(urlStr);
+    const user = decodeURIComponent(parsed.username || '');
+    if (user.includes('.')) {
+      const parts = user.split('.');
+      return parts.slice(1).join('.').toLowerCase();
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (host.endsWith('.supabase.co')) {
+      const parts = host.split('.');
+      if (parts.length >= 3 && parts[0] === 'db') {
+        return parts[1].toLowerCase();
+      }
+    }
+  } catch (_) {
+    const matchUser = urlStr.match(/:\/\/([^:/@]+)(?::[^@]*)?@/);
+    if (matchUser && matchUser[1].includes('.')) {
+      return matchUser[1].split('.').slice(1).join('.').toLowerCase();
+    }
+    const matchDirectHost = urlStr.match(/@db\.([a-z0-9_-]+)\.supabase\.co/i);
+    if (matchDirectHost) {
+      return matchDirectHost[1].toLowerCase();
+    }
+  }
+  return null;
+}
 
 const action = process.argv[2];
 const extraArgs = process.argv.slice(3);
@@ -35,8 +63,20 @@ function loadEnvFile(filePath) {
   }
 }
 
-// Load environment based on action (match script names)
-if (['db-push-test','test-phase3','seed-test','test-visibility','test-login','test-security','owner:reset','owner:reset','owner-reset','test-login-system','test-data-visibility'].includes(action)) {
+// Load environment based on action (only test actions use .env.test; dev/ops use .env)
+const isTestAction = [
+  'db-push-test',
+  'seed-test',
+  'test-phase3',
+  'test-visibility',
+  'test-login',
+  'test-security',
+  'test-login-system',
+  'test-data-visibility',
+  'test-customer-list-scope',
+].includes(action);
+
+if (isTestAction) {
   const envTestPath = path.resolve(__dirname, '..', '.env.test');
   loadEnvFile(envTestPath);
 } else {
@@ -64,12 +104,69 @@ if (dbUrl) {
 function assertLocalDatabase(contextName) {
   if (!dbUrl) return; // nothing to check
   try {
-    const hostname = new URL(dbUrl).hostname;
+    const parsed = new URL(dbUrl);
+    const hostname = parsed.hostname.toLowerCase();
     const isLocal = LOCAL_HOSTS.includes(hostname);
-    if (!isLocal && !hasAllowProd) {
-      console.error(`\n[SECURITY ERROR] ${contextName} refused to run on non‑local database host ${hostname}. Pass --allow-production to override.`);
+
+    const blockedRefs = (process.env.BLOCKED_DB_PROJECT_REFS || '')
+      .split(',')
+      .map(r => r.trim().toLowerCase())
+      .filter(Boolean);
+
+    const allowedRefs = (process.env.ALLOWED_DB_PROJECT_REFS || '')
+      .split(',')
+      .map(r => r.trim().toLowerCase())
+      .filter(Boolean);
+
+    const allowedHosts = (process.env.ALLOWED_DB_HOSTS || '')
+      .split(',')
+      .map(h => h.trim().toLowerCase())
+      .filter(Boolean);
+
+    const projectRef = extractSupabaseProjectRef(dbUrl);
+    const isSupabase = hostname.endsWith('supabase.com') || hostname.endsWith('supabase.co');
+
+    // 1. If project reference is present (Supabase pooler / direct)
+    if (projectRef) {
+      // BLOCKED_DB_PROJECT_REFS always wins!
+      if (blockedRefs.includes(projectRef)) {
+        console.error(`\n[SECURITY ERROR] ${contextName} refused: project reference "${projectRef}" is in BLOCKED_DB_PROJECT_REFS.`);
+        process.exit(1);
+      }
+      // Must be explicitly allowed
+      if (!allowedRefs.includes(projectRef)) {
+        console.error(`\n[SECURITY ERROR] ${contextName} refused: project reference "${projectRef}" is not in ALLOWED_DB_PROJECT_REFS.`);
+        process.exit(1);
+      }
+    } else if (isSupabase) {
+      // Supabase pooler/direct connection requires project ref in username
+      console.error(`\n[SECURITY ERROR] ${contextName} refused: Supabase connection requires project reference in user name (postgres.<project-ref>), but none was found.`);
+      process.exit(1);
+    } else if (!isLocal && !allowedHosts.includes(hostname)) {
+      console.error(`\n[SECURITY ERROR] ${contextName} refused: database host "${hostname}" is neither local nor in ALLOWED_DB_HOSTS, and no project reference was provided.`);
       process.exit(1);
     }
+
+    if (contextName === 'prod:bootstrap') {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('\n[SECURITY ERROR] prod:bootstrap requires NODE_ENV=production.');
+        process.exit(1);
+      }
+      if (!projectRef && !allowedHosts.includes(hostname) && !isLocal) {
+        console.error(`\n[SECURITY ERROR] prod:bootstrap refused: neither allowed project reference nor allowed host declared.`);
+        process.exit(1);
+      }
+      if (!hasAllowProd) {
+        console.error('\n[SECURITY ERROR] prod:bootstrap requires --allow-production flag.');
+        process.exit(1);
+      }
+      if (process.env.CONFIRM_PRODUCTION !== 'yes') {
+        console.error('\n[SECURITY ERROR] prod:bootstrap requires CONFIRM_PRODUCTION=yes environment variable.');
+        process.exit(1);
+      }
+      return;
+    }
+
     if (contextName === 'migrate-prod' && process.env.CONFIRM_PRODUCTION !== 'yes') {
       console.error('\n[SECURITY ERROR] migrate:prod requires CONFIRM_PRODUCTION=yes environment variable.');
       process.exit(1);
@@ -90,8 +187,13 @@ const knownActions = {
   'test-login': { type: 'ts-node', file: 'scripts/test-login-system.ts' },
   'test-security': { type: 'ts-node', file: 'scripts/test-security.ts' },
   'owner:reset': { type: 'ts-node', file: 'scripts/owner-reset.ts' },
+  'platform:reset': { type: 'ts-node', file: 'scripts/platform-reset.ts' },
   'migrate-prod': { type: 'prisma', args: ['migrate','deploy'] },
   'setup-dev': { type: 'prisma', args: ['db','push','--skip-generate'] },
+  'seed-staging': { type: 'ts-node', file: 'scripts/seed-staging.ts' },
+  'test-customer-list-scope': { type: 'ts-node', file: 'scripts/test-customer-list-scope.ts' },
+  'prod:bootstrap': { type: 'ts-node', file: 'scripts/prod-bootstrap.ts' },
+  'dry-run-fresh': { type: 'ts-node', file: 'scripts/dry-run-fresh.ts' },
 };
 
 function resolveBin(pkgSubpath) {
@@ -103,6 +205,35 @@ function resolveBin(pkgSubpath) {
 const prismaBin = resolveBin('prisma/build/index.js');
 const tsNodeBin = resolveBin('ts-node/dist/bin.js');
 
+function isPrismaClientGenerated() {
+  const possiblePaths = [
+    path.resolve(__dirname, '../../../node_modules/.prisma/client/index.js'),
+    path.resolve(__dirname, '../../node_modules/.prisma/client/index.js'),
+    path.resolve(__dirname, '../node_modules/.prisma/client/index.js'),
+    path.resolve(__dirname, '../../../node_modules/@prisma/client/index.js'),
+  ];
+  return possiblePaths.some((p) => fs.existsSync(p));
+}
+
+function ensurePrismaClient() {
+  if (!isPrismaClientGenerated()) {
+    console.log('[Safe Prisma] Prisma Client is missing. Generating Prisma Client automatically...');
+    if (!prismaBin) {
+      console.error('[SECURITY ERROR] Cannot generate Prisma Client: prisma binary not found.');
+      process.exit(1);
+    }
+    const genResult = spawnSync(process.execPath, [prismaBin, 'generate'], {
+      stdio: 'inherit',
+      cwd: path.resolve(__dirname, '..'),
+      env: process.env,
+    });
+    if (genResult.status !== 0) {
+      console.error('[SECURITY ERROR] Failed to automatically generate Prisma Client.');
+      process.exit(genResult.status ?? 1);
+    }
+  }
+}
+
 function runAction(name) {
   const entry = knownActions[name];
   if (!entry) {
@@ -111,6 +242,14 @@ function runAction(name) {
   }
   // Guard
   assertLocalDatabase(name);
+
+  if (extraArgs.includes('--check-only') || process.argv.includes('--check-only')) {
+    console.log(`[Safe Guard] ${name} host check passed.`);
+    process.exit(0);
+  }
+
+  // Ensure Prisma Client is generated before executing any DB/Prisma action
+  ensurePrismaClient();
 
   if (entry.type === 'prisma') {
     if (!prismaBin) { console.error('Prisma binary not found'); process.exit(1); }

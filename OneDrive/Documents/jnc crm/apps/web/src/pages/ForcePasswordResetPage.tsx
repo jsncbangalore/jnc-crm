@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { authApi } from '../services/api';
+import { authApi, setStaffAccessToken, setPlatformAccessToken } from '../services/api';
 import { Lock, Eye, EyeOff, ShieldAlert, LogOut, CheckCircle2 } from 'lucide-react';
 
 export default function ForcePasswordResetPage() {
@@ -24,7 +24,7 @@ export default function ForcePasswordResetPage() {
       return;
     }
     if (newPass.length < 12) {
-      setError('New password must be at least 12 characters long.');
+      setError('New password must be at least 12 characters long for security.');
       return;
     }
     if (newPass !== confirmPass) {
@@ -38,10 +38,17 @@ export default function ForcePasswordResetPage() {
 
     setLoading(true);
     try {
-      await authApi.changePassword(currentPass, newPass);
+      const response = await authApi.changePassword(currentPass, newPass);
+      const data = response?.data;
+      if (data?.accessToken) {
+        setStaffAccessToken(data.accessToken);
+        if (user?.role === 'platform_super_admin') {
+          setPlatformAccessToken(data.accessToken);
+        }
+      }
       setSuccess(true);
       setTimeout(() => {
-        updateUser({ mustResetPassword: false });
+        updateUser(data?.user || { mustResetPassword: false });
       }, 1000);
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || 'Failed to update password. Please check your current password.');

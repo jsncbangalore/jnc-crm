@@ -17,6 +17,8 @@ const ALLOWED_MIME_TYPES: Record<AllowedFileCategory, string[]> = {
     'image/jpeg',
     'image/webp',
     'image/avif',
+    'image/x-icon',
+    'image/vnd.microsoft.icon',
   ],
   spreadsheet: [
     'text/csv',
@@ -26,79 +28,152 @@ const ALLOWED_MIME_TYPES: Record<AllowedFileCategory, string[]> = {
 };
 
 const ALLOWED_EXTENSIONS: Record<AllowedFileCategory, string[]> = {
-  document_or_image: ['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.avif'],
+  document_or_image: ['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.avif', '.ico'],
   spreadsheet: ['.csv', '.xlsx', '.xls'],
 };
 
+const DANGEROUS_EXTENSIONS = [
+  'exe', 'bat', 'cmd', 'sh', 'php', 'js', 'vbs', 'ps1', 'msi', 'com', 'scr', 'pif',
+  'html', 'htm', 'xhtml', 'svg', 'xml', 'jsp', 'asp', 'aspx', 'cgi', 'pl', 'py', 'jar',
+];
+
 /**
- * Checks for dangerous double extensions (e.g. evil.pdf.exe or payload.php.jpg)
+ * Checks for dangerous double extensions (e.g. invoice.pdf.html or payload.php.png)
  */
 export function checkDoubleExtension(filename: string): void {
+  if (!filename) {
+    throw new BadRequestException('File rejected: missing filename.');
+  }
+
   const parts = filename.split('.');
   if (parts.length > 2) {
-    // Check if any intermediate part looks like an executable or script extension
-    const dangerousExts = ['exe', 'bat', 'cmd', 'sh', 'php', 'js', 'vbs', 'ps1', 'msi', 'com', 'scr', 'pif'];
-    for (let i = 1; i < parts.length - 1; i++) {
-      if (dangerousExts.includes(parts[i].toLowerCase())) {
-        throw new BadRequestException('File rejected: dangerous double extension detected.');
+    // Check all extensions
+    for (let i = 1; i < parts.length; i++) {
+      const extPart = parts[i].toLowerCase().trim();
+      if (DANGEROUS_EXTENSIONS.includes(extPart)) {
+        throw new BadRequestException(`File rejected: dangerous extension '.${extPart}' detected in multi-part filename.`);
       }
     }
-    // Also reject if filename has multiple arbitrary extensions (e.g. invoice.pdf.png)
-    if (parts.length > 2) {
-      throw new BadRequestException('File rejected: multiple file extensions are not allowed.');
-    }
+  }
+
+  // Also check single dangerous extensions
+  const lastExt = path.extname(filename).toLowerCase().replace('.', '');
+  if (DANGEROUS_EXTENSIONS.includes(lastExt)) {
+    throw new BadRequestException(`File rejected: extension '.${lastExt}' is dangerous and not allowed.`);
   }
 }
 
 /**
- * Validates file buffer magic bytes against expected file type
+ * Validates file buffer magic bytes against expected file type and quarantines malicious active payloads
  */
 export function validateMagicBytes(buffer: Buffer, originalname: string): void {
   if (!buffer || buffer.length < 4) {
-    throw new BadRequestException('File rejected: file is empty or corrupted.');
+    throw new BadRequestException('File rejected: file is empty or corrupted (under 4 bytes).');
   }
 
   const ext = path.extname(originalname).toLowerCase();
 
-  // PDF: %PDF (0x25 0x50 0x44 0x46)
+  // 1. PDF: starts with %PDF- (0x25 0x50 0x44 0x46 0x2D)
   if (ext === '.pdf') {
-    if (buffer[0] !== 0x25 || buffer[1] !== 0x50 || buffer[2] !== 0x44 || buffer[3] !== 0x46) {
-      throw new BadRequestException('File signature mismatch: file is not a valid PDF.');
+    if (
+      buffer.length < 5 ||
+      buffer[0] !== 0x25 ||
+      buffer[1] !== 0x50 ||
+      buffer[2] !== 0x44 ||
+      buffer[3] !== 0x46 ||
+      buffer[4] !== 0x2d
+    ) {
+      throw new BadRequestException('File signature mismatch: file does not match %PDF- magic bytes.');
     }
     return;
   }
 
-  // PNG: \x89PNG (0x89 0x50 0x4E 0x47)
+  // 2. PNG: starts with 89 50 4E 47 0D 0A 1A 0A
   if (ext === '.png') {
-    if (buffer[0] !== 0x89 || buffer[1] !== 0x50 || buffer[2] !== 0x4E || buffer[3] !== 0x47) {
-      throw new BadRequestException('File signature mismatch: file is not a valid PNG.');
+    const pngHeader = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    if (buffer.length < 8) {
+      throw new BadRequestException('File signature mismatch: PNG file is smaller than header size.');
+    }
+    for (let i = 0; i < pngHeader.length; i++) {
+      if (buffer[i] !== pngHeader[i]) {
+        throw new BadRequestException('File signature mismatch: file does not match PNG magic bytes (89 50 4E 47 0D 0A 1A 0A).');
+      }
     }
     return;
   }
 
-  // JPEG: 0xFF 0xD8 0xFF
+  // 3. JPEG: starts with FF D8 FF
   if (ext === '.jpg' || ext === '.jpeg') {
-    if (buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer[2] !== 0xff) {
-      throw new BadRequestException('File signature mismatch: file is not a valid JPEG.');
+    if (buffer.length < 3 || buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer[2] !== 0xff) {
+      throw new BadRequestException('File signature mismatch: file does not match JPEG magic bytes (FF D8 FF).');
     }
     return;
   }
 
-  // XLSX: PK\x03\x04 (0x50 0x4B 0x03 0x04)
+  // 4. XLSX / ZIP: starts with PK\x03\x04 (50 4B 03 04)
   if (ext === '.xlsx') {
     if (buffer[0] !== 0x50 || buffer[1] !== 0x4b || buffer[2] !== 0x03 || buffer[3] !== 0x04) {
-      throw new BadRequestException('File signature mismatch: file is not a valid Excel document.');
+      throw new BadRequestException('File signature mismatch: file does not match XLSX/ZIP magic bytes (50 4B 03 04).');
     }
     return;
   }
 
-  // CSV: Plain text (no null bytes in header)
+  // 5. CSV: Valid UTF-8 text containing zero null bytes (\0) and rejecting HTML/scripts
   if (ext === '.csv') {
-    const sample = buffer.subarray(0, Math.min(buffer.length, 512));
-    if (sample.includes(0x00)) {
-      throw new BadRequestException('File signature mismatch: binary data found in CSV file.');
+    // Check for binary data (null bytes anywhere in buffer)
+    if (buffer.includes(0x00)) {
+      throw new BadRequestException('File signature mismatch: binary data/null bytes found in CSV file.');
+    }
+
+    const textContent = buffer.toString('utf-8');
+
+    // Reject HTML/Script injections in CSV
+    if (
+      /<!doctype\s+html/i.test(textContent) ||
+      /<html\b/i.test(textContent) ||
+      /<script\b/i.test(textContent) ||
+      /<svg\b/i.test(textContent) ||
+      /\bonload\s*=/i.test(textContent) ||
+      /\bonerror\s*=/i.test(textContent)
+    ) {
+      throw new BadRequestException('File rejected: active HTML/script payload detected in CSV file.');
     }
     return;
+  }
+
+  // 6. Favicon / ICO
+  if (ext === '.ico') {
+    if (buffer[0] !== 0x00 || buffer[1] !== 0x00 || buffer[2] !== 0x01 || buffer[3] !== 0x00) {
+      throw new BadRequestException('File signature mismatch: file does not match ICO magic bytes.');
+    }
+    return;
+  }
+
+  // 7. WEBP: RIFF....WEBP
+  if (ext === '.webp') {
+    if (
+      buffer.length < 12 ||
+      buffer.subarray(0, 4).toString('ascii') !== 'RIFF' ||
+      buffer.subarray(8, 12).toString('ascii') !== 'WEBP'
+    ) {
+      throw new BadRequestException('File signature mismatch: file does not match WEBP magic bytes.');
+    }
+    return;
+  }
+}
+
+/**
+ * Inspects any SVG payload or buffer for embedded scripts or active handlers
+ */
+export function inspectSvgSafety(buffer: Buffer): void {
+  const content = buffer.toString('utf-8');
+  if (
+    /<script\b/i.test(content) ||
+    /\bon[a-zA-Z]+\s*=/i.test(content) ||
+    /javascript\s*:/i.test(content) ||
+    /<foreignObject\b/i.test(content)
+  ) {
+    throw new BadRequestException('File rejected: SVG contains active script or event handlers.');
   }
 }
 
@@ -124,6 +199,11 @@ export function validateUploadedFile(
   const allowedExts = ALLOWED_EXTENSIONS[category];
   if (!allowedExts.includes(ext)) {
     throw new BadRequestException(`File extension '${ext}' is not permitted for this route. Allowed: ${allowedExts.join(', ')}`);
+  }
+
+  // Check SVG content safety if applicable
+  if (ext === '.svg' && file.buffer) {
+    inspectSvgSafety(file.buffer);
   }
 
   // Validate magic bytes if buffer is available in memory

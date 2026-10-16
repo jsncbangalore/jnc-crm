@@ -9,7 +9,9 @@ import { useSearchParams } from 'react-router-dom';
 import { quotationsApi, inventoryApi } from '../services/api';
 import { Sku } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { BRAND_CONFIG } from '../config/brand';
 import { format } from 'date-fns';
+import { executeDirectPrint } from '../utils/directPrint';
 
 interface QuotationLineItem {
   skuId: string;
@@ -116,6 +118,8 @@ export default function QuotationsPage() {
       setCustomerPhone(urlPhone || '');
       setCustomerEmail(urlEmail || '');
       setCompanyName(urlCompany || '');
+      setShowCreateModal(true);
+    } else if (searchParams.get('action') === 'create') {
       setShowCreateModal(true);
     }
   }, [searchParams]);
@@ -245,54 +249,32 @@ export default function QuotationsPage() {
   };
 
   const handlePrintQuote = (q: any) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
     const sub = q.subtotal || 0;
     const tax = q.taxAmount || 0;
     const tot = q.totalAmount || 0;
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Quotation_${q.quoteNumber}</title>
-        <style>
-          @page { size: A4 portrait; margin: 8mm; }
-          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #111; margin: 0; padding: 12px; font-size: 12px; }
-          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #2E5EFF; padding-bottom: 12px; margin-bottom: 16px; }
-          .title { font-size: 20px; font-weight: 900; color: #2E5EFF; margin: 0; }
-          .subtitle { font-size: 11px; color: #555; margin-top: 2px; }
-          .meta-box { display: flex; justify-content: space-between; margin-bottom: 16px; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-          th, td { border: 1px solid #cbd5e1; padding: 7px 9px; text-align: left; }
-          th { background: #f1f5f9; font-weight: 700; font-size: 11px; }
-          .text-right { text-align: right; }
-          .totals-box { width: 280px; margin-left: auto; margin-bottom: 20px; }
-          .totals-row { display: flex; justify-content: space-between; padding: 4px 0; }
-          .totals-total { font-weight: 900; font-size: 14px; color: #2E5EFF; border-top: 2px solid #2E5EFF; padding-top: 4px; }
-          .terms { background: #fafafa; border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; font-size: 11px; color: #444; }
-          .signatory { margin-top: 40px; text-align: right; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
+    const contentHtml = `
+      <div class="print-sheet" style="padding: 16px; border: 1.5px solid #2E5EFF;">
+        <div class="header" style="display: flex; justify-content: space-between; border-bottom: 2px solid #2E5EFF; padding-bottom: 12px; margin-bottom: 16px;">
           <div>
-            <h1 class="title">JS NETWORK COMMUNICATION</h1>
-            <div class="subtitle">Complete Security, PA & Power Automation Systems</div>
-            <div class="subtitle">Email: info@jsnc.co.in | Web: www.jsnc.co.in</div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <img src="/jnc-logo.jpg" alt="JNC Logo" style="max-height: 32px !important; max-width: 140px !important; width: auto !important; height: auto !important; object-fit: contain !important;" />
+              <h1 style="font-size: 18px; font-weight: 900; color: #2E5EFF; margin: 0;">${BRAND_CONFIG.displayName.toUpperCase()}</h1>
+            </div>
+            <div style="font-size: 11px; color: #555;">Complete Security, PA & Power Automation Systems</div>
+            <div style="font-size: 11px; color: #555;">Email: info@jsnc.co.in | Web: www.jsnc.co.in</div>
           </div>
           <div style="text-align: right;">
-            <h2 style="margin:0; font-size:16px; color:#333;">PRICE QUOTATION</h2>
-            <div style="font-weight:bold; color:#2E5EFF; margin-top:4px;">${q.quoteNumber}</div>
-            <div style="font-size:11px; color:#666;">Date: ${format(new Date(q.createdAt), 'dd/MM/yyyy')}</div>
+            <h2 style="margin: 0; font-size: 16px; color: #333;">PRICE QUOTATION</h2>
+            <div style="font-weight: bold; color: #2E5EFF; margin-top: 4px;">${q.quoteNumber}</div>
+            <div style="font-size: 11px; color: #666;">Date: ${format(new Date(q.createdAt), 'dd/MM/yyyy')}</div>
           </div>
         </div>
 
-        <div class="meta-box">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 16px; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
           <div>
             <strong>Quotation For:</strong>
-            <div style="font-size:13px; font-weight:bold; margin-top:2px;">${q.lead?.customerName || q.contact?.name || 'Valued Client'}</div>
+            <div style="font-size: 13px; font-weight: bold; margin-top: 2px;">${q.lead?.customerName || q.contact?.name || 'Valued Client'}</div>
             <div>${q.lead?.company?.name || q.lead?.companyName || ''}</div>
             <div>Phone: ${q.lead?.customerPhone || q.contact?.phone || '—'}</div>
             <div>Email: ${q.lead?.customerEmail || q.contact?.email || '—'}</div>
@@ -304,58 +286,59 @@ export default function QuotationsPage() {
           </div>
         </div>
 
-        <table>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
           <thead>
-            <tr>
-              <th style="width:30px;">#</th>
-              <th>Item Description / Equipment Specification</th>
-              <th style="width:50px;" class="text-right">Qty</th>
-              <th style="width:90px;" class="text-right">Unit Price (₹)</th>
-              <th style="width:70px;" class="text-right">Discount</th>
-              <th style="width:100px;" class="text-right">Amount (₹)</th>
+            <tr style="background: #f1f5f9;">
+              <th style="width: 30px; border: 1px solid #cbd5e1; padding: 7px 9px;">#</th>
+              <th style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: left;">Item Description / Equipment Specification</th>
+              <th style="width: 50px; border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">Qty</th>
+              <th style="width: 90px; border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">Unit Price (₹)</th>
+              <th style="width: 70px; border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">Discount</th>
+              <th style="width: 100px; border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">Amount (₹)</th>
             </tr>
           </thead>
           <tbody>
             ${(q.lines || []).map((l: any, i: number) => `
               <tr>
-                <td>${i + 1}</td>
-                <td><strong>${l.sku?.skuCode || ''}</strong> - ${l.sku?.name || 'Item'}</td>
-                <td class="text-right">${l.quantity}</td>
-                <td class="text-right">${Number(l.unitPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                <td class="text-right">${Number(l.discount || 0).toLocaleString('en-IN')}</td>
-                <td class="text-right" style="font-weight:bold;">${Number(l.totalPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: center;">${i + 1}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 7px 9px;"><strong>${l.sku?.skuCode || ''}</strong> - ${l.sku?.name || 'Item'}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">${l.quantity}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">${Number(l.unitPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">${Number(l.discount || 0).toLocaleString('en-IN')}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right; font-weight: bold;">${Number(l.totalPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
               </tr>
             `).join('')}
           </tbody>
         </table>
 
-        <div class="totals-box">
-          <div class="totals-row"><span>Subtotal:</span><span>₹${sub.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
-          <div class="totals-row"><span>GST (${q.taxRate}%):</span><span>₹${tax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
-          <div class="totals-row totals-total"><span>Total Quotation:</span><span>₹${tot.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
+        <div style="width: 280px; margin-left: auto; margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; padding: 4px 0;"><span>Subtotal:</span><span>₹${sub.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 4px 0;"><span>GST (${q.taxRate}%):</span><span>₹${tax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 4px 0; font-weight: 900; font-size: 14px; color: #2E5EFF; border-top: 2px solid #2E5EFF; padding-top: 4px;">
+            <span>Total Quotation:</span><span>₹${tot.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </div>
         </div>
 
         ${q.terms ? `
-          <div class="terms">
+          <div style="background: #fafafa; border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; font-size: 11px; color: #444; margin-bottom: 20px;">
             <strong>Terms & Conditions:</strong>
-            <div style="white-space: pre-line; margin-top:4px;">${q.terms}</div>
+            <div style="white-space: pre-line; margin-top: 4px;">${q.terms}</div>
           </div>
         ` : ''}
 
-        <div class="signatory">
-          <div style="font-size:11px; color:#555;">For JS Network Communication</div>
-          <div style="margin-top:40px; font-weight:bold; border-top:1px solid #cbd5e1; display:inline-block; padding-top:4px;">
+        <div style="margin-top: 40px; text-align: right;">
+          <div style="font-size: 11px; color: #555;">For ${BRAND_CONFIG.displayName}</div>
+          <div style="margin-top: 40px; font-weight: bold; border-top: 1px solid #cbd5e1; display: inline-block; padding-top: 4px;">
             Authorized Signatory
           </div>
         </div>
+      </div>
+    `;
 
-        <script>
-          window.onload = function() { window.print(); }
-        </script>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
+    executeDirectPrint(contentHtml, {
+      title: `Quotation_${q.quoteNumber}`,
+      paperSize: 'A4',
+    });
   };
 
   return (
@@ -576,12 +559,14 @@ export default function QuotationsPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleCreateSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
+              <form onSubmit={handleCreateSubmit} className="p-6 overflow-y-auto space-y-4 flex-1" autoComplete="off" data-lpignore="true">
                 {/* Client Info Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="label">Customer Name *</label>
                     <input
+                      name="quote_cust_name"
+                      autoComplete="off"
                       className="input text-xs"
                       placeholder="Enter customer name"
                       value={customerName}
@@ -592,6 +577,8 @@ export default function QuotationsPage() {
                   <div>
                     <label className="label">Mobile Number *</label>
                     <input
+                      name="quote_cust_phone"
+                      autoComplete="off"
                       className="input text-xs font-mono"
                       placeholder="Enter phone number"
                       value={customerPhone}
@@ -602,6 +589,8 @@ export default function QuotationsPage() {
                   <div>
                     <label className="label">Company / Organization</label>
                     <input
+                      name="quote_cust_company"
+                      autoComplete="off"
                       className="input text-xs"
                       placeholder="Enter company name"
                       value={companyName}
@@ -835,11 +824,12 @@ export default function QuotationsPage() {
                   </>
                 ) : (
                   <button
+                    type="button"
                     onClick={() => setInAppPopup({ ...inAppPopup, show: false })}
-                    className={`btn text-xs font-bold px-6 ${
+                    className={`btn text-xs font-bold px-7 py-2.5 rounded-xl shadow-md transition-all ${
                       inAppPopup.type === 'success'
                         ? 'bg-crm-amber hover:bg-crm-amber-hover text-black shadow-glow-amber'
-                        : 'bg-white/10 hover:bg-white/20 text-white'
+                        : 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-500/20'
                     }`}
                   >
                     Got It

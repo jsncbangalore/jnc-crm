@@ -7,7 +7,7 @@
 
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { requireTenantId } from '../common/tenant.util';
-import { getVisibility, ModelName } from './data-visibility';
+import { getVisibility, getCustomerListScope, ModelName, CustomerListScope } from './data-visibility';
 
 export interface ScopedUser {
   id: string;
@@ -22,8 +22,12 @@ export interface ScopedUser {
 @Injectable()
 export class ScopingService {
 
+  getCustomerListScope(): CustomerListScope {
+    return getCustomerListScope();
+  }
+
   getTenantScope(user: ScopedUser) {
-    if (user.role.startsWith('platform_') && !user.tenantId) {
+    if (user.role === 'platform_super_admin' && !user.tenantId) {
       throw new ForbiddenException('Platform administrators cannot access company workspace resources directly. Impersonate a client company to view their data.');
     }
     return { tenantId: requireTenantId(user) };
@@ -33,9 +37,9 @@ export class ScopingService {
    * Generic scope builder driven by VISIBILITY_TABLE.
    * Only Lead has assignedToId and shares relation.
    */
-  getScope(user: ScopedUser, model: ModelName): Record<string, any> {
+  getScope(user: ScopedUser, model: ModelName, overrideScope?: CustomerListScope): Record<string, any> {
     const tenantFilter = this.getTenantScope(user);
-    const level = getVisibility(user.role, model);
+    const level = getVisibility(user.role, model, overrideScope);
 
     if (level === 'none') {
       throw new ForbiddenException(`Your role does not have access to ${model} records.`);
@@ -65,8 +69,8 @@ export class ScopingService {
   }
 
   getLeadScope(user: ScopedUser) { return this.getScope(user, 'Lead'); }
-  getCompanyScope(user: ScopedUser) { return this.getScope(user, 'Company'); }
-  getContactScope(user: ScopedUser) { return this.getScope(user, 'Contact'); }
+  getCompanyScope(user: ScopedUser, overrideScope?: CustomerListScope) { return this.getScope(user, 'Company', overrideScope); }
+  getContactScope(user: ScopedUser, overrideScope?: CustomerListScope) { return this.getScope(user, 'Contact', overrideScope); }
   getQuotationScope(user: ScopedUser) { return this.getScope(user, 'Quotation'); }
   getOrderScope(user: ScopedUser) { return this.getScope(user, 'Order'); }
   getInvoiceScope(user: ScopedUser) { return this.getScope(user, 'Invoice'); }

@@ -1,23 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
 import MobileDock from './MobileDock';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBranding } from '../../contexts/BrandingContext';
-import { authApi, platformApi, setAccessToken } from '../../services/api';
+import { authApi, setAccessToken } from '../../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { KeyRound, ShieldAlert, CheckCircle2, Lock } from 'lucide-react';
 
 export default function AppLayout() {
   const { user, updateUser, logout } = useAuth();
   const { branding } = useBranding();
-  const [systemInfo, setSystemInfo] = useState<{ version: string; commit: string; projectRef: string; databaseProject: string } | null>(null);
-
-  useEffect(() => {
-    if (user?.role === 'platform_super_admin') {
-      platformApi.getSystemInfo().then(res => setSystemInfo(res.data)).catch(() => {});
-    }
-  }, [user?.role]);
 
   // Forced password reset state
   const [currentPass, setCurrentPass] = useState('');
@@ -31,8 +24,8 @@ export default function AppLayout() {
     e.preventDefault();
     setError('');
 
-    if (newPass.length < 12) {
-      setError('New password must be at least 12 characters long.');
+    if (newPass.length < 6) {
+      setError('New password must be at least 6 characters long.');
       return;
     }
     if (newPass !== confirmPass) {
@@ -55,16 +48,25 @@ export default function AppLayout() {
     }
   };
 
-  const handleExitImpersonation = () => {
+  const navigate = useNavigate();
+
+  const handleExitImpersonation = async () => {
     const masterToken = sessionStorage.getItem('jnc_master_token');
-    const masterUser = sessionStorage.getItem('jnc_master_user');
-    if (masterToken && masterUser) {
+    sessionStorage.removeItem('jnc_master_token');
+    sessionStorage.removeItem('jnc_master_user');
+    sessionStorage.removeItem('jnc_impersonate_token');
+    if (masterToken) {
       setAccessToken(masterToken);
-      localStorage.setItem('jnc_user', masterUser);
-      sessionStorage.removeItem('jnc_master_token');
-      sessionStorage.removeItem('jnc_master_user');
+      try {
+        const meRes = await authApi.me();
+        if (meRes.data) {
+          updateUser(meRes.data);
+        }
+      } catch {
+        // ignore
+      }
     }
-    window.location.href = '/platform/companies';
+    navigate('/platform/companies');
   };
 
   const isImpersonating = (user as any)?.isImpersonating || !!sessionStorage.getItem('jnc_master_token');
@@ -90,7 +92,7 @@ export default function AppLayout() {
       <div className="lg:hidden flex items-center justify-between px-4 py-2.5 bg-white/95 dark:bg-[#181B26]/95 backdrop-blur-md border-b border-slate-200 dark:border-[#2A3042] sticky top-0 z-40 shrink-0">
         <div className="flex items-center gap-2">
           <div className="h-8 px-1.5 py-0.5 rounded-lg bg-white flex items-center justify-center shadow-sm border border-slate-200 dark:border-transparent">
-            <img src={branding.companyLogoUrl || '/jnc-logo.jpg'} alt={branding.companyDisplayName} className="h-6 w-auto object-contain" />
+            <img src="/jnc-logo.jpg" alt="JS Network Communication" className="h-6 w-auto object-contain" />
           </div>
           <span className="text-xs font-bold text-slate-900 dark:text-white tracking-tight truncate max-w-[180px]">
             {branding.companyDisplayName}
@@ -116,21 +118,7 @@ export default function AppLayout() {
           <span className="font-semibold text-slate-700 dark:text-slate-300">{branding.companyDisplayName}</span>
           <span>•</span>
           <span>All Rights Reserved &copy; {new Date().getFullYear()}</span>
-          {systemInfo && (
-            <>
-              <span>•</span>
-              <span className="font-mono text-[11px] text-crm-blue dark:text-sky-400">
-                v{systemInfo.version} ({systemInfo.commit}) — {systemInfo.databaseProject}
-              </span>
-            </>
-          )}
         </div>
-        {branding.companyPhone && (
-          <div className="flex items-center gap-1.5 font-mono text-[11px]">
-            <span>Support:</span>
-            <strong className="text-slate-800 dark:text-slate-200">{branding.companyPhone}</strong>
-          </div>
-        )}
       </footer>
 
       {/* ─── NATIVE SMARTPHONE BOTTOM NAVIGATION DOCK ─────────────────────── */}
@@ -187,7 +175,7 @@ export default function AppLayout() {
                     <input
                       type="password"
                       className="input text-xs"
-                      placeholder="Min 12 characters (letters, numbers, symbols)"
+                      placeholder="Min 6 characters (letters, numbers, symbols)"
                       value={newPass}
                       onChange={(e) => setNewPass(e.target.value)}
                       required

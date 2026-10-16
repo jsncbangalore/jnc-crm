@@ -36,16 +36,16 @@ async function main() {
 
   const boss = await prisma.user.upsert({
     where: { tenantId_employeeCode: { tenantId: defaultTenantId, employeeCode: 'JNC-SA-001' } },
-    update: { mustResetPassword: true, role: 'tenant_admin', email: 'jayarajjnc@gmail.com' },
+    update: { mustResetPassword: false, role: 'tenant_admin', email: 'santhoshs0815@gmail.com' },
     create: {
       tenantId: defaultTenantId,
       employeeCode: 'JNC-SA-001',
       name: 'JNC Network Owner',
-      email: 'jayarajjnc@gmail.com',
+      email: 'santhoshs0815@gmail.com',
       passwordHash: await hash(initialAdminPass),
       role: 'tenant_admin',
       isActive: true,
-      mustResetPassword: true,
+      mustResetPassword: false,
     },
   });
 
@@ -98,13 +98,13 @@ async function main() {
 
   const superAdmin = await prisma.user.upsert({
     where: { id: 'seed-platform-super-admin-id' },
-    update: { mustResetPassword: false, role: 'platform_super_admin' },
+    update: { mustResetPassword: false, role: 'platform_super_admin', email: 'jayarajjnc@gmail.com' },
     create: {
       id: 'seed-platform-super-admin-id',
       tenantId: null,
-      employeeCode: 'ADM-PLATFORM-001',
+      employeeCode: 'SYS-SUP-001',
       name: 'Platform Administrator',
-      email: 'superadmin@jsnc.co.in',
+      email: 'jayarajjnc@gmail.com',
       passwordHash: await hash(initialAdminPass),
       role: 'platform_super_admin',
       isActive: true,
@@ -288,7 +288,7 @@ async function main() {
       tenantId: defaultTenantId,
       skuCode: 'RES-10K-0805',
       productId: prod3.id,
-      name: '10kΩ 0805 SMD Resistor 1%',
+      name: '10kOhm 0805 SMD Resistor 1%',
       category: 'Passive Components',
       packageType: 'SMD 0805',
       unitPrice: 0.5,
@@ -608,7 +608,7 @@ async function main() {
           config: JSON.stringify({
             recipient: 'customer',
             subject: 'Payment Overdue Notice: Invoice {{invoiceNumber}}',
-            body: 'Payment for invoice {{invoiceNumber}} (Total: ₹{{grandTotal}}) is past due.',
+            body: 'Payment for invoice {{invoiceNumber}} (Total: INR {{grandTotal}}) is past due.',
           }),
         },
       ],

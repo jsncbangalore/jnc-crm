@@ -36,17 +36,19 @@ jnc-crm/
    cd apps/api
    npm install --production
    ```
-2. Configure `.env` file:
+2. Configure `.env` file (copy from `.env.example` and set production secrets):
    ```env
    PORT=3333
-   DATABASE_URL="postgresql://postgres:password@localhost:5432/jnc_crm?schema=public"
-   JWT_SECRET="jnc-crm-super-secure-production-secret-2026"
+   NODE_ENV=production
+   DATABASE_URL="postgresql://<DB_USER>:<DB_PASSWORD>@<DB_HOST>:5432/<DB_NAME>"
+   JWT_SECRET="<SECURE_RANDOM_SECRET>"
+   JWT_REFRESH_SECRET="<SECURE_RANDOM_SECRET>"
+   ENCRYPTION_KEY="<32_BYTE_HEX_KEY>"
    CORS_ORIGIN="https://your-crm-domain.com"
    ```
-3. Run Database Migrations:
-   ```bash
-   npx prisma migrate deploy
-   ```
+3. Database Setup:
+   - **new empty database**: `prisma db push` once
+   - **existing production database**: apply `deploy/2026-10-prod-upgrade.sql` after a backup
 4. Start with PM2 Process Manager:
    ```bash
    npm install -g pm2
@@ -79,8 +81,37 @@ jnc-crm/
 
 ---
 
-## 🔑 Default Super Admin Credentials
-- **Name**: JNC Owner
-- **Email**: `owner@jncnetwork.com`
-- **Employee Code**: `JNC-SA-001`
-- **Role**: `super_admin`
+## 🧪 Staging Server Setup & Deployment
+
+### 1. Staging Backend (Different PORT & Process Name)
+1. Configure staging environment from `.env.staging.example`:
+   ```env
+   PORT=3334
+   NODE_ENV=staging
+   DATABASE_URL="postgresql://<STAGING_USER>:<STAGING_PASSWORD>@<STAGING_HOST>:5432/<STAGING_DB>"
+   ALLOWED_DB_HOSTS="<STAGING_HOST>"
+   JWT_SECRET="<STAGING_RANDOM_SECRET>"
+   JWT_REFRESH_SECRET="<STAGING_RANDOM_SECRET>"
+   ENCRYPTION_KEY="<32_BYTE_HEX_KEY>"
+   FRONTEND_URL="https://staging.yourdomain.com"
+   CORS_ORIGIN="https://staging.yourdomain.com"
+   ```
+2. Initialize database & run staging seed:
+   ```bash
+   npx prisma db push
+   npx ts-node --transpile-only scripts/seed-staging.ts
+   ```
+   *(Note: The seed script prints initial random passwords once to the console. They are never written to disk.)*
+3. Start Staging API via PM2 on a distinct port and process name:
+   ```bash
+   pm2 start dist/main.js --name "jnc-crm-api-staging"
+   pm2 save
+   ```
+
+### 2. Staging Frontend Build
+Build the web application pointing to the staging API address:
+```bash
+cd apps/web
+VITE_API_URL="https://staging-api.yourdomain.com/api/v1" npm run build
+```
+Deploy the generated `apps/web/dist/` directory to the staging web server or virtual host.

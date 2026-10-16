@@ -17,6 +17,7 @@ import { ScopedUser } from '../auth/scoping.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
+import { parsePagination } from '../common/pagination.util';
 import { ROLE_RANKS, isPlatformOwner, ALL_ROLES, UserRole } from '../auth/roles';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -52,7 +53,7 @@ export function generateSecurePassword(length = 14): string {
 
 const ROLE_CODE_MAP: Record<string, string> = {
   platform_super_admin: 'PSA',
-  tenant_admin: 'AD',
+  tenant_admin: 'TAD',
   admin: 'ADM',
   sub_admin: 'SUB',
   project_manager: 'PM',
@@ -62,8 +63,6 @@ const ROLE_CODE_MAP: Record<string, string> = {
   accountant: 'ACC',
   employee: 'EMP',
   developer: 'DEV',
-  client: 'CLI',
-  customer: 'CUST',
 };
 
 @Injectable()
@@ -105,28 +104,33 @@ export class UsersService {
         })
       : null;
 
-    const tenantCode = (tenant?.code || 'JNC').toUpperCase();
+    const rawCode = (tenant?.code || 'DEFAULT').toUpperCase();
+    const cleanTenantCode = rawCode.startsWith('JNC-') ? rawCode.replace('JNC-', '') : rawCode;
     const roleCode = ROLE_CODE_MAP[role] || 'EMP';
-    const prefix = `${tenantCode}-${roleCode}`;
+    const standardPrefix = `JNC-${cleanTenantCode}-${roleCode}`;
+    const legacyPrefix = `${cleanTenantCode}-${roleCode}`;
 
     const users = await db.user.findMany({
       where: {
         tenantId,
-        employeeCode: { startsWith: prefix },
+        OR: [
+          { employeeCode: { startsWith: standardPrefix } },
+          { employeeCode: { startsWith: legacyPrefix } },
+        ],
       },
       select: { employeeCode: true },
     });
 
     let maxSeq = 0;
     for (const u of users) {
-      const match = u.employeeCode.match(new RegExp(`^${prefix}-(\\d+)$`));
+      const match = u.employeeCode.match(new RegExp(`(?:${standardPrefix}|${legacyPrefix})-(\\d+)$`));
       if (match) {
         const num = parseInt(match[1], 10);
         if (!isNaN(num) && num > maxSeq) maxSeq = num;
       }
     }
 
-    return `${prefix}-${String(maxSeq + 1).padStart(3, '0')}`;
+    return `${standardPrefix}-${String(maxSeq + 1).padStart(3, '0')}`;
   }
 
   async createUser(dto: CreateUserDto, creator: ScopedUser) {
@@ -297,9 +301,17 @@ export class UsersService {
       }
     }
 
+    let emailSent = false;
+    let emailError: string | undefined = undefined;
+    let mailInfo: { status: string; reason: string | null; provider: string } = {
+      status: 'failed',
+      reason: null,
+      provider: this.notificationsService.getMailProvider(),
+    };
+
     try {
       const branding = await this.notificationsService.getBranding(tenantId);
-      await this.notificationsService.sendEmail({
+      const mailRes = await this.notificationsService.sendEmail({
         tenantId,
         to: newUser.email,
         subject: `Welcome to ${branding.companyDisplayName} - Your Login Credentials [${newUser.employeeCode}]`,
@@ -317,9 +329,23 @@ export class UsersService {
         `,
         relatedEntityType: 'user',
         relatedEntityId: newUser.id,
+        purpose: 'user_invite',
+        throwOnError: false,
       });
+      mailInfo = {
+        status: mailRes.status,
+        reason: mailRes.reason,
+        provider: mailRes.provider,
+      };
+      emailSent = mailRes.status === 'sent';
+      if (!emailSent) {
+        emailError = mailRes.error || `Email delivery failed (${mailRes.reason || mailRes.status})`;
+      }
     } catch (emailErr: any) {
-      this.logger.warn(`Could not dispatch welcome email for ${newUser.employeeCode}: ${emailErr.message}`);
+      emailError = emailErr.message || 'Email delivery failed';
+      mailInfo.status = 'failed';
+      mailInfo.reason = emailErr.message || 'unexpected_error';
+      this.logger.warn(`Could not dispatch welcome email for ${newUser.employeeCode}: ${emailError}`);
     }
 
     await this.auditService.log({
@@ -335,17 +361,29 @@ export class UsersService {
     return {
       user: newUser,
       tempPassword,
-      message: `User ${newUser.name} [${newUser.employeeCode}] created successfully.`,
+      emailSent,
+      emailError,
+      mail: {
+        status: emailSent ? 'sent' : (mailInfo.status || 'failed'),
+        reason: mailInfo.reason,
+        provider: mailInfo.provider,
+      },
+      message: emailSent
+        ? `User ${newUser.name} [${newUser.employeeCode}] created successfully. Credentials emailed to ${newUser.email}.`
+        : `User ${newUser.name} [${newUser.employeeCode}] created, but email delivery failed (${emailError}). Please copy the temporary password below manually.`,
     };
   }
 
-  async findAll(creator: ScopedUser, query?: { search?: string; role?: string; isActive?: string }) {
+  async findAll(creator: ScopedUser, query?: { search?: string; role?: string; isActive?: string; tenantId?: string; page?: number; limit?: number }) {
     const isPlatform = isPlatformOwner(creator);
     const where: any = { deletedAt: null };
 
     if (!isPlatform) {
       where.tenantId = requireTenantId(creator);
     } else {
+      if (query?.tenantId) {
+        where.tenantId = query.tenantId;
+      }
       if (query?.role === 'platform_super_admin') {
         where.role = 'platform_super_admin';
       }
@@ -372,28 +410,49 @@ export class UsersService {
       where.isActive = query.isActive === 'true';
     }
 
-    const items = await this.prisma.user.findMany({
-      where,
-      orderBy: { createdAt: 'asc' },
-      select: {
-        id: true,
-        tenantId: true,
-        employeeCode: true,
-        name: true,
-        email: true,
-        phone: true,
-        role: true,
-        teamId: true,
-        teamRef: { select: { id: true, name: true, allowedPages: true } },
-        warehouseId: true,
-        isActive: true,
-        mustResetPassword: true,
-        lastLoginAt: true,
-        createdAt: true,
-      },
-    });
+    const { page, limit, skip, take } = parsePagination(query, 50, 100);
 
-    return { items, total: items.length };
+    const [items, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          tenantId: true,
+          employeeCode: true,
+          name: true,
+          email: true,
+          phone: true,
+          role: true,
+          teamId: true,
+          teamRef: { select: { id: true, name: true, allowedPages: true } },
+          warehouseId: true,
+          isActive: true,
+          mustResetPassword: true,
+          lastLoginAt: true,
+          createdAt: true,
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              employeeCode: true,
+            },
+          },
+          tenant: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
+        },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string, creator: ScopedUser) {
@@ -440,17 +499,23 @@ export class UsersService {
       throw new BadRequestException('You cannot change your own role.');
     }
 
-    // Rule: Strictly lower rank check for modifying users
+    // Rule: Rank check for modifying users
     if (!isPlatform && user.id !== modifier.id) {
       const modifierRank = ROLE_RANKS[modifier.role] || 0;
       const targetRank = ROLE_RANKS[user.role] || 0;
-      if (targetRank >= modifierRank) {
-        throw new ForbiddenException('You cannot modify a user with an equal or higher role rank.');
+      if (modifier.role !== 'tenant_admin') {
+        if (targetRank >= modifierRank) {
+          throw new ForbiddenException('You cannot modify a user with an equal or higher role rank.');
+        }
+      } else {
+        if (targetRank > modifierRank || user.role === 'platform_super_admin') {
+          throw new ForbiddenException('You cannot modify a platform administrator.');
+        }
       }
     }
 
     // Role assignment hierarchy check
-    if (dto.role) {
+    if (dto.role && dto.role !== user.role) {
       const newRank = ROLE_RANKS[dto.role] || 0;
       const modifierRank = ROLE_RANKS[modifier.role] || 0;
       if (newRank >= modifierRank && !isPlatform) {
@@ -572,8 +637,14 @@ export class UsersService {
     if (!isPlatform && user.id !== modifier.id) {
       const modifierRank = ROLE_RANKS[modifier.role] || 0;
       const targetRank = ROLE_RANKS[user.role] || 0;
-      if (targetRank >= modifierRank) {
-        throw new ForbiddenException('You cannot reset credentials for a user with an equal or higher role rank.');
+      if (modifier.role !== 'tenant_admin') {
+        if (targetRank >= modifierRank) {
+          throw new ForbiddenException('You cannot reset credentials for a user with an equal or higher role rank.');
+        }
+      } else {
+        if (targetRank > modifierRank || user.role === 'platform_super_admin') {
+          throw new ForbiddenException('You cannot reset credentials for a platform administrator.');
+        }
       }
     }
 
@@ -601,6 +672,14 @@ export class UsersService {
       where: { identityKey: { in: lockKeys } },
     });
 
+    let emailSent = false;
+    let emailError: string | undefined = undefined;
+    let mailInfo: { status: string; reason: string | null; provider: string } = {
+      status: 'failed',
+      reason: null,
+      provider: this.notificationsService.getMailProvider(),
+    };
+
     // Send credentials email
     try {
       const tenant = user.tenantId
@@ -611,8 +690,8 @@ export class UsersService {
         : null;
 
       const branding = await this.notificationsService.getBranding(user.tenantId || undefined);
-      await this.notificationsService.sendEmail({
-        tenantId: user.tenantId || 'JNC',
+      const mailRes = await this.notificationsService.sendEmail({
+        tenantId: user.tenantId || undefined,
         to: user.email,
         subject: `[${branding.companyDisplayName}] Your Credentials Have Been Reset`,
         html: `
@@ -629,9 +708,23 @@ export class UsersService {
         `,
         relatedEntityType: 'user',
         relatedEntityId: user.id,
+        purpose: 'password_reset',
+        throwOnError: false,
       });
+      mailInfo = {
+        status: mailRes.status,
+        reason: mailRes.reason,
+        provider: mailRes.provider,
+      };
+      emailSent = mailRes.status === 'sent';
+      if (!emailSent) {
+        emailError = mailRes.error || `Email delivery failed (${mailRes.reason || mailRes.status})`;
+      }
     } catch (err: any) {
-      this.logger.warn(`Could not send password reset email to ${user.email}: ${err.message}`);
+      emailError = err.message || 'Email delivery failed';
+      mailInfo.status = 'failed';
+      mailInfo.reason = err.message || 'unexpected_error';
+      this.logger.warn(`Could not send password reset email to ${user.email}: ${emailError}`);
     }
 
     await this.auditService.log({
@@ -645,8 +738,17 @@ export class UsersService {
     });
 
     return {
-      message: `Password reset successfully for ${user.name}`,
+      message: emailSent
+        ? `Password reset successfully for ${user.name}. Credentials sent to ${user.email}.`
+        : `Password reset successfully for ${user.name}, but email delivery failed (${emailError}). Please copy the temporary password below manually.`,
       tempPassword,
+      emailSent,
+      emailError,
+      mail: {
+        status: emailSent ? 'sent' : (mailInfo.status || 'failed'),
+        reason: mailInfo.reason,
+        provider: mailInfo.provider,
+      },
     };
   }
 
@@ -666,8 +768,14 @@ export class UsersService {
     if (!isPlatform) {
       const modifierRank = ROLE_RANKS[modifier.role] || 0;
       const targetRank = ROLE_RANKS[user.role] || 0;
-      if (targetRank >= modifierRank) {
-        throw new ForbiddenException('You cannot change status for a user with an equal or higher role rank.');
+      if (modifier.role !== 'tenant_admin') {
+        if (targetRank >= modifierRank) {
+          throw new ForbiddenException('You cannot change status for a user with an equal or higher role rank.');
+        }
+      } else {
+        if (targetRank > modifierRank || user.role === 'platform_super_admin') {
+          throw new ForbiddenException('You cannot change status for a platform administrator.');
+        }
       }
     }
 
@@ -719,8 +827,14 @@ export class UsersService {
     if (!isPlatform) {
       const modifierRank = ROLE_RANKS[modifier.role] || 0;
       const targetRank = ROLE_RANKS[user.role] || 0;
-      if (targetRank >= modifierRank) {
-        throw new ForbiddenException('You cannot delete a user with an equal or higher role rank.');
+      if (modifier.role !== 'tenant_admin') {
+        if (targetRank >= modifierRank) {
+          throw new ForbiddenException('You cannot delete a user with an equal or higher role rank.');
+        }
+      } else {
+        if (targetRank > modifierRank || user.role === 'platform_super_admin') {
+          throw new ForbiddenException('You cannot delete a platform administrator.');
+        }
       }
     }
 
@@ -754,5 +868,183 @@ export class UsersService {
     });
 
     return { message: `User ${user.name} removed successfully.` };
+  }
+
+  async previewImportUsers(records: any[], creator: ScopedUser) {
+    const isPlatform = isPlatformOwner(creator);
+    const tenantId = requireTenantId(creator);
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, code: true, name: true, maxUsers: true },
+    });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const maxUsers = tenant.maxUsers ?? 50;
+    const currentUsersCount = await this.prisma.user.count({
+      where: { tenantId, deletedAt: null },
+    });
+
+    const existingUsers = await this.prisma.user.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { email: true, employeeCode: true },
+    });
+    const existingEmails = new Set(existingUsers.map((u) => u.email.toLowerCase()));
+
+    const creatorRank = ROLE_RANKS[creator.role] || 0;
+    const valid: any[] = [];
+    const errors: any[] = [];
+    const seenBatchEmails = new Set<string>();
+
+    const teams = await this.prisma.team.findMany({
+      where: { tenantId },
+      select: { id: true, name: true },
+    });
+    const teamMap = new Map(teams.map((t) => [t.name.toLowerCase().trim(), t.id]));
+
+    let simulatedSeq = currentUsersCount + 1;
+
+    for (let i = 0; i < (records || []).length; i++) {
+      const row = records[i] || {};
+      const rowNum = i + 1;
+      const name = (row.name || row['Full Name'] || row['name'] || '').trim();
+      const email = (row.email || row['Email Address'] || row['Email'] || row['email'] || '').trim().toLowerCase();
+      const phone = (row.phone || row['Phone Number'] || row['Phone'] || row['phone'] || '').trim();
+      const rawRole = (row.role || row['Role'] || row['role'] || 'employee').trim().toLowerCase();
+      const teamName = (row.teamName || row['Team Name'] || row.team || '').trim();
+
+      const rowErrors: string[] = [];
+      if (!name) rowErrors.push('Full name is required');
+      if (!email) {
+        rowErrors.push('Email address is required');
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        rowErrors.push('Invalid email address format');
+      } else if (existingEmails.has(email)) {
+        rowErrors.push(`Email "${email}" already registered in this company`);
+      } else if (seenBatchEmails.has(email)) {
+        rowErrors.push(`Duplicate email "${email}" within import file`);
+      }
+
+      const validRoles = ['admin', 'sub_admin', 'employee', 'store_manager', 'project_manager'];
+      let role = rawRole;
+      if (!validRoles.includes(role)) {
+        role = 'employee';
+      }
+      const targetRank = ROLE_RANKS[role] || 0;
+      if (targetRank >= creatorRank && !isPlatform) {
+        rowErrors.push(`Role "${role}" requires higher rank than creator`);
+      }
+
+      let teamId: string | null = null;
+      if (teamName) {
+        teamId = teamMap.get(teamName.toLowerCase()) || null;
+      }
+
+      if (rowErrors.length > 0) {
+        errors.push({ row: rowNum, data: { name, email, phone, role, teamName }, errors: rowErrors });
+      } else {
+        seenBatchEmails.add(email);
+        const roleShort = ROLE_CODE_MAP[role] || 'EMP';
+        const rawCode = (tenant.code || 'DEFAULT').toUpperCase();
+        const cleanTenant = rawCode.startsWith('JNC-') ? rawCode.replace('JNC-', '') : rawCode;
+        const previewCode = `JNC-${cleanTenant}-${roleShort}-${String(simulatedSeq).padStart(3, '0')}`;
+        simulatedSeq++;
+
+        valid.push({
+          row: rowNum,
+          name,
+          email,
+          phone,
+          role,
+          teamId,
+          teamName: teamName || null,
+          previewCode,
+        });
+      }
+    }
+
+    const availableSlots = Math.max(0, maxUsers - currentUsersCount);
+    const capacityExceeded = valid.length > availableSlots;
+
+    return {
+      totalRows: (records || []).length,
+      validRows: valid.length,
+      errorRows: errors.length,
+      availableSlots,
+      currentUsersCount,
+      maxUsers,
+      capacityExceeded,
+      valid,
+      errors,
+    };
+  }
+
+  async commitImportUsers(records: any[], creator: ScopedUser) {
+    const preview = await this.previewImportUsers(records, creator);
+    if (preview.valid.length === 0) {
+      throw new BadRequestException('No valid user records to import.');
+    }
+    if (preview.capacityExceeded) {
+      throw new BadRequestException(
+        `User license capacity exceeded (${preview.valid.length} users requested, ${preview.availableSlots} available). Upgrade plan to add more members.`,
+      );
+    }
+
+    const tenantId = requireTenantId(creator);
+    const createdUsers: any[] = [];
+
+    for (const item of preview.valid) {
+      const tempPassword = generateSecurePassword(14);
+      const passwordHash = await bcrypt.hash(tempPassword, 10);
+      const employeeCode = await this.generateEmployeeCode(tenantId, item.role);
+
+      const user = await this.prisma.user.create({
+        data: {
+          tenantId,
+          employeeCode,
+          name: item.name,
+          email: item.email,
+          phone: item.phone || null,
+          passwordHash,
+          role: item.role,
+          teamId: item.teamId || null,
+          isActive: true,
+          mustResetPassword: true,
+          createdById: creator.id,
+        },
+        select: {
+          id: true,
+          employeeCode: true,
+          name: true,
+          email: true,
+          phone: true,
+          role: true,
+          isActive: true,
+          mustResetPassword: true,
+          createdAt: true,
+        },
+      });
+
+      createdUsers.push({
+        user,
+        tempPassword,
+      });
+
+      await this.auditService.log({
+        tenantId,
+        actorId: creator.id,
+        actorName: creator.employeeCode,
+        action: 'IMPORT_USER',
+        entityName: 'User',
+        entityId: user.id,
+        afterState: { employeeCode: user.employeeCode, email: user.email, role: user.role },
+      });
+    }
+
+    return {
+      success: true,
+      count: createdUsers.length,
+      users: createdUsers,
+      message: `Successfully imported ${createdUsers.length} users. Temporary credentials generated.`,
+    };
   }
 }

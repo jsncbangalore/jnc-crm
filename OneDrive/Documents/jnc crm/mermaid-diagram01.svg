@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1799.7209999999993 1066.8439999999998" width="1799.7209999999993" height="1066.8439999999998" style="--bg:#1F1F1F;--fg:#CCCCCC;--line:#CCCCCC;--accent:#0078D4;--muted:#CCCCCCCC;--surface:#181818;--border:#CCCCCC;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<polyline class="edge" data-from="A" data-to="B" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="853.7332499999998,76.9 853.7332499999997,124.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="B" data-to="C" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="853.7332499999997,161.8 853.7332499999998,209.8" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="C" data-to="D" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Fails: Tesseract cannot decode AVIF container directly" points="853.7332499999998,449.144 853.7332499999998,565.444" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="D" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="853.7332499999998,602.344 853.7332499999998,650.344" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="E" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="853.7332499999998,687.2439999999999 853.7332499999997,735.2439999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="F" data-to="G" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="853.7332499999997,772.144 853.7332499999997,820.144" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="G" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="853.7332499999997,857.0439999999999 853.7332499999997,905.0439999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H" data-to="I" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="853.7332499999997,941.9439999999998 853.7332499999997,959.944 234.36899999999991,959.944 234.36899999999991,977.944" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H" data-to="J" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="853.7332499999997,941.9439999999998 853.7332499999997,959.944 634.0639999999999,959.944 634.0639999999999,977.944" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H" data-to="K" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="853.7332499999997,941.9439999999998 853.7332499999997,959.944 1073.4024999999997,959.944 1073.4024999999997,977.944" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H" data-to="L" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="853.7332499999997,941.9439999999998 853.7332499999997,959.944 1547.5679999999993,959.944 1547.5679999999993,977.944" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="C" data-to="D" data-label="Fails: Tesseract cannot decode AVIF container directly">
+  <rect x="715.2332499999998" y="492.144" width="276.6339999999999" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="853.5502499999998" y="507.294" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Fails: Tesseract cannot decode AVIF container directly</text>
+</g>
+<g class="node" data-id="A" data-label="User uploads iPhone/Android AVIF Photo (Sampath Singh Bill, ₹1,155.00)" data-shape="rectangle">
+  <rect x="626.3897499999998" y="40" width="454.68699999999984" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="853.7332499999998" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">User uploads iPhone/Android AVIF Photo (Sampath Singh Bill, ₹1,155.00)</text>
+</g>
+<g class="node" data-id="B" data-label="Client (SmartBillScannerModal.tsx)" data-shape="rectangle">
+  <rect x="731.2412499999997" y="124.9" width="244.98399999999995" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="853.7332499999997" y="143.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Client (SmartBillScannerModal.tsx)</text>
+</g>
+<g class="node" data-id="C" data-label="Tesseract.js Browser Engine" data-shape="diamond">
+  <polygon points="853.7332499999998,209.79999999999998 973.4052499999998,329.472 853.7332499999998,449.144 734.0612499999997,329.472" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="853.7332499999998" y="329.472" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Tesseract.js Browser Engine</text>
+</g>
+<g class="node" data-id="D" data-label="Fallback: POST /api/v1/inventory/purchase-documents/extract" data-shape="rectangle">
+  <rect x="650.4722499999998" y="565.444" width="406.5219999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="853.7332499999998" y="583.894" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Fallback: POST /api/v1/inventory/purchase-documents/extract</text>
+</g>
+<g class="node" data-id="E" data-label="inventory.service.ts: extractFromDocumentBuffer()" data-shape="rectangle">
+  <rect x="684.1877499999998" y="650.344" width="339.0909999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="853.7332499999998" y="668.7940000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">inventory.service.ts: extractFromDocumentBuffer()</text>
+</g>
+<g class="node" data-id="F" data-label="Not a PDF -&gt; Falls to line 2240: buffer.toString('utf8')" data-shape="rectangle">
+  <rect x="686.4107499999998" y="735.2439999999999" width="334.6449999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="853.7332499999997" y="753.694" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Not a PDF -&gt; Falls to line 2240: buffer.toString(&#39;utf8&#39;)</text>
+</g>
+<g class="node" data-id="G" data-label="Raw Binary Image Headers Converted to 29,954 ASCII characters" data-shape="rectangle">
+  <rect x="642.3212499999997" y="820.144" width="422.8239999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="853.7332499999997" y="838.594" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Raw Binary Image Headers Converted to 29,954 ASCII characters</text>
+</g>
+<g class="node" data-id="H" data-label="scanBillOcr() Regex Engine" data-shape="rectangle">
+  <rect x="751.9892499999996" y="905.0439999999999" width="203.488" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="853.7332499999997" y="923.4939999999999" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">scanBillOcr() Regex Engine</text>
+</g>
+<g class="node" data-id="I" data-label="Vendor = 'ftypavif mif1avifmiaf pmeta !hdlr pict' (Header Atoms)" data-shape="rectangle">
+  <rect x="40" y="977.944" width="388.73799999999983" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="234.36899999999991" y="996.394" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Vendor = &#39;ftypavif mif1avifmiaf pmeta !hdlr pict&#39; (Header Atoms)</text>
+</g>
+<g class="node" data-id="J" data-label="Invoice No = 'auxiliary' (Alpha Channel Metadata Atom)" data-shape="rectangle">
+  <rect x="456.73799999999983" y="977.944" width="354.65199999999993" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="634.0639999999999" y="996.394" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Invoice No = &#39;auxiliary&#39; (Alpha Channel Metadata Atom)</text>
+</g>
+<g class="node" data-id="K" data-label="Items = 108 False Components (Parsed from Binary Offsets: 4iloc, av01, pixi)" data-shape="rectangle">
+  <rect x="839.3899999999998" y="977.944" width="468.02499999999975" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1073.4024999999997" y="996.394" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Items = 108 False Components (Parsed from Binary Offsets: 4iloc, av01, pixi)</text>
+</g>
+<g class="node" data-id="L" data-label="Grand Total = $3,484.00 (Synthetic hallucination from binary noise)" data-shape="rectangle">
+  <rect x="1335.4149999999995" y="977.944" width="424.3059999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1547.5679999999993" y="996.394" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Grand Total = $3,484.00 (Synthetic hallucination from binary noise)</text>
+</g>
+</svg>

@@ -11,6 +11,12 @@ import {
   Zap,
 } from 'lucide-react';
 import { inventoryApi } from '../../services/api';
+import { ValidationErrorPanel } from '../common/ValidationErrorPanel';
+import {
+  parseValidationErrors,
+  ParsedValidationError,
+  jumpToErrorField,
+} from '../../utils/validationErrorHandler';
 
 interface EditComponentModalProps {
   isOpen: boolean;
@@ -35,11 +41,11 @@ export const EditComponentModal: React.FC<EditComponentModalProps> = ({
   const [customProject, setCustomProject] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [unit, setUnit] = useState('Nos');
-  const [openingStock, setOpeningStock] = useState<number>(0);
-  const [unitPrice, setUnitPrice] = useState<number>(0);
+  const [openingStock, setOpeningStock] = useState<number | string>(0);
+  const [unitPrice, setUnitPrice] = useState<number | string>(0);
   const [taxRate, setTaxRate] = useState<number>(18);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<ParsedValidationError[]>([]);
 
   useEffect(() => {
     if (item) {
@@ -51,7 +57,7 @@ export const EditComponentModal: React.FC<EditComponentModalProps> = ({
       setOpeningStock(Number(item.quantityOnHand ?? item.presentStock ?? 0));
       setUnitPrice(Number(item.unitPrice || 0));
       setTaxRate(Number(item.taxRate ?? 18));
-      setError(null);
+      setValidationErrors([]);
     }
   }, [item, existingProjects]);
 
@@ -62,12 +68,22 @@ export const EditComponentModal: React.FC<EditComponentModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!componentName.trim()) {
-      setError('Please enter a Component Name');
+      setValidationErrors([
+        {
+          id: 'err-comp-name',
+          fieldKey: 'componentName',
+          fieldLabel: 'Component Name',
+          domId: 'edit-comp-name',
+          humanMsg: 'Please enter a Component Name. This field cannot be left blank.',
+          rawMessage: 'Component Name is required',
+        },
+      ]);
+      jumpToErrorField('edit-comp-name');
       return;
     }
 
     setSaving(true);
-    setError(null);
+    setValidationErrors([]);
 
     try {
       // 1. Update SKU if exists
@@ -97,7 +113,26 @@ export const EditComponentModal: React.FC<EditComponentModalProps> = ({
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Failed to update component');
+      const parsed = parseValidationErrors(err, {
+        componentName: { label: 'Component Name', id: 'edit-comp-name' },
+        name: { label: 'Component Name', id: 'edit-comp-name' },
+        partValue: { label: 'Component Name', id: 'edit-comp-name' },
+        project: { label: 'Project Name', id: 'edit-comp-project' },
+        supplierName: { label: 'Supplier Name', id: 'edit-comp-supplier' },
+        supplier: { label: 'Supplier Name', id: 'edit-comp-supplier' },
+        unit: { label: 'Unit', id: 'edit-comp-unit' },
+        openingStock: { label: 'On-Hand Stock', id: 'edit-comp-stock' },
+        quantityOnHand: { label: 'On-Hand Stock', id: 'edit-comp-stock' },
+        presentStock: { label: 'On-Hand Stock', id: 'edit-comp-stock' },
+        unitPrice: { label: 'Base Rate (₹)', id: 'edit-comp-price' },
+        price: { label: 'Base Rate (₹)', id: 'edit-comp-price' },
+        costPrice: { label: 'Cost Price (₹)', id: 'edit-comp-price' },
+        taxRate: { label: 'GST Rate', id: 'edit-comp-tax' },
+      });
+      setValidationErrors(parsed);
+      if (parsed.length > 0 && parsed[0].domId) {
+        setTimeout(() => jumpToErrorField(parsed[0].domId), 100);
+      }
     } finally {
       setSaving(false);
     }
@@ -138,19 +173,21 @@ export const EditComponentModal: React.FC<EditComponentModalProps> = ({
 
           {/* Form */}
           <form id="edit-component-form" onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto space-y-3.5 flex-1">
-            {error && (
-              <div className="p-3 rounded-xl bg-rose-50 dark:bg-red-500/10 border border-rose-200 dark:border-red-500/30 text-xs text-rose-700 dark:text-rose-300 font-medium">
-                {error}
-              </div>
+            {validationErrors.length > 0 && (
+              <ValidationErrorPanel
+                errors={validationErrors}
+                onClear={() => setValidationErrors([])}
+              />
             )}
 
             {/* Component Name & SKU */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-900 dark:text-slate-200 mb-1">
+                <label className="block text-xs font-bold text-slate-900 dark:text-slate-200 mb-1" htmlFor="edit-comp-name">
                   COMPONENT NAME <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="edit-comp-name"
                   type="text"
                   required
                   value={componentName}
@@ -160,10 +197,11 @@ export const EditComponentModal: React.FC<EditComponentModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-900 dark:text-slate-200 mb-1">
+                <label className="block text-xs font-bold text-slate-900 dark:text-slate-200 mb-1" htmlFor="edit-comp-skucode">
                   SKU / ITEM CODE
                 </label>
                 <input
+                  id="edit-comp-skucode"
                   type="text"
                   disabled
                   value={skuCode}
@@ -175,13 +213,14 @@ export const EditComponentModal: React.FC<EditComponentModalProps> = ({
             {/* Project & Supplier */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-900 dark:text-slate-200 mb-1">
+                <label className="block text-xs font-bold text-slate-900 dark:text-slate-200 mb-1" htmlFor="edit-comp-project">
                   <span className="inline-flex items-center gap-1 text-blue-600 dark:text-crm-blue">
                     <Layers size={13} />
                     LOADED FOR / PROJECT NAME
                   </span>
                 </label>
                 <select
+                  id="edit-comp-project"
                   value={project}
                   onChange={(e) => setProject(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -195,6 +234,7 @@ export const EditComponentModal: React.FC<EditComponentModalProps> = ({
                 </select>
                 {project === '__custom__' && (
                   <input
+                    id="edit-comp-custom-project"
                     type="text"
                     required
                     placeholder="Type project name..."
@@ -206,13 +246,14 @@ export const EditComponentModal: React.FC<EditComponentModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-900 dark:text-slate-200 mb-1">
+                <label className="block text-xs font-bold text-slate-900 dark:text-slate-200 mb-1" htmlFor="edit-comp-supplier">
                   <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
                     <Building2 size={13} />
                     SUPPLIER / BOUGHT FROM
                   </span>
                 </label>
                 <input
+                  id="edit-comp-supplier"
                   type="text"
                   value={supplierName}
                   onChange={(e) => setSupplierName(e.target.value)}
@@ -224,23 +265,37 @@ export const EditComponentModal: React.FC<EditComponentModalProps> = ({
             {/* Stock, Unit, Price, GST % */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-slate-50 dark:bg-[#141722] p-3 rounded-xl border border-slate-300 dark:border-[#2A3042]">
               <div>
-                <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase">
+                <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase" htmlFor="edit-comp-stock">
                   On-Hand Stock
                 </label>
                 <input
+                  id="edit-comp-stock"
                   type="number"
                   min="0"
-                  value={openingStock}
-                  onChange={(e) => setOpeningStock(Number(e.target.value))}
+                  placeholder="0"
+                  value={openingStock === 0 || openingStock === '0' ? '' : openingStock}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === '') {
+                      setOpeningStock('');
+                    } else {
+                      setOpeningStock(raw.replace(/^0+([1-9])/, '$1'));
+                    }
+                  }}
+                  onBlur={() => {
+                    if (openingStock === '') setOpeningStock(0);
+                  }}
                   className="w-full px-2.5 py-1.5 text-xs font-mono font-bold rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase">
+                <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase" htmlFor="edit-comp-unit">
                   Unit
                 </label>
                 <select
+                  id="edit-comp-unit"
                   value={unit}
                   onChange={(e) => setUnit(e.target.value)}
                   className="w-full px-2 py-1.5 text-xs font-bold rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -254,26 +309,40 @@ export const EditComponentModal: React.FC<EditComponentModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase">
+                <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase" htmlFor="edit-comp-price">
                   Base Rate (₹)
                 </label>
                 <input
+                  id="edit-comp-price"
                   type="number"
                   min="0"
                   step="0.01"
-                  value={unitPrice}
-                  onChange={(e) => setUnitPrice(Number(e.target.value))}
+                  placeholder="0.00"
+                  value={unitPrice === 0 || unitPrice === '0' ? '' : unitPrice}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === '') {
+                      setUnitPrice('');
+                    } else {
+                      setUnitPrice(raw.replace(/^0+([1-9])/, '$1'));
+                    }
+                  }}
+                  onBlur={() => {
+                    if (unitPrice === '') setUnitPrice(0);
+                  }}
                   className="w-full px-2.5 py-1.5 text-xs font-mono font-bold rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase">
+                <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase" htmlFor="edit-comp-tax">
                   <span className="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400">
                     <Percent size={10} /> GST Rate
                   </span>
                 </label>
                 <select
+                  id="edit-comp-tax"
                   value={taxRate}
                   onChange={(e) => setTaxRate(Number(e.target.value))}
                   className="w-full px-2 py-1.5 text-xs font-bold rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-amber-700 dark:text-amber-300 focus:outline-none focus:ring-2 focus:ring-blue-500"

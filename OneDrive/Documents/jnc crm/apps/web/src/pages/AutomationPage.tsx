@@ -9,6 +9,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { automationApi } from '../services/api';
 import { AutomationRule, AutomationStep, AutomationStepType } from '../types';
+import { BRAND_CONFIG } from '../config/brand';
 
 // Trigger event definitions
 const TRIGGER_EVENTS = [
@@ -1008,7 +1009,7 @@ export default function AutomationPage() {
                                 <label className="text-[11px] text-slate-400">SMS Text (Max 160 chars)</label>
                                 <textarea
                                   className="input w-full text-xs h-16 resize-none"
-                                  placeholder="e.g. Hi {{customerName}}, thanks for reaching out to JNC Network."
+                                  placeholder={`e.g. Hi {{customerName}}, thanks for reaching out to ${BRAND_CONFIG.displayName}.`}
                                   value={step.config.message || ''}
                                   onChange={(e) => handleUpdateStepConfig(idx, 'message', e.target.value)}
                                 />

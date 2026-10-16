@@ -2,12 +2,14 @@
 // Multi-Tenant SaaS Platform Partitioning
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x", "rhel-openssl-3.0.x", "rhel-openssl-1.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ==========================================
@@ -54,6 +56,7 @@ model Tenant {
 
   isOnboarded         Boolean        @default(false)
   isInternal          Boolean        @default(false)
+  webhookKeyHash      String?        @unique
 
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
@@ -69,6 +72,7 @@ model Tenant {
   leadShares      LeadShare[]
   mailAccounts    MailAccount[]  // Per-tenant isolated SMTP configurations
   suppliers       Supplier[]
+  purchaseBills   PurchaseBill[]
   products        Product[]
   skus            Sku[]
   warehouses      Warehouse[]
@@ -86,7 +90,6 @@ model Tenant {
   auditLogs       AuditLog[]
   paymentRecords  PaymentRecord[]
   stockPositions  ProjectStockPosition[]
-  purchaseBills   PurchaseBill[]
 
   @@index([status])
 }
@@ -371,6 +374,37 @@ model Supplier {
   @@index([tenantId])
 }
 
+model PurchaseBill {
+  id             String    @id @default(uuid())
+  tenantId       String
+  invoiceNumber  String
+  vendorName     String
+  vendorGstin    String?
+  vendorAddress  String?
+  invoiceDate    String?
+  project        String?   @default("General Inventory")
+  items          Json?     @default("[]")
+  subtotal       Float     @default(0)
+  taxRate        Float     @default(18)
+  cgst           Float     @default(0)
+  sgst           Float     @default(0)
+  igst           Float     @default(0)
+  totalTax       Float     @default(0)
+  grandTotal     Float     @default(0)
+  documentUrl    String?
+  rawText        String?
+  notes          String?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy      User?     @relation("CreatedPurchaseBills", fields: [createdById], references: [id])
+
+  @@index([tenantId])
+}
+
 model Product {
   id          String    @id @default(uuid())
   tenantId    String    @default("default-tenant-id")
@@ -473,9 +507,9 @@ model StockItem {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  sku              Sku          @relation(fields: [skuId], references: [id])
-  warehouse        Warehouse    @relation(fields: [warehouseId], references: [id])
-  bin              LocationBin? @relation(fields: [binId], references: [id])
+  sku              Sku          @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  warehouse        Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  bin              LocationBin? @relation(fields: [binId], references: [id], onDelete: SetNull)
 
   @@unique([skuId, warehouseId, binId, batchNo])
 }
@@ -496,11 +530,11 @@ model StockMovement {
   performedById     String?
   createdAt         DateTime  @default(now())
 
-  sku               Sku        @relation(fields: [skuId], references: [id])
-  supplier          Supplier?  @relation("SupplierMovements", fields: [supplierId], references: [id])
-  sourceWarehouse   Warehouse? @relation("SourceWarehouse", fields: [sourceWarehouseId], references: [id])
-  destWarehouse     Warehouse? @relation("DestWarehouse", fields: [destWarehouseId], references: [id])
-  performedBy       User?      @relation("UserStockMovements", fields: [performedById], references: [id])
+  sku               Sku        @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  supplier          Supplier?  @relation("SupplierMovements", fields: [supplierId], references: [id], onDelete: SetNull)
+  sourceWarehouse   Warehouse? @relation("SourceWarehouse", fields: [sourceWarehouseId], references: [id], onDelete: SetNull)
+  destWarehouse     Warehouse? @relation("DestWarehouse", fields: [destWarehouseId], references: [id], onDelete: SetNull)
+  performedBy       User?      @relation("UserStockMovements", fields: [performedById], references: [id], onDelete: SetNull)
 }
 
 model ProjectStockPosition {
@@ -578,7 +612,7 @@ model QuotationLine {
   notes       String?
 
   quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  sku         Sku       @relation(fields: [skuId], references: [id])
+  sku         Sku       @relation(fields: [skuId], references: [id], onDelete: Cascade)
 }
 
 model Order {
@@ -631,7 +665,7 @@ model OrderLine {
   totalPrice  Float
 
   order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  sku         Sku       @relation(fields: [skuId], references: [id])
+  sku         Sku       @relation(fields: [skuId], references: [id], onDelete: Cascade)
 }
 
 model Shipment {
@@ -730,7 +764,7 @@ model InvoiceLine {
   lineTotal   Float
 
   invoice     Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  sku         Sku?      @relation(fields: [skuId], references: [id])
+  sku         Sku?      @relation(fields: [skuId], references: [id], onDelete: SetNull)
 }
 
 model StockTransfer {
@@ -752,11 +786,11 @@ model StockTransfer {
   updatedAt              DateTime  @updatedAt
 
   tenant                 Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sku                    Sku       @relation(fields: [skuId], references: [id])
-  sourceWarehouse        Warehouse @relation("SourceTransfers", fields: [sourceWarehouseId], references: [id])
-  destinationWarehouse   Warehouse @relation("DestTransfers", fields: [destinationWarehouseId], references: [id])
-  initiatedBy            User?     @relation("InitiatedTransfers", fields: [initiatedById], references: [id])
-  receivedBy             User?     @relation("ReceivedTransfers", fields: [receivedById], references: [id])
+  sku                    Sku       @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  sourceWarehouse        Warehouse @relation("SourceTransfers", fields: [sourceWarehouseId], references: [id], onDelete: Cascade)
+  destinationWarehouse   Warehouse @relation("DestTransfers", fields: [destinationWarehouseId], references: [id], onDelete: Cascade)
+  initiatedBy            User?     @relation("InitiatedTransfers", fields: [initiatedById], references: [id], onDelete: SetNull)
+  receivedBy             User?     @relation("ReceivedTransfers", fields: [receivedById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, transferNumber])
   @@index([tenantId])
@@ -1030,26 +1064,4 @@ model AccountLockout {
   lastAttemptAt  DateTime  @default(now())
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-}
-
-model PurchaseBill {
-  id           String    @id @default(uuid())
-  tenantId     String
-  billNumber   String
-  supplierName String
-  billDate     DateTime  @default(now())
-  amount       Float     @default(0)
-  status       String    @default("received") // received | pending | paid | cancelled
-  documentUrl  String?
-  notes        String?
-  createdById  String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
-
-  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy    User?     @relation("CreatedPurchaseBills", fields: [createdById], references: [id])
-
-  @@index([tenantId])
-  @@index([billNumber])
 }

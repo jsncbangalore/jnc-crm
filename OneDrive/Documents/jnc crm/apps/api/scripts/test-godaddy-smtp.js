@@ -55,7 +55,7 @@ async function main() {
           <p>Hello Santhosh,</p>
           <p>This email confirms that the <strong>JS Network Communication CRM</strong> is now connected to your live GoDaddy mail server (<code>${env.SMTP_USER}</code>).</p>
           <p style="background-color: #f0fdf4; padding: 12px; border-left: 4px solid #22c55e; color: #166534;">
-            ✅ <strong>Live SMTP Delivery Verified:</strong> Invoices, dispatch notices, and account emails will now deliver directly to client inboxes.
+            <strong>Live SMTP Delivery Verified:</strong> Invoices, dispatch notices, and account emails will now deliver directly to client inboxes.
           </p>
           <p>Sent at: ${new Date().toLocaleString('en-IN')}</p>
         </div>

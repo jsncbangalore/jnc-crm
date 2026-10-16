@@ -4,7 +4,7 @@ import {
   Search, Plus, FileText, Printer, Mail, Ban, RefreshCw, ShieldCheck,
   Truck, FileSpreadsheet, Layers, Filter, CheckCircle2, DollarSign,
   Calendar, Eye, ArrowUpRight, Check, Download, Edit3, ChevronLeft,
-  ChevronRight, ChevronsLeft, ChevronsRight
+  ChevronRight, ChevronsLeft, ChevronsRight, X, BarChart2
 } from 'lucide-react';
 import { invoicesApi } from '../services/api';
 import { Invoice, DocumentType, SignatorySettings } from '../types';
@@ -24,11 +24,25 @@ export default function InvoicesPage() {
   const [docTypeFilter, setDocTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
+  // KPI display toggle (persisted)
+  const [showKpis, setShowKpis] = useState<boolean>(() => {
+    return localStorage.getItem('jnc_show_invoices_kpis') !== 'false';
+  });
+
+  const toggleKpis = () => {
+    setShowKpis((prev) => {
+      const next = !prev;
+      localStorage.setItem('jnc_show_invoices_kpis', String(next));
+      return next;
+    });
+  };
+
   // Modals & Edit State
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSignatorySettings, setShowSignatorySettings] = useState(false);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   // Density & Horizontal Table Navigation
   const [density, setDensity] = useState<'compact' | 'normal'>('compact');
@@ -199,6 +213,19 @@ export default function InvoicesPage() {
           )}
 
           <button
+            onClick={toggleKpis}
+            className={`btn text-xs py-2 px-2.5 gap-1.5 shadow-sm border transition-all ${
+              showKpis
+                ? 'bg-white dark:bg-[#181B26] text-slate-700 dark:text-slate-300 border-slate-300 dark:border-[#2A3042] hover:bg-slate-100'
+                : 'bg-blue-50 dark:bg-crm-blue/15 text-crm-blue border-blue-300 dark:border-crm-blue/30 font-bold'
+            }`}
+            title={showKpis ? 'Hide summary boxes' : 'Show summary boxes'}
+          >
+            <BarChart2 size={14} />
+            <span>{showKpis ? 'Hide Stats' : 'Stats'}</span>
+          </button>
+
+          <button
             onClick={fetchInvoices}
             className="btn bg-white dark:bg-[#181B26] hover:bg-slate-100 dark:hover:bg-[#202534] border border-slate-300 dark:border-[#2A3042] text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white text-xs p-2.5 shadow-sm"
             title="Refresh documents"
@@ -215,48 +242,101 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {/* ─── OVERVIEW METRICS CARDS ──────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <div className="p-4 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] space-y-1 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-700 dark:text-slate-400 uppercase tracking-wider block">
-            Total Documents
-          </span>
-          <div className="text-xl sm:text-2xl font-black text-slate-950 dark:text-white font-mono">
-            {totalDocs}
-          </div>
-          <span className="text-[10.5px] text-slate-500 font-medium">Tax Invoices, SEZ & DCs</span>
-        </div>
+      {/* ─── OVERVIEW METRICS CARDS (COMPACT & REMOVABLE) ─────────────── */}
+      {showKpis && (
+        <div className="relative group">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+            {/* Card 1: Total Documents */}
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-transparent">
+                  <FileText size={13} />
+                </div>
+                <div className="truncate">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block truncate">
+                    Total Docs
+                  </span>
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                    Invoices & DCs
+                  </span>
+                </div>
+              </div>
+              <div className="text-base sm:text-lg font-black text-slate-950 dark:text-white font-mono tabular-nums shrink-0 ml-1">
+                {totalDocs}
+              </div>
+            </div>
 
-        <div className="p-4 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] space-y-1 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-700 dark:text-slate-400 uppercase tracking-wider block">
-            Taxable Subtotal
-          </span>
-          <div className="text-xl sm:text-2xl font-black text-blue-700 dark:text-crm-blue-light font-mono">
-            ₹{totalTaxable.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-          </div>
-          <span className="text-[10.5px] text-slate-500 font-medium">Base goods & services</span>
-        </div>
+            {/* Card 2: Taxable Subtotal */}
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-transparent">
+                  <Layers size={13} />
+                </div>
+                <div className="truncate">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block truncate">
+                    Taxable Subtotal
+                  </span>
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                    Base Goods & Services
+                  </span>
+                </div>
+              </div>
+              <div className="text-base sm:text-lg font-black text-blue-700 dark:text-crm-blue-light font-mono tabular-nums shrink-0 ml-1">
+                ₹{totalTaxable.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </div>
+            </div>
 
-        <div className="p-4 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] space-y-1 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-700 dark:text-slate-400 uppercase tracking-wider block">
-            GST Managed
-          </span>
-          <div className="text-xl sm:text-2xl font-black text-amber-700 dark:text-crm-amber font-mono">
-            ₹{totalGst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-          </div>
-          <span className="text-[10.5px] text-slate-500 font-medium">CGST + SGST & IGST</span>
-        </div>
+            {/* Card 3: GST Managed */}
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-crm-amber flex items-center justify-center shrink-0 border border-amber-200/60 dark:border-transparent">
+                  <ShieldCheck size={13} />
+                </div>
+                <div className="truncate">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block truncate">
+                    GST Managed
+                  </span>
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                    CGST + SGST & IGST
+                  </span>
+                </div>
+              </div>
+              <div className="text-base sm:text-lg font-black text-amber-700 dark:text-crm-amber font-mono tabular-nums shrink-0 ml-1">
+                ₹{totalGst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </div>
+            </div>
 
-        <div className="p-4 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] space-y-1 shadow-sm">
-          <span className="text-[11px] font-bold text-slate-700 dark:text-slate-400 uppercase tracking-wider block">
-            Grand Total Billed
-          </span>
-          <div className="text-xl sm:text-2xl font-black text-emerald-700 dark:text-emerald-400 font-mono">
-            ₹{totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            {/* Card 4: Grand Total Billed */}
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200/60 dark:border-transparent">
+                  <DollarSign size={13} />
+                </div>
+                <div className="truncate">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block truncate">
+                    Grand Total
+                  </span>
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                    Total Invoiced
+                  </span>
+                </div>
+              </div>
+              <div className="text-base sm:text-lg font-black text-emerald-700 dark:text-emerald-400 font-mono tabular-nums shrink-0 ml-1">
+                ₹{totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </div>
+            </div>
           </div>
-          <span className="text-[10.5px] text-slate-500 font-medium">Total invoice value</span>
+
+          {/* Quick Remove / Dismiss button */}
+          <button
+            onClick={toggleKpis}
+            className="absolute -top-2.5 -right-2 w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 dark:bg-[#2A3042] dark:hover:bg-[#343B52] text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] shadow-sm transition-all border border-slate-300 dark:border-slate-600"
+            title="Remove summary boxes"
+          >
+            <X size={11} />
+          </button>
         </div>
-      </div>
+      )}
 
       {/* ─── FILTERS & SEARCH BAR ────────────────────────────────────── */}
       <div className="p-3 sm:p-4 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] flex flex-col md:flex-row items-center justify-between gap-3 shadow-sm">
@@ -311,70 +391,7 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {/* ─── TABLE NAVIGATOR (Scroll or Pan) ─────────────────────────────── */}
-      <div className="flex items-center justify-between bg-white dark:bg-[#181B26] p-2 rounded-xl border border-slate-200 dark:border-[#2A3042] flex-wrap gap-2 text-xs shadow-sm">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-crm-blue animate-pulse" />
-            Table Navigator (Scroll or Pan):
-          </span>
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-0.5 rounded-lg border border-slate-200 dark:border-[#2A3042]">
-            <button
-              type="button"
-              onClick={() => setDensity('compact')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-                density === 'compact' ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-              }`}
-            >
-              Compact
-            </button>
-            <button
-              type="button"
-              onClick={() => setDensity('normal')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-                density === 'normal' ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-              }`}
-            >
-              Normal
-            </button>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => scrollTable('start')}
-            className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-crm-blue text-slate-800 dark:text-slate-300 flex items-center gap-1 font-bold shadow-sm"
-            title="Scroll to Start"
-          >
-            <ChevronsLeft size={13} /> Start (Component & SKU)
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTable('left')}
-            className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-            title="Pan Left"
-          >
-            <ChevronLeft size={13} /> Left
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTable('right')}
-            className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white flex items-center gap-1 font-bold shadow-sm"
-            title="Pan Right"
-          >
-            Right <ChevronRight size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTable('end')}
-            className="btn bg-white dark:bg-[#1E2230] text-[11px] py-1 px-2.5 border border-slate-300 dark:border-white/10 hover:border-amber-500 text-amber-700 dark:text-crm-amber flex items-center gap-1 font-bold shadow-sm"
-            title="Scroll to End"
-          >
-            End (Actions & Bill) <ChevronsRight size={13} />
-          </button>
-        </div>
-      </div>
 
       {/* ─── DESKTOP TABLE VIEW (≥ 1024px) ───────────────────────────── */}
       <div className="hidden lg:block card border-slate-200 dark:border-[#2A3042] overflow-hidden p-0 shadow-sm bg-white dark:bg-[#141722]">
@@ -654,8 +671,31 @@ export default function InvoicesPage() {
           fetchInvoices();
           setSelectedInvoice(newDoc);
           setEditingInvoice(null);
+          setSuccessToast(`Document #${newDoc.invoiceNumber} generated & saved successfully!`);
+          setTimeout(() => setSuccessToast(null), 5000);
         }}
       />
+
+      {/* ─── IN-APP SUCCESS NOTIFICATION BANNER ─────────────────────── */}
+      <AnimatePresence>
+        {successToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed top-20 right-6 z-[9999] px-4 py-3 rounded-xl bg-emerald-600 text-white font-bold text-xs shadow-2xl flex items-center gap-2.5 border border-emerald-400"
+          >
+            <CheckCircle2 size={16} />
+            <span>{successToast}</span>
+            <button
+              onClick={() => setSuccessToast(null)}
+              className="p-1 hover:bg-emerald-700/60 rounded text-emerald-100 hover:text-white"
+            >
+              <X size={14} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ─── SIGNATORY & STAMP SETTINGS MODAL ────────────────────────── */}
       <InvoiceSettingsModal

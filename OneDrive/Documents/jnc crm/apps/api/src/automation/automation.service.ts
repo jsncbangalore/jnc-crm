@@ -11,6 +11,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
+import { BRAND_CONFIG } from '../common/brand';
 
 export const ALLOWED_STEP_TYPES = [
   'send_email',
@@ -399,7 +400,7 @@ export class AutomationService implements OnModuleInit {
     };
 
     rules.forEach((r) => {
-      r.steps.forEach((s) => {
+      (r.steps || []).forEach((s) => {
         byActionType[s.stepType] = (byActionType[s.stepType] || 0) + 1;
       });
     });
@@ -884,17 +885,22 @@ export class AutomationService implements OnModuleInit {
   /**
    * Nightly reorder check
    */
-  async runNightlyReorderCheck() {
+  async runNightlyReorderCheck(user?: ScopedUser) {
     this.logger.log('Running nightly reorder check...');
-    const alerts = await this.inventoryService.getReorderAlerts();
+    const alerts = await this.inventoryService.getReorderAlerts(user);
 
     if (alerts.length === 0) {
       this.logger.log('All SKUs are above reorder threshold. No alerts to send.');
       return { alertsCount: 0 };
     }
 
+    const tenantId = user?.tenantId;
     const admins = await this.prisma.user.findMany({
-      where: { role: { in: ['tenant_admin', 'admin'] }, isActive: true },
+      where: {
+        role: { in: ['tenant_admin', 'admin'] },
+        isActive: true,
+        ...(tenantId ? { tenantId } : {}),
+      },
       select: { email: true, name: true },
     });
 
@@ -936,7 +942,7 @@ export class AutomationService implements OnModuleInit {
             <tbody>${alertTableRows}</tbody>
           </table>
           <p style="margin-top:20px;">Please contact suppliers directly via phone or email to place orders.</p>
-          <p><strong>JNC Network CRM — Automated Inventory Alert</strong></p>
+          <p><strong>${BRAND_CONFIG.displayName} CRM — Automated Inventory Alert</strong></p>
         </div>
       </div>
     `;

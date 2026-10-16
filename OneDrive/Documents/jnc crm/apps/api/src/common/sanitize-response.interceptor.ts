@@ -26,32 +26,41 @@ const SENSITIVE_KEYS = new Set([
   'appsecret',
 ]);
 
-export function sanitizeObject(data: any): any {
+export function sanitizeObject(data: any, seen = new WeakSet(), depth = 0): any {
   if (data === null || data === undefined) {
     return data;
   }
 
+  if (typeof data !== 'object') {
+    return data;
+  }
+
+  // If it's a Date, Buffer, Stream, or Express Response/Request, return as is
+  if (
+    data instanceof Date ||
+    Buffer.isBuffer(data) ||
+    depth > 20 ||
+    seen.has(data) ||
+    typeof data.pipe === 'function' ||
+    typeof data.setHeader === 'function'
+  ) {
+    return data;
+  }
+
+  seen.add(data);
+
   if (Array.isArray(data)) {
-    return data.map((item) => sanitizeObject(item));
+    return data.map((item) => sanitizeObject(item, seen, depth + 1));
   }
 
-  if (typeof data === 'object') {
-    // If it's a Date or Buffer, return as is
-    if (data instanceof Date || Buffer.isBuffer(data)) {
-      return data;
+  const cleaned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (SENSITIVE_KEYS.has(key.toLowerCase())) {
+      continue; // strip sensitive key completely
     }
-
-    const cleaned: Record<string, any> = {};
-    for (const [key, value] of Object.entries(data)) {
-      if (SENSITIVE_KEYS.has(key.toLowerCase())) {
-        continue; // strip sensitive key completely
-      }
-      cleaned[key] = sanitizeObject(value);
-    }
-    return cleaned;
+    cleaned[key] = sanitizeObject(value, seen, depth + 1);
   }
-
-  return data;
+  return cleaned;
 }
 
 @Injectable()

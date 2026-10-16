@@ -19,6 +19,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { ResetTenantAdminPasswordDto } from './dto/platform-admin.dto';
+import { validatePasswordPolicy } from '../common/password-policy';
 
 export interface CreateTenantDto {
   code: string;            // e.g. "VERTEX", "ACME"
@@ -174,8 +175,18 @@ export class PlatformService {
       throw new ConflictException(`User with email '${adminEmail}' is already registered in the system`);
     }
 
-    const tempPassword = dto.adminPassword || 'Admin@123456';
-    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    let tempPassword = dto.adminPassword;
+    if (tempPassword !== undefined && tempPassword !== null && tempPassword.trim().length > 0) {
+      validatePasswordPolicy(tempPassword, { email: adminEmail, name: dto.adminName });
+    } else {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789#@!$*-_';
+      let generatedPass = '';
+      for (let i = 0; i < 14; i++) {
+        generatedPass += chars.charAt(crypto.randomInt(0, chars.length));
+      }
+      tempPassword = generatedPass;
+    }
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
     const adminEmployeeCode = cleanCode.startsWith('JNC-') ? `${cleanCode}-SA-001` : `JNC-${cleanCode}-SA-001`;
 
     // 2. Transactional creation of Tenant + Company Admin
@@ -226,9 +237,13 @@ export class PlatformService {
       return { tenant, adminUser };
     });
 
-    // 3. Dispatch official credentials email to the newly created company's Super Admin
     let emailDispatched = false;
     let emailStatusMessage = 'Email not requested';
+    let mailInfo: { status: string; reason: string | null; provider: string } = {
+      status: dto.sendEmail === false ? 'not_configured' : 'failed',
+      reason: null,
+      provider: this.notificationsService.getMailProvider(),
+    };
     const baseFrontendUrl = (process.env.FRONTEND_URL || dto?.appUrl || process.env.APP_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
     const loginUrl = `${baseFrontendUrl}/login`;
 
@@ -317,15 +332,24 @@ export class PlatformService {
           html: emailHtml,
           text: `Hello ${result.adminUser.name},\n\nYour company's CRM workspace has been provisioned:\n\nCompany: ${result.tenant.name} (${result.tenant.code})\nUser ID: ${result.adminUser.employeeCode}\nEmail: ${result.adminUser.email}\nTemporary Password: ${tempPassword}\nLogin URL: ${loginUrl}\n\nPlease change your temporary password upon first login.`,
           tenantId: result.tenant.id,
+          purpose: 'tenant_provisioning',
+          throwOnError: false,
         });
+        mailInfo = {
+          status: mailRes.status,
+          reason: mailRes.reason,
+          provider: mailRes.provider,
+        };
         if (mailRes && mailRes.status === 'sent') {
           emailDispatched = true;
           emailStatusMessage = `Credentials email dispatched successfully to ${result.adminUser.email}`;
         } else {
           emailDispatched = false;
-          emailStatusMessage = `Company created, but email could not be delivered (${mailRes?.status || 'unconfirmed'})`;
+          emailStatusMessage = `Company created, but email could not be delivered (${mailRes?.reason || mailRes?.status || 'unconfirmed'})`;
         }
       } catch (err: any) {
+        mailInfo.status = 'failed';
+        mailInfo.reason = err?.message || 'unexpected_error';
         emailDispatched = false;
         emailStatusMessage = `Company created, but email could not be sent: ${err?.message || 'SMTP error'}`;
       }
@@ -335,6 +359,11 @@ export class PlatformService {
       message: 'Company workspace and Tenant Admin created successfully',
       emailDispatched,
       emailStatusMessage,
+      mail: {
+        status: emailDispatched ? 'sent' : (dto.sendEmail === false ? 'not_configured' : (mailInfo.status || 'failed')),
+        reason: mailInfo.reason,
+        provider: mailInfo.provider,
+      },
       loginUrl: `${baseFrontendUrl}/login`,
       tenant: result.tenant,
       adminUser: {
@@ -351,7 +380,7 @@ export class PlatformService {
   /**
    * Update Tenant configuration or status (suspend / activate)
    */
-  async updateTenant(id: string, dto: UpdateTenantDto) {
+  async updateTenant(id: string, dto: UpdateTenantDto, actor?: any, ipAddress?: string) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id },
       include: { users: true },
@@ -405,13 +434,28 @@ export class PlatformService {
       }
     }
 
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: id,
+          actorId: actor?.sub || actor?.id || 'platform-admin',
+          actorName: actor?.name || 'Platform Administrator',
+          action: dto.status === 'suspended' ? 'SUSPEND_TENANT' : 'UPDATE_TENANT',
+          entityName: 'Tenant',
+          entityId: id,
+          afterState: JSON.stringify({ status: updated.status, name: updated.name, id }),
+          ipAddress: ipAddress || '127.0.0.1',
+        },
+      });
+    } catch {}
+
     return updated;
   }
 
   /**
    * Delete / Soft Delete Tenant workspace
    */
-  async deleteTenant(id: string) {
+  async deleteTenant(id: string, actor?: any, ipAddress?: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id } });
     if (!tenant) throw new NotFoundException('Company tenant not found');
     if (tenant.isInternal) {
@@ -422,6 +466,21 @@ export class PlatformService {
       where: { id },
       data: { deletedAt: new Date(), status: 'suspended' },
     });
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: id,
+          actorId: actor?.sub || actor?.id || 'platform-admin',
+          actorName: actor?.name || 'Platform Administrator',
+          action: 'DELETE_TENANT',
+          entityName: 'Tenant',
+          entityId: id,
+          afterState: JSON.stringify({ tenantId: id, status: 'suspended' }),
+          ipAddress: ipAddress || '127.0.0.1',
+        },
+      });
+    } catch {}
 
     return { message: 'Company workspace deactivated successfully' };
   }
@@ -467,7 +526,9 @@ export class PlatformService {
       impersonatedTenantCode: tenant.code,
     };
 
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
+    });
 
     // Write audit log entry for impersonation
     try {
@@ -531,6 +592,8 @@ export class PlatformService {
   async resetTenantAdminPassword(
     tenantId: string,
     dto?: ResetTenantAdminPasswordDto,
+    actor?: any,
+    ipAddress?: string,
   ) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -559,15 +622,28 @@ export class PlatformService {
     // Determine target email: dto.adminEmail > tenant.email > adminUser.email
     const targetEmail = (dto?.adminEmail?.trim() || tenant.email || adminUser.email).trim().toLowerCase();
 
-    // Generate strong password (minimum 12 chars using crypto.randomInt, HTML and email safe)
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789#@!$*-_';
-    let generatedPass = '';
-    for (let i = 0; i < 14; i++) {
-      generatedPass += chars.charAt(crypto.randomInt(0, chars.length));
+    // Determine password to set
+    let passwordToSet: string;
+    if (dto?.newPassword !== undefined && dto?.newPassword !== null) {
+      if (typeof dto.newPassword !== 'string' || dto.newPassword.trim().length === 0) {
+        throw new BadRequestException('Custom password must be a non-empty string and cannot be whitespace only.');
+      }
+      if (dto.newPassword.length > 200) {
+        throw new BadRequestException('Custom password must not exceed 200 characters.');
+      }
+      validatePasswordPolicy(dto.newPassword, { email: targetEmail, name: adminUser.name });
+      passwordToSet = dto.newPassword;
+    } else {
+      // Generate strong password (minimum 14 chars using crypto.randomInt, HTML and email safe)
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789#@!$*-_';
+      let generatedPass = '';
+      for (let i = 0; i < 14; i++) {
+        generatedPass += chars.charAt(crypto.randomInt(0, chars.length));
+      }
+      passwordToSet = generatedPass;
     }
-    const passwordToSet = dto?.newPassword?.trim() || generatedPass;
 
-    const passwordHash = await bcrypt.hash(passwordToSet, 10);
+    const passwordHash = await bcrypt.hash(passwordToSet, 12);
 
     const mustReset = dto?.mustResetPassword !== undefined
       ? Boolean(dto.mustResetPassword)
@@ -621,6 +697,11 @@ export class PlatformService {
 
     let emailDispatched = false;
     let emailStatusMessage = 'Email not requested';
+    let mailInfo: { status: string; reason: string | null; provider: string } = {
+      status: dto?.sendEmail === false ? 'not_configured' : 'failed',
+      reason: null,
+      provider: this.notificationsService.getMailProvider(),
+    };
     const baseFrontendUrl = (process.env.FRONTEND_URL || dto?.appUrl || process.env.APP_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
     const loginUrl = `${baseFrontendUrl}/login`;
 
@@ -705,25 +786,60 @@ export class PlatformService {
           html: emailHtml,
           text: `Hello ${adminUser.name},\n\nYour Super Admin credentials for ${tenant.name} have been updated:\n\nCompany: ${tenant.name} (${tenant.code})\nUser ID: ${adminUser.employeeCode}\nEmail: ${adminUser.email}\nPassword: ${passwordToSet}\nLogin URL: ${loginUrl}\n\nPlease change your password after logging in.`,
           tenantId: tenant.id,
+          purpose: 'password_reset',
+          throwOnError: false,
         });
+        mailInfo = {
+          status: mailRes.status,
+          reason: mailRes.reason,
+          provider: mailRes.provider,
+        };
         if (mailRes && mailRes.status === 'sent') {
           emailDispatched = true;
           emailStatusMessage = `Credentials email sent successfully to ${adminUser.email}`;
         } else {
           emailDispatched = false;
-          emailStatusMessage = `Password updated, but email could not be delivered (${mailRes?.status || 'unconfirmed'})`;
+          emailStatusMessage = `Password updated, but email could not be delivered (${mailRes?.reason || mailRes?.status || 'unconfirmed'})`;
         }
       } catch (err: any) {
+        mailInfo.status = 'failed';
+        mailInfo.reason = err?.message || 'unexpected_error';
         emailDispatched = false;
         emailStatusMessage = `Password updated, but email sending failed: ${err?.message || 'SMTP error'}`;
       }
     }
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: tenant.id,
+          actorId: actor?.sub || actor?.id || 'platform-admin',
+          actorName: actor?.name || 'Platform Administrator',
+          action: 'RESET_TENANT_ADMIN_PASSWORD',
+          entityName: 'User',
+          entityId: adminUser.id,
+          afterState: JSON.stringify({
+            targetUserId: adminUser.id,
+            targetEmail,
+            mustResetPassword: mustReset,
+            tenantId: tenant.id,
+            tenantCode: tenant.code,
+          }),
+          ipAddress: ipAddress || '127.0.0.1',
+        },
+      });
+    } catch {}
 
     return {
       success: true,
       message: 'Super Admin password reset successfully',
       emailDispatched,
       emailStatusMessage,
+      mail: {
+        status: emailDispatched ? 'sent' : (dto?.sendEmail === false ? 'not_configured' : (mailInfo.status || 'failed')),
+        reason: mailInfo.reason,
+        provider: mailInfo.provider,
+      },
       loginUrl: `${baseFrontendUrl}/login`,
       adminUser: {
         id: adminUser.id,
@@ -772,6 +888,7 @@ export class PlatformService {
   async createPlatformAdmin(
     dto: { name: string; email: string; phone?: string; role?: string },
     actor?: any,
+    ipAddress?: string,
   ) {
     const cleanEmail = dto.email.trim().toLowerCase();
     const existing = await this.prisma.user.findFirst({
@@ -822,11 +939,16 @@ export class PlatformService {
 
     let emailDispatched = false;
     let emailStatusMessage = '';
+    let mailInfo: { status: string; reason: string | null; provider: string } = {
+      status: 'failed',
+      reason: null,
+      provider: this.notificationsService.getMailProvider(),
+    };
     const frontendUrl = (process.env.FRONTEND_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
     const loginUrl = `${frontendUrl}/platform/login`;
 
     try {
-      await this.notificationsService.sendEmail({
+      const mailRes = await this.notificationsService.sendEmail({
         to: cleanEmail,
         subject: `[JNC CRM Platform] Welcome - Platform Super Admin Account Created`,
         html: `
@@ -847,13 +969,42 @@ export class PlatformService {
           </div>
         `,
         text: `Hello ${newUser.name},\n\nYour Platform Super Admin account for JNC CRM has been created.\n\nLogin Portal: ${loginUrl}\nUser ID: ${employeeCode}\nEmail: ${cleanEmail}\nTemporary Password: ${tempPassword}\n\nPlease change your password after logging in.`,
+        purpose: 'admin_invite',
+        throwOnError: false,
       });
-      emailDispatched = true;
-      emailStatusMessage = `Credentials email sent successfully to ${cleanEmail}`;
+      mailInfo = {
+        status: mailRes.status,
+        reason: mailRes.reason,
+        provider: mailRes.provider,
+      };
+      if (mailRes && mailRes.status === 'sent') {
+        emailDispatched = true;
+        emailStatusMessage = `Credentials email sent successfully to ${cleanEmail}`;
+      } else {
+        emailDispatched = false;
+        emailStatusMessage = `Account created, but email could not be delivered (${mailRes?.reason || mailRes?.status})`;
+      }
     } catch (err: any) {
       this.logger.warn(`Could not send platform admin welcome email to ${cleanEmail}: ${err.message}`);
+      mailInfo.status = 'failed';
+      mailInfo.reason = err?.message || 'unexpected_error';
       emailStatusMessage = `Account created, but email delivery failed: ${err.message}`;
     }
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: 'default-tenant-id',
+          actorId: actor?.sub || actor?.id || 'platform-admin',
+          actorName: actor?.name || 'Platform Administrator',
+          action: 'CREATE_PLATFORM_ADMIN',
+          entityName: 'PlatformAdmin',
+          entityId: newUser.id,
+          afterState: JSON.stringify({ newAdminId: newUser.id, email: newUser.email }),
+          ipAddress: ipAddress || '127.0.0.1',
+        },
+      });
+    } catch {}
 
     return {
       message: emailDispatched
@@ -863,13 +1014,18 @@ export class PlatformService {
       tempPassword,
       emailDispatched,
       emailStatusMessage,
+      mail: {
+        status: emailDispatched ? 'sent' : (mailInfo.status || 'failed'),
+        reason: mailInfo.reason,
+        provider: mailInfo.provider,
+      },
     };
   }
 
   /**
    * Toggle active state for a platform administrator
    */
-  async togglePlatformAdminActive(id: string, requestedState?: boolean) {
+  async togglePlatformAdminActive(id: string, requestedState?: boolean, actor?: any, ipAddress?: string) {
     const target = await this.prisma.user.findFirst({
       where: { id, role: 'platform_super_admin', tenantId: null },
     });
@@ -902,6 +1058,21 @@ export class PlatformService {
         isActive: true,
       },
     });
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: 'default-tenant-id',
+          actorId: actor?.sub || actor?.id || 'platform-admin',
+          actorName: actor?.name || 'Platform Administrator',
+          action: 'TOGGLE_PLATFORM_ADMIN_ACTIVE',
+          entityName: 'PlatformAdmin',
+          entityId: id,
+          afterState: JSON.stringify({ adminId: id, isActive: nextState }),
+          ipAddress: ipAddress || '127.0.0.1',
+        },
+      });
+    } catch {}
 
     return {
       message: `Platform administrator ${nextState ? 'activated' : 'deactivated'} successfully`,
@@ -952,11 +1123,16 @@ export class PlatformService {
 
     let emailDispatched = false;
     let emailStatusMessage = '';
+    let mailInfo: { status: string; reason: string | null; provider: string } = {
+      status: 'failed',
+      reason: null,
+      provider: this.notificationsService.getMailProvider(),
+    };
     const frontendUrl = (process.env.FRONTEND_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
     const loginUrl = `${frontendUrl}/platform/login`;
 
     try {
-      await this.notificationsService.sendEmail({
+      const mailRes = await this.notificationsService.sendEmail({
         to: target.email,
         subject: `[JNC CRM Platform] Your Platform Super Admin Password Has Been Reset`,
         html: `
@@ -977,11 +1153,25 @@ export class PlatformService {
           </div>
         `,
         text: `Hello ${target.name},\n\nYour Platform Super Admin password for JNC CRM has been reset.\n\nLogin Portal: ${loginUrl}\nUser ID: ${target.employeeCode}\nEmail: ${target.email}\nTemporary Password: ${tempPassword}\n\nPlease change your password after logging in.`,
+        purpose: 'password_reset',
+        throwOnError: false,
       });
-      emailDispatched = true;
-      emailStatusMessage = `Password reset email sent to ${target.email}`;
+      mailInfo = {
+        status: mailRes.status,
+        reason: mailRes.reason,
+        provider: mailRes.provider,
+      };
+      if (mailRes && mailRes.status === 'sent') {
+        emailDispatched = true;
+        emailStatusMessage = `Password reset email sent to ${target.email}`;
+      } else {
+        emailDispatched = false;
+        emailStatusMessage = `Password reset, but email could not be delivered (${mailRes?.reason || mailRes?.status})`;
+      }
     } catch (err: any) {
       this.logger.warn(`Could not send platform admin reset email to ${target.email}: ${err.message}`);
+      mailInfo.status = 'failed';
+      mailInfo.reason = err?.message || 'unexpected_error';
       emailStatusMessage = `Password reset, but email delivery failed: ${err.message}`;
     }
 
@@ -992,6 +1182,11 @@ export class PlatformService {
       tempPassword,
       emailDispatched,
       emailStatusMessage,
+      mail: {
+        status: emailDispatched ? 'sent' : (mailInfo.status || 'failed'),
+        reason: mailInfo.reason,
+        provider: mailInfo.provider,
+      },
       user: target,
     };
   }
@@ -999,7 +1194,7 @@ export class PlatformService {
   /**
    * Delete a platform administrator account
    */
-  async deletePlatformAdmin(id: string) {
+  async deletePlatformAdmin(id: string, actor?: any, ipAddress?: string) {
     const target = await this.prisma.user.findFirst({
       where: { id, role: 'platform_super_admin', tenantId: null },
     });
@@ -1018,6 +1213,21 @@ export class PlatformService {
         data: { deletedAt: new Date(), isActive: false },
       });
     });
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: 'default-tenant-id',
+          actorId: actor?.sub || actor?.id || 'platform-admin',
+          actorName: actor?.name || 'Platform Administrator',
+          action: 'DELETE_PLATFORM_ADMIN',
+          entityName: 'PlatformAdmin',
+          entityId: id,
+          afterState: JSON.stringify({ adminId: id, email: target.email }),
+          ipAddress: ipAddress || '127.0.0.1',
+        },
+      });
+    } catch {}
 
     return { message: `Platform administrator ${target.name} (${target.email}) deleted successfully.` };
   }
@@ -1074,8 +1284,22 @@ export class PlatformService {
     const count = totalUsers + 1;
     const userRole = dto.role || 'employee';
     const empCode = dto.employeeCode?.trim() || `${tenant.code}-EMP-${String(count).padStart(3, '0')}`;
-    const rawPass = dto.password || 'Jsnc@2024jsn';
-    const passwordHash = await bcrypt.hash(rawPass, 10);
+    let rawPass: string;
+    if (dto.password !== undefined && dto.password !== null) {
+      if (typeof dto.password !== 'string' || dto.password.trim().length === 0) {
+        throw new BadRequestException('Password must be a non-empty string and cannot be whitespace only.');
+      }
+      validatePasswordPolicy(dto.password, { email: cleanEmail, name: dto.name });
+      rawPass = dto.password;
+    } else {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789#@!$*-_';
+      let generatedPass = '';
+      for (let i = 0; i < 14; i++) {
+        generatedPass += chars.charAt(crypto.randomInt(0, chars.length));
+      }
+      rawPass = generatedPass;
+    }
+    const passwordHash = await bcrypt.hash(rawPass, 12);
 
     const newUser = await this.prisma.user.create({
       data: {
@@ -1125,6 +1349,34 @@ export class PlatformService {
     });
 
     return { message: `User ${user.name} removed from company successfully.` };
+  }
+
+  /**
+   * Platform System Diagnostics & Deployment Telemetry (Platform Super Admin only)
+   */
+  async getSystemInfo() {
+    let commit = process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || '';
+    if (!commit) {
+      try {
+        const { execSync } = require('child_process');
+        commit = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+      } catch (_) {
+        commit = 'local-dev';
+      }
+    }
+    const buildTime =
+      process.env.BUILD_TIME ||
+      process.env.RENDER_BUILD_TIMESTAMP ||
+      new Date().toISOString();
+
+    return {
+      commit,
+      buildTime,
+      nodeVersion: process.version,
+      nodeEnv: process.env.NODE_ENV || 'development',
+      renderServiceId: process.env.RENDER_SERVICE_ID || 'local',
+      version: '1.0.0',
+    };
   }
 }
 

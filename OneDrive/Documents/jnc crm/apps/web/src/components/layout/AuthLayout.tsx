@@ -43,13 +43,13 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
         <div className="relative z-10 flex items-center gap-3.5">
           <div className="h-11 min-h-[44px] px-3.5 py-1.5 rounded-xl bg-white shadow-sm flex items-center justify-center">
             <img
-              src={branding.companyLogoUrl || '/jnc-logo.jpg'}
+              src="/jnc-logo.jpg"
               alt="JNC Logo"
               className="h-7 w-auto object-contain"
             />
           </div>
           <span className="text-[20px] font-semibold text-white tracking-tight leading-tight">
-            JNC Network &amp; Power Solutions
+            JS Communication
           </span>
         </div>
 
@@ -83,7 +83,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
         {/* Bottom: Footer */}
         <div className="relative z-10">
           <p className="text-[13px]" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-            &copy; 2026 JNC Network &amp; Power Solutions
+            &copy; 2026 JS Communication
           </p>
         </div>
       </div>
@@ -106,13 +106,13 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
           <div className="flex items-center justify-center gap-2.5">
             <div className="h-11 min-h-[44px] px-3 py-1.5 rounded-xl bg-white shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0">
               <img
-                src={branding.companyLogoUrl || '/jnc-logo.jpg'}
+                src="/jnc-logo.jpg"
                 alt="JNC Logo"
                 className="h-6 w-auto object-contain"
               />
             </div>
             <span className="text-[16px] font-semibold text-slate-900 dark:text-white tracking-tight leading-tight">
-              JNC Network &amp; Power Solutions
+              JS Communication
             </span>
           </div>
         </div>
@@ -126,7 +126,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
 
         {/* Bottom Centre Footer */}
         <p className="text-center text-[12px] text-slate-400 dark:text-slate-500 pt-2 pb-2">
-          &copy; 2026 JNC Network &amp; Power Solutions. All rights reserved.
+          &copy; 2026 JS Communication. All rights reserved.
         </p>
       </div>
     </div>

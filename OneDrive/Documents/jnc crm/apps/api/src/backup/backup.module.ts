@@ -10,10 +10,15 @@ import { BackupService } from './backup.service';
 import { BackupController } from './backup.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
+import { AuthModule } from '../auth/auth.module';
+
+const isBackupControllerEnabled =
+  (process.env.ENABLE_INAPP_BACKUP === 'true' || process.env.ENABLE_DB_ADMIN_ENDPOINTS === 'true') &&
+  process.env.NODE_ENV !== 'production';
 
 @Module({
-  imports: [PrismaModule, AuditModule],
-  controllers: [BackupController],
+  imports: [PrismaModule, AuditModule, AuthModule],
+  controllers: isBackupControllerEnabled ? [BackupController] : [],
   providers: [BackupService],
   exports: [BackupService],
 })

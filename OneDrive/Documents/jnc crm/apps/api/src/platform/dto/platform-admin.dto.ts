@@ -10,11 +10,17 @@ import {
   IsOptional,
   IsBoolean,
   IsEmail,
+  MinLength,
+  MaxLength,
+  Matches,
 } from 'class-validator';
 
 export class ResetTenantAdminPasswordDto {
   @IsOptional()
-  @IsString()
+  @IsString({ message: 'newPassword must be a string' })
+  @MinLength(12, { message: 'Password must be at least 12 characters long' })
+  @MaxLength(200, { message: 'newPassword must not exceed 200 characters' })
+  @Matches(/^(?!\s*$).+/, { message: 'newPassword cannot be empty or whitespace only' })
   newPassword?: string;
 
   @IsOptional()
@@ -24,6 +30,10 @@ export class ResetTenantAdminPasswordDto {
   @IsOptional()
   @IsBoolean()
   sendEmail?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  mustResetPassword?: boolean;
 
   @IsOptional()
   @IsString()

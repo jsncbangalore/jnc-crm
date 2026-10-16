@@ -14,9 +14,19 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   BadRequestException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { validateUploadedFile } from '../common/file-validator';
+import { sanitizeRowForImport } from '../common/csv-sanitize.util';
+import * as Papa from 'papaparse';
+import * as XLSX from 'xlsx';
+
 import { PageAccess } from '../auth/page-access.decorator';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
@@ -40,9 +50,71 @@ export class UsersController {
     @Query('search') search?: string,
     @Query('role') role?: string,
     @Query('isActive') isActive?: string,
+    @Query('tenantId') tenantId?: string,
   ) {
-    return this.usersService.findAll(user, { search, role, isActive });
+    return this.usersService.findAll(user, { search, role, isActive, tenantId });
   }
+
+  @Get('template-csv')
+  @Roles('tenant_admin', 'admin', 'platform_super_admin')
+  downloadTemplate(@Res() res: Response) {
+    const csvContent = `Full Name,Email Address,Phone Number,Role,Team Name
+Rajesh Sharma,rajesh.sharma@example.com,+91 98450 12345,employee,Sales Team Alpha
+Pooja Patel,pooja.patel@example.com,+91 98200 55443,sub_admin,Operations
+Anand Verma,anand.verma@example.com,+91 98111 22334,store_manager,Warehouse North
+Siddharth Rao,siddharth.rao@example.com,+91 98765 43210,project_manager,Projects Hub
+Kavita Nair,kavita.nair@example.com,+91 99001 12233,employee,Sales Team Beta
+`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="jnc_users_import_template.csv"');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.send(csvContent);
+  }
+
+  @Post('import-preview')
+  @Roles('tenant_admin', 'admin', 'platform_super_admin')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+    }),
+  )
+  async importPreview(
+    @CurrentUser() user: ScopedUser,
+    @UploadedFile() file?: Express.Multer.File,
+    @Body() body?: { records?: any[]; rows?: any[] },
+  ) {
+    let records: any[] = [];
+    if (file) {
+      validateUploadedFile(file, 'spreadsheet', 50 * 1024 * 1024);
+      const lowerName = file.originalname.toLowerCase();
+      if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
+        const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        records = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      } else {
+        const csvContent = file.buffer.toString('utf-8');
+        const parseResult = Papa.parse(csvContent, { header: true, skipEmptyLines: true });
+        records = parseResult.data;
+      }
+    } else {
+      records = body?.records || body?.rows || [];
+    }
+    const sanitized = records.map((r) => sanitizeRowForImport(r));
+    return this.usersService.previewImportUsers(sanitized, user);
+  }
+
+  @Post('import-commit')
+  @Roles('tenant_admin', 'admin', 'platform_super_admin')
+  async importCommit(
+    @CurrentUser() user: ScopedUser,
+    @Body() body: { records?: any[]; rows?: any[] },
+  ) {
+    const records = body.records || body.rows || [];
+    const sanitized = records.map((r) => sanitizeRowForImport(r));
+    return this.usersService.commitImportUsers(sanitized, user);
+  }
+
 
   @Get(':id')
   @Roles('platform_super_admin', 'tenant_admin', 'admin')

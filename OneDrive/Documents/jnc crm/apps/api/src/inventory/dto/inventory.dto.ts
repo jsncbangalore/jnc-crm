@@ -147,6 +147,10 @@ export class UpdateSkuDto {
 
   @IsString()
   @IsOptional()
+  skuCode?: string;
+
+  @IsString()
+  @IsOptional()
   name?: string;
 
   @IsString()
@@ -161,9 +165,17 @@ export class UpdateSkuDto {
   @IsOptional()
   unit?: string;
 
+  @IsString()
+  @IsOptional()
+  packageType?: string;
+
   @IsNumber()
   @IsOptional()
   price?: number;
+
+  @IsNumber()
+  @IsOptional()
+  unitPrice?: number;
 
   @IsNumber()
   @IsOptional()
@@ -173,6 +185,14 @@ export class UpdateSkuDto {
   @IsOptional()
   reorderLevel?: number;
 
+  @IsNumber()
+  @IsOptional()
+  reorderPoint?: number;
+
+  @IsNumber()
+  @IsOptional()
+  reorderQty?: number;
+
   @IsString()
   @IsOptional()
   hsnCode?: string;
@@ -180,6 +200,26 @@ export class UpdateSkuDto {
   @IsNumber()
   @IsOptional()
   taxRate?: number;
+
+  @IsString()
+  @IsOptional()
+  supplierName?: string;
+
+  @IsString()
+  @IsOptional()
+  supplierId?: string;
+
+  @IsNumber()
+  @IsOptional()
+  quantityOnHand?: number;
+
+  @IsString()
+  @IsOptional()
+  reasonCode?: string;
+
+  @IsString()
+  @IsOptional()
+  warehouseId?: string;
 
   @IsBoolean()
   @IsOptional()
@@ -225,15 +265,88 @@ export class TransferStockDto {
 
 export class CreateProjectStockDto {
   @IsString()
-  @IsNotEmpty()
-  projectId: string;
+  @IsOptional()
+  projectId?: string;
 
   @IsString()
-  @IsNotEmpty()
-  skuId: string;
+  @IsOptional()
+  skuId?: string;
 
   @IsNumber()
-  allocatedQuantity: number;
+  @IsOptional()
+  allocatedQuantity?: number;
+
+  @IsString()
+  @IsOptional()
+  project?: string;
+
+  @IsString()
+  @IsOptional()
+  reference?: string;
+
+  @IsNumber()
+  @IsOptional()
+  quantity?: number;
+
+  @IsString()
+  @IsOptional()
+  itemCode?: string;
+
+  @IsString()
+  @IsOptional()
+  skuCode?: string;
+
+  @IsString()
+  @IsOptional()
+  partValue?: string;
+
+  @IsString()
+  @IsOptional()
+  package?: string;
+
+  @IsString()
+  @IsOptional()
+  packageType?: string;
+
+  @IsString()
+  @IsOptional()
+  unit?: string;
+
+  @IsNumber()
+  @IsOptional()
+  bomQtyPerUnit?: number;
+
+  @IsNumber()
+  @IsOptional()
+  batchQty?: number;
+
+  @IsNumber()
+  @IsOptional()
+  plannedRequirement?: number;
+
+  @IsNumber()
+  @IsOptional()
+  openingStock?: number;
+
+  @IsNumber()
+  @IsOptional()
+  inflow?: number;
+
+  @IsNumber()
+  @IsOptional()
+  outflow?: number;
+
+  @IsNumber()
+  @IsOptional()
+  presentStock?: number;
+
+  @IsNumber()
+  @IsOptional()
+  shortage?: number;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
 
   @IsString()
   @IsOptional()
@@ -241,6 +354,82 @@ export class CreateProjectStockDto {
 }
 
 export class UpdateProjectStockDto {
+  @IsString()
+  @IsOptional()
+  project?: string;
+
+  @IsString()
+  @IsOptional()
+  reference?: string;
+
+  @IsNumber()
+  @IsOptional()
+  quantity?: number;
+
+  @IsString()
+  @IsOptional()
+  itemCode?: string;
+
+  @IsString()
+  @IsOptional()
+  skuCode?: string;
+
+  @IsString()
+  @IsOptional()
+  partValue?: string;
+
+  @IsString()
+  @IsOptional()
+  package?: string;
+
+  @IsString()
+  @IsOptional()
+  packageType?: string;
+
+  @IsString()
+  @IsOptional()
+  unit?: string;
+
+  @IsNumber()
+  @IsOptional()
+  bomQtyPerUnit?: number;
+
+  @IsNumber()
+  @IsOptional()
+  batchQty?: number;
+
+  @IsNumber()
+  @IsOptional()
+  plannedRequirement?: number;
+
+  @IsNumber()
+  @IsOptional()
+  openingStock?: number;
+
+  @IsNumber()
+  @IsOptional()
+  inflow?: number;
+
+  @IsNumber()
+  @IsOptional()
+  outflow?: number;
+
+  @IsNumber()
+  @IsOptional()
+  presentStock?: number;
+
+  @IsNumber()
+  @IsOptional()
+  shortage?: number;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
   @IsNumber()
   @IsOptional()
   allocatedQuantity?: number;
@@ -248,10 +437,6 @@ export class UpdateProjectStockDto {
   @IsNumber()
   @IsOptional()
   consumedQuantity?: number;
-
-  @IsString()
-  @IsOptional()
-  notes?: string;
 }
 
 export class AssignProjectStockDto {
@@ -295,15 +480,68 @@ export class AllocateProjectStockDto {
 
 export class CreatePurchaseBillDto {
   @IsString()
-  @IsNotEmpty()
-  supplierId: string;
+  @IsOptional()
+  supplierId?: string;
 
   @IsString()
-  @IsNotEmpty()
-  billNumber: string;
+  @IsOptional()
+  billNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  invoiceNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  vendorName?: string;
+
+  @IsString()
+  @IsOptional()
+  vendorGstin?: string;
+
+  @IsString()
+  @IsOptional()
+  vendorAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  invoiceDate?: string;
+
+  @IsString()
+  @IsOptional()
+  project?: string;
 
   @IsNumber()
-  totalAmount: number;
+  @IsOptional()
+  subtotal?: number;
+
+  @IsNumber()
+  @IsOptional()
+  taxRate?: number;
+
+  @IsNumber()
+  @IsOptional()
+  cgst?: number;
+
+  @IsNumber()
+  @IsOptional()
+  sgst?: number;
+
+  @IsNumber()
+  @IsOptional()
+  igst?: number;
+
+  @IsNumber()
+  @IsOptional()
+  totalTax?: number;
+
+  @IsNumber()
+  @IsOptional()
+  grandTotal?: number;
+
+  @IsNumber()
+  @IsOptional()
+  totalAmount?: number;
 
   @IsArray()
   @IsOptional()
@@ -311,11 +549,18 @@ export class CreatePurchaseBillDto {
 
   @IsString()
   @IsOptional()
-  notes?: string;
+  documentUrl?: string;
 
   @IsString()
   @IsOptional()
-  documentUrl?: string;
+  rawText?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsOptional()
+  softCopyData?: any;
 }
 
 export class ScanBillOcrDto {
@@ -343,7 +588,7 @@ export class ScanBillOcrDto {
 export class BulkEditComponentsDto {
   @IsArray()
   @IsOptional()
-  items?: Array<{ skuId?: string; positionId?: string; skuCode?: string; name?: string }>;
+  items?: any[];
 
   @IsArray()
   @IsOptional()
@@ -354,32 +599,11 @@ export class BulkEditComponentsDto {
   skuIds?: string[];
 
   @IsOptional()
-  updates?: {
-    project?: string;
-    supplierName?: string;
-    packageType?: string;
-    unit?: string;
-    unitPrice?: number;
-    costPrice?: number;
-    taxRate?: number;
-    plannedRequirement?: number;
-    presentStock?: number;
-  };
+  updates?: any;
 
   @IsArray()
   @IsOptional()
-  rowUpdates?: Array<{
-    skuId?: string;
-    positionId?: string;
-    project?: string;
-    supplier?: string;
-    packageType?: string;
-    unit?: string;
-    unitPrice?: number;
-    taxRate?: number;
-    plannedRequirement?: number;
-    presentStock?: number;
-  }>;
+  rowUpdates?: any[];
 
   @IsArray()
   @IsOptional()
@@ -403,3 +627,14 @@ export class RecordPurchaseDto {
   @IsOptional()
   items?: any[];
 }
+
+export class ClearAllInventoryDto {
+  @IsString()
+  @IsNotEmpty()
+  confirmPhrase: string;
+
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}
+

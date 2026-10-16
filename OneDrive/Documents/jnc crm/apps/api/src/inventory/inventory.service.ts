@@ -5,19 +5,25 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException, UnauthorizedException, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { BackupService } from '../backup/backup.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { ScopingService } from '../auth/scoping.service';
 import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
+import { parsePagination } from '../common/pagination.util';
 import * as Papa from 'papaparse';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as zlib from 'zlib';
+import { sanitizeHtml, stripAllHtml } from '../common/html-sanitize.util';
+
 
 @Injectable()
 export class InventoryService {
+  private readonly logger = new Logger(InventoryService.name);
   private lastClearAllTimestampPerTenant: Map<string, number> = new Map();
 
   constructor(
@@ -36,9 +42,7 @@ export class InventoryService {
   }) {
     this.scopingService.getInventoryScope(user);
     const tenantId = requireTenantId(user);
-    const page = Number(query.page) || 1;
-    const limit = Number(query.limit) || 200;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip, take } = parsePagination(query, 50, 100);
     const canSeeCostPrice = user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin';
 
     // Build SKU filter scoped by tenant (never return soft-deleted SKUs)
@@ -76,8 +80,8 @@ export class InventoryService {
 
     // Calculate totals and reorder status per SKU
     const result = skus.map((sku) => {
-      const totalOnHand = sku.stockItems.reduce((s, si) => s + si.quantityOnHand, 0);
-      const totalReserved = sku.stockItems.reduce((s, si) => s + si.quantityReserved, 0);
+      const totalOnHand = (sku.stockItems || []).reduce((s, si) => s + si.quantityOnHand, 0);
+      const totalReserved = (sku.stockItems || []).reduce((s, si) => s + si.quantityReserved, 0);
       const totalAvailable = totalOnHand - totalReserved;
       const isLowStock = totalOnHand <= sku.reorderPoint;
       const stockPercent = sku.reorderPoint > 0
@@ -128,9 +132,10 @@ export class InventoryService {
       throw new NotFoundException(`SKU "${data.skuId}" not found in your organization`);
     }
 
+    const { tenantId: _injectedTenantId, ...safeData } = data as any;
     const movement = await this.prisma.stockMovement.create({
       data: {
-        ...data,
+        ...safeData,
         quantity: Number(data.quantity),
         performedById: user.id,
       },
@@ -188,7 +193,7 @@ export class InventoryService {
 
     const alerts = skus
       .map((sku) => {
-        const totalOnHand = sku.stockItems.reduce((s, si) => s + si.quantityOnHand, 0);
+        const totalOnHand = (sku.stockItems || []).reduce((s, si) => s + si.quantityOnHand, 0);
         return { sku, totalOnHand, isLowStock: totalOnHand <= sku.reorderPoint };
       })
       .filter((s) => s.isLowStock);
@@ -296,13 +301,13 @@ export class InventoryService {
       throw new NotFoundException('SKU not found');
     }
 
-    const totalOnHand = sku.stockItems.reduce((sum, s) => sum + s.quantityOnHand, 0);
-    const totalReserved = sku.stockItems.reduce((sum, s) => sum + s.quantityReserved, 0);
+    const totalOnHand = (sku.stockItems || []).reduce((sum, s) => sum + s.quantityOnHand, 0);
+    const totalReserved = (sku.stockItems || []).reduce((sum, s) => sum + s.quantityReserved, 0);
     const totalAvailable = Math.max(0, totalOnHand - totalReserved);
 
     // Calculate usage stats
-    const totalUsedInOrders = sku.orderLines.reduce((sum, ol) => sum + ol.quantity, 0);
-    const totalInwardMovements = sku.stockMovements
+    const totalUsedInOrders = (sku.orderLines || []).reduce((sum, ol) => sum + ol.quantity, 0);
+    const totalInwardMovements = (sku.stockMovements || [])
       .filter((m) => m.type === 'inward')
       .reduce((sum, m) => sum + m.quantity, 0);
     const totalOutwardMovements = sku.stockMovements
@@ -356,8 +361,8 @@ export class InventoryService {
     const sku = await this.prisma.sku.create({
       data: {
         tenantId,
-        skuCode: data.skuCode.trim(),
-        name: data.name.trim(),
+        skuCode: data.skuCode?.trim() || `SKU-${Date.now()}`,
+        name: data.name?.trim() || 'New SKU',
         category: data.category || 'General',
         hsnCode: data.hsnCode?.trim() || undefined,
         packageType: data.packageType || 'Unit',
@@ -423,18 +428,45 @@ export class InventoryService {
       throw new NotFoundException('SKU not found');
     }
 
-    // Update SKU fields
-    await this.prisma.sku.updateMany({
-      where: { id, tenantId },
-      data: {
-        ...skuData,
-        unitPrice: skuData.unitPrice !== undefined ? Number(skuData.unitPrice) : undefined,
-        costPrice: skuData.costPrice !== undefined ? Number(skuData.costPrice) : undefined,
-        taxRate: skuData.taxRate !== undefined ? Number(skuData.taxRate) : undefined,
-        reorderPoint: skuData.reorderPoint !== undefined ? Number(skuData.reorderPoint) : undefined,
-        reorderQty: skuData.reorderQty !== undefined ? Number(skuData.reorderQty) : undefined,
-      },
-    });
+    // Filter and sanitize fields strictly matching Prisma Sku model
+    const skuUpdatePayload: any = {};
+    if (skuData.name !== undefined) skuUpdatePayload.name = String(skuData.name).trim();
+    if (skuData.skuCode !== undefined || skuData.code !== undefined) {
+      skuUpdatePayload.skuCode = String(skuData.skuCode || skuData.code).trim();
+    }
+    if (skuData.category !== undefined) skuUpdatePayload.category = String(skuData.category).trim();
+    if (skuData.hsnCode !== undefined) skuUpdatePayload.hsnCode = skuData.hsnCode ? String(skuData.hsnCode).trim() : null;
+    if (skuData.packageType !== undefined || skuData.unit !== undefined) {
+      skuUpdatePayload.packageType = String(skuData.packageType || skuData.unit).trim();
+    }
+    if (skuData.unitPrice !== undefined || skuData.price !== undefined) {
+      skuUpdatePayload.unitPrice = Number(skuData.unitPrice ?? skuData.price);
+    }
+    if (skuData.costPrice !== undefined) {
+      skuUpdatePayload.costPrice = Number(skuData.costPrice);
+    }
+    if (skuData.taxRate !== undefined) {
+      skuUpdatePayload.taxRate = Number(skuData.taxRate);
+    }
+    if (skuData.reorderPoint !== undefined || skuData.reorderLevel !== undefined) {
+      skuUpdatePayload.reorderPoint = Number(skuData.reorderPoint ?? skuData.reorderLevel);
+    }
+    if (skuData.reorderQty !== undefined) {
+      skuUpdatePayload.reorderQty = Number(skuData.reorderQty);
+    }
+    if (skuData.datasheetUrl !== undefined) {
+      skuUpdatePayload.datasheetUrl = skuData.datasheetUrl;
+    }
+    if (skuData.preferredSupplierId !== undefined) {
+      skuUpdatePayload.preferredSupplierId = skuData.preferredSupplierId;
+    }
+
+    if (Object.keys(skuUpdatePayload).length > 0) {
+      await this.prisma.sku.updateMany({
+        where: { id, tenantId },
+        data: skuUpdatePayload,
+      });
+    }
     const updated = await this.prisma.sku.findFirst({ where: { id, tenantId } });
 
     // Handle Quantity adjustments via StockMovement Ledger
@@ -962,9 +994,7 @@ export class InventoryService {
     query?: { page?: number; limit?: number; status?: string; warehouseId?: string; search?: string },
   ) {
     const tenantId = requireTenantId(user);
-    const page = Number(query?.page) || 1;
-    const limit = Number(query?.limit) || 50;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip, take } = parsePagination(query, 25, 100);
 
     const where: any = { tenantId };
 
@@ -1249,9 +1279,7 @@ export class InventoryService {
     query?: { warehouseId?: string; skuId?: string; type?: string; page?: number; limit?: number },
   ) {
     const tenantId = requireTenantId(user);
-    const page = Number(query?.page) || 1;
-    const limit = Number(query?.limit) || 50;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip, take } = parsePagination(query, 25, 100);
 
     const where: any = {
       sku: { tenantId },
@@ -1521,7 +1549,7 @@ export class InventoryService {
 
     const belowReorderPoint = skusRaw
       .map((sku) => {
-        const totalOnHand = sku.stockItems.reduce((s, si) => s + si.quantityOnHand, 0);
+        const totalOnHand = (sku.stockItems || []).reduce((s, si) => s + si.quantityOnHand, 0);
         return { sku, totalOnHand, isLowStock: totalOnHand <= sku.reorderPoint };
       })
       .filter((s) => s.isLowStock)
@@ -1901,8 +1929,32 @@ export class InventoryService {
   /**
    * Clear all inventory data completely fresh for the tenant (SKUs, Stock Items, Movements, Transfers, Project Stock Positions)
    */
-  async clearAllInventory(confirmMessage: string, user: ScopedUser) {
+  async clearAllInventory(confirmPhrase: string, password: string, user: ScopedUser) {
     const tenantId = requireTenantId(user);
+
+    if (!password || typeof password !== 'string' || password.trim().length === 0) {
+      throw new BadRequestException('Current password is required to wipe inventory.');
+    }
+
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { id: true, passwordHash: true, failedLoginAttempts: true },
+    });
+    if (!dbUser || !dbUser.passwordHash) {
+      throw new UnauthorizedException('User credentials not found.');
+    }
+
+    const passwordValid = await bcrypt.compare(password, dbUser.passwordHash);
+    if (!passwordValid) {
+      const currentAttempts = (dbUser.failedLoginAttempts || 0) + 1;
+      const isLocked = currentAttempts >= 5;
+      const lockedUntil = isLocked ? new Date(Date.now() + 15 * 60 * 1000) : null;
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: currentAttempts, lockoutUntil: lockedUntil },
+      }).catch(() => {});
+      throw new UnauthorizedException('Invalid current password.');
+    }
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -1911,14 +1963,27 @@ export class InventoryService {
 
     if (!tenant) throw new NotFoundException('Tenant organization not found.');
 
-    const expectedConfirm = `DELETE ALL INVENTORY OF ${tenant.code.toUpperCase()}`;
-    if (!confirmMessage || confirmMessage.trim() !== expectedConfirm) {
-      throw new BadRequestException(`Confirmation message invalid. Body must equal: {"confirm": "${expectedConfirm}"}`);
+    const companyCode = (tenant.code || '').toUpperCase();
+    const expectedHyphen = `WIPE-INVENTORY-${companyCode}`;
+    const expectedDirect = `WIPE-INVENTORY${companyCode}`;
+    const expectedSpace = `WIPE-INVENTORY ${companyCode}`;
+    const normalizedConfirm = confirmPhrase ? confirmPhrase.trim().toUpperCase() : '';
+    const isWipeConfirm =
+      normalizedConfirm === expectedHyphen ||
+      normalizedConfirm === expectedDirect ||
+      normalizedConfirm === expectedSpace ||
+      normalizedConfirm === 'WIPE-INVENTORY';
+
+    if (!isWipeConfirm) {
+      throw new BadRequestException(`Confirmation phrase invalid. Expected "${expectedHyphen}" or "WIPE-INVENTORY".`);
     }
 
     // Enforce 1-hour rate limit per company via persistent AuditLog query
     const latestAuditLog = await this.prisma.auditLog.findFirst({
-      where: { tenantId, action: 'INVENTORY_CLEAR_ALL' },
+      where: {
+        tenantId,
+        action: { in: ['WIPE_TENANT_INVENTORY', 'INVENTORY_CLEAR_ALL'] },
+      },
       orderBy: { timestamp: 'desc' },
     });
 
@@ -2004,10 +2069,10 @@ export class InventoryService {
         tenantId,
         actorId: user.id,
         actorName: (user as any)?.name || user.employeeCode || 'Administrator',
-        action: 'INVENTORY_CLEAR_ALL',
+        action: 'WIPE_TENANT_INVENTORY',
         entityName: 'Inventory',
         entityId: tenantId,
-        afterState: JSON.stringify({ confirmMessage, clearedAt: new Date().toISOString() }),
+        afterState: JSON.stringify({ confirmPhrase, clearedAt: new Date().toISOString() }),
       },
     }).catch(() => {});
 
@@ -2020,7 +2085,13 @@ export class InventoryService {
   // ─── Purchase Bills & Soft Copies Repository (Database Backed) ───────────────
 
   async getPurchaseBills(user: ScopedUser, params?: any) {
-    const tenantId = requireTenantId(user);
+    if (!user || !user.tenantId) {
+      if (user?.role === 'platform_super_admin') {
+        throw new ForbiddenException('Platform administrators cannot access company workspace resources directly. Impersonate a client company to view their data.');
+      }
+      return { data: [], total: 0 };
+    }
+    const tenantId = user.tenantId;
     const where: any = {
       tenantId,
       deletedAt: null,
@@ -2033,23 +2104,37 @@ export class InventoryService {
         { project: { contains: q, mode: 'insensitive' } },
       ];
     }
-    const [data, total] = await Promise.all([
-      this.prisma.purchaseBill.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.purchaseBill.count({ where }),
-    ]);
-    return { data, total };
+    try {
+      const [data, total] = await Promise.all([
+        this.prisma.purchaseBill.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.prisma.purchaseBill.count({ where }),
+      ]);
+      return { data: data || [], total: total || 0 };
+    } catch (err: any) {
+      this.logger.error(`Failed to get purchase bills: ${err.message}`, err.stack);
+      return { data: [], total: 0 };
+    }
   }
 
   async getPurchaseBill(id: string, user: ScopedUser) {
-    const tenantId = requireTenantId(user);
-    const bill = await this.prisma.purchaseBill.findFirst({
-      where: { id, tenantId, deletedAt: null },
-    });
-    if (!bill) throw new NotFoundException(`Purchase bill ${id} not found`);
-    return bill;
+    if (!user || !user.tenantId) {
+      throw new ForbiddenException('Tenant context is required for this operation.');
+    }
+    const tenantId = user.tenantId;
+    try {
+      const bill = await this.prisma.purchaseBill.findFirst({
+        where: { id, tenantId, deletedAt: null },
+      });
+      if (!bill) throw new NotFoundException(`Purchase bill ${id} not found`);
+      return bill;
+    } catch (err: any) {
+      if (err instanceof NotFoundException || err instanceof ForbiddenException) throw err;
+      this.logger.error(`Failed to get purchase bill ${id}: ${err.message}`, err.stack);
+      throw new NotFoundException(`Purchase bill ${id} not found`);
+    }
   }
 
   async createPurchaseBill(data: any, user: ScopedUser) {
@@ -2060,11 +2145,11 @@ export class InventoryService {
       data: {
         tenantId,
         invoiceNumber,
-        vendorName: data.vendorName || 'Supplier / Vendor',
-        vendorGstin: data.vendorGstin || null,
-        vendorAddress: data.vendorAddress || null,
+        vendorName: stripAllHtml(data.vendorName) || 'Supplier / Vendor',
+        vendorGstin: stripAllHtml(data.vendorGstin) || null,
+        vendorAddress: sanitizeHtml(data.vendorAddress) || null,
         invoiceDate: data.invoiceDate || new Date().toISOString().slice(0, 10),
-        project: data.project || 'General Inventory',
+        project: stripAllHtml(data.project) || 'General Inventory',
         items: Array.isArray(data.items) ? data.items : [],
         subtotal: Number(data.subtotal || 0),
         taxRate: Number(data.taxRate || 18),
@@ -2075,10 +2160,11 @@ export class InventoryService {
         grandTotal: Number(data.grandTotal || 0),
         documentUrl: data.documentUrl || null,
         rawText: data.rawText || null,
-        notes: data.notes || null,
+        notes: sanitizeHtml(data.notes) || null,
         createdById: user?.id || null,
       },
     });
+
 
     // Also update physical stock for items present in the bill
     if (Array.isArray(data.items) && data.items.length > 0) {
@@ -2128,14 +2214,172 @@ export class InventoryService {
     return { success: true, message: `Bill ${bill.invoiceNumber} deleted` };
   }
 
-  async scanBillOcr(body: { rawText?: string; filename?: string; fileUrl?: string }) {
+  async extractFromDocumentBuffer(buffer: Buffer, originalName: string) {
+    let extractedText = '';
+    const ext = path.extname(originalName).toLowerCase();
+
+    if (ext === '.pdf' || buffer.subarray(0, 5).toString('ascii').startsWith('%PDF')) {
+      try {
+        const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+        const str = buffer.toString('binary');
+        let match;
+        const pieces: string[] = [];
+        while ((match = streamRegex.exec(str)) !== null) {
+          const raw = Buffer.from(match[1], 'binary');
+          let decompressed: Buffer | null = null;
+          try {
+            decompressed = zlib.inflateSync(raw);
+          } catch {
+            try { decompressed = zlib.inflateRawSync(raw); } catch {}
+          }
+          let block = decompressed ? decompressed.toString('utf8') : match[1];
+          // Decode hex strings like <4a53204e657477> -> "JS Netw"
+          block = block.replace(/<([0-9a-fA-F]+)>/g, (m, hex) => {
+            try {
+              if (hex.length % 2 === 0) {
+                return Buffer.from(hex, 'hex').toString('utf8');
+              }
+              return m;
+            } catch {
+              return m;
+            }
+          });
+          const tjRegex = /\(([^)]+)\)\s*Tj/g;
+          let m;
+          while ((m = tjRegex.exec(block)) !== null) {
+            pieces.push(m[1]);
+          }
+          const arrayRegex = /\[(.*?)\]\s*TJ/g;
+          while ((m = arrayRegex.exec(block)) !== null) {
+            pieces.push(m[1].replace(/\(([^)]+)\)/g, '$1 ').replace(/\s{2,}/g, ' '));
+          }
+        }
+        extractedText = pieces.join('\n');
+      } catch (err: any) {
+        this.logger.warn(`PDF text stream extraction failed: ${err.message}`);
+      }
+    }
+
+    if (extractedText.trim().length > 10) {
+      return this.scanBillOcr({ rawText: extractedText, filename: originalName });
+    }
+
+    // Guard: Never convert raw binary image formats (AVIF, JPEG, PNG, WEBP) to ASCII strings.
+    // That causes ISO-BMFF / EXIF binary headers (e.g. ftypavif, 4iloc, av01) to hallucinate fake line items.
+    const isBinaryMedia =
+      ext === '.avif' ||
+      ext === '.heic' ||
+      ext === '.jpg' ||
+      ext === '.jpeg' ||
+      ext === '.png' ||
+      ext === '.webp' ||
+      buffer.subarray(4, 8).toString('ascii') === 'ftyp' ||
+      (buffer[0] === 0xff && buffer[1] === 0xd8) ||
+      buffer.subarray(0, 4).toString('ascii') === '\x89PNG' ||
+      buffer.subarray(0, 4).toString('ascii') === 'RIFF';
+
+    if (isBinaryMedia) {
+      // Guard against non-document raw AVIF/HEIC containers
+      if (ext === '.avif' || ext === '.heic' || buffer.subarray(4, 8).toString('ascii') === 'ftyp') {
+        return {
+          vendorName: '',
+          vendorGstin: '',
+          invoiceNumber: '',
+          invoiceDate: new Date().toISOString().slice(0, 10),
+          items: [],
+          subtotal: 0,
+          cgst: 0,
+          sgst: 0,
+          igst: 0,
+          totalTax: 0,
+          roundOff: 0,
+          grandTotal: 0,
+          rawText: '',
+        };
+      }
+
+      // For standard bill image formats (JPEG, PNG, WEBP), run local offline Tesseract OCR on the buffer
+      try {
+        const path = require('path');
+        const Tesseract = require('tesseract.js');
+        const langDir = path.resolve(process.cwd(), 'apps/web/public/tesseract');
+        const worker = await Tesseract.createWorker('eng', 1, {
+          langPath: langDir,
+          gzip: false,
+        });
+        const ret = await worker.recognize(buffer);
+        await worker.terminate();
+        const ocrText = ret?.data?.text || '';
+        if (ocrText.trim().length > 15) {
+          return this.scanBillOcr({ rawText: ocrText, filename: originalName });
+        }
+      } catch (ocrErr: any) {
+        this.logger.warn(`Server-side image OCR error: ${ocrErr?.message || ocrErr}`);
+      }
+
+      return {
+        vendorName: '',
+        vendorGstin: '',
+        invoiceNumber: '',
+        invoiceDate: new Date().toISOString().slice(0, 10),
+        items: [],
+        subtotal: 0,
+        cgst: 0,
+        sgst: 0,
+        igst: 0,
+        totalTax: 0,
+        roundOff: 0,
+        grandTotal: 0,
+        rawText: '',
+      };
+    }
+
+    const asciiText = buffer.toString('utf8').replace(/[^\x20-\x7E\n\r]/g, ' ');
+    return this.scanBillOcr({ rawText: asciiText, filename: originalName });
+  }
+
+  async scanBillOcr(body: { rawText?: string; filename?: string; fileUrl?: string; imageBase64?: string }) {
     const text = body.rawText || '';
-    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+
+    // Safety guard: Reject binary container headers (AVIF/HEIC/TIFF) if accidentally passed as raw text
+    if (
+      text.includes('ftypavif') ||
+      text.includes('mif1avif') ||
+      /(\bav01\b.*\bpitm\b.*\biprp\b)/i.test(text)
+    ) {
+      return {
+        vendorName: '',
+        vendorGstin: '',
+        invoiceNumber: '',
+        invoiceDate: new Date().toISOString().slice(0, 10),
+        items: [],
+        subtotal: 0,
+        cgst: 0,
+        sgst: 0,
+        igst: 0,
+        totalTax: 0,
+        roundOff: 0,
+        grandTotal: 0,
+        rawText: '',
+      };
+    }
+    
+    // 0. Remove trailing blank page markers, scanner footers, and page numbers
+    const cleanedText = text
+      .replace(/---\s*Page\s*\d+\s*---/gi, '\n')
+      .replace(/\bPage\s*\d+\s*(?:of|\/)\s*\d+\b/gi, '')
+      .replace(/\bScanned\s*(?:by|with)\s*[A-Za-z0-9\s_-]+/gi, '');
+    const rawLines = cleanedText.split('\n').map((l) => l.trim()).filter(Boolean);
+    const lines = rawLines.filter((l) => !/^(page\s*\d+|\d+\s*\/\s*\d+|\d+\s*of\s*\d+)$/i.test(l));
 
     let detectedVendor = '';
     let detectedGstin = '';
     let detectedInvoiceNo = '';
     let detectedDate = new Date().toISOString().slice(0, 10);
+    let detectedCgst = 0;
+    let detectedSgst = 0;
+    let detectedIgst = 0;
+    let detectedGrandTotal = 0;
     const detectedItems: Array<{
       name: string;
       skuCode: string;
@@ -2145,70 +2389,341 @@ export class InventoryService {
       total: number;
     }> = [];
 
-    // 1. Scan for GSTIN
-    const gstinMatch = text.match(/\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}[Z]{1}[A-Z\d]{1}\b/i);
-    if (gstinMatch) detectedGstin = gstinMatch[0].toUpperCase();
-
-    // 2. Scan for Invoice Number
-    const invMatch = text.match(/(?:inv(?:oice)?|bill|tax\s*invoice)[\s\w]*[:#№\s-]*([A-Z0-9\/-]{3,20})/i);
-    if (invMatch && invMatch[1]) detectedInvoiceNo = invMatch[1].trim();
-
-    // 3. Scan for Date
-    const dateMatch = text.match(/(\d{1,2}[-\/.]\d{1,2}[-\/.](?:\d{4}|\d{2}))/);
-    if (dateMatch) {
-      detectedDate = dateMatch[1];
-    }
-
-    // 4. Scan for Vendor Name in top 5 lines
-    for (let i = 0; i < Math.min(lines.length, 5); i++) {
+    // 1. Scan for Vendor Name
+    for (let i = 0; i < lines.length; i++) {
       const l = lines[i];
-      if (
-        l.length > 3 &&
-        !l.toLowerCase().includes('tax invoice') &&
-        !l.toLowerCase().includes('cash memo') &&
-        !l.toLowerCase().includes('gstin') &&
-        !l.toLowerCase().includes('bill to')
-      ) {
-        detectedVendor = l;
+      if (/^(?:bill to|sold by|seller|vendor|supplier|from)\s*[:\-]?\s*$/i.test(l) && i + 1 < lines.length) {
+        detectedVendor = lines[i + 1].trim();
+        break;
+      }
+      const inlineMatch = l.match(/^(?:seller|vendor|supplier|sold by|m\/s|messrs)\s*[:\-]?\s*(.+)$/i);
+      if (inlineMatch && inlineMatch[1].trim().length >= 3) {
+        detectedVendor = inlineMatch[1].trim();
         break;
       }
     }
+
+    const HEADER_IGNORE = [
+      'tax invoice', 'original for recipient', 'duplicate for transporter', 'triplicate',
+      'dealers in', 'retail invoice', 'cash memo', 'quotation', 'estimate', 'bill of supply',
+      '(original for recipient)', 'original', 'recipient', 'tas kcice', 'credit note', 'e-way bill',
+      'purchase invoice', 'tax cash memo'
+    ];
+
+    if (!detectedVendor) {
+      for (const l of lines.slice(0, 10)) {
+        const low = l.toLowerCase();
+        if (
+          !HEADER_IGNORE.some((h) => low.includes(h)) &&
+          !/^(gstin|phone|contact|address|no\s*\d|cin|pan|e-mail|email|date|invoice)/i.test(l) &&
+          l.length >= 3 &&
+          !/^\d+/.test(l)
+        ) {
+          detectedVendor = l.replace(/(?:invles|invoice|inv|bill)\s*(?:no\.?|number)?.*$/i, '').trim();
+          break;
+        }
+      }
+    }
+    detectedVendor = detectedVendor.replace(/^(?:seller|vendor|supplier|sold by|m\/s|messrs)\s*[:\-]?\s*/i, '').trim();
+    detectedVendor = detectedVendor.replace(/\s*(?:lavotee|invoice|inv|bill|dated|delivery|mode|po|ref).*$/i, '').trim();
+    detectedVendor = detectedVendor.replace(/^[A-Z]{1,2}\s+(?=[A-Z]{3,})/i, '').trim();
     if (!detectedVendor) detectedVendor = 'Supplier / Vendor';
 
-    // 5. Scan lines for item rows
-    for (const line of lines) {
-      // Look for lines that have numbers (qty, price)
-      const numMatches = line.match(/\d+(?:\.\d+)?/g);
-      if (numMatches && numMatches.length >= 2) {
-        const parts = line.split(/\s{2,}|\t/).filter(Boolean);
-        const nameCandidate = parts[0] || line.replace(/[\d,.]+/g, '').trim();
-        if (
-          nameCandidate.length > 2 &&
-          !nameCandidate.toLowerCase().includes('total') &&
-          !nameCandidate.toLowerCase().includes('tax') &&
-          !nameCandidate.toLowerCase().includes('subtotal') &&
-          !nameCandidate.toLowerCase().includes('invoice') &&
-          !nameCandidate.toLowerCase().includes('gst')
-        ) {
-          const qty = parseFloat(numMatches[0]) || 1;
-          const rate = parseFloat(numMatches[numMatches.length - 1]) || 5;
-          const skuCode = 'ITM-' + nameCandidate.toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 20);
+    // 2. Scan for GSTIN (15 character standard Indian GST format)
+    const vendorSection = text.slice(0, Math.min(text.indexOf('Buyer') !== -1 ? text.indexOf('Buyer') : 1200, 1200));
+    const vendorGstinMatch =
+      vendorSection.match(/(?:GSTIN|GSTIN\/UIN|GST\s*NO)\s*[:\-.\s]*([0-9]{2}[A-Z]{4,6}[0-9]{3,5}[A-Z]{1}[1-9A-Z]{1}[A-Z0-9]{1,2})\b/i) ||
+      vendorSection.match(/\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[A-Z0-9]{2})\b/i);
+
+    const gstinMatch =
+      vendorGstinMatch ||
+      text.match(/(?:GSTIN|GSTIN\/UIN|GST\s*NO)\s*[:\-.\s]*([0-9]{2}[A-Z]{4,6}[0-9]{3,5}[A-Z]{1}[1-9A-Z]{1}[A-Z0-9]{1,2})\b/i) ||
+      text.match(/\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[A-Z0-9]{2})\b/i);
+
+    if (gstinMatch) {
+      let g = gstinMatch[1].toUpperCase();
+      if (g.startsWith('20') && /kamataka|karnataka|bangalore|bengaluru/i.test(text)) {
+        g = '29' + g.slice(2);
+      }
+      detectedGstin = g;
+    }
+
+    // 3. Scan for Invoice Number
+    const invCandidates = [
+      text.match(/\b([A-Z]{1,5}\/[A-Z0-9\-]+\/\d{2,4}\/\d{1,8})\b/i),
+      text.match(/\b([A-Z]{2,4}\/[A-Z]{2,4}\/[\d\-]+\/\d+)\b/i),
+      text.match(/(?:Invoice\s*(?:Number|No\.?|#|Id)|Inv\s*No\.?|Bill\s*No\.?)\s*[:#.\s-]*([A-Za-z0-9\/\-_]{1,30})/i),
+      text.match(/\b(INV[-\/]\d{3,10}|BILL[-\/]\d{3,10}|\d{6,10})\b/i),
+    ];
+    for (const m of invCandidates) {
+      if (m && m[1]) {
+        const cleanInv = m[1].replace(/Dated.*$/i, '').trim();
+        if (cleanInv.length >= 2 && !/^(oice|invoice|dated|date|number|bill|cash)$/i.test(cleanInv)) {
+          detectedInvoiceNo = cleanInv;
+          break;
+        }
+      }
+    }
+
+    // 4. Scan for Date
+    const MONTH_MAP: Record<string, string> = {
+      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+    };
+    const MONTH_NAMES = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+    const namedDateMatch = text.match(new RegExp(`\\b(\\d{1,2})[\\s\\-\\/.](?:of\\s+)?(${MONTH_NAMES})[\\s\\-\\/.](20\\d{2}|\\d{2})\\b`, 'i'));
+    if (namedDateMatch) {
+      const day = namedDateMatch[1].padStart(2, '0');
+      const month = MONTH_MAP[namedDateMatch[2].slice(0, 3).toLowerCase()];
+      if (month) {
+        let year = namedDateMatch[3].length === 2 ? '20' + namedDateMatch[3] : namedDateMatch[3];
+        detectedDate = `${year}-${month}-${day}`;
+      }
+    } else {
+      const explicitDateMatch =
+        text.match(/(?:date|dated|dt\.?)\s*[:\-]?\s*(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](20\\d{2}|\\d{2})\b/i) ||
+        text.match(/(?:date|dated|dt\.?)\s*[:\-]?\s*(20\\d{2})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})\b/i) ||
+        text.match(/\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](20\\d{2})\b/) ||
+        text.match(/\b(20\\d{2})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})\b/);
+      if (explicitDateMatch) {
+        if (explicitDateMatch[1].length === 4) {
+          detectedDate = `${explicitDateMatch[1]}-${explicitDateMatch[2].padStart(2, '0')}-${explicitDateMatch[3].padStart(2, '0')}`;
+        } else {
+          const d = explicitDateMatch[1].padStart(2, '0');
+          const m = explicitDateMatch[2].padStart(2, '0');
+          let y = explicitDateMatch[3];
+          if (y.length === 2) y = '20' + y;
+          detectedDate = `${y}-${m}-${d}`;
+        }
+      }
+    }
+
+    // 5. Scan for Taxes and Grand Total
+    const cgstMatch = text.match(/CGST(?:\s*(?:output\s*tax|tax|input)?\s*(?:@|\([\d.]+%\))?\s*[\d.]*%)?\s*[:\-]?\s*(?:Rs\.?|₹)?\s*([\d,]+(?:\.\d{1,2})?)/i);
+    const sgstMatch = text.match(/SGST(?:\s*(?:output\s*tax|tax|input)?\s*(?:@|\([\d.]+%\))?\s*[\d.]*%)?\s*[:\-]?\s*(?:Rs\.?|₹)?\s*([\d,]+(?:\.\d{1,2})?)/i);
+    const igstMatch = text.match(/IGST(?:\s*(?:output\s*tax|tax|input)?\s*(?:@|\([\d.]+%\))?\s*[\d.]*%)?\s*[:\-]?\s*(?:Rs\.?|₹)?\s*([\d,]+(?:\.\d{1,2})?)/i);
+    const totalMatch =
+      text.match(/(?:Grand\s*Total|Net\s*Amount|Total\s*Amount)\s*[:\-]?\s*(?:Rs\.?|₹)?\s*([\d,]+(?:\.\d{1,2})?)/i) ||
+      text.match(/\bTotal\b.*?(?:₹|Rs\.?|%|\bINR\b)\s*([\d,]+(?:\.\d{1,2})?)/i) ||
+      text.match(/\bTotal\b[^\d\n]*(?:\d+\s*(?:nos|pcs|units|box|mtr)\s*)?[%₹Rs.]*\s*([\d,]+\.\d{2})/i) ||
+      text.match(/^Total\s*[:\-]?\s*(?:Rs\.?|₹)?\s*([\d,]+(?:\.\d{1,2})?)/im);
+
+    if (cgstMatch) detectedCgst = parseFloat(cgstMatch[1].replace(/,/g, '')) || 0;
+    if (sgstMatch) detectedSgst = parseFloat(sgstMatch[1].replace(/,/g, '')) || 0;
+    if (igstMatch) detectedIgst = parseFloat(igstMatch[1].replace(/,/g, '')) || 0;
+    if (totalMatch) detectedGrandTotal = parseFloat(totalMatch[1].replace(/,/g, '')) || 0;
+
+    if (detectedCgst > 0 && detectedSgst === 0) {
+      detectedSgst = detectedCgst;
+    }
+
+    // 6. Scan Table Items
+    const NON_ITEM_KEYWORDS = [
+      'tax invoice', 'bill to', 'ship to', 'gstin', 'pan number', 'pan no', 'place of supply',
+      'taxable amount', 'taxable value', 'cgst', 'sgst', 'igst', 'total amount', 'received amount',
+      'due balance', 'balance due', 'bank details', 'account holder', 'account number', 'bank:',
+      'branch:', 'ifsc', 'upi id', 'terms & conditions', 'terms and conditions', 'notes:',
+      'invoice date', 'invoice no', 'phone', 'pin:', 'pincode', 'buildings', 'date of issue'
+    ];
+
+    const TABLE_HEADER_PATTERNS = [
+      /description\s*of\s*goods/i, /particulars/i, /item\s*name/i, /description/i, /items?\b/i, /product/i,
+      /qty.*price/i, /quantity.*unit/i, /rate.*qty/i, /quantity.*rate/i, /unit\s*price/i,
+      /material/i, /details/i, /specs?/i, /specification/i,
+      /part\s*(?:no|number|name)?/i, /sl\.?\s*no/i, /s\.?\s*no/i, /sr\.?\s*no/i,
+      /hsn(?:\/sac)?/i
+    ];
+    const TABLE_FOOTER_PATTERNS = [
+      /cgst/i, /sgst/i, /igst/i, /output\s*tax/i, /sub\s*total/i, /taxable\s*amount/i, /taxable\s*value/i,
+      /total\s*amount/i, /grand\s*total/i, /bank\s*details/i, /terms\s*(&|and)\s*conditions/i, /notes/i
+    ];
+
+    const UNIT_REGEX = /^(kg|nos|pcs|pieces?|units?|box(?:es)?|mtr|meters?|sets?|pkts?|gms|ltr|liters?|pairs?|bags?)$/i;
+
+    let inTable = false;
+    const hasTableStructure = lines.some((l) => TABLE_HEADER_PATTERNS.some((p) => p.test(l)));
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      const isHeader = TABLE_HEADER_PATTERNS.some((p) => p.test(line));
+      const isFooter = TABLE_FOOTER_PATTERNS.some((p) => p.test(line));
+
+      if (isHeader) {
+        inTable = true;
+        continue;
+      }
+
+      if (isFooter && inTable && detectedItems.length > 0) {
+        inTable = false;
+        break;
+      }
+
+      if (hasTableStructure && !inTable) {
+        continue;
+      }
+
+      const low = line.toLowerCase();
+      if (!line || NON_ITEM_KEYWORDS.some((k) => low.includes(k)) || line.length < 4 || /^(no|utc|ure|nos|pcs|page|date)$/i.test(line)) {
+        continue;
+      }
+
+      const cleanRow = line.replace(/^\s*\d+[\.\/\)]?\s*/, '').trim();
+      const tokens = cleanRow.split(/\s+/).filter(Boolean);
+
+      // Method 1: Unit-Aware Token Parsing
+      let unitIdx = -1;
+      let unit = 'Nos';
+      for (let i = 0; i < tokens.length; i++) {
+        if (UNIT_REGEX.test(tokens[i])) {
+          unitIdx = i;
+          unit = tokens[i].toUpperCase();
+          break;
+        }
+      }
+
+      if (unitIdx > 0) {
+        const qtyCandidate = parseFloat(tokens[unitIdx - 1].replace(/[!~?\(¥₹$,\)]/g, ''));
+        if (!isNaN(qtyCandidate) && qtyCandidate > 0) {
+          const qty = qtyCandidate;
+          let nameEndIdx = unitIdx - 1;
+          if (nameEndIdx > 0 && /^\d{4,8}$/.test(tokens[nameEndIdx - 1])) {
+            nameEndIdx = nameEndIdx - 1;
+          }
+
+          const nameTokens = tokens.slice(0, nameEndIdx).filter((t) => !/^(rs\.?|₹|\$|€|£)$/i.test(t));
+          const name = nameTokens.join(' ').replace(/^[!~?\(¥₹$\)\s]+|[!~?\(¥₹$\)\s]+$/g, '');
+
+          const afterTokens = tokens.slice(unitIdx + 1);
+          const priceNumbers: number[] = [];
+          for (const t of afterTokens) {
+            if (/%\)?$/.test(t)) continue;
+            const clean = t.replace(/[!~?\(¥₹$,\)]/g, '');
+            if (/^\d+(?:\.\d+)?$/.test(clean)) {
+              priceNumbers.push(parseFloat(clean));
+            }
+          }
+
+          if (priceNumbers.length > 0 && name.length >= 2) {
+            let rate = priceNumbers[0];
+            let total = priceNumbers[priceNumbers.length - 1];
+
+            if (priceNumbers.length >= 3) {
+              const candidateRate = priceNumbers[0];
+              const candidateTax = priceNumbers[1];
+              const candidateTotal = priceNumbers[priceNumbers.length - 1];
+              if (
+                Math.abs(candidateRate * qty - candidateTotal) < 0.1 ||
+                Math.abs((candidateRate + candidateTax) * qty - candidateTotal) < 0.1
+              ) {
+                rate = candidateRate;
+                total = candidateTotal;
+              }
+            }
+
+            detectedItems.push({
+              name,
+              skuCode: 'ITM-' + name.toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 20),
+              quantity: qty,
+              unit,
+              unitPrice: rate,
+              total: total || Number((qty * rate).toFixed(2)),
+            });
+            continue;
+          }
+        }
+      }
+
+      // Method 2: Mathematical Product Detection (N1 * N2 === N3)
+      const numIndices: number[] = [];
+      for (let i = tokens.length - 1; i >= 0; i--) {
+        let raw = tokens[i].replace(/[!~?\(¥₹$,\)]/g, '').trim();
+        if (/^\d+(?:\.\d+)?$/.test(raw)) {
+          numIndices.unshift(i);
+        }
+      }
+
+      if (numIndices.length >= 3) {
+        const idx1 = numIndices[numIndices.length - 3];
+        const idx2 = numIndices[numIndices.length - 2];
+        const idx3 = numIndices[numIndices.length - 1];
+
+        const n1 = parseFloat(tokens[idx1].replace(/[!~?\(¥₹$,\)]/g, ''));
+        const n2 = parseFloat(tokens[idx2].replace(/[!~?\(¥₹$,\)]/g, ''));
+        const n3 = parseFloat(tokens[idx3].replace(/[!~?\(¥₹$,\)]/g, ''));
+
+        let qty = 1;
+        let rate = n3;
+        let total = n3;
+
+        if (Math.abs(n1 * n2 - n3) < 0.1) {
+          if (n1 % 1 === 0 && n1 <= 1000 && (n2 % 1 !== 0 || n2 > n1)) {
+            qty = n1;
+            rate = n2;
+          } else {
+            qty = n2;
+            rate = n1;
+          }
+          total = n3;
+        } else {
+          qty = n2 <= 1000 ? n2 : 1;
+          rate = n1;
+          total = n3;
+        }
+
+        const nameTokens = tokens.slice(0, idx1).filter((t) => !/^(rs\.?|₹|\$|€|£)$/i.test(t));
+        const name = nameTokens.join(' ').replace(/^[!~?\(¥₹$\)\s]+|[!~?\(¥₹$\)\s]+$/g, '');
+
+        if (name.length >= 2 && !NON_ITEM_KEYWORDS.some((k) => name.toLowerCase().includes(k))) {
           detectedItems.push({
-            name: nameCandidate,
-            skuCode,
+            name,
+            skuCode: 'ITM-' + name.toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 20),
             quantity: qty,
             unit: 'Nos',
             unitPrice: rate,
-            total: qty * rate,
+            total,
+          });
+          continue;
+        }
+      }
+
+      // Method 3: 2 Number Fallback (Quantity & Line Total)
+      if (numIndices.length === 2) {
+        const idx1 = numIndices[0];
+        const idx2 = numIndices[1];
+        const n1 = parseFloat(tokens[idx1].replace(/[!~?\(¥₹$,\)]/g, ''));
+        const n2 = parseFloat(tokens[idx2].replace(/[!~?\(¥₹$,\)]/g, ''));
+
+        let qty = 1;
+        let rate = n2;
+        let total = n2;
+
+        if (n1 <= 1000 && n2 >= n1) {
+          qty = n1;
+          rate = Number((n2 / n1).toFixed(2));
+          total = n2;
+        }
+
+        const nameTokens = tokens.slice(0, idx1).filter((t) => !/^(rs\.?|₹|\$|€|£)$/i.test(t));
+        const name = nameTokens.join(' ').replace(/^[!~?\(¥₹$\)\s]+|[!~?\(¥₹$\)\s]+$/g, '');
+
+        if (name.length >= 2 && !NON_ITEM_KEYWORDS.some((k) => name.toLowerCase().includes(k))) {
+          detectedItems.push({
+            name,
+            skuCode: 'ITM-' + name.toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 20),
+            quantity: qty,
+            unit: 'Nos',
+            unitPrice: rate,
+            total,
           });
         }
       }
     }
 
-    const subtotal = detectedItems.reduce((s, it) => s + it.total, 0) || 0;
-    const taxRate = 18;
-    const totalTax = (subtotal * taxRate) / 100;
-    const grandTotal = subtotal + totalTax;
+    const subtotal = Number((detectedItems.reduce((s, it) => s + it.total, 0) || 0).toFixed(2));
+    const totalTax = Number((detectedCgst + detectedSgst + detectedIgst).toFixed(2));
+    const calculatedGrandTotal = Number((subtotal + totalTax).toFixed(2));
+    const grandTotal = detectedGrandTotal > 0 ? detectedGrandTotal : calculatedGrandTotal;
+    const roundOff = Number((grandTotal - calculatedGrandTotal).toFixed(2));
 
     return {
       vendorName: detectedVendor,
@@ -2217,11 +2732,12 @@ export class InventoryService {
       invoiceDate: detectedDate,
       items: detectedItems,
       subtotal,
-      taxRate,
-      cgst: totalTax / 2,
-      sgst: totalTax / 2,
-      igst: 0,
+      taxRate: subtotal > 0 && totalTax > 0 ? Number(((totalTax / subtotal) * 100).toFixed(1)) : 0,
+      cgst: detectedCgst,
+      sgst: detectedSgst,
+      igst: detectedIgst,
       totalTax,
+      roundOff,
       grandTotal,
       rawText: text,
     };
@@ -2266,24 +2782,53 @@ export class InventoryService {
 
     let updatedCount = 0;
 
+    // Normalize rowUpdates from rowUpdates, items, or components
+    let effectiveRowUpdates: any[] = Array.isArray(rowUpdates) ? [...rowUpdates] : [];
+    if (effectiveRowUpdates.length === 0) {
+      const candidateList = Array.isArray(items) ? items : (Array.isArray((body as any).components) ? (body as any).components : []);
+      if (candidateList.length > 0) {
+        effectiveRowUpdates = candidateList.map((it: any) => ({
+          positionId: it.positionId || it.id,
+          skuId: it.skuId,
+          project: it.updates?.project ?? it.project,
+          supplier: it.updates?.supplierName ?? it.updates?.supplier ?? it.supplierName ?? it.supplier,
+          supplierName: it.updates?.supplierName ?? it.updates?.supplier ?? it.supplierName ?? it.supplier,
+          packageType: it.updates?.packageType ?? it.updates?.unit ?? it.packageType ?? it.unit,
+          unit: it.updates?.unit ?? it.updates?.packageType ?? it.unit ?? it.packageType,
+          unitPrice: it.updates?.unitPrice ?? it.unitPrice,
+          taxRate: it.updates?.taxRate ?? it.taxRate,
+          plannedRequirement: it.updates?.plannedRequirement ?? it.plannedRequirement,
+          presentStock: it.updates?.presentStock ?? it.presentStock,
+        }));
+      }
+    }
+
     // Handle Mode B (Row-by-Row Spreadsheet Updates)
-    if (rowUpdates && Array.isArray(rowUpdates) && rowUpdates.length > 0) {
-      const positionUpdates = rowUpdates.filter((r) => r.positionId);
-      const skuUpdates = rowUpdates.filter((r) => r.skuId);
+    if (effectiveRowUpdates.length > 0) {
+      const positionUpdates = effectiveRowUpdates.filter((r) => r.positionId || r.id);
+      const skuUpdates = effectiveRowUpdates.filter((r) => r.skuId);
 
       await this.prisma.$transaction(async (tx) => {
         for (const r of positionUpdates) {
+          const targetPosId = r.positionId || r.id;
           const updateData: any = {};
-          if (r.project !== undefined) updateData.project = r.project;
-          if (r.packageType !== undefined) updateData.package = r.packageType;
-          if (r.unit !== undefined) updateData.unit = r.unit;
-          if (r.supplier !== undefined) updateData.notes = `Supplier: ${r.supplier}`;
-          if (r.plannedRequirement !== undefined) updateData.plannedRequirement = Number(r.plannedRequirement);
-          if (r.presentStock !== undefined) updateData.presentStock = Number(r.presentStock);
+          if (r.project !== undefined && r.project !== null) updateData.project = String(r.project).trim();
+          if (r.packageType !== undefined && r.packageType !== null) updateData.package = String(r.packageType).trim();
+          if (r.unit !== undefined && r.unit !== null) updateData.unit = String(r.unit).trim();
+          if (r.supplier !== undefined || r.supplierName !== undefined) {
+            const supp = (r.supplierName || r.supplier || '').trim();
+            if (supp) updateData.notes = `Supplier: ${supp}`;
+          }
+          if (r.plannedRequirement !== undefined && r.plannedRequirement !== null && !isNaN(Number(r.plannedRequirement))) {
+            updateData.plannedRequirement = Number(r.plannedRequirement);
+          }
+          if (r.presentStock !== undefined && r.presentStock !== null && !isNaN(Number(r.presentStock))) {
+            updateData.presentStock = Number(r.presentStock);
+          }
 
-          if (Object.keys(updateData).length > 0) {
+          if (Object.keys(updateData).length > 0 && targetPosId) {
             await tx.projectStockPosition.updateMany({
-              where: { id: r.positionId, tenantId },
+              where: { id: targetPosId, tenantId },
               data: updateData,
             });
             updatedCount++;
@@ -2292,15 +2837,18 @@ export class InventoryService {
 
         for (const r of skuUpdates) {
           const updateData: any = {};
-          if (r.unitPrice !== undefined) {
+          if (r.unitPrice !== undefined && r.unitPrice !== null && !isNaN(Number(r.unitPrice))) {
             updateData.unitPrice = Number(r.unitPrice);
             updateData.costPrice = Number(r.unitPrice);
           }
-          if (r.taxRate !== undefined) updateData.taxRate = Number(r.taxRate);
-          if (r.packageType !== undefined) updateData.packageType = r.packageType;
-          if (r.unit !== undefined) updateData.packageType = r.unit;
+          if (r.taxRate !== undefined && r.taxRate !== null && !isNaN(Number(r.taxRate))) {
+            updateData.taxRate = Number(r.taxRate);
+          }
+          if (r.packageType !== undefined || r.unit !== undefined) {
+            updateData.packageType = String(r.packageType || r.unit).trim();
+          }
 
-          if (Object.keys(updateData).length > 0) {
+          if (Object.keys(updateData).length > 0 && r.skuId) {
             await tx.sku.updateMany({
               where: { id: r.skuId, tenantId },
               data: updateData,
@@ -2311,8 +2859,8 @@ export class InventoryService {
 
       return {
         success: true,
-        updatedCount: rowUpdates.length,
-        message: `Successfully updated ${rowUpdates.length} components.`,
+        updatedCount: effectiveRowUpdates.length,
+        message: `Successfully updated ${effectiveRowUpdates.length} components.`,
       };
     }
 

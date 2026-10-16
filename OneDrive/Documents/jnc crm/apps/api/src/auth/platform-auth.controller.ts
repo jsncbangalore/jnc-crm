@@ -1,10 +1,3 @@
-/* --- C2PA CONTENT CREDENTIALS & PROVENANCE NOTICE ---
- * c2pa.action: 'c2pa.created'
- * c2pa.ai_training: 'disallowed'
- * c2pa.do_not_train: true
- * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
- * ----------------------------------------------------- */
-
 import {
   Controller,
   Post,
@@ -12,36 +5,28 @@ import {
   Req,
   Res,
   UsePipes,
+  UseGuards,
   ValidationPipe,
   ForbiddenException,
+  UnauthorizedException,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { PlatformLoginDto, RefreshTokenDto } from './dto/login.dto';
 import { Response, Request } from 'express';
 import { isAllowedOrigin } from '../common/cors-config';
-
-const PLATFORM_REFRESH_COOKIE = 'jnc_platform_refresh';
-
-function getPlatformRefreshCookieOptions() {
-  const isSecure =
-    process.env.COOKIE_SECURE === 'false'
-      ? false
-      : (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging');
-  const cookieDomain =
-    process.env.COOKIE_DOMAIN ||
-    (process.env.NODE_ENV === 'production' ? '.jsnc.co.in' : undefined);
-  return {
-    httpOnly: true,
-    secure: isSecure,
-    sameSite: 'lax' as const,
-    path: '/api/v1',
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    ...(cookieDomain ? { domain: cookieDomain } : {}),
-  };
-}
+import { CurrentUser } from './current-user.decorator';
+import {
+  PLATFORM_AUTH_COOKIE_PATH,
+  PLATFORM_REFRESH_COOKIE_NAME,
+  PLATFORM_SESSION_ACTIVE_COOKIE_NAME,
+  getRefreshCookieOptions,
+  getSessionIndicatorCookieOptions,
+  isSecureCookie,
+} from '../common/cookie.util';
 
 function enforceCsrf(req: Request) {
   const xRequestedWith = req.headers['x-requested-with'];
@@ -70,10 +55,13 @@ export class PlatformAuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const ip = req.ip || req.socket?.remoteAddress;
-    const result: any = await this.authService.platformLogin(dto, ip);
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    // Platform super-admins NEVER get keepSignedIn (enforced false)
+    const result: any = await this.authService.platformLogin({ ...dto, keepSignedIn: false }, ip, userAgent);
 
     if (result && result.refreshToken) {
-      res.cookie(PLATFORM_REFRESH_COOKIE, result.refreshToken, getPlatformRefreshCookieOptions());
+      res.cookie(PLATFORM_REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(PLATFORM_AUTH_COOKIE_PATH, false));
+      res.cookie(PLATFORM_SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(false));
       return result;
     }
     return result;
@@ -89,20 +77,22 @@ export class PlatformAuthController {
   ) {
     enforceCsrf(req);
 
-    const tokenFromCookie = (req as any).cookies?.[PLATFORM_REFRESH_COOKIE];
+    const tokenFromCookie = (req as any).cookies?.[PLATFORM_REFRESH_COOKIE_NAME];
     const rawRefreshToken = tokenFromCookie || refreshDto.refreshToken;
 
     const ip = req.ip || req.socket?.remoteAddress;
     const result = await this.authService.refreshPlatformToken(rawRefreshToken, ip);
 
     if (result && result.refreshToken) {
-      res.cookie(PLATFORM_REFRESH_COOKIE, result.refreshToken, getPlatformRefreshCookieOptions());
+      res.cookie(PLATFORM_REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(PLATFORM_AUTH_COOKIE_PATH, false));
+      res.cookie(PLATFORM_SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(false));
       return result;
     }
     return result;
   }
 
   /** Platform logout — revokes server-side refresh token and clears cookie */
+  @HttpCode(HttpStatus.OK)
   @Post('logout')
   async logout(
     @Req() req: Request,
@@ -110,23 +100,27 @@ export class PlatformAuthController {
   ) {
     enforceCsrf(req);
 
-    const tokenFromCookie = (req as any).cookies?.[PLATFORM_REFRESH_COOKIE];
+    const tokenFromCookie = (req as any).cookies?.[PLATFORM_REFRESH_COOKIE_NAME];
     const ip = req.ip || req.socket?.remoteAddress;
     await this.authService.logout(tokenFromCookie, undefined, ip);
 
-    const cookieOpts = getPlatformRefreshCookieOptions();
-    res.clearCookie(PLATFORM_REFRESH_COOKIE, {
-      path: '/api/v1',
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: cookieOpts.secure,
-      ...(cookieOpts.domain ? { domain: cookieOpts.domain } : {}),
-    });
-    res.clearCookie(PLATFORM_REFRESH_COOKIE, {
-      path: '/api/v1/platform-auth',
+    res.clearCookie(PLATFORM_REFRESH_COOKIE_NAME, {
+      path: PLATFORM_AUTH_COOKIE_PATH,
       httpOnly: true,
       sameSite: 'strict',
-      secure: cookieOpts.secure,
+      secure: isSecureCookie(),
+    });
+    res.clearCookie(PLATFORM_REFRESH_COOKIE_NAME, {
+      path: '/api/v1',
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: isSecureCookie(),
+    });
+    res.clearCookie(PLATFORM_SESSION_ACTIVE_COOKIE_NAME, {
+      path: '/',
+      httpOnly: false,
+      sameSite: 'strict',
+      secure: isSecureCookie(),
     });
     res.setHeader('Clear-Site-Data', '"cache", "storage"');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -134,4 +128,22 @@ export class PlatformAuthController {
     res.setHeader('Expires', '0');
     return { success: true, message: 'Platform super-admin logged out successfully' };
   }
+
+  /** Platform step-up authentication endpoint (re-enter password to receive 5-minute step-up token) */
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  @Post('step-up')
+  async stepUp(
+    @CurrentUser() user: any,
+    @Body() body: { password?: string },
+  ) {
+    if (user.role !== 'platform_super_admin') {
+      throw new ForbiddenException('Step-up authentication is only valid for platform administrators.');
+    }
+    if (!body?.password || typeof body.password !== 'string' || body.password.trim().length === 0) {
+      throw new UnauthorizedException('Password is required for step-up verification.');
+    }
+    return this.authService.verifyPlatformStepUp(user.id, body.password);
+  }
 }
+

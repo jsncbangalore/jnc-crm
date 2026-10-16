@@ -67,7 +67,10 @@ Nexus Power Electronics,Siddharth Rao,9876543210,siddharth@nexuspower.in,IRFZ44N
 `;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="jnc_leads_import_template.csv"');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
     return res.send(csvContent);
+
   }
 
   @Get(':id')

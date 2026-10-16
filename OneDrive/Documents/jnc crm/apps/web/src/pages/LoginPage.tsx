@@ -9,9 +9,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth, CompanyChoice } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, RefreshCw, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, RefreshCw, AlertCircle, ArrowLeft, Clock } from 'lucide-react';
 import AuthLayout from '../components/layout/AuthLayout';
 import { getRoleRedirectPath } from '../utils/roles';
+import { subscribeColdStart } from '../services/api';
 
 export { getRoleRedirectPath };
 
@@ -29,25 +30,30 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showCodeField, setShowCodeField] = useState(false);
   const [companyCode, setCompanyCode] = useState<string>('');
-  const [savedCode, setSavedCode] = useState<string>(() => localStorage.getItem(COMPANY_CODE_KEY) || '');
 
   // ── UI state ─────────────────────────────────────────────────────────────────
   const [step, setStep] = useState<Step>('login');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isWakingUp, setIsWakingUp] = useState(false);
+
+  useEffect(() => {
+    return subscribeColdStart((waking) => setIsWakingUp(waking));
+  }, []);
 
   // ── Company selection state ──────────────────────────────────────────────────
   const [companies, setCompanies] = useState<CompanyChoice[]>([]);
   const [selectionToken, setSelectionToken] = useState('');
   const [selectingCompany, setSelectingCompany] = useState<string | null>(null);
 
-  // On mount, restore saved code
+  // On mount, ensure legacy saved company code is removed from localStorage
   useEffect(() => {
-    if (savedCode) {
-      setShowCodeField(true);
-      setCompanyCode(savedCode);
+    try {
+      localStorage.removeItem(COMPANY_CODE_KEY);
+    } catch {
+      // ignore
     }
-  }, [savedCode]);
+  }, []);
 
   const identifierRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -57,23 +63,11 @@ export default function LoginPage() {
   // ── Helpers ──────────────────────────────────────────────────────────────────
   const effectiveCode = showCodeField ? companyCode.trim() : undefined;
 
-  const saveCode = (code: string) => {
-    if (code) {
-      localStorage.setItem(COMPANY_CODE_KEY, code);
-      setSavedCode(code);
-    } else {
-      localStorage.removeItem(COMPANY_CODE_KEY);
-      setSavedCode('');
-    }
-  };
-
   // ── Submit login form ─────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-
-    if (effectiveCode) saveCode(effectiveCode);
 
     try {
       const result = await login(identifier, password, effectiveCode);
@@ -90,8 +84,18 @@ export default function LoginPage() {
       const destination = user.redirectPath || getRoleRedirectPath(user);
       navigate(destination);
     } catch (err: any) {
-      const msg: string = err?.response?.data?.message || 'Invalid credentials.';
-      setError(msg);
+      if (
+        !err?.response ||
+        err.code === 'ERR_NETWORK' ||
+        err.code === 'ECONNABORTED' ||
+        err.message?.includes('Network Error')
+      ) {
+        setError('Cannot reach the server. Check your connection and try again.');
+      } else if (err.response?.status === 401) {
+        setError(err.response?.data?.message || 'Invalid credentials.');
+      } else {
+        setError(err.response?.data?.message || 'Cannot reach the server. Check your connection and try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -103,11 +107,19 @@ export default function LoginPage() {
     setError('');
     try {
       const user = await selectCompany(selectionToken, code);
-      saveCode(code);
       const destination = (user as any).redirectPath || getRoleRedirectPath(user);
       navigate(destination);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Unable to sign in. Please try again.');
+      if (
+        !err?.response ||
+        err.code === 'ERR_NETWORK' ||
+        err.code === 'ECONNABORTED' ||
+        err.message?.includes('Network Error')
+      ) {
+        setError('Cannot reach the server. Check your connection and try again.');
+      } else {
+        setError(err?.response?.data?.message || 'Unable to sign in. Please try again.');
+      }
       setSelectingCompany(null);
     }
   };
@@ -138,7 +150,14 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            {isWakingUp && (
+              <div className="mb-4 flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-[13px] rounded-lg animate-pulse">
+                <Clock size={16} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>Waking up the server, this can take up to a minute...</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate autoComplete="off">
               {/* Company Code Input (Slides in ABOVE User ID field) */}
               <AnimatePresence initial={false}>
                 {showCodeField && (
@@ -154,10 +173,15 @@ export default function LoginPage() {
                     >
                       Company Code
                     </label>
+                    {/* Browsers may still autofill despite these attributes */}
                     <input
                       id="companyCode"
+                      name="jnc-company"
                       type="text"
-                      autoComplete="organization"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       className="w-full h-11 px-3.5 text-[16px] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
                       placeholder="e.g. JNC"
                       value={companyCode}
@@ -175,11 +199,16 @@ export default function LoginPage() {
                 >
                   User ID or Email
                 </label>
+                {/* Browsers may still autofill despite these attributes */}
                 <input
                   id="identifier"
+                  name="jnc-identity"
                   ref={identifierRef}
                   type="text"
-                  autoComplete="username"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                   className="w-full h-11 px-3.5 text-[16px] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
                   placeholder="Enter User ID or Email"
@@ -205,10 +234,12 @@ export default function LoginPage() {
                   </a>
                 </div>
                 <div className="relative">
+                  {/* Browsers may still autofill despite these attributes */}
                   <input
                     id="password"
+                    name="jnc-secret"
                     type={showPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
+                    autoComplete="new-password"
                     required
                     className="w-full h-11 px-3.5 pr-12 text-[16px] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
                     placeholder="Enter your password"
@@ -226,7 +257,7 @@ export default function LoginPage() {
                 </div>
 
                 {/* Small text link directly under the password field */}
-                {!showCodeField && !savedCode && (
+                {!showCodeField && (
                   <div className="mt-2">
                     <button
                       type="button"
@@ -234,24 +265,6 @@ export default function LoginPage() {
                       onClick={() => setShowCodeField(true)}
                     >
                       Sign in with a company code
-                    </button>
-                  </div>
-                )}
-                {!showCodeField && savedCode && (
-                  <div className="mt-2 text-[13px] text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-                    <span>
-                      Signing in to <strong>{savedCode}</strong>
-                    </span>
-                    <span>·</span>
-                    <button
-                      type="button"
-                      className="text-[#2563EB] hover:underline cursor-pointer"
-                      onClick={() => {
-                        setShowCodeField(true);
-                        setCompanyCode(savedCode);
-                      }}
-                    >
-                      Change
                     </button>
                   </div>
                 )}
@@ -308,6 +321,20 @@ export default function LoginPage() {
                   <span>Sign in</span>
                 )}
               </button>
+
+              {/* Platform Super Admin Switcher */}
+              <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-800 text-center">
+                <p className="text-[13px] text-slate-500 dark:text-slate-400">
+                  Platform Super Administrator?{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/platform/login')}
+                    className="font-semibold text-[#2563EB] hover:underline transition-colors"
+                  >
+                    Sign in to Platform Console (/platform/login) &rarr;
+                  </button>
+                </p>
+              </div>
             </form>
           </>
         )}

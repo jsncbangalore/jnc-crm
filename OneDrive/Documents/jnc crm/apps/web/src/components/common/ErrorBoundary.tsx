@@ -48,9 +48,15 @@ export class ErrorBoundary extends Component<Props, State> {
               </button>
               <button
                 onClick={() => {
-                  localStorage.removeItem('jnc_user');
-                  localStorage.removeItem('jnc_access_token');
-                  localStorage.removeItem('jnc_refresh_token');
+                  try {
+                    const theme = localStorage.getItem('jnc_theme');
+                    localStorage.clear();
+                    if (theme) localStorage.setItem('jnc_theme', theme);
+                    sessionStorage.clear();
+                  } catch {
+                    // ignore
+                  }
+                  window.history.replaceState(null, '', '/login');
                   window.location.href = '/login';
                 }}
                 className="btn-ghost text-xs px-4 py-2.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"

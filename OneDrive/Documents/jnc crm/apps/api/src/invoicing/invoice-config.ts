@@ -5,6 +5,8 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
+import { BRAND_CONFIG } from '../common/brand';
+
 export interface CompanyInvoiceProfile {
   companyName: string;
   tradingName: string;
@@ -31,27 +33,27 @@ export interface CompanyInvoiceProfile {
 }
 
 export const JSNC_COMPANY_PROFILE: CompanyInvoiceProfile = {
-  companyName: 'JS Network Communication',
-  tradingName: 'JNC Network & Power',
+  companyName: BRAND_CONFIG.displayName,
+  tradingName: BRAND_CONFIG.displayName,
   addressLine1: 'No, 18/19, 2nd Floor, Coconut Avenue',
   addressLine2: '3rd cross, 8th Phase JP Nagar',
   city: 'Bangalore',
   state: 'Karnataka',
   stateCode: '29',
   pincode: '560076',
-  phone: '+91 9663421455 / +91 9964219891',
-  email: 'Info@Jsnc.co.in',
-  website: 'https://jsnc.co.in',
-  gstin: '29AZWPJ2622A1ZD',
-  msmeUdyamNo: 'UDYAM-KR-03-0292006',
-  lutBondNo: 'AD290525013648T',
-  lutValidity: 'From : 10/05/2025 To: 09/05/2026',
+  phone: '+91 9876543210',
+  email: 'accounts@example.com',
+  website: 'https://example.com',
+  gstin: '29ABCDE1234F1Z5',
+  msmeUdyamNo: 'UDYAM-XX-00-0000000',
+  lutBondNo: 'AD000000000000T',
+  lutValidity: 'From : 01/01/2026 To: 31/12/2026',
   bankDetails: {
-    accountHolderName: 'JS Network Communication',
-    bankName: 'Karnataka Bank',
-    accountNumber: '9222000100091501',
-    ifscCode: 'KARB0000922',
-    branch: 'J P Nagar 7th Phase',
+    accountHolderName: BRAND_CONFIG.displayName,
+    bankName: 'Sample Bank',
+    accountNumber: '00001234567890',
+    ifscCode: 'HDFC0000001',
+    branch: 'Main Branch',
   },
 };
 

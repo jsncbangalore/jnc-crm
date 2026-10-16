@@ -9,6 +9,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
+import { parsePagination } from '../common/pagination.util';
 
 import { IsString, IsNotEmpty, IsOptional, IsEmail, IsBoolean } from 'class-validator';
 
@@ -127,7 +128,7 @@ export class CompaniesService {
     });
   }
 
-  async findAll(user: ScopedUser, query?: { search?: string }) {
+  async findAll(user: ScopedUser, query?: { search?: string; page?: number; limit?: number }) {
     const scope = this.scopingService.getCompanyScope(user);
     const where: any = { ...scope, deletedAt: null };
     if (query?.search) {
@@ -145,8 +146,12 @@ export class CompaniesService {
       }
     }
 
+    const { skip, take } = parsePagination(query, 100, 100);
+
     return this.prisma.company.findMany({
       where,
+      skip,
+      take,
       orderBy: { name: 'asc' },
       include: {
         contacts: {

@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Cpu, Send, CheckCircle2, Phone, Mail, MapPin, Sparkles, Building, Layers, Globe, Radio, Bell, Shield, PhoneCall
 } from 'lucide-react';
 import axios from 'axios';
+import { BRAND_CONFIG } from '../config/brand';
 
-const PRODUCT_CATEGORIES = [
+const FALLBACK_PRODUCT_CATEGORIES = [
   'PA System (Public Address & Amplifiers)',
   'Talk Back System (Two-Way Communication)',
   'Addressable Talk Back System',
@@ -21,6 +22,17 @@ const PRODUCT_CATEGORIES = [
 ];
 
 export default function PublicInquiryPage() {
+  const [companyInfo, setCompanyInfo] = useState({
+    name: BRAND_CONFIG.displayName,
+    phone: '',
+    email: '',
+    website: '',
+    address: '',
+    logoUrl: '',
+  });
+
+  const [productsList, setProductsList] = useState<Array<{ name: string; category: string; skuCode?: string }>>([]);
+
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -32,11 +44,42 @@ export default function PublicInquiryPage() {
     quantity: '',
     urgency: 'medium',
     message: '',
+    _hp_company_trap: '',
   });
 
   const [submitting, setSubmitting] = useState(false);
   const [submittedLeadId, setSubmittedLeadId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Load tenant branding & inventory product catalog dynamically
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const key = params.get('key');
+    const infoEndpoint = key ? `/api/v1/webhooks/inquiry-info/${key}` : '/api/v1/webhooks/inquiry-info';
+
+    axios.get(infoEndpoint)
+      .then((res) => {
+        if (res.data?.company) {
+          const comp = res.data.company;
+          setCompanyInfo({
+            name: comp.name || BRAND_CONFIG.displayName,
+            phone: comp.phone || '',
+            email: comp.email || '',
+            website: comp.website || '',
+            address: comp.address || '',
+            logoUrl: comp.logoUrl || '',
+          });
+        }
+        if (Array.isArray(res.data?.products) && res.data.products.length > 0) {
+          setProductsList(res.data.products);
+          setFormData((prev) => ({
+            ...prev,
+            productCategory: res.data.products[0].name,
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +87,10 @@ export default function PublicInquiryPage() {
     setErrorMsg(null);
 
     try {
+      const params = new URLSearchParams(window.location.search);
+      const key = params.get('key');
+      const submitEndpoint = key ? `/api/v1/webhooks/website/${key}` : '/api/v1/webhooks/website';
+
       const payload = {
         name: formData.name,
         phone: formData.phone,
@@ -52,17 +99,31 @@ export default function PublicInquiryPage() {
         city: formData.city,
         productCategory: formData.productCategory,
         productName: formData.productName || formData.productCategory,
-        queryMessage: `[RFQ via JSNC Web-to-Lead Form]\nCategory: ${formData.productCategory}\nItem/Specification: ${formData.productName || 'Standard Package'}\nTarget Qty: ${formData.quantity || 'Not specified'}\nUrgency: ${formData.urgency.toUpperCase()}\n\nClient Note: ${formData.message || 'None'}`,
+        quantity: formData.quantity,
+        urgency: formData.urgency,
+        submissionId: 'INQ-' + Date.now().toString(),
+        _hp_company_trap: formData._hp_company_trap,
+        queryMessage: `[RFQ via ${companyInfo.name || BRAND_CONFIG.displayName} Inquiry Form]\nCategory/Product: ${formData.productCategory}\nItem/Specification: ${formData.productName || 'Standard Package'}\nTarget Qty: ${formData.quantity || 'Not specified'}\nUrgency: ${formData.urgency.toUpperCase()}\n\nClient Note: ${formData.message || 'None'}`,
       };
 
-      const response = await axios.post('/api/v1/webhooks/website', payload);
+      const response = await axios.post(submitEndpoint, payload);
       setSubmittedLeadId(response.data.leadId || 'INQ-' + Date.now().toString().slice(-6));
     } catch (err: any) {
-      setErrorMsg(err?.response?.data?.message || 'Failed to submit inquiry. Please call +91 9663421455 directly.');
+      const fallbackPhone = companyInfo.phone || BRAND_CONFIG.phone || '';
+      setErrorMsg(
+        err?.response?.data?.message ||
+        `Failed to submit inquiry. ${fallbackPhone ? `Please call ${fallbackPhone} directly.` : 'Please try again later.'}`
+      );
     } finally {
       setSubmitting(false);
     }
   };
+
+  const displayName = companyInfo.name || BRAND_CONFIG.displayName;
+  const displayPhone = companyInfo.phone || BRAND_CONFIG.phone || '';
+  const displayEmail = companyInfo.email || BRAND_CONFIG.email || '';
+  const displayWebsite = companyInfo.website || BRAND_CONFIG.website || '';
+  const displayAddress = companyInfo.address || BRAND_CONFIG.address || '';
 
   return (
     <div className="min-h-screen bg-[#0A0C10] text-slate-100 flex flex-col justify-between selection:bg-crm-blue selection:text-white">
@@ -81,32 +142,35 @@ export default function PublicInquiryPage() {
             </div>
             <div>
               <h1 className="text-base font-black tracking-tight text-slate-950 dark:text-white flex items-center gap-2">
-                JS NETWORK COMMUNICATION
-                <span className="text-[10px] bg-crm-blue/20 text-crm-blue-light px-2 py-0.5 rounded font-mono font-bold">
-                  JNC & POWER
-                </span>
+                {displayName}
               </h1>
               <p className="text-[11px] text-slate-400 font-medium">
-                Next-Gen Connectivity, PA Systems, Security & Power Solutions
+                Official Product Inquiry & Quotation Desk
               </p>
             </div>
           </div>
 
           <div className="hidden md:flex items-center gap-4 text-xs text-slate-400">
-            <a href="tel:+919663421455" className="flex items-center gap-1.5 text-crm-teal hover:underline">
-              <Phone size={13} /> +91 9663421455
-            </a>
-            <a href="mailto:sales@jsnc.co.in" className="flex items-center gap-1.5 text-crm-blue-light hover:underline">
-              <Mail size={13} /> sales@jsnc.co.in
-            </a>
-            <a
-              href="https://jsnc.co.in"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1 text-slate-300 hover:text-white"
-            >
-              <Globe size={13} /> jsnc.co.in
-            </a>
+            {displayPhone && (
+              <a href={`tel:${displayPhone}`} className="flex items-center gap-1.5 text-crm-teal hover:underline font-medium">
+                <Phone size={13} /> {displayPhone}
+              </a>
+            )}
+            {displayEmail && (
+              <a href={`mailto:${displayEmail}`} className="flex items-center gap-1.5 text-crm-blue-light hover:underline font-medium">
+                <Mail size={13} /> {displayEmail}
+              </a>
+            )}
+            {displayWebsite && (
+              <a
+                href={displayWebsite.startsWith('http') ? displayWebsite : `https://${displayWebsite}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-slate-300 hover:text-white font-medium"
+              >
+                <Globe size={13} /> {displayWebsite.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+              </a>
+            )}
           </div>
         </div>
       </header>
@@ -155,11 +219,12 @@ export default function PublicInquiryPage() {
                     email: '',
                     company: '',
                     city: '',
-                    productCategory: 'PA System (Public Address & Amplifiers)',
+                    productCategory: productsList[0]?.name || 'PA System (Public Address & Amplifiers)',
                     productName: '',
                     quantity: '',
                     urgency: 'medium',
                     message: '',
+                    _hp_company_trap: '',
                   });
                 }}
                 className="btn bg-white/10 hover:bg-white/20 text-white text-xs px-6 py-2.5 rounded-xl transition-all"
@@ -167,10 +232,12 @@ export default function PublicInquiryPage() {
                 Submit Another Request
               </button>
               <a
-                href="https://jsnc.co.in"
+                href={displayWebsite || '#'}
+                target="_blank"
+                rel="noreferrer"
                 className="btn-ghost text-xs px-5 py-2.5 text-slate-300 hover:text-white"
               >
-                Visit JSNC Official Website →
+                Visit Official Website →
               </a>
             </div>
           </motion.div>
@@ -198,7 +265,19 @@ export default function PublicInquiryPage() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" data-lpignore="true">
+              {/* Anti-spam Honeypot field (hidden from real users) */}
+              <div style={{ display: 'none' }} aria-hidden="true">
+                <input
+                  type="text"
+                  name="_hp_company_trap"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={formData._hp_company_trap}
+                  onChange={(e) => setFormData({ ...formData, _hp_company_trap: e.target.value })}
+                />
+              </div>
+
               {/* Product Category Selection */}
               <div>
                 <label className="label font-bold text-slate-950 dark:text-white">Select Product / System Category *</label>
@@ -208,11 +287,22 @@ export default function PublicInquiryPage() {
                   value={formData.productCategory}
                   onChange={(e) => setFormData({ ...formData, productCategory: e.target.value })}
                 >
-                  {PRODUCT_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
+                  {productsList.length > 0 ? (
+                    <>
+                      {productsList.map((prod, idx) => (
+                        <option key={idx} value={prod.name}>
+                          {prod.category && prod.category !== 'General' ? `[${prod.category}] ` : ''}{prod.name}
+                        </option>
+                      ))}
+                      <option value="Other Custom Requirement">Other Custom Requirement</option>
+                    </>
+                  ) : (
+                    FALLBACK_PRODUCT_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
@@ -222,7 +312,9 @@ export default function PublicInquiryPage() {
                   <label className="label">Your Name *</label>
                   <input
                     type="text"
+                    name="client_contact_name"
                     required
+                    autoComplete="off"
                     className="input text-xs"
                     placeholder="e.g. Rajesh Sharma"
                     value={formData.name}
@@ -233,7 +325,9 @@ export default function PublicInquiryPage() {
                   <label className="label">Mobile / WhatsApp Number *</label>
                   <input
                     type="tel"
+                    name="client_contact_phone"
                     required
+                    autoComplete="off"
                     className="input text-xs"
                     placeholder="e.g. 9845012345"
                     value={formData.phone}
@@ -248,6 +342,8 @@ export default function PublicInquiryPage() {
                   <label className="label">Email Address</label>
                   <input
                     type="email"
+                    name="client_contact_email"
+                    autoComplete="off"
                     className="input text-xs"
                     placeholder="e.g. rajesh@company.in"
                     value={formData.email}
@@ -258,6 +354,8 @@ export default function PublicInquiryPage() {
                   <label className="label">Company / Organization Name</label>
                   <input
                     type="text"
+                    name="client_org_name"
+                    autoComplete="off"
                     className="input text-xs"
                     placeholder="e.g. Apollo Hospital / Tech Park Facility"
                     value={formData.company}
@@ -272,6 +370,8 @@ export default function PublicInquiryPage() {
                   <label className="label">Specific Model / Requirements / Part Number</label>
                   <input
                     type="text"
+                    name="client_product_desc"
+                    autoComplete="off"
                     className="input text-xs"
                     placeholder="e.g. 240W Amplifier, 8 Zone Addressable Panel, Smoke Detectors..."
                     value={formData.productName}
@@ -282,6 +382,8 @@ export default function PublicInquiryPage() {
                   <label className="label">Quantity / Units</label>
                   <input
                     type="text"
+                    name="client_order_qty"
+                    autoComplete="off"
                     className="input text-xs"
                     placeholder="e.g. 10 units / Complete Setup"
                     value={formData.quantity}
@@ -296,6 +398,8 @@ export default function PublicInquiryPage() {
                   <label className="label">Project City / State</label>
                   <input
                     type="text"
+                    name="client_project_city"
+                    autoComplete="off"
                     className="input text-xs"
                     placeholder="e.g. Bengaluru, Karnataka"
                     value={formData.city}
@@ -335,7 +439,7 @@ export default function PublicInquiryPage() {
                   className="w-full btn bg-gradient-to-r from-crm-blue to-crm-violet hover:from-crm-blue-hover hover:to-crm-violet-hover text-white font-bold py-3.5 rounded-xl shadow-glow-blue flex items-center justify-center gap-2 text-sm transition-all"
                 >
                   {submitting ? (
-                    'Submitting to JSNC Engineering Desk...'
+                    'Submitting to Engineering Desk...'
                   ) : (
                     <>
                       <Send size={16} /> Submit Requirement for Quotation
@@ -352,14 +456,14 @@ export default function PublicInquiryPage() {
       <footer className="border-t border-[#1E2230] py-6 text-xs text-slate-400 bg-slate-50 dark:bg-[#0F1117]/80">
         <div className="max-w-5xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
           <div>
-            <p className="font-bold text-slate-950 dark:text-white">JS Network Communication (JNC Network & Power)</p>
-            <p className="text-slate-500 mt-0.5">
-              18/19, Second Floor, Coconut Avenue, JP Nagar 8th Phase, Bengaluru - 560076
-            </p>
+            <p className="font-bold text-slate-950 dark:text-white">{displayName}</p>
+            {displayAddress && (
+              <p className="text-slate-500 mt-0.5">{displayAddress}</p>
+            )}
           </div>
           <div className="flex items-center gap-4 text-slate-400">
-            <span>+91 9663421455 / +91 9964219891</span>
-            <span>sales@jsnc.co.in</span>
+            {displayPhone && <span>{displayPhone}</span>}
+            {displayEmail && <span>{displayEmail}</span>}
           </div>
         </div>
       </footer>

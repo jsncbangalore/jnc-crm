@@ -103,7 +103,7 @@ export class RolesGuard implements CanActivate {
       if (!dbUser) return false;
 
       // If user has a team assigned, verify the page is in the team's allowed list
-      if (dbUser.teamId && dbUser.teamRef) {
+      if (dbUser.teamId && dbUser.teamRef && dbUser.role !== 'tenant_admin' && dbUser.role !== 'platform_super_admin') {
         try {
           const allowedPages = JSON.parse(dbUser.teamRef.allowedPages || '[]');
           if (!allowedPages.includes(requiredPage)) {

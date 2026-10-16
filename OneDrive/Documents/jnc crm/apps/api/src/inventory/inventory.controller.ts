@@ -33,6 +33,7 @@ import {
   ScanBillOcrDto,
   BulkEditComponentsDto,
   RecordPurchaseDto,
+  ClearAllInventoryDto,
 } from './dto/inventory.dto';
 import * as Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -157,7 +158,10 @@ export class InventoryController {
       throw new BadRequestException('Spreadsheet/CSV file is required');
     }
 
+    validateUploadedFile(file, 'spreadsheet', 50 * 1024 * 1024);
+
     let records: any[] = [];
+
     const lowerName = file.originalname.toLowerCase();
 
     if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
@@ -317,6 +321,8 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
 `;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="inventory_import_template.csv"');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
     return res.send(csvContent);
   }
 
@@ -434,23 +440,25 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
     return this.inventoryService.bulkImportProjectStockPositions(body.rows, user);
   }
 
-  @Delete('clear-all')
+  @Post('clear-all')
   @Roles('tenant_admin')
-  async clearAllInventory(@Body() body: { confirm?: string }, @CurrentUser() user: ScopedUser) {
-    return this.inventoryService.clearAllInventory(body?.confirm || '', user);
+  async clearAllInventory(@Body() body: ClearAllInventoryDto, @CurrentUser() user: ScopedUser) {
+    return this.inventoryService.clearAllInventory(body.confirmPhrase, body.password, user);
   }
 
   @Get('project-stock/template-csv')
   downloadProjectStockTemplate(@Res() res: Response) {
     const csvContent = `Project,Reference,Quantity,Item Code,Part Value,Package,Unit,BOM Qty / Unit,Batch Qty,Planned Requirement,Opening Stock,Inflow,Outflow,Present Stock,Shortage,Status,Notes
-Bangalore Metro Phase-2 PA System,AMP-RACK-01,10,PA-AMP-240W,240W 100V RMS,2U 19-inch Rack,Nos,2,10,20,30,0,8,22,0,Sufficient,Main concourse & platform distribution amplifiers
-Bangalore Metro Phase-2 PA System,SPK-CLG-01,10,PA-SPK-CLG-6W,6W 100V Fast Clamp,Ceiling Flush Mount,Nos,24,10,240,180,100,60,220,20,Shortage,Underground ticketing concourse speakers
-CyberTech IT Park Surveillance & Access Control,CCTV-CAM-EXT,4,CCTV-CAM-4MP-DOM,4MP IR 30m PoE H.265+,Vandal Dome IP67,Nos,16,4,64,45,25,10,60,4,Shortage,Corridor and perimeter optical surveillance
-CyberTech IT Park Surveillance & Access Control,ACS-FACE-01,4,ACS-BIO-FP-FACE,Face + FP + RFID TCP/IP,Wall Mount Touch,Nos,6,4,24,12,0,0,12,12,Critical Shortage,Turnstile & server room access
-Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-Bed Digital LCD Station,Nurse Station Console,Nos,2,2,4,5,0,1,4,0,Sufficient,ICU & Emergency ward central monitoring console
+Sample Project A - PA System,AMP-RACK-01,10,PA-AMP-240W,240W 100V RMS,2U 19-inch Rack,Nos,2,10,20,30,0,8,22,0,Sufficient,Main concourse & platform distribution amplifiers
+Sample Project A - PA System,SPK-CLG-01,10,PA-SPK-CLG-6W,6W 100V Fast Clamp,Ceiling Flush Mount,Nos,24,10,240,180,100,60,220,20,Shortage,Underground ticketing concourse speakers
+Sample Project B - Surveillance & Access Control,CCTV-CAM-EXT,4,CCTV-CAM-4MP-DOM,4MP IR 30m PoE H.265+,Vandal Dome IP67,Nos,16,4,64,45,25,10,60,4,Shortage,Corridor and perimeter optical surveillance
+Sample Project B - Surveillance & Access Control,ACS-FACE-01,4,ACS-BIO-FP-FACE,Face + FP + RFID TCP/IP,Wall Mount Touch,Nos,6,4,24,12,0,0,12,12,Critical Shortage,Turnstile & server room access
+Sample Project C - Nurse Call System,NCS-STN-ICU,2,NCS-PANEL-32,32-Bed Digital LCD Station,Nurse Station Console,Nos,2,2,4,5,0,1,4,0,Sufficient,Ward central monitoring console
 `;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="project_stock_position_template.csv"');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
     return res.send(csvContent);
   }
 
@@ -511,7 +519,32 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
     };
   }
 
+  @Post('purchase-documents/extract')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    }),
+  )
+  async extractPurchaseDocument(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    if (!file) throw new BadRequestException('File is required for extraction');
+    validateUploadedFile(file, 'document_or_image', 10 * 1024 * 1024);
+
+    const extracted = await this.inventoryService.extractFromDocumentBuffer(file.buffer, file.originalname);
+    return {
+      success: true,
+      extractedData: {
+        ...extracted,
+        filename: file.originalname,
+      },
+    };
+  }
+
   // ─── Protected Streaming of Purchase Documents ──────────────────────────────
+
 
   @Get('purchase-documents/:filename')
   async streamPurchaseDoc(
@@ -554,22 +587,29 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
       throw new ForbiddenException('Access denied to cross-tenant documents.');
     }
 
-    const tenantDir = path.resolve(process.cwd(), '../../purchase-documents', targetTenantId);
-    const safePath = path.resolve(tenantDir, path.basename(filename));
+    const possibleDirs = [
+      path.resolve(process.cwd(), '../../purchase-documents', targetTenantId),
+      path.resolve(process.cwd(), '../purchase-documents', targetTenantId),
+      path.resolve(process.cwd(), 'purchase-documents', targetTenantId),
+    ];
 
-    // Fallback: check legacy root purchase-documents folder if migrating
-    if (!fs.existsSync(safePath)) {
-      const legacyPath = path.resolve(process.cwd(), '../../purchase-documents', path.basename(filename));
-      if (fs.existsSync(legacyPath)) {
-        res.setHeader('Content-Disposition', 'inline');
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        return res.sendFile(legacyPath);
+    let safePath = '';
+    for (const dir of possibleDirs) {
+      const candidate = path.resolve(dir, path.basename(filename));
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        safePath = candidate;
+        break;
       }
+    }
+
+    if (!safePath) {
       throw new NotFoundException('Requested document was not found.');
     }
 
     res.setHeader('Content-Disposition', 'inline');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'private, no-store');
     return res.sendFile(safePath);
   }
 
@@ -615,14 +655,6 @@ Aster Hospital Nurse Call & Talkback Integration,NCS-STN-ICU,2,NCS-PANEL-32,32-B
   @Roles('tenant_admin', 'admin')
   async deletePurchaseBill(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.deletePurchaseBill(id, user);
-  }
-
-  @Post('purchase-bills/upload-document')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
-  @UseInterceptors(FileInterceptor('file'))
-  async uploadPurchaseBillDocument(@UploadedFile() file: any, @CurrentUser() user: ScopedUser) {
-    validateUploadedFile(file, 'document_or_image', 10 * 1024 * 1024);
-    return this.inventoryService.uploadPurchaseBillDocument(file, user);
   }
 
   @Post('purchase-bills/scan-ocr')

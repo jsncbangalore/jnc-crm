@@ -7,7 +7,8 @@
 
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { DualKeyThrottlerGuard } from './common/dual-key-throttler.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { AuditModule } from './audit/audit.module';
@@ -29,6 +30,7 @@ import { BackupModule } from './backup/backup.module';
 import { SettingsModule } from './settings/settings.module';
 import { ActivitiesModule } from './activities/activities.module';
 import { PlatformModule } from './platform/platform.module';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -36,7 +38,7 @@ import { PlatformModule } from './platform/platform.module';
       {
         name: 'default',
         ttl: 60000,
-        limit: 100,
+        limit: process.env.NODE_ENV === 'test' ? 10000 : 100,
       },
     ]),
     PrismaModule,
@@ -61,10 +63,11 @@ import { PlatformModule } from './platform/platform.module';
     ActivitiesModule,
     PlatformModule,
   ],
+  controllers: [HealthController],
   providers: [
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: DualKeyThrottlerGuard,
     },
   ],
 })

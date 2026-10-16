@@ -7,11 +7,14 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { authApi, setAccessToken } from '../services/api';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { Eye, EyeOff, RefreshCw, AlertCircle } from 'lucide-react';
 import AuthLayout from '../components/layout/AuthLayout';
 
 export default function PlatformLoginPage() {
+  const navigate = useNavigate();
+  const { platformLogin } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -24,16 +27,22 @@ export default function PlatformLoginPage() {
     setLoading(true);
 
     try {
-      const { data } = await authApi.platformLogin(email.trim(), password);
-
-      // Store access token in memory & user in localStorage
-      setAccessToken(data.accessToken);
-      localStorage.setItem('jnc_user', JSON.stringify(data.user));
-
-      // Reload to let AuthContext re-initialize, then navigate
-      window.location.href = '/platform/companies';
+      const result = await platformLogin(email.trim(), password);
+      const destination = result.redirectPath || '/platform/companies';
+      navigate(destination);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Invalid credentials.');
+      if (
+        !err?.response ||
+        err.code === 'ERR_NETWORK' ||
+        err.code === 'ECONNABORTED' ||
+        err.message?.includes('Network Error')
+      ) {
+        setError('Cannot reach the server. Check your connection and try again.');
+      } else if (err.response?.status === 401) {
+        setError(err.response?.data?.message || 'Invalid credentials.');
+      } else {
+        setError(err.response?.data?.message || 'Cannot reach the server. Check your connection and try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -56,22 +65,28 @@ export default function PlatformLoginPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <form onSubmit={handleSubmit} className="space-y-5" noValidate autoComplete="off">
           {/* Email */}
+          {/* Email or User ID */}
           <div>
             <label
               htmlFor="platform-email"
               className="block text-[14px] font-medium text-slate-700 dark:text-slate-300 mb-1.5"
             >
-              Email
+              Email or User ID
             </label>
+            {/* Browsers may still autofill despite these attributes */}
             <input
               id="platform-email"
-              type="email"
-              autoComplete="username"
+              name="jnc-identity"
+              type="text"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               required
               className="w-full h-11 px-3.5 text-[16px] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
-              placeholder="admin@example.com"
+              placeholder="admin@example.com or PSA-001"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoFocus
@@ -80,17 +95,27 @@ export default function PlatformLoginPage() {
 
           {/* Password */}
           <div>
-            <label
-              htmlFor="platform-password"
-              className="block text-[14px] font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-            >
-              Password
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label
+                htmlFor="platform-password"
+                className="text-[14px] font-medium text-slate-700 dark:text-slate-300"
+              >
+                Password
+              </label>
+              <a
+                href="/forgot-password"
+                className="text-[13px] font-medium text-[#2563EB] hover:underline transition-colors"
+              >
+                Forgot password?
+              </a>
+            </div>
             <div className="relative">
+              {/* Browsers may still autofill despite these attributes */}
               <input
                 id="platform-password"
+                name="jnc-secret"
                 type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
+                autoComplete="new-password"
                 required
                 className="w-full h-11 px-3.5 pr-12 text-[16px] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
                 placeholder="Enter password"
@@ -118,10 +143,21 @@ export default function PlatformLoginPage() {
                 exit={{ opacity: 0 }}
                 role="alert"
                 aria-live="assertive"
-                className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[13px] font-medium flex items-start gap-2"
+                className="p-3.5 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[13px] font-medium flex items-start gap-2.5"
               >
-                <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                <span>{error}</span>
+                <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div>{error}</div>
+                  {(error.includes('Company Portal') || error.includes('/login')) && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/login')}
+                      className="mt-2.5 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-semibold text-xs shadow-sm transition-all"
+                    >
+                      <span>Open Company Login (/login) &rarr;</span>
+                    </button>
+                  )}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -143,6 +179,20 @@ export default function PlatformLoginPage() {
             )}
           </button>
         </form>
+
+        {/* Portal Switcher Footer */}
+        <div className="mt-6 pt-5 border-t border-slate-200 dark:border-slate-800 text-center">
+          <p className="text-[13px] text-slate-500 dark:text-slate-400">
+            Client company admin or employee?{' '}
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="font-semibold text-[#2563EB] hover:underline transition-colors"
+            >
+              Sign in to Company CRM (/login) &rarr;
+            </button>
+          </p>
+        </div>
       </motion.div>
     </AuthLayout>
   );

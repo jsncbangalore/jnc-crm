@@ -440,11 +440,11 @@ export default function PlatformAdminsPage() {
 
               {createdResult.emailDispatched ? (
                 <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300 text-xs">
-                  <span className="font-bold">✓ Credentials Email Sent:</span> Dispatched to <strong>{createdResult.user.email}</strong>.
+                  <span className="font-bold">Credentials Email Sent:</span> Dispatched to <strong>{createdResult.user.email}</strong>.
                 </div>
               ) : createdResult.emailStatusMessage ? (
                 <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs">
-                  <span className="font-bold">⚠ Delivery Notice:</span> {createdResult.emailStatusMessage}
+                  <span className="font-bold">Delivery Notice:</span> {createdResult.emailStatusMessage}
                 </div>
               ) : null}
 

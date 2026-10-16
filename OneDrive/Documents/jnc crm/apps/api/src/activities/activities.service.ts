@@ -7,6 +7,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
+import { sanitizeHtml } from '../common/html-sanitize.util';
+
 
 @Injectable()
 export class ActivitiesService {
@@ -31,10 +33,10 @@ export class ActivitiesService {
         },
         orderBy: { createdAt: 'desc' },
         include: {
-          createdBy: { select: { id: true, name: true, employeeCode: true } },
+          createdBy: { select: { id: true, name: true, employeeCode: true, email: true } },
           assignments: {
             include: {
-              user: { select: { id: true, name: true, employeeCode: true, role: true } },
+              user: { select: { id: true, name: true, employeeCode: true, role: true, email: true } },
             },
           },
           _count: { select: { dailyLogs: true } },
@@ -45,12 +47,13 @@ export class ActivitiesService {
     // Super Admin, Tenant Admin, Admin, Project Manager, Developer Lead, Sub Admin see all projects within tenant
     return this.prisma.project.findMany({
       where: { tenantId },
+      take: 100,
       orderBy: { createdAt: 'desc' },
       include: {
-        createdBy: { select: { id: true, name: true, employeeCode: true } },
+        createdBy: { select: { id: true, name: true, employeeCode: true, email: true } },
         assignments: {
           include: {
-            user: { select: { id: true, name: true, employeeCode: true, role: true } },
+            user: { select: { id: true, name: true, employeeCode: true, role: true, email: true } },
           },
         },
         _count: { select: { dailyLogs: true } },
@@ -115,7 +118,7 @@ export class ActivitiesService {
     return this.prisma.user.findMany({
       where: {
         tenantId,
-        role: { in: ['developer', 'developer_lead', 'project_manager'] },
+        role: { in: ['sub_admin', 'project_manager', 'developer_lead', 'developer', 'employee'] },
         isActive: true,
         deletedAt: null,
       },
@@ -134,29 +137,37 @@ export class ActivitiesService {
     this.requireAssignmentRole(user);
     await this.findProjectOrFail(projectId, user);
 
+    const tenantId = requireTenantId(user);
+
     // Delete existing assignments for this project
     await this.prisma.projectAssignment.deleteMany({
       where: { projectId },
     });
 
-    // Create new assignments
+    // Create new assignments (strictly validated for this tenant)
     if (memberIds && memberIds.length > 0) {
-      await this.prisma.projectAssignment.createMany({
-        data: memberIds.map((userId) => ({
-          projectId,
-          userId,
-          assignedById: user.id,
-        })),
+      const validUsers = await this.prisma.user.findMany({
+        where: { id: { in: memberIds }, tenantId, deletedAt: null },
+        select: { id: true },
       });
-    }
+      const validUserIds = validUsers.map((u) => u.id);
 
-    const tenantId = requireTenantId(user);
+      if (validUserIds.length > 0) {
+        await this.prisma.projectAssignment.createMany({
+          data: validUserIds.map((userId) => ({
+            projectId,
+            userId,
+            assignedById: user.id,
+          })),
+        });
+      }
+    }
     return this.prisma.project.findFirst({
       where: { id: projectId, tenantId },
       include: {
         assignments: {
           include: {
-            user: { select: { id: true, name: true, employeeCode: true, role: true } },
+            user: { select: { id: true, name: true, employeeCode: true, role: true, email: true } },
           },
         },
       },
@@ -178,7 +189,7 @@ export class ActivitiesService {
         },
         orderBy: { logDate: 'desc' },
         include: {
-          uploadedBy: { select: { id: true, name: true, employeeCode: true, role: true } },
+          uploadedBy: { select: { id: true, name: true, employeeCode: true, role: true, email: true } },
         },
       });
     }
@@ -188,7 +199,7 @@ export class ActivitiesService {
       where: { projectId },
       orderBy: { logDate: 'desc' },
       include: {
-        uploadedBy: { select: { id: true, name: true, employeeCode: true, role: true } },
+        uploadedBy: { select: { id: true, name: true, employeeCode: true, role: true, email: true } },
       },
     });
   }
@@ -216,8 +227,9 @@ export class ActivitiesService {
         projectId,
         uploadedById: user.id,
         fileName: dto.fileName,
-        taskSummary: dto.taskSummary,
+        taskSummary: sanitizeHtml(dto.taskSummary),
         recordsJson: JSON.stringify(dto.records),
+
         rawPayload: JSON.stringify({ uploadedBy: user.employeeCode, rows: dto.records.length }),
       },
       include: {
@@ -238,7 +250,7 @@ export class ActivitiesService {
       where: { id: logId, projectId },
     });
     if (!log) throw new NotFoundException('Daily log not found.');
-    return this.prisma.projectDailyLog.delete({ where: { id: logId } });
+    return this.prisma.projectDailyLog.deleteMany({ where: { id: logId, projectId } });
   }
 
   // ─── Role Guards ──────────────────────────────────────────────────────────────
@@ -259,21 +271,21 @@ export class ActivitiesService {
   }
 
   private requireProjectCreationRole(user: ScopedUser) {
-    const allowed = ['platform_super_admin', 'tenant_admin', 'admin', 'project_manager'];
+    const allowed = ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager'];
     if (!allowed.includes(user.role)) {
       throw new ForbiddenException('Only Project Managers and Admins can create or edit projects.');
     }
   }
 
   private requireAssignmentRole(user: ScopedUser) {
-    const allowed = ['platform_super_admin', 'tenant_admin', 'admin', 'developer_lead', 'project_manager'];
+    const allowed = ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'developer_lead', 'project_manager'];
     if (!allowed.includes(user.role)) {
       throw new ForbiddenException('Only Developer Leads, Project Managers, and Admins can assign developers.');
     }
   }
 
   private requireSuperAdminOrAdmin(user: ScopedUser) {
-    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin' && user.role !== 'sub_admin') {
       throw new ForbiddenException('Only Tenant Admin or Admin can delete records.');
     }
   }

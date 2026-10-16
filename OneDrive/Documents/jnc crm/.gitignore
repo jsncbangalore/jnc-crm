@@ -1,38 +1,30 @@
-# Dependencies
+# Node modules
 node_modules/
-.pnp
-.pnp.js
-
-# Testing / Scratch
-scratch/
-.system_generated/
-*.log
-diff_report.json
-
-# Production builds (included in zip, but ignored in raw repo source)
+# Build output
 dist/
-build/
-.turbo
-.cache
-
-# Environment variables & secrets
-.env
-.env.*
-!.env.example
-*.pem
-Super Admin.txt
-*.db
-*.db-journal
-*.db.enc
-backups/
-apps/api/backups/
-apps/api/data/
-storage/
-prisma/*.db
-
-# OS Files
-.DS_Store
-Thumbs.db
-
-# Deployment archives
+# Environment files
+*.env
+# Secrets and backups
 *.zip
+backups/
+# SQLite dev DB
+*.db
+# Sensitive text files
+Super Admin.txt
+# Git folder (already ignored)
+.git/
+
+evidence/
+
+.env.test
+
+deploy-release/
+deploy-bundle/
+zips/
+scratch/
+*.log
+
+# Data files
+data/*.json
+apps/api/data/*.json
+

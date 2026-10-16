@@ -6,17 +6,21 @@
  * ----------------------------------------------------- */
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, RefreshCw, KeyRound, Lock, Power, Settings,
-  CheckCircle2, X, Copy, Check, Users, Send
+  CheckCircle2, X, Copy, Check, Users, Send, Trash2
 } from 'lucide-react';
 import { platformApi, setAccessToken, getAccessToken } from '../services/api';
 import { Tenant } from '../types';
 import { usePopup } from '../contexts/PopupContext';
+import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 
 export default function PlatformCompaniesPage() {
+  const navigate = useNavigate();
+  const { updateUser } = useAuth();
   const { showAlert, showConfirm } = usePopup();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,21 +88,79 @@ export default function PlatformCompaniesPage() {
   const [loadingResetAdmin, setLoadingResetAdmin] = useState(false);
   const [resetCustomPassword, setResetCustomPassword] = useState('');
   const [resetSendEmail, setResetSendEmail] = useState(true);
+  const [resetMustChangePassword, setResetMustChangePassword] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [resetSuccessResult, setResetSuccessResult] = useState<any | null>(null);
-  const [sendingReport, setSendingReport] = useState(false);
+  const [copiedReset, setCopiedReset] = useState(false);
+  const [copiedPasswordOnly, setCopiedPasswordOnly] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const handleSendExecutiveReport = async () => {
-    try {
-      setSendingReport(true);
-      const { data } = await platformApi.sendSummaryReport();
-      showAlert('Report Dispatched', data?.message || 'Executive analytics report sent to Super Admin via email.', 'success');
-    } catch (err: any) {
-      showAlert('Failed to Send Report', err?.response?.data?.message || 'Could not send executive report email', 'error');
-    } finally {
-      setSendingReport(false);
+  // Add Employee Modal State
+  const [showAddEmpModal, setShowAddEmpModal] = useState(false);
+  const [addingEmp, setAddingEmp] = useState(false);
+  const [empForm, setEmpForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    role: 'employee',
+    employeeCode: '',
+    password: 'Jsnc@2024jsn',
+  });
+
+  const handleDeleteTenant = (tenant: Tenant) => {
+    showConfirm(
+      `Are you sure you want to delete client company "${tenant.name}" (${tenant.code})? This will deactivate the company workspace.`,
+      async () => {
+        try {
+          await platformApi.deleteTenant(tenant.id);
+          showAlert('Deleted', `Company workspace "${tenant.name}" has been deleted.`, 'success');
+          fetchTenants();
+        } catch (err: any) {
+          showAlert('Delete Failed', err?.response?.data?.message || 'Could not delete client company', 'error');
+        }
+      },
+      'Delete Client Company',
+      'Delete'
+    );
+  };
+
+  const handleAddEmp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!viewingTenant || !empForm.name || !empForm.email) {
+      showAlert('Missing Information', 'Name and Email are required for adding an employee.', 'warning');
+      return;
     }
+    setAddingEmp(true);
+    try {
+      await platformApi.addTenantUser(viewingTenant.id, empForm);
+      showAlert('Employee Added', `Employee "${empForm.name}" added to ${viewingTenant.name} successfully.`, 'success');
+      setShowAddEmpModal(false);
+      setEmpForm({ name: '', email: '', phone: '', role: 'employee', employeeCode: '', password: 'Jsnc@2024jsn' });
+      handleViewTenantUsers(viewingTenant.id);
+      fetchTenants();
+    } catch (err: any) {
+      showAlert('Failed to Add Employee', err?.response?.data?.message || 'Could not add employee to company', 'error');
+    } finally {
+      setAddingEmp(false);
+    }
+  };
+
+  const handleDeleteEmp = async (tenantId: string, user: any) => {
+    showConfirm(
+      `Are you sure you want to remove user "${user.name}" (${user.email}) from ${viewingTenant?.name || 'company'}?`,
+      async () => {
+        try {
+          await platformApi.deleteTenantUser(tenantId, user.id);
+          showAlert('User Removed', `User "${user.name}" removed successfully.`, 'success');
+          handleViewTenantUsers(tenantId);
+          fetchTenants();
+        } catch (err: any) {
+          showAlert('Failed to Remove User', err?.response?.data?.message || 'Could not remove user', 'error');
+        }
+      },
+      'Remove Employee',
+      'Remove'
+    );
   };
 
   const fetchTenants = async () => {
@@ -218,13 +280,14 @@ export default function PlatformCompaniesPage() {
         try {
           const { data } = await platformApi.impersonateTenant(tenant.id);
           const currentToken = getAccessToken();
-          const currentUser = localStorage.getItem('jnc_user');
           if (currentToken) sessionStorage.setItem('jnc_master_token', currentToken);
-          if (currentUser) sessionStorage.setItem('jnc_master_user', currentUser);
+          sessionStorage.setItem('jnc_impersonate_token', data.accessToken);
 
           setAccessToken(data.accessToken);
-          localStorage.setItem('jnc_user', JSON.stringify(data.user));
-          window.location.href = '/';
+          if (data.user) {
+            updateUser(data.user);
+          }
+          navigate('/');
         } catch (err: any) {
           showAlert('Impersonation Failed', err?.response?.data?.message || 'Could not enter company workspace', 'error');
         }
@@ -239,6 +302,7 @@ export default function PlatformCompaniesPage() {
     setResetSuccessResult(null);
     setResetCustomPassword('');
     setResetSendEmail(true);
+    setResetMustChangePassword(false);
     setLoadingResetAdmin(true);
     setResetAdminEmail(tenant.email || '');
 
@@ -286,6 +350,7 @@ export default function PlatformCompaniesPage() {
       pass += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     setResetCustomPassword(pass);
+    setResetMustChangePassword(true);
   };
 
   const handleExecuteResetPassword = async (e: React.FormEvent) => {
@@ -298,6 +363,7 @@ export default function PlatformCompaniesPage() {
         newPassword: resetCustomPassword.trim() || undefined,
         adminEmail: resetAdminEmail.trim() || undefined,
         sendEmail: resetSendEmail,
+        mustResetPassword: resetMustChangePassword,
         appUrl: window.location.origin + '/login',
       });
       setResetSuccessResult(data);
@@ -307,6 +373,13 @@ export default function PlatformCompaniesPage() {
     } finally {
       setResettingPassword(false);
     }
+  };
+
+  const handleCopyPasswordOnly = () => {
+    if (!resetSuccessResult?.tempPassword) return;
+    navigator.clipboard.writeText(resetSuccessResult.tempPassword);
+    setCopiedPasswordOnly(true);
+    setTimeout(() => setCopiedPasswordOnly(false), 2500);
   };
 
   const handleCopyResetCredentials = () => {
@@ -360,42 +433,30 @@ export default function PlatformCompaniesPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleSendExecutiveReport}
-            disabled={sendingReport}
-            className="btn bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 flex items-center gap-2 text-xs font-bold"
-            title="Dispatch real-time SaaS client analytics report to Super Admin"
-          >
-            <Send size={14} className={sendingReport ? 'animate-pulse text-indigo-500' : 'text-indigo-600 dark:text-indigo-400'} />
-            <span>{sendingReport ? 'Sending Report...' : 'Send Executive Report to SA'}</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setForm({
-                code: '',
-                name: '',
-                slug: '',
-                planTier: 'standard',
-                maxUsers: 10,
-                adminName: '',
-                adminEmail: '',
-                adminPhone: '',
-                adminPassword: '',
-                city: 'Bengaluru',
-                state: 'Karnataka',
-                gstin: '',
-                sendEmail: true,
-              });
-              setShowCreateModal(true);
-            }}
-            className="btn btn-primary flex items-center gap-2 text-xs font-bold"
-          >
-            <Plus size={16} />
-            <span>Provision New Company</span>
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            setForm({
+              code: '',
+              name: '',
+              slug: '',
+              planTier: 'standard',
+              maxUsers: 10,
+              adminName: '',
+              adminEmail: '',
+              adminPhone: '',
+              adminPassword: '',
+              city: 'Bengaluru',
+              state: 'Karnataka',
+              gstin: '',
+              sendEmail: true,
+            });
+            setShowCreateModal(true);
+          }}
+          className="btn btn-primary flex items-center gap-2"
+        >
+          <Plus size={16} />
+          <span>Provision New Company</span>
+        </button>
       </div>
 
       {/* 4 Stat Cards - Plain Text Numbers & Labels Only (No Decorative Icons) */}
@@ -607,12 +668,20 @@ export default function PlatformCompaniesPage() {
                           onClick={() => handleToggleStatus(tenant)}
                           className={`btn p-1.5 rounded-lg text-xs font-semibold ${
                             tenant.status === 'active'
-                              ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20'
+                              ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-900/20'
                               : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/20'
                           }`}
                           title={tenant.status === 'active' ? 'Suspend workspace' : 'Activate workspace'}
                         >
                           <Power size={14} />
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteTenant(tenant)}
+                          className="btn p-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20"
+                          title="Delete client company workspace"
+                        >
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </td>
@@ -856,11 +925,12 @@ export default function PlatformCompaniesPage() {
                     Credentials email dispatched to <strong>{createdResult.adminUser.email}</strong>
                   </span>
                 </div>
-              ) : createdResult.emailStatusMessage ? (
+              ) : (
                 <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs">
-                  <span>{createdResult.emailStatusMessage}</span>
+                  <div className="font-semibold mb-0.5">Email Delivery Status:</div>
+                  <span>{createdResult.emailStatusMessage || 'Credentials email could not be sent. Please copy the credentials below and provide them to the client administrator.'}</span>
                 </div>
-              ) : null}
+              )}
 
               <div className="bg-slate-50 dark:bg-[#1E2230] p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-2 text-xs font-mono">
                 <div className="flex justify-between">
@@ -887,8 +957,22 @@ export default function PlatformCompaniesPage() {
                 </div>
                 <div className="flex justify-between pt-1 border-t border-slate-200 dark:border-slate-800">
                   <span className="text-slate-500">Login Portal:</span>
-                  <span className="text-crm-blue font-bold">{window.location.origin}/login</span>
+                  <a
+                    href="/login"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-crm-blue font-bold hover:underline"
+                  >
+                    {window.location.origin}/login &nearr;
+                  </a>
                 </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 text-[12px] text-blue-900 dark:text-blue-300">
+                <p className="font-semibold">Portal Notice:</p>
+                <p className="mt-0.5 text-blue-800 dark:text-blue-300">
+                  Client company administrators and employees must sign in at <strong>{window.location.origin}/login</strong> (NOT at /platform/login).
+                </p>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
@@ -956,9 +1040,91 @@ export default function PlatformCompaniesPage() {
 
               <div className="p-5 overflow-y-auto space-y-4 flex-1">
                 <div>
-                  <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">
-                    Company Users ({viewingTenant.users?.length || 0} / {viewingTenant.maxUsers})
-                  </h3>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                      Company Users ({viewingTenant.users?.length || 0} / {viewingTenant.maxUsers})
+                    </h3>
+                    <button
+                      onClick={() => setShowAddEmpModal(!showAddEmpModal)}
+                      className="btn px-2.5 py-1 text-xs font-bold bg-primary text-white hover:bg-primary/90 rounded-lg flex items-center gap-1 shadow-sm"
+                    >
+                      <Plus size={13} />
+                      <span>Add Employee</span>
+                    </button>
+                  </div>
+
+                  {showAddEmpModal && (
+                    <form onSubmit={handleAddEmp} className="p-3 bg-slate-50 dark:bg-[#1E2230] rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-3 text-xs mb-4">
+                      <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center justify-between">
+                        <span>Add New Employee to {viewingTenant.name}</span>
+                        <button type="button" onClick={() => setShowAddEmpModal(false)} className="text-slate-400 hover:text-slate-600">
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="label text-[11px] mb-0.5">Full Name *</label>
+                          <input
+                            type="text"
+                            className="input text-xs"
+                            placeholder="e.g. Anand Kumar"
+                            value={empForm.name}
+                            onChange={(e) => setEmpForm({ ...empForm, name: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="label text-[11px] mb-0.5">Email Address *</label>
+                          <input
+                            type="email"
+                            className="input text-xs font-mono"
+                            placeholder="anand@client.com"
+                            value={empForm.email}
+                            onChange={(e) => setEmpForm({ ...empForm, email: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="label text-[11px] mb-0.5">Assigned Role *</label>
+                          <select
+                            className="input text-xs"
+                            value={empForm.role}
+                            onChange={(e) => setEmpForm({ ...empForm, role: e.target.value })}
+                          >
+                            <option value="tenant_admin">Company Owner / Admin (tenant_admin)</option>
+                            <option value="admin">Administrator (admin)</option>
+                            <option value="sub_admin">Sub-Admin / Manager (sub_admin)</option>
+                            <option value="employee">Sales Employee (employee)</option>
+                            <option value="store_manager">Store Manager (store_manager)</option>
+                            <option value="project_manager">Project Manager (project_manager)</option>
+                            <option value="developer_lead">Developer Lead (developer_lead)</option>
+                            <option value="developer">Developer (developer)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="label text-[11px] mb-0.5">Initial Password</label>
+                          <input
+                            type="text"
+                            className="input text-xs font-mono"
+                            value={empForm.password}
+                            onChange={(e) => setEmpForm({ ...empForm, password: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button type="button" onClick={() => setShowAddEmpModal(false)} className="btn btn-secondary text-xs py-1 px-3">
+                          Cancel
+                        </button>
+                        <button type="submit" disabled={addingEmp} className="btn btn-primary text-xs py-1 px-3 flex items-center gap-1">
+                          {addingEmp ? <RefreshCw size={12} className="animate-spin" /> : <Plus size={12} />}
+                          <span>{addingEmp ? 'Adding...' : 'Save & Add Employee'}</span>
+                        </button>
+                      </div>
+                    </form>
+                  )}
 
                   {(!viewingTenant.users || viewingTenant.users.length === 0) ? (
                     <div className="text-center py-6 text-slate-400 text-xs bg-slate-50 dark:bg-[#1E2230] rounded-xl border border-slate-200 dark:border-[#2A3042]">
@@ -998,6 +1164,13 @@ export default function PlatformCompaniesPage() {
                               {u.role.replace('_', ' ')}
                             </span>
                             <span className={`w-2 h-2 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} title={u.isActive ? 'Active' : 'Inactive'} />
+                            <button
+                              onClick={() => handleDeleteEmp(viewingTenant.id, u)}
+                              className="p-1 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                              title="Remove user from company"
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -1174,58 +1347,91 @@ export default function PlatformCompaniesPage() {
 
               {resetSuccessResult ? (
                 <div className="p-6 space-y-4">
-                  <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300">
-                    <div className="flex items-center gap-2 font-bold text-sm">
-                      <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-                      <span>Password Reset Completed</span>
+                  {resetSuccessResult.emailDispatched ? (
+                    <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300">
+                      <div className="flex items-center gap-2 font-bold text-sm">
+                        <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>Password Reset Completed & Email Sent</span>
+                      </div>
+                      <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
+                        Official credentials email dispatched to <strong>{resetSuccessResult.adminUser?.email}</strong>.
+                      </p>
                     </div>
-                    <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
-                      {resetSuccessResult.emailDispatched
-                        ? `Official credentials email dispatched to ${resetSuccessResult.adminUser?.email}`
-                        : `Credentials updated successfully.`}
-                    </p>
-                  </div>
+                  ) : (
+                    <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 text-amber-900 dark:text-amber-300">
+                      <div className="flex items-center gap-2 font-bold text-sm">
+                        <CheckCircle2 size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span>Password Reset Completed Successfully</span>
+                      </div>
+                      <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
+                        <strong>Email Delivery Notice:</strong> {resetSuccessResult.emailStatusMessage || 'Credentials email could not be delivered. Please copy the credentials below and provide them directly to the company admin.'}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="bg-slate-50 dark:bg-[#1E2230] p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-2.5 text-xs">
                     <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800">
-                      <span className="text-slate-500">Company:</span>
+                      <span className="text-slate-500 font-medium">Company Workspace:</span>
                       <span className="font-bold text-slate-900 dark:text-white">
                         {resetSuccessResult.tenant?.name} ({resetSuccessResult.tenant?.code})
                       </span>
                     </div>
                     <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800">
-                      <span className="text-slate-500">Admin User ID:</span>
-                      <span className="font-mono font-bold text-crm-blue">
+                      <span className="text-slate-500 font-medium">Admin User ID:</span>
+                      <span className="font-mono font-bold text-[#2563EB]">
                         {resetSuccessResult.adminUser?.employeeCode}
                       </span>
                     </div>
                     <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800">
-                      <span className="text-slate-500">Login Email:</span>
-                      <span className="font-mono text-slate-800 dark:text-slate-200">
+                      <span className="text-slate-500 font-medium">Login Email:</span>
+                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
                         {resetSuccessResult.adminUser?.email}
                       </span>
                     </div>
                     <div className="flex justify-between items-center py-1 border-b border-slate-200 dark:border-slate-800">
-                      <span className="text-slate-500 font-semibold">New Temporary Password:</span>
-                      <span className="font-mono font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-2.5 py-0.5 rounded border border-rose-200 dark:border-rose-800 text-sm select-all">
-                        {resetSuccessResult.tempPassword}
-                      </span>
+                      <span className="text-slate-500 font-medium">New Password:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-2.5 py-0.5 rounded border border-rose-200 dark:border-rose-800 text-sm select-all">
+                          {resetSuccessResult.tempPassword}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyPasswordOnly}
+                          title="Copy Password"
+                          className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-[11px] flex items-center gap-1 transition-colors"
+                        >
+                          {copiedPasswordOnly ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                          <span>{copiedPasswordOnly ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
                     </div>
                     <div className="flex justify-between items-center py-1">
-                      <span className="text-slate-500">Login Portal:</span>
-                      <span className="font-mono text-[11px] text-crm-blue">
-                        {window.location.origin}/login
-                      </span>
+                      <span className="text-slate-500 font-medium">Login Portal:</span>
+                      <a
+                        href="/login"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-mono text-[11px] text-[#2563EB] hover:underline font-bold"
+                      >
+                        {window.location.origin}/login &nearr;
+                      </a>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 pt-2">
+                  <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 text-[12px] text-blue-900 dark:text-blue-300">
+                    <p className="font-semibold">Important Login Instructions:</p>
+                    <p className="mt-0.5 text-blue-800 dark:text-blue-300">
+                      Company administrators and employees must sign in at the <strong>Client Portal (/login)</strong>, NOT at the Platform Super Admin portal.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2">
                     <button
                       onClick={handleCopyResetCredentials}
                       className="btn flex-1 bg-slate-900 dark:bg-slate-800 text-white hover:bg-slate-800 flex items-center justify-center gap-1.5 text-xs py-2.5"
                     >
                       {copiedReset ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                      <span>{copiedReset ? 'Credentials Copied' : 'Copy All Credentials'}</span>
+                      <span>{copiedReset ? 'Credentials Copied' : 'Copy All Details'}</span>
                     </button>
                     <button
                       onClick={() => {
@@ -1272,7 +1478,7 @@ export default function PlatformCompaniesPage() {
                       <button
                         type="button"
                         onClick={generateRandomPassword}
-                        className="text-[11px] text-crm-blue hover:underline font-semibold"
+                        className="text-[11px] text-[#2563EB] hover:underline font-semibold"
                       >
                         Generate Random Strong Password
                       </button>
@@ -1286,22 +1492,42 @@ export default function PlatformCompaniesPage() {
                     />
                   </div>
 
-                  <div className="p-3 rounded-xl bg-slate-100 dark:bg-[#1E2230] border border-slate-200 dark:border-[#2A3042] flex items-start gap-2.5">
-                    <input
-                      type="checkbox"
-                      id="resetSendEmailCheck"
-                      checked={resetSendEmail}
-                      onChange={(e) => setResetSendEmail(e.target.checked)}
-                      className="mt-0.5 rounded border-slate-300 text-crm-blue focus:ring-crm-blue"
-                    />
-                    <label htmlFor="resetSendEmailCheck" className="text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
-                      <span className="font-semibold block text-slate-900 dark:text-white">
-                        Send Official Credentials Email
-                      </span>
-                      <span className="text-[11px] text-slate-500 block mt-0.5">
-                        Sends an email containing Company Code, User ID ({resetAdminDetail?.employeeCode || 'Admin'}), New Password, and Direct Login URL to <strong>{resetAdminEmail || 'Admin Email'}</strong>.
-                      </span>
-                    </label>
+                  <div className="space-y-2">
+                    <div className="p-3 rounded-xl bg-slate-100 dark:bg-[#1E2230] border border-slate-200 dark:border-[#2A3042] flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        id="resetSendEmailCheck"
+                        checked={resetSendEmail}
+                        onChange={(e) => setResetSendEmail(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-300 text-crm-blue focus:ring-crm-blue"
+                      />
+                      <label htmlFor="resetSendEmailCheck" className="text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                        <span className="font-semibold block text-slate-900 dark:text-white">
+                          Send Official Credentials Email
+                        </span>
+                        <span className="text-[11px] text-slate-500 block mt-0.5">
+                          Sends an email with access details to <strong>{resetAdminEmail || 'Admin Email'}</strong> (requires configured SMTP or Resend on server).
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-100 dark:bg-[#1E2230] border border-slate-200 dark:border-[#2A3042] flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        id="resetMustChangePassCheck"
+                        checked={resetMustChangePassword}
+                        onChange={(e) => setResetMustChangePassword(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-300 text-crm-blue focus:ring-crm-blue"
+                      />
+                      <label htmlFor="resetMustChangePassCheck" className="text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                        <span className="font-semibold block text-slate-900 dark:text-white">
+                          Require Password Change on First Sign-in
+                        </span>
+                        <span className="text-[11px] text-slate-500 block mt-0.5">
+                          If unchecked, the user can immediately use this password without being forced to change it.
+                        </span>
+                      </label>
+                    </div>
                   </div>
 
                   <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-[#2A3042]">
@@ -1320,12 +1546,12 @@ export default function PlatformCompaniesPage() {
                       {resettingPassword ? (
                         <>
                           <RefreshCw size={14} className="animate-spin" />
-                          <span>Resetting & Sending...</span>
+                          <span>Resetting & Applying...</span>
                         </>
                       ) : (
                         <>
                           <Send size={13} />
-                          <span>Reset & Send Credentials</span>
+                          <span>Reset & Apply Credentials</span>
                         </>
                       )}
                     </button>

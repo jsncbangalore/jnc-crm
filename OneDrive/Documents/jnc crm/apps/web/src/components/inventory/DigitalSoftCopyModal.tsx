@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText,
@@ -16,6 +16,9 @@ import {
 } from 'lucide-react';
 import { numberToIndianWords } from './SmartBillScannerModal';
 import { formatImageUrl } from './PurchaseBillsHub';
+import { fetchPrivateFileBlobUrl } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
+import { useBranding } from '../../contexts/BrandingContext';
 
 interface DigitalSoftCopyModalProps {
   isOpen: boolean;
@@ -28,8 +31,50 @@ export const DigitalSoftCopyModal: React.FC<DigitalSoftCopyModalProps> = ({
   onClose,
   bill,
 }) => {
+  const { user } = useAuth();
+  const { branding } = useBranding();
   const printRef = useRef<HTMLDivElement>(null);
   const [activeView, setActiveView] = useState<'soft_copy' | 'original_doc'>('soft_copy');
+  const [docBlobUrl, setDocBlobUrl] = useState<string | null>(null);
+
+  const companyDisplayName =
+    bill?.softCopyData?.companyName ||
+    user?.tenant?.name ||
+    branding.companyDisplayName ||
+    'Client Workspace';
+  const companyGstin =
+    bill?.softCopyData?.companyGstin ||
+    user?.tenant?.gstin ||
+    '';
+  const companyEmail = user?.tenant?.email || user?.email || '';
+
+  useEffect(() => {
+    let activeBlob: string | null = null;
+    let isCancelled = false;
+
+    if (isOpen && bill?.documentUrl) {
+      fetchPrivateFileBlobUrl(bill.documentUrl)
+        .then((blobUrl) => {
+          if (!isCancelled) {
+            activeBlob = blobUrl;
+            setDocBlobUrl(blobUrl);
+          } else if (blobUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(blobUrl);
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to load bill document', err);
+        });
+    }
+
+    return () => {
+      isCancelled = true;
+      if (activeBlob && activeBlob.startsWith('blob:')) {
+        URL.revokeObjectURL(activeBlob);
+      }
+      setDocBlobUrl(null);
+    };
+  }, [isOpen, bill?.documentUrl]);
 
   if (!isOpen || !bill) return null;
 
@@ -113,12 +158,12 @@ export const DigitalSoftCopyModal: React.FC<DigitalSoftCopyModalProps> = ({
                     <span className="text-[11px] font-black uppercase tracking-widest text-blue-600 block">
                       PURCHASE & INWARD SOFT COPY
                     </span>
-                    <h1 className="text-2xl font-black text-slate-900 mt-0.5">JNC TECHNOLOGIES</h1>
+                    <h1 className="text-2xl font-black text-slate-900 mt-0.5">{companyDisplayName}</h1>
                     <p className="text-xs text-slate-600 mt-0.5">
-                      Electronics R&D, PA Integration & Automation Sourcing
+                      Enterprise Inventory, Procurement & Sourcing Soft Copy
                     </p>
                     <p className="text-[11px] text-slate-500 font-mono">
-                      GSTIN: 33AAACJ9876E1Z4 • info@jnc.co.in
+                      {companyGstin ? `GSTIN: ${companyGstin}` : ''} {companyEmail ? `• ${companyEmail}` : ''}
                     </p>
                   </div>
 
@@ -249,13 +294,13 @@ export const DigitalSoftCopyModal: React.FC<DigitalSoftCopyModalProps> = ({
               <div className="bg-black/60 rounded-2xl p-4 border border-slate-200 dark:border-[#2A3042] flex flex-col items-center justify-center min-h-[450px]">
                 {bill.documentUrl?.toLowerCase().endsWith('.pdf') ? (
                   <iframe
-                    src={formatImageUrl(bill.documentUrl)}
+                    src={docBlobUrl || formatImageUrl(bill.documentUrl)}
                     title="Original Document"
                     className="w-full h-[70vh] rounded-xl border border-white/10"
                   />
                 ) : (
                   <img
-                    src={formatImageUrl(bill.documentUrl)}
+                    src={docBlobUrl || formatImageUrl(bill.documentUrl)}
                     alt="Original Receipt Scan"
                     className="max-h-[70vh] rounded-xl shadow-2xl border border-white/10 object-contain"
                   />

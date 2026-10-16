@@ -139,8 +139,7 @@ async function runLoginTests() {
         return results;
       },
       findFirst: async ({ where }: any) => {
-        const rawEmail = where.email?.equals || where.OR?.[0]?.email?.equals;
-        if (where.role === 'platform_super_admin' && rawEmail === 'superadmin@jsnc.co.in') {
+        if (where.role === 'platform_super_admin' && where.email?.equals === 'superadmin@jsnc.co.in') {
           return platformAdmin;
         }
         if (where.id?.in) {
@@ -254,19 +253,19 @@ async function runLoginTests() {
   }
   assert(psaBlockedOnStaff, 'platform_super_admin on /auth/login returns generic "Invalid credentials."');
 
-  // ─── Test 7: platform_super_admin on /auth/platform-login -> logs in ────────
-  console.log('\n--- 7. PLATFORM ADMIN ON /auth/platform-login ---');
+  // ─── Test 7: platform_super_admin on /platform-auth/login -> logs in ───────
+  console.log('\n--- 7. PLATFORM ADMIN ON /platform-auth/login ---');
   const psaResult = await authService.platformLogin({
     email: 'superadmin@jsnc.co.in',
     password: 'CorrectPass@123',
   });
   assert(
     !!psaResult.accessToken && psaResult.user.role === 'platform_super_admin',
-    'platform_super_admin logs in successfully via /auth/platform-login',
+    'platform_super_admin logs in successfully via /platform-auth/login',
   );
 
-  // ─── Test 8: Tenant user on /auth/platform-login -> generic error ───────────
-  console.log('\n--- 8. TENANT USER BLOCKED ON /auth/platform-login ---');
+  // ─── Test 8: Tenant user on /platform-auth/login -> generic error ──────────
+  console.log('\n--- 8. TENANT USER BLOCKED ON /platform-auth/login ---');
   let tenantBlockedOnPlatform = false;
   try {
     await authService.platformLogin({
@@ -278,7 +277,7 @@ async function runLoginTests() {
       tenantBlockedOnPlatform = true;
     }
   }
-  assert(tenantBlockedOnPlatform, 'Tenant user on /auth/platform-login returns generic "Invalid credentials."');
+  assert(tenantBlockedOnPlatform, 'Tenant user on /platform-auth/login returns generic "Invalid credentials."');
 
   // ─── Test 9: Deactivated user is rejected ─────────────────────────────────
   console.log('\n--- 9. DEACTIVATED USER REJECTED ---');

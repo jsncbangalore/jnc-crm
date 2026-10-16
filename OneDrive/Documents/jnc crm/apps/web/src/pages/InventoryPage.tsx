@@ -34,9 +34,13 @@ import {
   Coins,
   Calculator,
   BarChart2,
+  Share2,
+  Copy,
+  ExternalLink,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
+import { useSearchParams } from 'react-router-dom';
 import { inventoryApi, fetchPrivateFileBlobUrl } from '../services/api';
 import { Sku, ProjectStockPosition } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,8 +50,8 @@ import { BulkEditComponentsModal } from '../components/inventory/BulkEditCompone
 import { RecordComponentPurchaseModal } from '../components/inventory/RecordComponentPurchaseModal';
 import { RecordPurchaseModal } from '../components/inventory/RecordPurchaseModal';
 import { BulkExcelImportModal } from '../components/inventory/BulkExcelImportModal';
-import { PurchaseBillsHub } from '../components/inventory/PurchaseBillsHub';
 import { RestockComponentModal } from '../components/inventory/RestockComponentModal';
+import { encodeCartForUrl } from '../utils/cartShare';
 
 export interface BuyListItem {
   id: string;
@@ -68,8 +72,8 @@ export default function InventoryPage() {
   const canDelete = user?.role === 'tenant_admin' || user?.role === 'admin';
   const canManage = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
 
-  // Active View Tab: 'master_stock' | 'buy_list' | 'bills_hub'
-  const [activeTab, setActiveTab] = useState<'master_stock' | 'buy_list' | 'bills_hub'>('master_stock');
+  // Active View Tab: 'master_stock' | 'buy_list'
+  const [activeTab, setActiveTab] = useState<'master_stock' | 'buy_list'>('master_stock');
 
   // Table Density & Scrolling Navigator
   const [density, setDensity] = useState<'compact' | 'normal'>('normal');
@@ -95,6 +99,16 @@ export default function InventoryPage() {
     try {
       localStorage.setItem('jnc_inventory_buy_list', JSON.stringify(buyList));
     } catch {}
+  }, [buyList]);
+
+  // Share Cart Modal State
+  const [showShareCartModal, setShowShareCartModal] = useState(false);
+  const [cartCopied, setCartCopied] = useState(false);
+
+  const shareCartUrl = useMemo(() => {
+    if (buyList.length === 0) return '';
+    const encoded = encodeCartForUrl(buyList);
+    return `${window.location.origin}/shared-cart?data=${encoded}`;
   }, [buyList]);
 
   // Filters
@@ -128,7 +142,14 @@ export default function InventoryPage() {
   };
 
   // Modals
+  const [searchParams] = useSearchParams();
   const [showAddComponentModal, setShowAddComponentModal] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get('action') === 'create') {
+      setShowAddComponentModal(true);
+    }
+  }, [searchParams]);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [restockItem, setRestockItem] = useState<any | null>(null);
   const [showRestockModal, setShowRestockModal] = useState(false);
@@ -167,6 +188,7 @@ export default function InventoryPage() {
   // Secure Wipe Modal
   const [showClearModal, setShowClearModal] = useState(false);
   const [wipeConfirmText, setWipeConfirmText] = useState('');
+  const [wipePassword, setWipePassword] = useState('');
   const [clearing, setClearing] = useState(false);
 
   // In-App Custom Confirmation Modal
@@ -587,12 +609,12 @@ export default function InventoryPage() {
   return (
     <div className="space-y-5">
       {/* ─── TOP WORKFLOW NAVIGATION TABS ──────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 dark:border-[#2A3042] pb-4 flex-wrap">
-        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#141722] p-1.5 rounded-2xl border border-slate-200 dark:border-[#2A3042]">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 dark:border-[#2A3042] pb-3 flex-wrap">
+        <div className="w-full sm:w-auto overflow-x-auto scrollbar-none flex items-center gap-1.5 bg-slate-100 dark:bg-[#141722] p-1.5 rounded-2xl border border-slate-200 dark:border-[#2A3042]">
           {/* Tab 1: Master Stock */}
           <button
             onClick={() => setActiveTab('master_stock')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${
               activeTab === 'master_stock'
                 ? 'bg-crm-blue text-white shadow-glow-blue'
                 : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/5'
@@ -605,7 +627,7 @@ export default function InventoryPage() {
           {/* Tab 2: Procurement Buy List */}
           <button
             onClick={() => setActiveTab('buy_list')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${
               activeTab === 'buy_list'
                 ? 'bg-crm-blue text-white shadow-glow-blue'
                 : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/5'
@@ -618,19 +640,6 @@ export default function InventoryPage() {
                 {buyList.length}
               </span>
             )}
-          </button>
-
-          {/* Tab 3: Purchase Bills & Soft Copies Hub */}
-          <button
-            onClick={() => setActiveTab('bills_hub')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-              activeTab === 'bills_hub'
-                ? 'bg-crm-blue text-white shadow-glow-blue'
-                : 'text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/5'
-            }`}
-          >
-            <Receipt size={15} />
-            <span>Purchase Bills & Archive</span>
           </button>
         </div>
 
@@ -936,7 +945,7 @@ export default function InventoryPage() {
 
 
           {/* MASTER TABLE (NO PRICING AMOUNTS - CLEAN INVENTORY VIEW) */}
-          <div className="table-wrapper border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-hidden shadow-2xl bg-white dark:bg-[#141722]">
+          <div className="table-wrapper border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-x-auto shadow-2xl bg-white dark:bg-[#141722]">
             <div
               ref={tableContainerRef}
               className="overflow-x-auto max-h-[680px] scrollbar-thin scrollbar-thumb-crm-blue/70 hover:scrollbar-thumb-crm-blue scrollbar-track-[#181B26]"
@@ -1302,9 +1311,19 @@ export default function InventoryPage() {
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
+                onClick={() => setShowShareCartModal(true)}
+                disabled={buyList.length === 0}
+                className="btn bg-blue-600 hover:bg-blue-500 text-white text-xs px-3.5 py-2 font-bold gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                title="Create shareable live transfer link"
+              >
+                <Share2 size={13} /> Share Cart Link
+              </button>
+
+              <button
+                type="button"
                 onClick={handleDownloadPoExcel}
                 disabled={buyList.length === 0}
-                className="btn bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3.5 py-2 font-bold gap-1.5 shadow-sm disabled:opacity-50"
+                className="btn bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3.5 py-2 font-bold gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Download size={13} /> Download PO (Excel .xlsx)
               </button>
@@ -1313,7 +1332,7 @@ export default function InventoryPage() {
                 type="button"
                 onClick={handleDownloadPoCsv}
                 disabled={buyList.length === 0}
-                className="btn bg-white dark:bg-[#1E2230] hover:bg-slate-100 dark:hover:bg-[#2A3042] text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-[#2A3042] text-xs px-3.5 py-2 font-bold gap-1.5 shadow-sm disabled:opacity-50"
+                className="btn bg-white dark:bg-[#1E2230] hover:bg-slate-100 dark:hover:bg-[#2A3042] text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-[#2A3042] text-xs px-3.5 py-2 font-bold gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Download size={13} /> Download PO (CSV)
               </button>
@@ -1345,7 +1364,7 @@ export default function InventoryPage() {
 
 
           {/* BUY LIST TABLE */}
-          <div className="table-wrapper border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-hidden shadow-sm bg-white dark:bg-[#141722]">
+          <div className="table-wrapper border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-x-auto shadow-sm bg-white dark:bg-[#141722]">
             <div
               ref={buyListTableContainerRef}
               className="overflow-x-auto max-h-[680px] scrollbar-thin scrollbar-thumb-crm-blue/70 hover:scrollbar-thumb-crm-blue scrollbar-track-[#181B26]"
@@ -1438,6 +1457,7 @@ export default function InventoryPage() {
                               type="number"
                               min="1"
                               value={item.quantityToBuy}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) => {
                                 const val = Math.max(1, Number(e.target.value));
                                 setBuyList((prev) =>
@@ -1516,19 +1536,6 @@ export default function InventoryPage() {
           <div className="flex items-center justify-between px-3 py-2 text-xs text-slate-500 font-mono">
             <span>Showing {buyList.length} items queued in Buy Cart ({buyListUnitsCount} units)</span>
           </div>
-        </motion.div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* ─── VIEW 3: PURCHASE BILLS & SOFT COPIES ARCHIVE ───────────────────── */}
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      {activeTab === 'bills_hub' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <PurchaseBillsHub
-            existingProjects={existingProjects}
-            onStockUpdated={fetchData}
-            onRecordPurchase={() => setShowRecordPurchaseModal(true)}
-          />
         </motion.div>
       )}
 
@@ -1679,41 +1686,63 @@ export default function InventoryPage() {
                 <div>
                   <h3 className="text-base font-bold text-slate-950 dark:text-white">Wipe Data?</h3>
                   <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                    This will clear inventory records and project stock positions. An encrypted
-                    backup will be created automatically before clearing.
+                    This will clear inventory records and project stock positions for your company.
+                    Database snapshots are managed canonically via server pg_dump.
                   </p>
                 </div>
               </div>
 
               <div className="p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-[11px] text-red-700 dark:text-red-300">
-                Type <strong className="text-slate-950 dark:text-white font-mono uppercase">WIPE</strong> below to confirm:
+                Type <strong className="text-slate-950 dark:text-white font-mono uppercase">WIPE-INVENTORY-{(user?.tenant?.code || 'JNC').toUpperCase()}</strong> below to confirm:
                 <input
                   type="text"
-                  placeholder="Type WIPE"
+                  placeholder={`Type WIPE-INVENTORY-${(user?.tenant?.code || 'JNC').toUpperCase()}`}
                   value={wipeConfirmText}
                   onChange={(e) => setWipeConfirmText(e.target.value)}
                   className="input mt-2 font-mono text-center font-bold tracking-widest text-red-700 dark:text-red-300 border-red-300 dark:border-red-500/40 bg-white dark:bg-[#141722]"
                 />
+                <div className="mt-2.5">
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">Current Password:</span>
+                  <input
+                    type="password"
+                    placeholder="Enter current password"
+                    value={wipePassword}
+                    onChange={(e) => setWipePassword(e.target.value)}
+                    className="input mt-1 w-full text-xs text-slate-900 dark:text-white border-red-300 dark:border-red-500/40 bg-white dark:bg-[#141722]"
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   disabled={clearing}
-                  onClick={() => setShowClearModal(false)}
+                  onClick={() => {
+                    setShowClearModal(false);
+                    setWipeConfirmText('');
+                    setWipePassword('');
+                  }}
                   className="btn bg-white dark:bg-[#1E2230] hover:bg-slate-100 dark:hover:bg-[#252A3C] text-slate-800 dark:text-slate-300 text-xs px-4 py-2 border border-slate-300 dark:border-[#2A3042] font-bold shadow-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  disabled={clearing || wipeConfirmText !== 'WIPE'}
+                  disabled={
+                    clearing ||
+                    !wipePassword.trim() ||
+                    (wipeConfirmText.trim().toUpperCase() !== `WIPE-INVENTORY-${(user?.tenant?.code || 'JNC').toUpperCase()}` &&
+                     wipeConfirmText.trim().toUpperCase() !== `WIPE-INVENTORY${(user?.tenant?.code || 'JNC').toUpperCase()}` &&
+                     wipeConfirmText.trim().toUpperCase() !== 'WIPE-INVENTORY')
+                  }
                   onClick={async () => {
                     setClearing(true);
                     try {
-                      await inventoryApi.clearAll();
+                      await inventoryApi.clearAll(wipeConfirmText.trim().toUpperCase(), wipePassword);
                       await fetchData();
                       setShowClearModal(false);
+                      setWipeConfirmText('');
+                      setWipePassword('');
                     } catch (err: any) {
                       alert('Failed to clear inventory: ' + (err?.response?.data?.message || err.message));
                     } finally {
@@ -1723,7 +1752,7 @@ export default function InventoryPage() {
                   className="btn bg-red-600 hover:bg-red-500 text-white text-xs px-5 shadow-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed font-bold"
                 >
                   <Trash2 size={13} />
-                  {clearing ? 'Backing Up & Wiping...' : 'Confirm Wipe'}
+                  {clearing ? 'Wiping Inventory...' : 'Confirm Wipe'}
                 </button>
               </div>
             </motion.div>
@@ -1777,6 +1806,118 @@ export default function InventoryPage() {
                   {confirmModal.danger && <Trash2 size={13} />}
                   {confirmModal.confirmText}
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── SHARE PROCUREMENT CART MODAL ───────────────────────── */}
+      <AnimatePresence>
+        {showShareCartModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-[#181B26] border border-slate-300 dark:border-[#2A3042] rounded-2xl w-full max-w-lg shadow-2xl p-5 sm:p-6 space-y-4"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#2A3042]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-crm-blue flex items-center justify-center border border-blue-500/20 shadow-sm">
+                    <Share2 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-slate-950 dark:text-white">
+                      Share Procurement Cart
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Live URL transfer with no login required
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowShareCartModal(false)}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/40 text-xs text-blue-900 dark:text-blue-200 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-blue-500" />
+                  Live Material List Transfer
+                </p>
+                <p className="text-[11.5px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                  This URL transfers all <span className="font-bold text-slate-950 dark:text-white">{buyList.length} component items</span> ({buyListUnitsCount} total units). Anyone who opens it will see only this complete list with direct Excel download, CSV export, and print options.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+                  Live Transfer Link
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={shareCartUrl}
+                    onFocus={(e) => e.target.select()}
+                    className="flex-1 px-3 py-2 text-xs font-mono rounded-xl border border-slate-300 dark:border-[#2A3042] bg-slate-50 dark:bg-[#141722] text-slate-800 dark:text-slate-200 select-all focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareCartUrl);
+                      setCartCopied(true);
+                      setTimeout(() => setCartCopied(false), 2500);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shrink-0 transition-colors shadow-sm cursor-pointer"
+                  >
+                    {cartCopied ? (
+                      <>
+                        <Check size={14} className="text-emerald-300" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={14} />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-[#2A3042] gap-2 flex-wrap">
+                <a
+                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                    `*JNC Procurement Material List*\nItems: ${buyList.length} components (${buyListUnitsCount} units)\n\nView live list here:\n${shareCartUrl}`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                >
+                  <span>Share on WhatsApp</span>
+                </a>
+
+                <div className="flex items-center gap-2">
+                  <a
+                    href={shareCartUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-[#2A3042] text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 inline-flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <ExternalLink size={13} />
+                    <span>Open Live View</span>
+                  </a>
+                  <button
+                    onClick={() => setShowShareCartModal(false)}
+                    className="px-4 py-1.5 rounded-xl bg-slate-200 dark:bg-[#2A3042] text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-[#343B52] transition-colors cursor-pointer"
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

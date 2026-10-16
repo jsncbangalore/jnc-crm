@@ -105,8 +105,8 @@ export class AutomationController {
   }
 
   @Post('run-nightly-reorder')
-  runNightlyReorderCheck() {
-    return this.automationService.runNightlyReorderCheck();
+  runNightlyReorderCheck(@CurrentUser() user: ScopedUser) {
+    return this.automationService.runNightlyReorderCheck(user);
   }
 
   @Post('process-delayed-jobs')

@@ -18,7 +18,10 @@ export default function BrandingSettingsPage() {
 
   const [companyName, setCompanyName] = useState(branding.companyDisplayName);
   const [companyPhone, setCompanyPhone] = useState(branding.companyPhone);
-  const [logoPreview, setLogoPreview] = useState<string | null>(branding.companyLogoUrl);
+  const [logoPreview, setLogoPreview] = useState<string | null>(
+    branding.companyLogoUrl || '/jnc-logo.jpg'
+  );
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // Invoicing & Tax Profile Fields
   const [email, setEmail] = useState('');
@@ -58,7 +61,7 @@ export default function BrandingSettingsPage() {
   useEffect(() => {
     setCompanyName(branding.companyDisplayName);
     setCompanyPhone(branding.companyPhone);
-    setLogoPreview(branding.companyLogoUrl);
+    setLogoPreview(branding.companyLogoUrl || '/jnc-logo.jpg');
 
     // Fetch full company invoicing profile
     const loadProfile = async () => {
@@ -68,7 +71,11 @@ export default function BrandingSettingsPage() {
         if (data) {
           if (data.name) setCompanyName(data.name);
           if (data.phone) setCompanyPhone(data.phone);
-          if (data.logoUrl) setLogoPreview(data.logoUrl);
+          if (data.logoUrl && !data.logoUrl.startsWith('data:')) {
+            setLogoPreview(data.logoUrl);
+          } else {
+            setLogoPreview('/jnc-logo.jpg');
+          }
           if (data.email) setEmail(data.email);
           if (data.address) setAddress(data.address);
           if (data.city) setCity(data.city);
@@ -100,7 +107,7 @@ export default function BrandingSettingsPage() {
     loadProfile();
   }, [branding]);
 
-  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -109,22 +116,32 @@ export default function BrandingSettingsPage() {
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      setErrorMessage('Logo file size must be under 2MB.');
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage('Logo file size must be under 5MB.');
       return;
     }
 
     setErrorMessage('');
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setLogoPreview(base64);
-    };
-    reader.readAsDataURL(file);
+    setUploadingLogo(true);
+    try {
+      await brandingApi.uploadLogo(file);
+      await refreshBranding();
+      const freshUrl = `/jnc-logo.jpg?t=${Date.now()}`;
+      setLogoPreview(freshUrl);
+      setSuccessMessage('Official Company Logo uploaded and updated successfully across all invoices, printouts, and headers.');
+      setTimeout(() => setSuccessMessage(''), 5000);
+    } catch (err: any) {
+      setErrorMessage(err?.response?.data?.message || 'Failed to upload logo.');
+    } finally {
+      setUploadingLogo(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   const handleRemoveLogo = () => {
-    setLogoPreview(null);
+    setLogoPreview('/jnc-logo.jpg');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -157,13 +174,13 @@ export default function BrandingSettingsPage() {
       await updateBranding({
         companyDisplayName: companyName.trim(),
         companyPhone: companyPhone.trim(),
-        companyLogoUrl: logoPreview || null,
+        companyLogoUrl: '/jnc-logo.jpg',
       });
 
       await brandingApi.updateProfile({
         name: companyName.trim(),
         phone: companyPhone.trim() || undefined,
-        logoUrl: logoPreview || null,
+        logoUrl: '/jnc-logo.jpg',
         email: email.trim() || undefined,
         address: address.trim() || undefined,
         city: city.trim() || undefined,
@@ -320,32 +337,31 @@ export default function BrandingSettingsPage() {
           </div>
         </div>
 
-        {/* ─── LOGO ASSET & PREVIEW CARD ──────────────────────────────────── */}
+        {/* ─── INVOICE LOGO ASSET & PREVIEW CARD ──────────────────────────────────── */}
         <div className="card space-y-5">
           <div className="border-b border-slate-200 dark:border-[#2A3042] pb-3">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <ImageIcon size={16} className="text-crm-teal" />
-              Company Logo Asset & Live Preview
+              Invoice & Quotation Custom Logo
             </h2>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Upload your company logo. PNG, JPG, or SVG with a transparent or white background recommended.
+              Upload your custom logo to appear exclusively on Tax Invoices, Quotations, and Documents. The portal header logo (JNC) remains permanent.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
             {/* Live Preview Box */}
             <div className="md:col-span-5 flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed border-slate-200 dark:border-[#2A3042] bg-slate-50/50 dark:bg-[#1E2230]/40 text-center">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">Live Chrome Preview</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">Invoice Logo Preview</div>
               <div className="h-16 w-48 px-4 py-2 rounded-xl bg-white flex items-center justify-center shadow-md border border-slate-200">
-                {logoPreview ? (
-                  <img
-                    src={logoPreview}
-                    alt={companyName || 'Company Logo'}
-                    className="max-h-12 max-w-full object-contain"
-                  />
-                ) : (
-                  <span className="text-xs font-bold text-slate-400">No Logo Configured</span>
-                )}
+                <img
+                  src={logoPreview || '/jnc-logo.jpg'}
+                  alt={companyName || 'Company Logo'}
+                  className="max-h-12 max-w-full object-contain"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = '/jnc-logo.jpg';
+                  }}
+                />
               </div>
               <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-3">{companyName || 'Company Name'}</p>
               <p className="text-[10px] text-slate-500 font-mono">{companyPhone || 'No Phone'}</p>
@@ -364,36 +380,29 @@ export default function BrandingSettingsPage() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
+                  disabled={uploadingLogo}
                   onClick={() => fileInputRef.current?.click()}
-                  className="btn-primary text-xs flex items-center gap-1.5 shadow-glow-blue"
+                  className="btn-primary text-xs flex items-center gap-1.5 shadow-glow-blue disabled:opacity-50"
                 >
-                  <Upload size={14} /> Upload Custom Logo
+                  <Upload size={14} className={uploadingLogo ? 'animate-spin' : ''} />
+                  {uploadingLogo ? 'Uploading Logo...' : 'Upload Company Logo'}
                 </button>
-
-                {logoPreview && (
-                  <button
-                    type="button"
-                    onClick={handleRemoveLogo}
-                    className="btn-secondary text-xs text-red-500 hover:text-red-600 flex items-center gap-1.5"
-                  >
-                    <Trash2 size={14} /> Clear Logo
-                  </button>
-                )}
 
                 <button
                   type="button"
                   onClick={handleResetToDefaultLogo}
-                  className="btn-ghost text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1.5"
-                  title="Reset to default /jnc-logo.jpg"
+                  className="btn-secondary text-xs flex items-center gap-1.5"
+                  title="Reset to default company logo"
                 >
-                  Reset Default
+                  <RefreshCw size={13} /> Reset to Default
                 </button>
               </div>
 
               <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
                 <p>• Recommended dimension: <strong>300x80px</strong> or proportional aspect ratio.</p>
                 <p>• Max file size: <strong>2 MB</strong>.</p>
-                <p>• Saved centrally and synced instantly across all active client browsers and email templates.</p>
+                <p>• This logo appears on Tax Invoices, Quotations, and printable documents.</p>
+                <p>• The main portal header logo remains the permanent official JNC emblem.</p>
               </div>
             </div>
           </div>

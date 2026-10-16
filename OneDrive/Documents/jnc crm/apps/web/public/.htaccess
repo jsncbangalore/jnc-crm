@@ -7,8 +7,8 @@
   # 1. Enable UTF-8 encoding
   AddDefaultCharset UTF-8
 
-  # 2. Prevent directory listing (prevents 403 Forbidden on empty directory access)
-  Options -Indexes
+  # 2. Prevent directory listing (commented out for Hostinger shared hosting compatibility)
+  # Options -Indexes
 
   # 3. Serve existing files and directories directly
   RewriteCond %{REQUEST_FILENAME} -f [OR]
@@ -33,8 +33,20 @@
 <IfModule mod_headers.c>
   Header always set X-Frame-Options "DENY"
   Header always set X-Content-Type-Options "nosniff"
-  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Referrer-Policy "no-referrer"
   Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://api.jsnc.co.in http://localhost:3333 http://127.0.0.1:3333; frame-ancestors 'none';"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob: 'sha256-Cs3xweHfN6/exhMJa/lvORdNpw/D/3opQrftbtgzQEs='; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://api.jsnc.co.in; connect-src 'self' https://api.jsnc.co.in; frame-ancestors 'none';"
   Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+  # index.html: no-cache, must-revalidate (never cache private SPA shell)
+  <FilesMatch "index\.html$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+
+  # Hashed JS and CSS assets may stay cached
+  <FilesMatch "\.(js|mjs|css|woff2|woff|ttf|svg|png|jpg|jpeg|gif|ico|webp)$">
+    Header set Cache-Control "max-age=31536000, immutable"
+  </FilesMatch>
 </IfModule>

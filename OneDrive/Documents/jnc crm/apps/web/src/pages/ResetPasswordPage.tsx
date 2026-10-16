@@ -47,11 +47,7 @@ export default function ResetPasswordPage() {
       setDone(true);
       setTimeout(() => navigate('/login'), 3000);
     } catch (err: any) {
-      const serverMsg = err?.response?.data?.message;
-      const formattedError = Array.isArray(serverMsg)
-        ? serverMsg.join('. ')
-        : (typeof serverMsg === 'string' ? serverMsg : 'Reset link is invalid or has expired. Please request a new one.');
-      setError(formattedError);
+      setError(err?.response?.data?.message || 'Reset link is invalid or has expired. Please request a new one.');
     } finally {
       setLoading(false);
     }
@@ -99,7 +95,7 @@ export default function ResetPasswordPage() {
               </p>
             </motion.div>
           ) : (
-            <motion.form key="form" onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <motion.form key="form" onSubmit={handleSubmit} className="space-y-5" noValidate autoComplete="off">
               <div>
                 <label
                   htmlFor="new-password"
@@ -108,8 +104,10 @@ export default function ResetPasswordPage() {
                   New Password
                 </label>
                 <div className="relative">
+                  {/* Browsers may still autofill despite these attributes */}
                   <input
                     id="new-password"
+                    name="jnc-new-password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="new-password"
                     required
@@ -143,8 +141,10 @@ export default function ResetPasswordPage() {
                 >
                   Confirm Password
                 </label>
+                {/* Browsers may still autofill despite these attributes */}
                 <input
                   id="confirm-password"
+                  name="jnc-confirm-password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="new-password"
                   required

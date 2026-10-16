@@ -7,227 +7,290 @@
 
 const fs = require('fs');
 const path = require('path');
-const { PrismaClient } = require('@prisma/client');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { PrismaClient } = require('@prisma/client');
 
-// ─── Environment & Secrets Loader ────────────────────────────────────────────
+// ─── 1. FOLDER GUARD ─────────────────────────────────────────────────────────
+function enforceFolderGuard() {
+  const currentPath = process.cwd();
+  const scriptDir = __dirname;
+  const prohibited = [/onedrive/i, /&/, /jnc crm/i];
 
-function loadSecrets() {
-  const possibleEnvFiles = [
-    'C:\\dev\\jnc-secrets\\hostinger.env',
-    'C:\\dev\\jnc-secrets\\live.env',
-    path.join(__dirname, '..', 'apps', 'api', '.env'),
-    path.join(__dirname, '..', '.env'),
-  ];
+  for (const pattern of prohibited) {
+    if (pattern.test(currentPath) || pattern.test(scriptDir)) {
+      console.error(`\n========================================================================`);
+      console.error(`❌ FOLDER GUARD REFUSAL ERROR: Prohibited path detected.`);
+      console.error(`Current directory: "${currentPath}"`);
+      console.error(`Script directory:  "${scriptDir}"`);
+      console.error(`Prohibited pattern: ${pattern}`);
+      console.error(`Execution is strictly required inside 'C:\\dev\\jnc-crm'. Aborting immediately.`);
+      console.error(`========================================================================\n`);
+      process.exit(1);
+    }
+  }
+}
 
-  for (const envFile of possibleEnvFiles) {
-    if (fs.existsSync(envFile)) {
-      const content = fs.readFileSync(envFile, 'utf8');
-      for (const line of content.split('\n')) {
-        const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
-          const idx = trimmed.indexOf('=');
-          const key = trimmed.substring(0, idx).trim();
-          let val = trimmed.substring(idx + 1).trim();
-          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-            val = val.substring(1, val.length - 1);
-          }
-          if (envFile.includes('jnc-secrets')) {
-            if (key === 'DATABASE_URL' || key === 'DIRECT_URL') {
-              val = val.replace(/Jsnc@2024js/, 'Jsnc%402024js');
-            }
-            process.env[key] = val;
-          } else if (!process.env[key]) {
-            process.env[key] = val;
-          }
+enforceFolderGuard();
+
+// ─── 2. SECRETS & PROJECT REF VALIDATION ────────────────────────────────────
+const secrets = {};
+['C:\\dev\\jnc-secrets\\live.env', 'C:\\dev\\jnc-secrets\\hostinger.env'].forEach(secretsPath => {
+  if (fs.existsSync(secretsPath)) {
+    const envContent = fs.readFileSync(secretsPath, 'utf8');
+    envContent.split('\n').forEach(line => {
+      line = line.trim();
+      if (!line || line.startsWith('#')) return;
+      const idx = line.indexOf('=');
+      if (idx !== -1) {
+        let k = line.substring(0, idx).trim();
+        let v = line.substring(idx + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+          v = v.substring(1, v.length - 1);
         }
+        if (!secrets[k]) secrets[k] = v;
       }
-    }
+    });
+  }
+});
+
+const EXPECTED_PROJECT_REF = process.env.TEST_NEW_PROJECT_REF || secrets.NEW_PROJECT_REF || 'aybysdzuwwtqhnzhgiwp';
+const OLD_PROJECT_REF = secrets.OLD_PROJECT_REF || 'hbzlelktcfagwvmyusvw';
+const directUrl = process.env.TEST_DIRECT_URL || secrets.DIRECT_URL || secrets.DATABASE_URL || process.env.DIRECT_URL || process.env.DATABASE_URL;
+
+// Parse CLI Arguments
+const args = process.argv.slice(2);
+let roleArg = null;
+let isDryRun = false;
+let isRehearse = false;
+
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--role' && args[i + 1]) {
+    roleArg = args[++i].toLowerCase();
+  } else if (args[i].startsWith('--role=')) {
+    roleArg = args[i].split('=')[1].toLowerCase();
+  } else if (args[i] === '--dry-run') {
+    isDryRun = true;
+  } else if (args[i] === '--rehearse') {
+    isRehearse = true;
   }
 }
 
-loadSecrets();
-
-// ─── Utility: Parse & Mask Database Info ─────────────────────────────────────
-
-function getDatabaseInfo() {
-  const dbUrl = process.env.DATABASE_URL || '';
-  if (!dbUrl) {
-    return { projectRef: 'aybysdzuwwtqhnzhgiwp', host: 'aws-0-ap-south-1.pooler.supabase.com', maskedUrl: '<NOT SET>' };
-  }
-
-  let projectRef = 'aybysdzuwwtqhnzhgiwp';
-  let host = 'aws-0-ap-south-1.pooler.supabase.com';
-
-  try {
-    const matchHost = dbUrl.match(/@([^:\/]+)/);
-    if (matchHost) {
-      host = matchHost[1];
-    }
-    const matchRef = dbUrl.match(/postgres\.([a-z0-9]+)|db\.([a-z0-9]+)\.supabase|org\/([a-z0-9]+)/i);
-    if (matchRef) {
-      projectRef = matchRef[1] || matchRef[2] || matchRef[3];
-    } else if (host.includes('supabase.com')) {
-      projectRef = host.split('.')[0];
-    }
-  } catch (err) {}
-
-  const maskedUrl = dbUrl.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:<MASKED>@');
-  return { projectRef, host, maskedUrl };
+if (!roleArg || (roleArg !== 'owner' && roleArg !== 'platform')) {
+  console.error('[LIVE RESET FAIL] Missing or invalid --role argument.');
+  console.error('Usage: node scripts/live-reset-account.js --role owner|platform [--dry-run] [--rehearse]');
+  process.exit(1);
 }
 
-// ─── CLI Arguments Parsing ───────────────────────────────────────────────────
-
-function parseArgs() {
-  const args = process.argv.slice(2);
-  const options = {
-    role: null,
-    email: null,
-    code: null,
-    password: null,
-    rehearse: false,
-  };
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--rehearse' || arg === '--dry-run') {
-      options.rehearse = true;
-    } else if (arg === '--role' && i + 1 < args.length) {
-      options.role = args[++i];
-    } else if (arg === '--email' && i + 1 < args.length) {
-      options.email = args[++i];
-    } else if (arg === '--code' && i + 1 < args.length) {
-      options.code = args[++i];
-    } else if (arg === '--password' && i + 1 < args.length) {
-      options.password = args[++i];
-    }
-  }
-
-  return options;
+if (!directUrl) {
+  console.error('[LIVE RESET FAIL] DIRECT_URL missing in environment/live.env');
+  process.exit(1);
 }
 
-// ─── Main Execution ──────────────────────────────────────────────────────────
+// Strictly parse project ref from connection string username
+let actualRef;
+try {
+  const parsedUrl = new URL(directUrl);
+  const username = parsedUrl.username || '';
+  const matchUser = username.match(/^[^.]+\.([a-z0-9_-]+)$/i);
+  const matchHost = parsedUrl.hostname.match(/^db\.([a-z0-9_-]+)\.supabase\.co$/i);
 
-async function main() {
-  const options = parseArgs();
-  const dbInfo = getDatabaseInfo();
+  actualRef = (matchUser && matchUser[1]) ? matchUser[1] : (matchHost && matchHost[1] ? matchHost[1] : null);
 
+  if (!actualRef) {
+    console.error(`[PROJECT REF REFUSAL] Connection string username "${username}" or host "${parsedUrl.hostname}" has no project ref. Execution refused.`);
+    process.exit(1);
+  }
+
+  if (actualRef === OLD_PROJECT_REF) {
+    console.error(`[PROJECT REF REFUSAL] Connection string username has OLD_PROJECT_REF "${actualRef}". Refusing execution on old database.`);
+    process.exit(1);
+  }
+
+  if (actualRef !== EXPECTED_PROJECT_REF) {
+    console.error(`[PROJECT REF REFUSAL] Connection string project ref "${actualRef}" does not match expected NEW_PROJECT_REF "${EXPECTED_PROJECT_REF}". Execution refused.`);
+    process.exit(1);
+  }
+} catch (err) {
+  console.error(`[PROJECT REF REFUSAL] Connection string URL invalid: ${err.message}`);
+  process.exit(1);
+}
+
+// Override process.env
+process.env.DATABASE_URL = directUrl;
+process.env.DIRECT_URL = directUrl;
+
+const dbHost = directUrl.split('@').pop().split('/')[0];
+
+function maskEmail(email) {
+  if (!email) return 'none';
+  return email.replace(/^(..)(.*)(@.*)$/, '$1***$3');
+}
+
+async function runAccountReset() {
   const timestamp = new Date().toISOString();
   console.log(`GENERATED BY SCRIPT live-reset-account.js AT ${timestamp}`);
-  console.log(`Database project ${dbInfo.projectRef} @ ${dbInfo.host}`);
-  console.log(`Mode: ${options.rehearse ? 'REHEARSAL (DRY RUN - ROLLBACK ON COMMIT)' : 'LIVE EXECUTION'}`);
+  console.log(`Database project ${actualRef} @ ${dbHost}`);
+  console.log(`Mode: ${isRehearse ? 'REHEARSAL (FULL TRANSACTION WRITE - ROLLED BACK)' : isDryRun ? 'DRY RUN (READ ONLY)' : 'LIVE EXECUTION'}`);
 
-  const prisma = new PrismaClient();
+  const prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: directUrl,
+      },
+    },
+  });
+
+  const targetRole = roleArg === 'owner' ? 'tenant_admin' : 'platform_super_admin';
 
   try {
-    const whereClause = { deletedAt: null };
+    await prisma.$connect();
 
-    if (options.email) {
-      whereClause.email = { equals: options.email.toLowerCase(), mode: 'insensitive' };
-    } else if (options.code) {
-      whereClause.employeeCode = { equals: options.code.toUpperCase(), mode: 'insensitive' };
-    } else if (options.role) {
-      const normalizedRole = options.role.toLowerCase();
-      if (normalizedRole === 'platform' || normalizedRole === 'platform_super_admin') {
-        whereClause.role = 'platform_super_admin';
-      } else if (normalizedRole === 'owner' || normalizedRole === 'tenant_admin') {
-        whereClause.role = { in: ['tenant_admin', 'admin'] };
-      } else {
-        whereClause.role = options.role;
-      }
-    } else {
-      console.error('❌ Error: Must specify --role <owner|platform>, --email <email>, or --code <code>');
+    const user = await prisma.user.findFirst({
+      where: roleArg === 'owner'
+        ? { OR: [{ role: 'tenant_admin' }, { role: 'admin' }, { email: 'santhoshs0815@gmail.com' }, { employeeCode: 'JNC-SA-001' }, { employeeCode: 'EMP-ADM-001' }], deletedAt: null }
+        : { OR: [{ role: 'platform_super_admin' }, { email: 'jayarajjnc@gmail.com' }, { email: 'jsnccrm@gmail.com' }, { employeeCode: 'SYS-SUP-001' }], deletedAt: null },
+      include: { tenant: { select: { id: true, code: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!user) {
+      console.error(`[LIVE RESET FAIL] Target user matching role "${targetRole}" not found in database.`);
+      await prisma.$disconnect();
       process.exit(1);
     }
 
-    let targetUser = null;
-    let liveDbAvailable = false;
+    console.log(`\nMatched Target Account:`);
+    console.log(`  User ID:       ${user.id}`);
+    console.log(`  Employee Code: ${user.employeeCode}`);
+    console.log(`  Role:          ${user.role}`);
+    console.log(`  Masked Email:  ${maskEmail(user.email)}`);
+    console.log(`  Tenant:        ${user.tenant ? user.tenant.name + ' (' + user.tenant.code + ')' : 'Platform (Global)'}`);
 
-    try {
-      targetUser = await prisma.user.findFirst({
-        where: whereClause,
-        include: { tenant: { select: { id: true, code: true, name: true } } },
-        orderBy: { createdAt: 'desc' },
-      });
-      if (targetUser) liveDbAvailable = true;
-    } catch (dbErr) {
-      // Live DB network / auth error handled in rehearsal fallback below
+    if (isDryRun) {
+      console.log('\n[DRY RUN RESULT] Account match validated. Zero database modifications executed.');
+      await prisma.$disconnect();
+      return;
     }
 
-    // Rehearsal fallback for simulated output if DB is offline/unreachable
-    if (!targetUser) {
-      const isPlatform = options.role && (options.role.toLowerCase() === 'platform' || options.role === 'platform_super_admin');
-      targetUser = {
-        id: isPlatform ? 'sys-admin-0000-0000-0000-000000000001' : 'usr-owner-0000-0000-0000-000000000001',
-        name: isPlatform ? 'Super Admin' : 'JNC Owner',
-        email: isPlatform ? (options.email || 'superadmin@jsnc.co.in') : (options.email || 'admin@jsnc.co.in'),
-        employeeCode: isPlatform ? (options.code || 'SYS-ADMIN-001') : (options.code || 'EMP001'),
-        role: isPlatform ? 'platform_super_admin' : 'tenant_admin',
-        tenant: isPlatform ? null : { id: 'tenant-jnc-001', code: 'JNC-ORG-001', name: 'JNC Network Communication' },
-      };
-    }
-
-    console.log(`\nFound target user:`);
-    console.log(`  User ID: ${targetUser.id}`);
-    console.log(`  Name: ${targetUser.name}`);
-    console.log(`  Email: ${targetUser.email}`);
-    console.log(`  Employee Code: ${targetUser.employeeCode}`);
-    console.log(`  Role: ${targetUser.role}`);
-    console.log(`  Tenant: ${targetUser.tenant ? targetUser.tenant.name + ' (' + targetUser.tenant.code + ')' : 'Platform (Global)'}`);
-
-    const newPassword = options.password || 'ResetPass@2026!Secure';
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const newPassword = process.env.LIVE_NEW_PASSWORD || secrets.LIVE_NEW_PASSWORD || crypto.randomBytes(12).toString('base64url');
+    // Bcrypt cost factor 12
+    const passwordHash = await bcrypt.hash(newPassword, 12);
 
     const identityKeys = [
-      targetUser.email.toLowerCase(),
-      targetUser.employeeCode.toUpperCase(),
-      targetUser.id,
-      `USER:${targetUser.id}`,
-      `EMAIL:${targetUser.email.toLowerCase()}`,
-    ];
+      user.email.toLowerCase(),
+      user.employeeCode ? user.employeeCode.toUpperCase() : null,
+      user.id,
+      `USER:${user.id}`,
+      `EMAIL:${user.email.toLowerCase()}`,
+    ].filter(Boolean);
 
     let committed = false;
-    let lockoutDeleteCount = 0;
 
-    if (liveDbAvailable && !options.rehearse) {
+    try {
       await prisma.$transaction(async (tx) => {
-        await tx.user.update({
-          where: { id: targetUser.id },
+        const beforeState = JSON.stringify({
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          mustResetPassword: user.mustResetPassword,
+          failedLoginAttempts: user.failedLoginAttempts,
+          lockoutUntil: user.lockoutUntil,
+          tokenVersion: user.tokenVersion,
+          isActive: user.isActive,
+        });
+
+        // 1. Update User (cost 12 hash, mustResetPassword=true, failedLoginAttempts=0, lockoutUntil=null, tokenVersion=tokenVersion+1, isActive=true)
+        const updatedUser = await tx.user.update({
+          where: { id: user.id },
           data: {
             passwordHash,
+            mustResetPassword: true,
             failedLoginAttempts: 0,
             lockoutUntil: null,
-            mustResetPassword: false,
+            tokenVersion: { increment: 1 },
             isActive: true,
           },
         });
+        console.log(`\n[STATEMENT 1 UPDATE User] Affected 1 row (ID: ${updatedUser.id})`);
+        console.log(`  - passwordHash: set (bcrypt cost 12)`);
+        console.log(`  - mustResetPassword: true`);
+        console.log(`  - failedLoginAttempts: 0`);
+        console.log(`  - lockoutUntil: null`);
+        console.log(`  - tokenVersion: ${user.tokenVersion} -> ${updatedUser.tokenVersion}`);
+        console.log(`  - isActive: true`);
 
+        // 2. Delete AccountLockout by identityKey
         const lockoutDel = await tx.accountLockout.deleteMany({
           where: { identityKey: { in: identityKeys } },
         });
-        lockoutDeleteCount = lockoutDel.count;
+        console.log(`[STATEMENT 2 DELETE AccountLockout] Affected ${lockoutDel.count} row(s) matching identityKeys (${identityKeys.join(', ')})`);
+
+        // 3. Insert AuditLog
+        let tenantId = user.tenantId;
+        if (!tenantId) {
+          const defaultTenant = await tx.tenant.findFirst({ select: { id: true } });
+          tenantId = defaultTenant ? defaultTenant.id : 'default-tenant-id';
+        }
+
+        const afterState = JSON.stringify({
+          id: updatedUser.id,
+          email: updatedUser.email,
+          role: updatedUser.role,
+          mustResetPassword: updatedUser.mustResetPassword,
+          failedLoginAttempts: updatedUser.failedLoginAttempts,
+          lockoutUntil: updatedUser.lockoutUntil,
+          tokenVersion: updatedUser.tokenVersion,
+          isActive: updatedUser.isActive,
+        });
+
+        const auditLog = await tx.auditLog.create({
+          data: {
+            tenantId,
+            actorId: user.id,
+            actorName: user.name || user.email,
+            action: 'LIVE_ACCOUNT_PASSWORD_RESET',
+            entityName: 'User',
+            entityId: user.id,
+            beforeState,
+            afterState,
+            ipAddress: '127.0.0.1',
+          },
+        });
+        console.log(`[STATEMENT 3 INSERT AuditLog] Affected 1 row (AuditLog ID: ${auditLog.id}, Action: ${auditLog.action})`);
+
+        if (isRehearse) {
+          console.log(`\n[REHEARSAL RESULT] Single-transaction write completed successfully.`);
+          console.log(`[REHEARSAL RESULT] Triggering transaction ROLLBACK (no database modifications persisted).`);
+          throw new Error('REHEARSAL_ROLLBACK_INTENTIONAL');
+        }
 
         committed = true;
       });
-    } else {
-      // Rehearsal mode (or offline rehearsal)
-      console.log(`\n[REHEARSAL STEP] Prepared single-transaction SQL updates for User ${targetUser.id}`);
-      console.log(`[REHEARSAL STEP] Update parameters: failedLoginAttempts=0, lockoutUntil=null, mustResetPassword=false, isActive=true`);
-      console.log(`[REHEARSAL STEP] AccountLockout records targeted for deletion by identityKeys: ${identityKeys.join(', ')}`);
-      console.log(`[REHEARSAL RESULT] Rehearsal completed successfully. Transaction rolled back (no DB changes persisted).`);
+    } catch (err) {
+      if (err.message === 'REHEARSAL_ROLLBACK_INTENTIONAL') {
+        console.log(`\n✅ REHEARSAL SUCCESSFUL: Transaction safely rolled back. Database remains untouched.`);
+      } else {
+        throw err;
+      }
     }
 
     if (committed) {
-      console.log(`\n✅ LIVE RESET SUCCESSFUL: Account unlocked and password updated.`);
-      console.log(`  New Password: <MASKED>`);
-      console.log(`  Password length: ${newPassword.length} characters`);
+      console.log(`\n✅ LIVE ACCOUNT PASSWORD RESET SUCCESSFUL!`);
+      console.log(`  Account ID: ${user.id}`);
+      console.log(`  Role:       ${user.role}`);
+      console.log(`  ------------------------------------------------------------------------`);
+      console.log(`  ONE-TIME NEW PASSWORD (PRINTED ONCE ONLY AFTER COMMIT):`);
+      console.log(`  Password:   ${newPassword}`);
+      console.log(`  ------------------------------------------------------------------------`);
     }
 
   } catch (error) {
     console.error(`❌ Operation failed:`, error.message);
+    process.exit(1);
   } finally {
     await prisma.$disconnect().catch(() => {});
   }
 }
 
-main();
+runAccountReset();

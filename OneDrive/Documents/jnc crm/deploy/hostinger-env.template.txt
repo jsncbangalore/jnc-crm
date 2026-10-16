@@ -1,0 +1,45 @@
+# ==============================================================================
+# JNC-CRM HOSTINGER PRODUCTION ENVIRONMENT VARIABLE TEMPLATE
+# ==============================================================================
+# Copy these key-value pairs into Hostinger hPanel -> Node.js Web Applications -> Environment Variables.
+# NEVER commit real values to version control. Placeholders only below.
+
+NODE_ENV=production
+PORT=3000
+
+# ------------------------------------------------------------------------------
+# DATABASE CONNECTION STRINGS (SUPABASE POSTGRES)
+# ------------------------------------------------------------------------------
+# DATABASE_URL: Transaction pooler string (port 6543) with PgBouncer mode enabled.
+DATABASE_URL=postgresql://postgres.<NEW_PROJECT_REF>:<PASSWORD>@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=5
+
+# DIRECT_URL: Session pooler string (port 5432).
+# NOTE: Not required by NestJS API at runtime (only used locally for DDL migrations).
+DIRECT_URL=postgresql://postgres.<NEW_PROJECT_REF>:<PASSWORD>@aws-0-ap-south-1.pooler.supabase.com:5432/postgres
+
+# ------------------------------------------------------------------------------
+# SECURITY & AUTHENTICATION SECRETS
+# ------------------------------------------------------------------------------
+# Generate fresh 64-character (32-byte) random hex keys for production using:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+JWT_SECRET=<REPLACE_WITH_64_CHAR_HEX_SECRET>
+JWT_REFRESH_SECRET=<REPLACE_WITH_64_CHAR_HEX_SECRET>
+
+# Reverse Proxy Trust Setting (Required for Hostinger Phusion Passenger / Nginx)
+# 1 = Trust 1 upstream proxy hop (resolves real client IP for rate limiting)
+TRUST_PROXY=1
+
+# Allowed Web Application Origin
+FRONTEND_URL=https://admin.jsnc.co.in
+ALLOWED_ORIGINS=https://admin.jsnc.co.in
+
+# ------------------------------------------------------------------------------
+# SMTP EMAIL NOTIFICATIONS (HOSTINGER / CUSTOM SMTP)
+# ------------------------------------------------------------------------------
+SMTP_HOST=smtp.hostinger.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=noreply@jsnc.co.in
+SMTP_PASS=<REPLACE_WITH_SMTP_PASSWORD>
+SMTP_FROM="JNC CRM Notifications" <noreply@jsnc.co.in>

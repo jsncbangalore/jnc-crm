@@ -1,0 +1,47 @@
+# Render Blueprint Specification for JNC CRM Monorepo API
+# Documented at https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: jnc-crm-api
+    runtime: node
+    region: singapore
+    plan: free
+    rootDir: .
+    buildCommand: npm install && npx prisma generate --schema=apps/api/prisma/schema.prisma && npm --workspace=apps/api run build
+    startCommand: node apps/api/dist/main.js
+    healthCheckPath: /api/v1/health
+    preDeployCommand: node scripts/render-predeploy-guard.js && npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://admin.jsnc.co.in
+      - key: ALLOWED_ORIGINS
+        value: https://admin.jsnc.co.in
+      - key: MAIL_PROVIDER
+        sync: false # Set to 'brevo' or 'resend' for Render HTTPS mail sending
+      - key: BREVO_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: jsnccrm@gmail.com
+      - key: PRIMARY_EMAIL_FROM
+        value: jsnccrm@gmail.com
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: NEW_PROJECT_REF
+        value: aybysdzuwwtqhnzhgiwp
+      - key: OLD_PROJECT_REF
+        value: hbzlelktcfagwvmyusvw
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: BACKUP_ENCRYPTION_KEY
+        generateValue: true

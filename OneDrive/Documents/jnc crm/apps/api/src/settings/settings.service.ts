@@ -5,11 +5,14 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Injectable, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, ForbiddenException, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 import { encryptAtRest } from '../common/encryption.util';
+import { BRAND_CONFIG } from '../common/brand';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface CompanyBrandingConfig {
   companyDisplayName: string;
@@ -18,9 +21,9 @@ export interface CompanyBrandingConfig {
 }
 
 export const DEFAULT_BRANDING: CompanyBrandingConfig = {
-  companyDisplayName: 'JS Network Communication',
-  companyPhone: '+91 9663421455',
-  companyLogoUrl: '/jnc-logo.jpg',
+  companyDisplayName: BRAND_CONFIG.displayName,
+  companyPhone: '+91 9876543210',
+  companyLogoUrl: '/api/v1/settings/branding/logo',
 };
 
 @Injectable()
@@ -34,26 +37,30 @@ export class SettingsService {
    */
   async getBranding(tenantId?: string): Promise<CompanyBrandingConfig> {
     try {
-      let tenant = null;
-      if (tenantId) {
-        tenant = await this.prisma.tenant.findUnique({
-          where: { id: tenantId },
+      if (tenantId && tenantId.trim()) {
+        const cleanId = tenantId.trim();
+        const tenant = await this.prisma.tenant.findFirst({
+          where: {
+            deletedAt: null,
+            OR: [
+              { id: cleanId },
+              { code: { equals: cleanId.toUpperCase(), mode: 'insensitive' } },
+              { slug: { equals: cleanId.toLowerCase(), mode: 'insensitive' } },
+            ],
+          },
           select: { name: true, phone: true, logoUrl: true },
         });
-      } else {
-        tenant = await this.prisma.tenant.findFirst({
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'asc' },
-          select: { name: true, phone: true, logoUrl: true },
-        });
-      }
 
-      if (tenant) {
-        return {
-          companyDisplayName: tenant.name || DEFAULT_BRANDING.companyDisplayName,
-          companyPhone: tenant.phone || DEFAULT_BRANDING.companyPhone,
-          companyLogoUrl: tenant.logoUrl || DEFAULT_BRANDING.companyLogoUrl,
-        };
+        if (tenant) {
+          return {
+            companyDisplayName: tenant.name || DEFAULT_BRANDING.companyDisplayName,
+            companyPhone: tenant.phone || DEFAULT_BRANDING.companyPhone,
+            companyLogoUrl:
+              tenant.logoUrl && !tenant.logoUrl.startsWith('data:') && tenant.logoUrl.trim() !== ''
+                ? tenant.logoUrl
+                : '/jnc-logo.jpg',
+          };
+        }
       }
     } catch (err: any) {
       this.logger.error(`Error reading company branding config: ${err.message}`);
@@ -81,12 +88,19 @@ export class SettingsService {
       throw new ForbiddenException('Only Administrators are authorized to modify Company Branding settings.');
     }
 
+    let sanitizedLogoUrl = dto.companyLogoUrl;
+    if (sanitizedLogoUrl && sanitizedLogoUrl.startsWith('data:')) {
+      sanitizedLogoUrl = '/jnc-logo.jpg';
+    } else if (!sanitizedLogoUrl || sanitizedLogoUrl.trim() === '') {
+      sanitizedLogoUrl = '/jnc-logo.jpg';
+    }
+
     const updatedTenant = await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
         name: dto.companyDisplayName?.trim(),
         phone: dto.companyPhone?.trim(),
-        logoUrl: dto.companyLogoUrl,
+        logoUrl: sanitizedLogoUrl,
       },
     });
 
@@ -98,6 +112,91 @@ export class SettingsService {
       companyDisplayName: updatedTenant.name,
       companyPhone: updatedTenant.phone || DEFAULT_BRANDING.companyPhone,
       companyLogoUrl: updatedTenant.logoUrl || DEFAULT_BRANDING.companyLogoUrl,
+    };
+  }
+
+  /**
+   * Upload company logo file and persist across web, api, and database
+   */
+  async uploadLogo(file: Express.Multer.File, user: ScopedUser) {
+    if (!file || !file.buffer) {
+      throw new BadRequestException('Invalid file upload. Image buffer is missing.');
+    }
+
+    const destinations = [
+      path.resolve(process.cwd(), 'apps/web/public/jnc-logo.jpg'),
+      path.resolve(process.cwd(), 'apps/api/assets/jnc-logo.jpg'),
+      path.resolve(process.cwd(), 'assets/jnc-logo.jpg'),
+      path.resolve(process.cwd(), 'apps/web/src/assets/jnc-logo.jpg'),
+    ];
+
+    const distLogo = path.resolve(process.cwd(), 'apps/web/dist/jnc-logo.jpg');
+    if (fs.existsSync(path.dirname(distLogo))) {
+      destinations.push(distLogo);
+    }
+
+    for (const dest of destinations) {
+      try {
+        const dir = path.dirname(dest);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(dest, file.buffer);
+      } catch (e: any) {
+        this.logger.warn(`Could not write logo to ${dest}: ${e.message}`);
+      }
+    }
+
+    const logoPath = '/jnc-logo.jpg';
+
+    if (user?.tenantId) {
+      await this.prisma.tenant.update({
+        where: { id: user.tenantId },
+        data: {
+          logoUrl: logoPath,
+        },
+      });
+    }
+
+    this.logger.log(`Branding logo updated by ${user.employeeCode || user.id}`);
+
+    return {
+      success: true,
+      message: 'Company logo uploaded and updated successfully across all invoices and documents.',
+      logoUrl: logoPath,
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Upload company favicon file
+   */
+  async uploadFavicon(file: Express.Multer.File, user: ScopedUser) {
+    if (!file || !file.buffer) {
+      throw new BadRequestException('Invalid file upload. Buffer is missing.');
+    }
+
+    const destinations = [
+      path.resolve(process.cwd(), 'apps/web/public/favicon.ico'),
+      path.resolve(process.cwd(), 'apps/web/public/favicon.png'),
+    ];
+
+    for (const dest of destinations) {
+      try {
+        const dir = path.dirname(dest);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(dest, file.buffer);
+      } catch (e: any) {
+        this.logger.warn(`Could not write favicon to ${dest}: ${e.message}`);
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Favicon uploaded successfully',
+      faviconUrl: '/favicon.ico',
     };
   }
 
@@ -133,6 +232,13 @@ export class SettingsService {
       throw new ForbiddenException('Only Administrators can update Company Invoicing & Tax Profile.');
     }
 
+    let sanitizedLogo = dto.logoUrl;
+    if (sanitizedLogo && sanitizedLogo.startsWith('data:')) {
+      sanitizedLogo = '/jnc-logo.jpg';
+    } else if (!sanitizedLogo || sanitizedLogo.trim() === '') {
+      sanitizedLogo = '/jnc-logo.jpg';
+    }
+
     const updated = await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
@@ -159,7 +265,7 @@ export class SettingsService {
         signatoryDesignation: dto.signatoryDesignation?.trim(),
         signatureUrl: dto.signatureUrl,
         stampUrl: dto.stampUrl,
-        logoUrl: dto.logoUrl,
+        logoUrl: sanitizedLogo,
         isOnboarded: true,
       },
     });
@@ -333,5 +439,76 @@ export class SettingsService {
       where: { id, tenantId },
     });
     return { success: true };
+  }
+
+  /**
+   * Serve public tenant-keyed branding image (logo or stamp)
+   * Public route with Cross-Origin-Resource-Policy: cross-origin and long cache
+   */
+  async servePublicBrandingImage(type: 'logo' | 'stamp', tenantKey: string | undefined, res: any) {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    let tenant: any = null;
+    try {
+      if (tenantKey) {
+        tenant = await this.prisma.tenant.findFirst({
+          where: {
+            OR: [{ id: tenantKey }, { code: tenantKey }, { slug: tenantKey }],
+            deletedAt: null,
+          },
+        });
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    const imgVal = type === 'stamp' ? tenant?.stampUrl : tenant?.logoUrl;
+
+    if (imgVal) {
+      if (imgVal.startsWith('data:image/')) {
+        const matches = imgVal.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const contentType = matches[1];
+          const buffer = Buffer.from(matches[2], 'base64');
+          res.setHeader('Content-Type', contentType);
+          return res.send(buffer);
+        }
+      } else {
+        const cleanVal = imgVal.replace(/^\/+/, '');
+        const candidatePaths = [
+          path.resolve(process.cwd(), 'apps/web/public', cleanVal),
+          path.resolve(process.cwd(), 'apps/api/assets', cleanVal),
+          path.resolve(process.cwd(), cleanVal),
+        ];
+        for (const candidate of candidatePaths) {
+          if (fs.existsSync(candidate)) {
+            const ext = path.extname(candidate).toLowerCase();
+            const mime = ext === '.png' ? 'image/png' : ext === '.svg' ? 'image/svg+xml' : 'image/jpeg';
+            res.setHeader('Content-Type', mime);
+            return res.sendFile(path.resolve(candidate));
+          }
+        }
+      }
+    }
+
+    // Default logo fallback
+    const defaultLogoPaths = [
+      path.resolve(process.cwd(), 'apps/web/public/jnc-logo.jpg'),
+      path.resolve(process.cwd(), 'apps/api/assets/jnc-logo.jpg'),
+      path.resolve(process.cwd(), 'assets/jnc-logo.jpg'),
+      path.resolve(__dirname, '../../assets/jnc-logo.jpg'),
+      path.resolve(__dirname, '../../../assets/jnc-logo.jpg'),
+    ];
+
+    for (const p of defaultLogoPaths) {
+      if (fs.existsSync(p)) {
+        res.setHeader('Content-Type', 'image/jpeg');
+        return res.sendFile(p);
+      }
+    }
+
+    return res.status(404).send('Branding image not found');
   }
 }

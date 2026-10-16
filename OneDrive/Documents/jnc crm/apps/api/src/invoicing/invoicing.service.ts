@@ -11,11 +11,16 @@ import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
+import { parsePagination } from '../common/pagination.util';
 import { JSNC_COMPANY_PROFILE, calculateGst, numberToIndianWords } from './invoice-config';
 import { generateInvoicePdfBuffer } from './pdf-generator';
 import { validateLutStatus } from './lut-validator';
+import { sanitizeHtml } from '../common/html-sanitize.util';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+import * as crypto from 'crypto';
+const ptp = require('pdf-to-printer');
 
 @Injectable()
 export class InvoicingService {
@@ -61,15 +66,14 @@ export class InvoicingService {
     if (!cleanPrefix) cleanPrefix = 'JNC';
 
     // Count all invoices created in this financial year for this tenant
+    const safeTenantId = requireTenantId(tenantId);
     const countWhere: any = {
+      tenantId: safeTenantId,
       createdAt: {
         gte: fyStartDate,
         lte: fyEndDate,
       },
     };
-    if (tenantId) {
-      countWhere.tenantId = tenantId;
-    }
 
     const countInFy = await this.prisma.invoice.count({
       where: countWhere,
@@ -186,9 +190,10 @@ export class InvoicingService {
         balanceDue,
         paymentStatus: initialPaymentStatus,
         transactionRef: order.paymentRef,
-        paymentTerms: options?.paymentTerms || (advanceAdjusted > 0 ? `Advance Adjusted (Bal: ₹${balanceDue.toLocaleString('en-IN')})` : 'Due on Receipt (Net 30 Days)'),
-        dueDate: options?.dueDate ? new Date(options?.dueDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        notes: options?.notes || order.notes,
+        paymentTerms: options?.paymentTerms || (advanceAdjusted > 0 ? `Advance Adjusted (Bal: Rs. ${balanceDue.toLocaleString('en-IN')})` : 'Due on Receipt (Net 30 Days)'),
+        dueDate: options?.dueDate ? new Date(options?.dueDate) : new Date(Date.now() + 30 * 86_400_000), // Net 30 days
+        notes: sanitizeHtml(options?.notes || order.notes),
+
         lines: {
           create: lineItemsData,
         },
@@ -263,10 +268,10 @@ export class InvoicingService {
       },
     });
 
-    const seq = String(count + 1).padStart(3, '0');
+    const seq4 = String(count + 1).padStart(4, '0');
 
     if (customPrefix) {
-      return `${customPrefix}/${seq}/${fyCode}`;
+      return `${customPrefix}/${fyCode}/${seq4}`;
     }
 
     // Dynamic tenant prefix handling
@@ -277,15 +282,15 @@ export class InvoicingService {
       });
       const tPrefix = tenant?.invoicePrefix || tenant?.code?.replace('JNC-', '') || 'INV';
       if (docType === 'delivery_challan') {
-        return `DC/${tPrefix}/${seq}/${fyCode}`;
+        return `DC/${tPrefix}/${fyCode}/${seq4}`;
       }
       if (docType === 'proforma_invoice') {
-        return `PI/${tPrefix}/${seq}/${fyCode}`;
+        return `PI/${tPrefix}/${fyCode}/${seq4}`;
       }
       if (docType === 'credit_note') {
-        return `CN/${tPrefix}/${seq}/${fyCode}`;
+        return `CN/${tPrefix}/${fyCode}/${seq4}`;
       }
-      return `${tPrefix}/${seq}/${fyCode}`;
+      return `${tPrefix}/${fyCode}/${seq4}`;
     }
 
     if (docType === 'credit_note') {
@@ -297,15 +302,15 @@ export class InvoicingService {
       return `JNC_PO_${poSeq}/${fyCode}`;
     }
     if (docType === 'delivery_challan') {
-      return `${seq}/${fyCode}`;
+      return `DC/${fyCode}/${seq4}`;
     }
     if (docType === 'proforma_invoice') {
-      return `${seq}/${fyCode}`;
+      return `PI/${fyCode}/${seq4}`;
     }
     if (docType === 'sez_invoice') {
-      return `${seq}/${fyCode}`;
+      return `SEZ/${fyCode}/${seq4}`;
     }
-    return `${seq}/${fyCode}`;
+    return `INV/${fyCode}/${seq4}`;
   }
 
   /**
@@ -322,6 +327,7 @@ export class InvoicingService {
       buyerOrderNo?: string;
       referenceNo?: string;
       paymentTerms?: string;
+      paymentStatus?: string;
       customerName: string;
       customerPhone: string;
       customerEmail?: string;
@@ -405,11 +411,13 @@ export class InvoicingService {
     const advanceAmount = advancePercent ? Number(((totalAmount * advancePercent) / 100).toFixed(2)) : undefined;
     const advanceAdjusted = dto.advanceAdjusted ? Number(dto.advanceAdjusted) : 0;
     const balanceDue = Math.max(0, Number((totalAmount - advanceAdjusted).toFixed(2)));
-    let initialStatus = 'unpaid';
-    if (advanceAdjusted >= totalAmount - 0.5 && totalAmount > 0) {
-      initialStatus = 'paid';
-    } else if (advanceAdjusted > 0) {
-      initialStatus = 'partial';
+    let initialStatus = dto.paymentStatus || 'unpaid';
+    if (!dto.paymentStatus) {
+      if (advanceAdjusted >= totalAmount - 0.5 && totalAmount > 0) {
+        initialStatus = 'paid';
+      } else if (advanceAdjusted > 0) {
+        initialStatus = 'partial';
+      }
     }
 
     const invoice = await this.prisma.invoice.create({
@@ -446,8 +454,9 @@ export class InvoicingService {
         sgstAmount: Number(totalSgst.toFixed(2)),
         igstAmount: Number(totalIgst.toFixed(2)),
         totalAmount: Number(totalAmount.toFixed(2)),
-        notes: dto.notes,
+        notes: sanitizeHtml(dto.notes),
         lines: {
+
           create: lineItemsData,
         },
       },
@@ -513,6 +522,8 @@ export class InvoicingService {
       buyerOrderNo?: string;
       referenceNo?: string;
       paymentTerms?: string;
+      paymentStatus?: string;
+      status?: string;
       customerName?: string;
       customerPhone?: string;
       customerEmail?: string;
@@ -596,11 +607,13 @@ export class InvoicingService {
     const advanceAmount = advancePercent ? Number(((totalAmount * advancePercent) / 100).toFixed(2)) : undefined;
     const advanceAdjusted = dto.advanceAdjusted !== undefined ? Number(dto.advanceAdjusted) : (existing.advanceAdjusted || 0);
     const balanceDue = Math.max(0, Number((totalAmount - advanceAdjusted).toFixed(2)));
-    let paymentStatus = existing.paymentStatus;
-    if (advanceAdjusted >= totalAmount - 0.5 && totalAmount > 0) {
-      paymentStatus = 'paid';
-    } else if (advanceAdjusted > 0) {
-      paymentStatus = 'partial';
+    let paymentStatus = dto.paymentStatus || (dto.status as string) || existing.paymentStatus;
+    if (!dto.paymentStatus && !dto.status) {
+      if (advanceAdjusted >= totalAmount - 0.5 && totalAmount > 0) {
+        paymentStatus = 'paid';
+      } else if (advanceAdjusted > 0) {
+        paymentStatus = 'partial';
+      }
     }
 
     // Delete existing lines and recreate updated lines
@@ -642,8 +655,9 @@ export class InvoicingService {
         sgstAmount: Number(totalSgst.toFixed(2)),
         igstAmount: Number(totalIgst.toFixed(2)),
         totalAmount: Number(totalAmount.toFixed(2)),
-        notes: dto.notes !== undefined ? dto.notes : existing.notes,
+        notes: dto.notes !== undefined ? sanitizeHtml(dto.notes) : existing.notes,
         lines: {
+
           create: lineItemsData,
         },
       },
@@ -730,15 +744,13 @@ export class InvoicingService {
       where.paymentStatus = query.status;
     }
 
-    const page = Number(query?.page) || 1;
-    const limit = Number(query?.limit) || 50;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip, take } = parsePagination(query, 50, 100);
 
     const [items, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
         skip,
-        take: limit,
+        take,
         orderBy: { createdAt: 'desc' },
         include: {
           lines: true,
@@ -759,7 +771,7 @@ export class InvoicingService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
-      companyProfile: JSNC_COMPANY_PROFILE,
+      companyProfile: await this.getCompanyProfile(user),
     };
   }
 
@@ -796,8 +808,10 @@ export class InvoicingService {
           bankBranch: tenant.bankBranch || '',
           bankAccountHolder: tenant.name,
           lutBondNo: tenant.lutBondNo || 'AD290525013648T',
-          lutValidity: tenant.lutValidity || 'From : 10/05/2025 To: 09/05/2026',
-          logoUrl: tenant.logoUrl || null,
+          logoUrl:
+            tenant.logoUrl && !tenant.logoUrl.startsWith('data:') && tenant.logoUrl.trim() !== ''
+              ? tenant.logoUrl
+              : '/jnc-logo.jpg',
           invoicePrefix: tenant.invoicePrefix || 'INV',
           isOnboarded: tenant.isOnboarded || false,
         };
@@ -823,6 +837,7 @@ export class InvoicingService {
 
       if (tenant) {
         return {
+          companyName: tenant.name || 'JNC Network & Power Solutions',
           signatoryName: tenant.signatoryName || `${tenant.name} Authorized Signatory`,
           signatoryDesignation: tenant.signatoryDesignation || 'Proprietor / Director',
           signatureImage: tenant.signatureUrl || null,
@@ -837,6 +852,7 @@ export class InvoicingService {
 
     if (!setting) {
       return {
+        companyName: 'JNC Network & Power Solutions',
         signatoryName: '',
         signatoryDesignation: '',
         signatureImage: null,
@@ -845,9 +861,17 @@ export class InvoicingService {
     }
 
     try {
-      return JSON.parse(setting.value);
+      const parsed = JSON.parse(setting.value);
+      return {
+        companyName: parsed.companyName || 'JNC Network & Power Solutions',
+        signatoryName: parsed.signatoryName || '',
+        signatoryDesignation: parsed.signatoryDesignation || '',
+        signatureImage: parsed.signatureImage || null,
+        stampImage: parsed.stampImage || null,
+      };
     } catch {
       return {
+        companyName: 'JNC Network & Power Solutions',
         signatoryName: '',
         signatoryDesignation: '',
         signatureImage: null,
@@ -862,6 +886,7 @@ export class InvoicingService {
   async updateSignatorySettings(
     user: ScopedUser,
     dto: {
+      companyName?: string;
       signatoryName?: string;
       signatoryDesignation?: string;
       signatureImage?: string | null;
@@ -872,24 +897,44 @@ export class InvoicingService {
       throw new ForbiddenException('Only Administrators can modify Invoice Signatory and Stamp settings.');
     }
 
-    const tenantId = requireTenantId(user);
+    const tenantId = user.tenantId || (user.role === 'platform_super_admin' ? (await this.prisma.tenant.findFirst())?.id : undefined);
 
-    await this.prisma.tenant.update({
-      where: { id: tenantId },
-      data: {
+    let resolvedCompanyName = dto.companyName?.trim() || 'JNC Network & Power Solutions';
+
+    if (tenantId) {
+      const updateData: any = {
         signatoryName: dto.signatoryName,
         signatoryDesignation: dto.signatoryDesignation,
         signatureUrl: dto.signatureImage,
         stampUrl: dto.stampImage,
-      },
+      };
+
+      if (dto.companyName?.trim()) {
+        updateData.name = dto.companyName.trim();
+        resolvedCompanyName = dto.companyName.trim();
+      }
+
+      await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: updateData,
+      });
+    }
+
+    const payload = {
+      companyName: resolvedCompanyName,
+      signatoryName: dto.signatoryName || '',
+      signatoryDesignation: dto.signatoryDesignation || '',
+      signatureImage: dto.signatureImage || null,
+      stampImage: dto.stampImage || null,
+    };
+
+    await this.prisma.systemSetting.upsert({
+      where: { key: 'invoice_signatory_config' },
+      update: { value: JSON.stringify(payload) },
+      create: { key: 'invoice_signatory_config', value: JSON.stringify(payload) },
     });
 
-    return {
-      signatoryName: dto.signatoryName,
-      signatoryDesignation: dto.signatoryDesignation,
-      signatureImage: dto.signatureImage,
-      stampImage: dto.stampImage,
-    };
+    return payload;
   }
 
   /**
@@ -1035,14 +1080,15 @@ export class InvoicingService {
         paymentMethod: dto.paymentMethod || 'NEFT',
         transactionRef: dto.transactionRef?.trim(),
         paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : new Date(),
-        notes: dto.notes,
+        notes: sanitizeHtml(dto.notes),
         recordedById: user.id,
+
       },
     });
 
     // Calculate total paid across all payments for this invoice
     const allPayments = await this.prisma.paymentRecord.findMany({
-      where: { invoiceId: invoice.id },
+      where: { invoiceId: invoice.id, tenantId: invoice.tenantId },
     });
     const totalPaid = allPayments.reduce((acc, p) => acc + p.amount, 0);
 
@@ -1069,7 +1115,7 @@ export class InvoicingService {
     // If linked to an order, also update order payment status & paidAmount
     if (invoice.orderId) {
       const orderPayments = await this.prisma.paymentRecord.findMany({
-        where: { orderId: invoice.orderId },
+        where: { orderId: invoice.orderId, tenantId: invoice.tenantId },
       });
       const orderTotalPaid = orderPayments.reduce((acc, p) => acc + p.amount, 0);
       const order = await this.prisma.order.findFirst({ where: { id: invoice.orderId, tenantId: invoice.tenantId } });
@@ -1344,6 +1390,144 @@ export class InvoicingService {
       recipient: targetRecipient,
       filename: pdfFileName,
     };
+  }
+
+  /**
+   * List installed Windows/system printers for direct 1-click printing
+   */
+  async getInstalledPrinters() {
+    try {
+      const printers = await ptp.getPrinters();
+      const defaultPrinter = await ptp.getDefaultPrinter().catch(() => null);
+      return {
+        printers: printers || [],
+        defaultPrinter: defaultPrinter || null,
+      };
+    } catch (err: any) {
+      return {
+        printers: [
+          {
+            deviceId: 'Brother DCP-T520W Printer',
+            name: 'Brother DCP-T520W Printer',
+            paperSizes: ['A4', 'Letter'],
+          },
+        ],
+        defaultPrinter: {
+          deviceId: 'Brother DCP-T520W Printer',
+          name: 'Brother DCP-T520W Printer',
+        },
+        error: err?.message,
+      };
+    }
+  }
+
+  /**
+   * Direct Print straight to physical Windows printer (e.g. Brother DCP-T520W)
+   * Completely bypasses browser preview dialogs and sends job directly to Windows Print Spooler.
+   */
+  async directPrintInvoice(
+    invoiceId: string,
+    user: ScopedUser,
+    dto: {
+      printerName?: string;
+      copies?: number;
+      copyType?: string;
+      templateType?: string;
+      paperSize?: string;
+    },
+  ) {
+    const invoice = await this.findOne(invoiceId, user);
+    const activeDocType = dto.templateType || invoice.docType || 'tax_invoice';
+    const copiesCount = Math.max(1, Math.min(20, dto.copies || 1));
+
+    // Resolve target printer: user selected -> default printer -> 'Brother DCP-T520W Printer'
+    let targetPrinter = dto.printerName?.trim();
+    if (!targetPrinter) {
+      try {
+        const def = await ptp.getDefaultPrinter();
+        targetPrinter = def?.name;
+      } catch (e) {}
+    }
+    if (!targetPrinter) {
+      targetPrinter = 'Brother DCP-T520W Printer';
+    }
+
+    const copyType = dto.copyType || 'original';
+    const copiesToPrint: Array<{ label: string }> = [];
+
+    if (copyType === 'all_three') {
+      copiesToPrint.push({ label: 'Original for Recipient' });
+      copiesToPrint.push({ label: 'Duplicate for Transporter' });
+      copiesToPrint.push({ label: 'Triplicate for Supplier' });
+    } else if (copyType === 'duplicate') {
+      copiesToPrint.push({ label: 'Duplicate for Transporter' });
+    } else if (copyType === 'triplicate') {
+      copiesToPrint.push({ label: 'Triplicate for Supplier' });
+    } else if (copyType === 'extra') {
+      copiesToPrint.push({ label: 'Extra / Office Copy' });
+    } else {
+      copiesToPrint.push({ label: 'Original for Recipient' });
+    }
+
+    const tempFiles: string[] = [];
+    try {
+      for (const item of copiesToPrint) {
+        const buffer = await generateInvoicePdfBuffer(invoice, {
+          templateType: activeDocType,
+          copyLabel: item.label,
+          companyProfile: invoice.companyProfile,
+          signatorySettings: invoice.signatorySettings,
+        });
+
+        const tempFileName = `jnc_print_${crypto.randomUUID()}.pdf`;
+        const tempPath = path.join(os.tmpdir(), tempFileName);
+        fs.writeFileSync(tempPath, buffer);
+        tempFiles.push(tempPath);
+
+        const printOptions: any = {
+          printer: targetPrinter,
+          copies: copiesCount,
+          scale: 'fit',
+          paperSize: dto.paperSize === 'A5' ? 'A5' : 'A4',
+          orientation: 'portrait',
+        };
+
+        await ptp.print(tempPath, printOptions);
+      }
+
+      await this.auditService.log({
+        tenantId: requireTenantId(user),
+        actorId: user.id,
+        actorName: user.employeeCode || 'User',
+        action: 'INVOICE_DIRECT_PRINTED',
+        entityName: 'Invoice',
+        entityId: invoice.id,
+        afterState: {
+          invoiceNumber: invoice.invoiceNumber,
+          printer: targetPrinter,
+          copies: copiesCount,
+          copyType,
+        },
+      });
+
+      return {
+        success: true,
+        message: `Print job sent directly to ${targetPrinter}!`,
+        printer: targetPrinter,
+        copies: copiesCount * copiesToPrint.length,
+      };
+    } catch (err: any) {
+      throw new BadRequestException(`Direct print to ${targetPrinter} failed: ${err.message || err}`);
+    } finally {
+      // Clean up temporary files with safe delay to let spooler release file handle
+      setTimeout(() => {
+        tempFiles.forEach((file) => {
+          try {
+            if (fs.existsSync(file)) fs.unlinkSync(file);
+          } catch (e) {}
+        });
+      }, 8000);
+    }
   }
 }
 

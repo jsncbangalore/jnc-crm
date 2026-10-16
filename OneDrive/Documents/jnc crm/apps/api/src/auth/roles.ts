@@ -14,8 +14,6 @@ export const ALL_ROLES = [
   'accountant',
   'employee',
   'developer',
-  'client',
-  'customer',
 ] as const;
 
 export type UserRole = (typeof ALL_ROLES)[number];
@@ -32,8 +30,6 @@ export const ROLE_RANKS: Record<string, number> = {
   accountant: 25,
   employee: 20,
   developer: 15,
-  client: 10,
-  customer: 10,
 };
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -48,8 +44,6 @@ export const ROLE_LABELS: Record<string, string> = {
   accountant: 'Accountant',
   employee: 'Employee / Sales Representative',
   developer: 'Developer',
-  client: 'Client Portal',
-  customer: 'Customer',
 };
 
 /**
@@ -84,9 +78,6 @@ export function getRoleRedirectPath(user?: { role?: string; tenantId?: string | 
     case 'finance':
     case 'accountant':
       return '/invoices';
-    case 'client':
-    case 'customer':
-      return '/orders';
     default:
       return '/';
   }

@@ -24,7 +24,7 @@ import * as XLSX from 'xlsx';
 
 @Controller('activities')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer')
+@Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer', 'employee')
 export class ActivitiesController {
   constructor(private readonly activitiesService: ActivitiesService) {}
 
@@ -80,7 +80,24 @@ export class ActivitiesController {
     return this.activitiesService.listLogs(user, projectId);
   }
 
+  @Post('projects/:projectId/logs')
+  async createDailyLog(
+    @Param('projectId') projectId: string,
+    @Body() body: UploadLogDto,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    const taskSummary = body?.taskSummary || '';
+    if (!taskSummary.trim()) {
+      throw new BadRequestException('Please enter a task summary.');
+    }
+    return this.activitiesService.createLog(user, projectId, {
+      taskSummary,
+      records: [],
+    });
+  }
+
   @Post('projects/:projectId/logs/upload')
+
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
   async uploadLog(
     @Param('projectId') projectId: string,

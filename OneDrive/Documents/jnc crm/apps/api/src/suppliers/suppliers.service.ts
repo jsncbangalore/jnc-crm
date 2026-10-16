@@ -9,6 +9,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
+import { parsePagination } from '../common/pagination.util';
 
 export interface CreateSupplierDto {
   name: string;
@@ -48,7 +49,7 @@ export class SuppliersService {
     });
   }
 
-  async findAll(user?: ScopedUser, query: { search?: string; isActive?: boolean } = {}) {
+  async findAll(user?: ScopedUser, query: { search?: string; isActive?: boolean; page?: number; limit?: number } = {}) {
     const scope = user ? this.scopingService.getSupplierScope(user) : { tenantId: requireTenantId(user) };
     const where: any = { deletedAt: null, ...scope };
     if (query.isActive !== undefined) {
@@ -69,9 +70,12 @@ export class SuppliersService {
         where.OR = searchOR;
       }
     }
+    const { skip, take } = parsePagination(query, 50, 100);
 
     return this.prisma.supplier.findMany({
       where,
+      skip,
+      take,
       orderBy: { name: 'asc' },
       include: {
         preferredSkus: {

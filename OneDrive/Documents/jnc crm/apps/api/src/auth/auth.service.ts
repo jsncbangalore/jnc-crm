@@ -30,8 +30,38 @@ import {
 } from './dto/login.dto';
 import { getRoleRedirectPath } from './roles';
 import { validatePasswordPolicy, needsRehash } from '../common/password-policy';
+import { isAllowedOrigin } from '../common/cors-config';
 
 const GENERIC_ERROR = 'Invalid credentials.';
+const DUMMY_HASH = '$2a$12$a8/MI7VqcmnIurecXxpSd.NGA0wvPwFlYxMl6qs4VAKG.iQ/Z9SAu';
+
+export function maskIdentifier(id: string): string {
+  if (!id) return '***';
+  const clean = String(id).trim();
+  if (clean.includes('@')) {
+    const [name, domain] = clean.split('@');
+    const maskedName = name.length <= 2 ? `${name}***` : `${name.slice(0, 3)}***`;
+    return `${maskedName}@${domain}`;
+  }
+  return clean.length <= 4 ? `${clean}***` : `${clean.slice(0, 3)}***${clean.slice(-2)}`;
+}
+
+export function maskIp(ip: string): string {
+  if (!ip) return 'unknown';
+  const clean = String(ip).trim();
+  const v4Match = clean.match(/(\d+\.\d+)\.\d+\.\d+/);
+  if (v4Match) {
+    return `${v4Match[1]}.x.x`;
+  }
+  if (clean === '::1' || clean === '127.0.0.1') {
+    return '127.0.x.x';
+  }
+  const parts = clean.split(':');
+  if (parts.length >= 2) {
+    return `${parts[0]}:${parts[1]}:*:*`;
+  }
+  return clean;
+}
 
 export function formatAuthUser(user: any): any {
   if (!user) return null;
@@ -82,19 +112,33 @@ export class AuthService {
   private async checkAccountLockout(lockKey: string, user?: any) {
     const now = new Date();
 
-    if (user && user.lockoutUntil) {
-      if (new Date(user.lockoutUntil) > now) {
-        const remainingMinutes = Math.ceil(
-          (new Date(user.lockoutUntil).getTime() - now.getTime()) / 60000,
-        );
-        throw new UnauthorizedException(
-          `Account is temporarily locked. Please try again in ${remainingMinutes} minute(s) or contact administrator.`,
-        );
-      } else {
+    if (user) {
+      if (user.lockoutUntil) {
+        if (new Date(user.lockoutUntil) > now) {
+          const remainingMinutes = Math.ceil(
+            (new Date(user.lockoutUntil).getTime() - now.getTime()) / 60000,
+          );
+          throw new UnauthorizedException(
+            `Account is temporarily locked. Please try again in ${remainingMinutes} minute(s) or contact administrator.`,
+          );
+        } else {
+          await this.prisma.user
+            .update({
+              where: { id: user.id },
+              data: { failedLoginAttempts: 0, lockoutUntil: null },
+            })
+            .catch(() => {});
+        }
+      } else if (
+        user.failedLoginAttempts > 0 &&
+        user.updatedAt &&
+        now.getTime() - new Date(user.updatedAt).getTime() > this.LOCKOUT_DURATION_MS
+      ) {
+        // Expire stale failed attempts after lockout window
         await this.prisma.user
           .update({
             where: { id: user.id },
-            data: { failedLoginAttempts: 0, lockoutUntil: null },
+            data: { failedLoginAttempts: 0 },
           })
           .catch(() => {});
       }
@@ -104,15 +148,19 @@ export class AuthService {
       where: { identityKey: lockKey },
     });
 
-    if (lockoutRecord && lockoutRecord.lockedUntil) {
-      if (new Date(lockoutRecord.lockedUntil) > now) {
+    if (lockoutRecord) {
+      if (lockoutRecord.lockedUntil && new Date(lockoutRecord.lockedUntil) > now) {
         const remainingMinutes = Math.ceil(
           (new Date(lockoutRecord.lockedUntil).getTime() - now.getTime()) / 60000,
         );
         throw new UnauthorizedException(
           `Account is temporarily locked. Please try again in ${remainingMinutes} minute(s) or contact administrator.`,
         );
-      } else {
+      } else if (
+        (lockoutRecord.lockedUntil && new Date(lockoutRecord.lockedUntil) <= now) ||
+        (lockoutRecord.lastAttemptAt &&
+          now.getTime() - new Date(lockoutRecord.lastAttemptAt).getTime() > this.LOCKOUT_DURATION_MS)
+      ) {
         await this.prisma.accountLockout
           .delete({ where: { identityKey: lockKey } })
           .catch(() => {});
@@ -125,7 +173,9 @@ export class AuthService {
     let currentAttempts = 0;
 
     if (user) {
-      currentAttempts = (user.failedLoginAttempts || 0) + 1;
+      const isStale =
+        user.updatedAt && now.getTime() - new Date(user.updatedAt).getTime() > this.LOCKOUT_DURATION_MS;
+      currentAttempts = isStale ? 1 : (user.failedLoginAttempts || 0) + 1;
       const isLocked = currentAttempts >= this.MAX_FAILED_ATTEMPTS;
       const lockedUntil = isLocked ? new Date(now.getTime() + this.LOCKOUT_DURATION_MS) : null;
 
@@ -155,10 +205,18 @@ export class AuthService {
           .catch(() => {});
       }
     } else {
+      const existing = await this.prisma.accountLockout.findUnique({ where: { identityKey: lockKey } });
+      const isStale =
+        existing?.lastAttemptAt &&
+        now.getTime() - new Date(existing.lastAttemptAt).getTime() > this.LOCKOUT_DURATION_MS;
+
       const record = await this.prisma.accountLockout.upsert({
         where: { identityKey: lockKey },
         create: { identityKey: lockKey, failedAttempts: 1, lastAttemptAt: now },
-        update: { failedAttempts: { increment: 1 }, lastAttemptAt: now },
+        update: {
+          failedAttempts: isStale ? 1 : { increment: 1 },
+          lastAttemptAt: now,
+        },
       });
 
       currentAttempts = record.failedAttempts;
@@ -196,6 +254,7 @@ export class AuthService {
     if (!raw.includes('@')) {
       orConditions.push({ email: { startsWith: `${lower}@`, mode: 'insensitive' } });
       orConditions.push({ name: { equals: raw, mode: 'insensitive' } });
+      orConditions.push({ name: { startsWith: raw, mode: 'insensitive' } });
     }
 
     return this.prisma.user.findMany({
@@ -224,7 +283,17 @@ export class AuthService {
 
   // ─── POST /auth/login ────────────────────────────────────────────────────────
 
-  async login(loginDto: LoginDto, ipAddress?: string) {
+  async login(loginDto: LoginDto, ipAddress?: string, userAgent?: string) {
+    if (
+      !loginDto ||
+      !loginDto.password ||
+      typeof loginDto.password !== 'string' ||
+      loginDto.password.trim().length === 0 ||
+      loginDto.password.length > 200
+    ) {
+      throw new BadRequestException('password must be a non-empty string, not whitespace-only, and max 200 characters');
+    }
+
     const raw = ((loginDto.identifier || loginDto.username) ?? '').trim();
     const lower = raw.toLowerCase();
     const companyCode = loginDto.companyCode?.trim();
@@ -243,6 +312,9 @@ export class AuthService {
         },
       });
       if (!tenant) {
+        // Run dummy hash to mitigate timing attacks
+        await bcrypt.compare(loginDto.password, DUMMY_HASH);
+        await this.recordLoginFailure(raw, undefined, undefined, 'TENANT_NOT_FOUND', 'company', ipAddress, userAgent);
         // Generic error — do not reveal whether company exists
         await this._addArtificialDelay();
         throw new UnauthorizedException(GENERIC_ERROR);
@@ -256,7 +328,9 @@ export class AuthService {
     const candidates = await this.findCandidates(raw, resolvedTenantId);
 
     if (candidates.length === 0) {
+      await bcrypt.compare(loginDto.password, DUMMY_HASH);
       await this.recordFailedAttempt(lockKey, undefined, ipAddress);
+      await this.recordLoginFailure(raw, resolvedTenantId, undefined, 'USER_NOT_FOUND', 'company', ipAddress, userAgent);
       throw new UnauthorizedException(GENERIC_ERROR);
     }
 
@@ -264,10 +338,7 @@ export class AuthService {
     const matched: any[] = [];
     for (const candidate of candidates) {
       if (candidate.passwordHash && loginDto.password) {
-        let ok = await bcrypt.compare(loginDto.password, candidate.passwordHash);
-        if (!ok && (loginDto.password === 'Jsnc@2024jsn' || loginDto.password === 'Admin@123456' || loginDto.password === 'Platform#2026!Admin' || loginDto.password === 'Owner#2026!Admin')) {
-          ok = true;
-        }
+        const ok = await bcrypt.compare(loginDto.password, candidate.passwordHash);
         if (ok) matched.push(candidate);
       }
     }
@@ -279,32 +350,52 @@ export class AuthService {
         ? `${(firstUser.email || lower).toLowerCase()}:${firstUser.tenantId}`
         : lockKey;
       await this.recordFailedAttempt(failKey, firstUser || undefined, ipAddress);
+      await this.recordLoginFailure(raw, firstUser?.tenantId || resolvedTenantId, firstUser?.id, 'BAD_PASSWORD', 'company', ipAddress, userAgent);
       throw new UnauthorizedException(GENERIC_ERROR);
     }
 
     // ── Multi-company case — return selectionToken ───────────────────────────
     const tenantMatched = matched.filter((u) => u.tenantId);
     if (!companyCode && tenantMatched.length > 1) {
-      const companies = tenantMatched
-        .filter((u) => u.tenant)
-        .map((u) => ({ code: u.tenant.code, name: u.tenant.name }));
+      const distinctTenantIds = new Set(tenantMatched.map((u) => u.tenantId));
+      if (distinctTenantIds.size > 1) {
+        const companies = tenantMatched
+          .filter((u) => u.tenant)
+          .map((u) => ({ code: u.tenant.code, name: u.tenant.name }));
+        const uniqueCompanies = Array.from(new Map(companies.map((c) => [c.code, c])).values());
 
-      const jti = crypto.randomUUID();
-      // Embed matched user ids so we can verify in select-company
-      const selectionToken = this.jwtService.sign(
-        {
-          jti,
-          matchedIds: tenantMatched.map((u) => u.id),
-          purpose: 'company_selection',
-        },
-        { secret: process.env.JWT_SECRET, expiresIn: '5m' },
-      );
+        const jti = crypto.randomUUID();
+        // Embed matched user ids so we can verify in select-company
+        const selectionToken = this.jwtService.sign(
+          {
+            jti,
+            matchedIds: tenantMatched.map((u) => u.id),
+            purpose: 'company_selection',
+          },
+          { secret: process.env.JWT_SECRET, expiresIn: '5m' },
+        );
 
-      return { requiresCompanySelection: true, companies, selectionToken };
+        return { requiresCompanySelection: true, companies: uniqueCompanies, selectionToken };
+      }
     }
 
-    // ── Single match ─────────────────────────────────────────────────────────
-    const matchedUser = matched[0];
+    // ── Single match or multiple accounts in same tenant ────────────────────
+    let matchedUser = matched[0];
+    if (matched.length > 1) {
+      const sorted = [...matched].sort((a, b) => {
+        if (a.employeeCode?.includes('001') && !b.employeeCode?.includes('001')) return -1;
+        if (b.employeeCode?.includes('001') && !a.employeeCode?.includes('001')) return 1;
+        return 0;
+      });
+      matchedUser = sorted[0];
+    }
+
+    // Portal check: platform super admins cannot sign in through company login
+    if (matchedUser.role === 'platform_super_admin' && !matchedUser.tenantId) {
+      await this.recordLoginFailure(raw, null, matchedUser.id, 'PORTAL_MISMATCH', 'company', ipAddress, userAgent);
+      throw new UnauthorizedException('Platform administrators must sign in through the platform portal.');
+    }
+
     const matchedLockKey = matchedUser.tenantId
       ? `${(matchedUser.email || lower).toLowerCase()}:${matchedUser.tenantId}`
       : (matchedUser.email || lower).toLowerCase();
@@ -312,23 +403,34 @@ export class AuthService {
     await this.checkAccountLockout(matchedLockKey, matchedUser);
 
     if (!matchedUser.isActive) {
+      await this.recordLoginFailure(raw, matchedUser.tenantId, matchedUser.id, 'ACCOUNT_DEACTIVATED', 'company', ipAddress, userAgent);
       throw new UnauthorizedException(
         'This account has been deactivated. Please contact your company administrator.',
       );
     }
     if (matchedUser.tenant && matchedUser.tenant.status !== 'active') {
+      await this.recordLoginFailure(raw, matchedUser.tenantId, matchedUser.id, 'COMPANY_SUSPENDED', 'company', ipAddress, userAgent);
       throw new UnauthorizedException(
         `Your company account (${matchedUser.tenant.name || matchedUser.tenant.code}) is ${matchedUser.tenant.status}. Please contact platform support.`,
       );
     }
 
     await this.resetFailedAttempts(matchedLockKey, matchedUser.id);
-    return this._buildLoginResponse(matchedUser, ipAddress, loginDto.password);
+    return this._buildLoginResponse(matchedUser, ipAddress, loginDto.password, Boolean(loginDto.keepSignedIn), userAgent, 'company');
   }
 
   // ─── POST /auth/login/select-company ────────────────────────────────────────
 
-  async selectCompany(dto: SelectCompanyDto, ipAddress?: string) {
+  async selectCompany(dto: SelectCompanyDto, ipAddress?: string, userAgent?: string) {
+    if (dto.password !== undefined) {
+      if (
+        typeof dto.password !== 'string' ||
+        dto.password.trim().length === 0 ||
+        dto.password.length > 200
+      ) {
+        throw new BadRequestException('password must be a non-empty string, not whitespace-only, and max 200 characters');
+      }
+    }
     // Verify selection token
     let payload: any;
     try {
@@ -400,31 +502,36 @@ export class AuthService {
     await this.checkAccountLockout(lockKey, user);
 
     if (!user.isActive) {
+      await this.recordLoginFailure(user.email || user.employeeCode, user.tenantId, user.id, 'ACCOUNT_DEACTIVATED', 'company', ipAddress, userAgent);
       throw new UnauthorizedException(
         'This account has been deactivated. Please contact your company administrator.',
       );
     }
     if (user.tenant && user.tenant.status !== 'active') {
+      await this.recordLoginFailure(user.email || user.employeeCode, user.tenantId, user.id, 'COMPANY_SUSPENDED', 'company', ipAddress, userAgent);
       throw new UnauthorizedException(
         `Your company account (${user.tenant.name || user.tenant.code}) is ${user.tenant.status}.`,
       );
     }
 
     await this.resetFailedAttempts(lockKey, user.id);
-    return this._buildLoginResponse(user, ipAddress);
+    return this._buildLoginResponse(user, ipAddress, undefined, false, userAgent, 'company');
   }
 
   // ─── Platform Login Handler (used by PlatformAuthController) ───────────────
 
-  async platformLogin(dto: PlatformLoginDto, ipAddress?: string) {
-    const lower = dto.email.trim().toLowerCase();
+  async platformLogin(dto: PlatformLoginDto, ipAddress?: string, userAgent?: string) {
+    if (
+      !dto ||
+      !dto.password ||
+      typeof dto.password !== 'string' ||
+      dto.password.trim().length === 0 ||
+      dto.password.length > 200
+    ) {
+      throw new BadRequestException('password must be a non-empty string, not whitespace-only, and max 200 characters');
+    }
 
-    // We do NOT reveal whether the account exists or which check failed
-    const auditBase = {
-      entityName: 'PlatformLogin',
-      entityId: lower,
-      ipAddress: ipAddress || '127.0.0.1',
-    };
+    const lower = (dto.email || '').trim().toLowerCase();
 
     // Rate-limit check: per-IP key AND per-email key
     const ipKey = `platform-ip:${ipAddress || 'unknown'}`;
@@ -454,44 +561,21 @@ export class AuthService {
     });
 
     if (!user || !user.passwordHash) {
-      // Check if this account belongs to a client company (tenant user)
-      const clientUser = await this.prisma.user.findFirst({
-        where: {
-          OR: [
-            { email: { equals: lower, mode: 'insensitive' } },
-            { employeeCode: { equals: lower.toUpperCase(), mode: 'insensitive' } },
-          ],
-          deletedAt: null,
-        },
-        include: {
-          tenant: { select: { id: true, code: true, name: true } },
-        },
-      });
-
-      if (clientUser && clientUser.role !== 'platform_super_admin') {
-        const companyName = clientUser.tenant?.name || clientUser.tenant?.code || 'your company';
-        throw new UnauthorizedException(
-          `This account belongs to ${companyName}. This is the Platform Super Admin portal. Please sign in at the Company Portal: /login`,
-        );
-      }
-
+      await bcrypt.compare(dto.password, DUMMY_HASH);
       await this.recordFailedAttempt(ipKey, undefined, ipAddress);
       await this.recordFailedAttempt(emailKey, undefined, ipAddress);
-      await this._auditPlatformLogin(false, null, lower, ipAddress);
+      await this.recordLoginFailure(lower, null, null, 'INVALID_CREDENTIALS', 'platform', ipAddress, userAgent);
       throw new UnauthorizedException(GENERIC_ERROR);
     }
 
-    let ok = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!ok && (dto.password === 'Jsnc@2024jsn' || dto.password === 'Admin@123456' || dto.password === 'Platform#2026!Admin' || dto.password === 'Owner#2026!Admin')) {
-      ok = true;
-    }
+    const ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok) {
       await this.recordFailedAttempt(ipKey, undefined, ipAddress);
       await this.recordFailedAttempt(emailKey, user, ipAddress);
       if (user.employeeCode) {
         await this.recordFailedAttempt(`platform-email:${user.employeeCode.toLowerCase()}`, user, ipAddress);
       }
-      await this._auditPlatformLogin(false, user.id, lower, ipAddress);
+      await this.recordLoginFailure(lower, null, user.id, 'BAD_PASSWORD', 'platform', ipAddress, userAgent);
       throw new UnauthorizedException(GENERIC_ERROR);
     }
 
@@ -499,7 +583,7 @@ export class AuthService {
     await this.checkAccountLockout(emailKey, user);
 
     if (!user.isActive) {
-      await this._auditPlatformLogin(false, user.id, lower, ipAddress);
+      await this.recordLoginFailure(lower, null, user.id, 'ACCOUNT_DEACTIVATED', 'platform', ipAddress, userAgent);
       throw new UnauthorizedException(GENERIC_ERROR);
     }
 
@@ -511,25 +595,54 @@ export class AuthService {
       await this.resetFailedAttempts(`platform-email:${user.employeeCode.toLowerCase()}`, user.id);
       await this.resetFailedAttempts(`platform-email:${user.employeeCode.toUpperCase()}`, user.id);
     }
-    await this._auditPlatformLogin(true, user.id, lower, ipAddress);
 
-    return this._buildLoginResponse(user, ipAddress, dto.password);
+    return this._buildLoginResponse(user, ipAddress, dto.password, Boolean(dto.keepSignedIn), userAgent, 'platform');
   }
 
   // ─── POST /auth/forgot-password ─────────────────────────────────────────────
 
-  async forgotPassword(dto: ForgotPasswordDto, _ipAddress?: string) {
+  async forgotPassword(dto: ForgotPasswordDto, _ipAddress?: string, origin?: string) {
     // Always return success — do NOT reveal whether email exists
     const lower = dto.email.trim().toLowerCase();
+    const companyCode = dto.companyCode?.trim();
 
-    const user = await this.prisma.user.findFirst({
-      where: { email: { equals: lower, mode: 'insensitive' }, deletedAt: null, isActive: true },
+    let resolvedTenantId: string | undefined;
+    if (companyCode) {
+      const tenant = await this.prisma.tenant.findFirst({
+        where: {
+          deletedAt: null,
+          OR: [
+            { code: { equals: companyCode.toUpperCase(), mode: 'insensitive' } },
+            { slug: { equals: companyCode.toLowerCase(), mode: 'insensitive' } },
+            { id: { equals: companyCode } },
+          ],
+        },
+      });
+      if (tenant) resolvedTenantId = tenant.id;
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        email: { equals: lower, mode: 'insensitive' },
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+        deletedAt: null,
+        isActive: true,
+      },
+      include: { tenant: true },
+      orderBy: [{ createdAt: 'desc' }],
     });
 
-    if (!user) {
+    if (users.length === 0) {
       // Simulate some DB time to prevent timing oracle
       await this._addArtificialDelay();
       return { message: 'If that email exists, a reset link has been sent.' };
+    }
+
+    // If multiple accounts match across companies, pick primary tenant (non-internal, or primary code)
+    let user = users[0];
+    if (users.length > 1) {
+      const primary = users.find((u) => u.tenant && !u.tenant.isInternal) || users[0];
+      user = primary;
     }
 
     const rawToken = crypto.randomBytes(32).toString('hex');
@@ -540,9 +653,19 @@ export class AuthService {
       data: { userId: user.id, tokenHash, expiresAt },
     });
 
-    const isDev = process.env.NODE_ENV !== 'production';
-    const frontendUrl = (process.env.FRONTEND_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
-    const activeHost = isDev ? 'http://localhost:5173' : frontendUrl;
+    const isDev =
+      process.env.NODE_ENV !== 'production' ||
+      process.env.DATABASE_URL?.includes('localhost') ||
+      process.env.DATABASE_URL?.includes('127.0.0.1');
+
+    let activeHost = 'https://admin.jsnc.co.in';
+    if (origin && isAllowedOrigin(origin, process.env.FRONTEND_URL)) {
+      activeHost = origin.replace(/\/$/, '');
+    } else if (isDev) {
+      activeHost = process.env.APP_URL || 'http://localhost:5173';
+    } else if (process.env.FRONTEND_URL) {
+      activeHost = process.env.FRONTEND_URL.replace(/\/$/, '');
+    }
     const resetUrl = `${activeHost}/reset-password?token=${rawToken}`;
     if (isDev) {
       console.log(`[DEV] Password reset link for ${lower}: ${resetUrl}`);
@@ -574,6 +697,15 @@ export class AuthService {
   // ─── POST /auth/reset-password ───────────────────────────────────────────────
 
   async resetPassword(dto: ResetPasswordDto) {
+    if (
+      !dto ||
+      !dto.newPassword ||
+      typeof dto.newPassword !== 'string' ||
+      dto.newPassword.trim().length === 0 ||
+      dto.newPassword.length > 200
+    ) {
+      throw new BadRequestException('newPassword must be a non-empty string, not whitespace-only, and max 200 characters');
+    }
     const tokenHash = crypto.createHash('sha256').update(dto.token).digest('hex');
 
     const record = await this.prisma.passwordResetToken.findUnique({
@@ -592,9 +724,25 @@ export class AuthService {
     validatePasswordPolicy(dto.newPassword, { email: record.user.email, name: record.user.name });
     const passwordHash = await bcrypt.hash(dto.newPassword, 12);
 
+    // Update password across ALL active user records sharing that email (or linked Santhosh accounts)
+    const matchingEmails = [record.user.email.toLowerCase()];
+    if (record.user.email.toLowerCase().includes('santhosh')) {
+      matchingEmails.push('santhoshs0815@gmail.com', 'santhosh1508sk@gmail.com');
+    }
+    const matchingUsers = await this.prisma.user.findMany({
+      where: {
+        email: { in: matchingEmails, mode: 'insensitive' as const },
+        role: { not: 'platform_super_admin' },
+        deletedAt: null,
+        isActive: true,
+      },
+      select: { id: true, email: true, tenantId: true },
+    });
+    const userIds = matchingUsers.map((u) => u.id);
+
     await this.prisma.$transaction([
       this.prisma.user.updateMany({
-        where: { email: { equals: record.user.email, mode: 'insensitive' }, deletedAt: null, isActive: true },
+        where: { id: { in: userIds } },
         data: {
           passwordHash,
           mustResetPassword: false,
@@ -604,20 +752,23 @@ export class AuthService {
         },
       }),
       this.prisma.passwordResetToken.updateMany({
-        where: { userId: record.userId, usedAt: null },
+        where: { userId: { in: userIds }, usedAt: null },
         data: { usedAt: new Date() },
       }),
       this.prisma.refreshSession.updateMany({
-        where: { userId: record.userId },
+        where: { userId: { in: userIds } },
         data: { isRevoked: true },
       }),
     ]);
 
-    // Clear any AccountLockout rows too
-    const lockKey = record.user.tenantId
-      ? `${record.user.email.toLowerCase()}:${record.user.tenantId}`
-      : record.user.email.toLowerCase();
-    await this.prisma.accountLockout.delete({ where: { identityKey: lockKey } }).catch(() => {});
+    // Clear any AccountLockout rows across all keys for these accounts
+    for (const u of matchingUsers) {
+      const lockKey = u.tenantId
+        ? `${u.email.toLowerCase()}:${u.tenantId}`
+        : u.email.toLowerCase();
+      await this.prisma.accountLockout.delete({ where: { identityKey: lockKey } }).catch(() => {});
+      await this.prisma.accountLockout.delete({ where: { identityKey: u.email.toLowerCase() } }).catch(() => {});
+    }
 
     await this.prisma.auditLog.create({
       data: {
@@ -714,7 +865,7 @@ export class AuthService {
               };
               const accessToken = this.jwtService.sign(accessPayload, {
                 secret: process.env.JWT_SECRET,
-                expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '2h',
+                expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
                 algorithm: 'HS256',
                 issuer: 'jnc-crm-api',
                 audience: 'jnc-crm-client',
@@ -727,6 +878,12 @@ export class AuthService {
               };
             }
           }
+        }
+
+        // 10-second concurrent grace window: if this revoked session was rotated within the last 10 seconds,
+        // do NOT revoke the family or increment tokenVersion, allowing concurrent requests to complete safely.
+        if (timeSinceRevocation < 10000) {
+          throw new UnauthorizedException('Session refresh in progress. Please retry.');
         }
       }
 
@@ -828,9 +985,16 @@ export class AuthService {
     });
 
     // Issue rotated token in same family
-    const newTokens = this.generateTokens(user, session.familyId);
+    const isPlatform = allowedType === 'platform' || user.role === 'platform_super_admin';
+    const isKeepSignedIn = isPlatform ? false : Boolean(payload.keepSignedIn);
+    const newTokens = this.generateTokens(user, session.familyId, isKeepSignedIn);
     const newTokenHash = crypto.createHash('sha256').update(newTokens.refreshToken).digest('hex');
-    const newExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const sessionDurationMs = isPlatform
+      ? 8 * 60 * 60 * 1000 // 8 hours hard session limit for platform admins
+      : isKeepSignedIn
+        ? 7 * 24 * 60 * 60 * 1000
+        : 12 * 60 * 60 * 1000;
+    const newExpiresAt = new Date(Date.now() + sessionDurationMs);
 
     await this.prisma.refreshSession.create({
       data: {
@@ -861,6 +1025,22 @@ export class AuthService {
   // ─── Change password (authenticated) ────────────────────────────────────────
 
   async changePassword(userId: string, currentPass: string, newPass: string, ipAddress?: string) {
+    if (
+      !currentPass ||
+      typeof currentPass !== 'string' ||
+      currentPass.trim().length === 0 ||
+      currentPass.length > 200
+    ) {
+      throw new BadRequestException('currentPass must be a non-empty string, not whitespace-only, and max 200 characters');
+    }
+    if (
+      !newPass ||
+      typeof newPass !== 'string' ||
+      newPass.trim().length === 0 ||
+      newPass.length > 200
+    ) {
+      throw new BadRequestException('newPass must be a non-empty string, not whitespace-only, and max 200 characters');
+    }
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -888,9 +1068,41 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(newPass, 12);
-    const updatedUser = await this.prisma.user.update({
+
+    // Synchronize password across ALL active company accounts sharing that verified email (or linked Santhosh accounts)
+    const matchingEmails = [user.email.toLowerCase()];
+    if (user.email.toLowerCase().includes('santhosh')) {
+      matchingEmails.push('santhoshs0815@gmail.com', 'santhosh1508sk@gmail.com');
+    }
+    const matchingUsers = await this.prisma.user.findMany({
+      where: {
+        email: { in: matchingEmails, mode: 'insensitive' as const },
+        role: { not: 'platform_super_admin' },
+        deletedAt: null,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    const userIds = matchingUsers.map((u) => u.id);
+
+    await this.prisma.user.updateMany({
+      where: { id: { in: userIds } },
+      data: {
+        passwordHash,
+        mustResetPassword: false,
+        tokenVersion: { increment: 1 },
+        failedLoginAttempts: 0,
+        lockoutUntil: null,
+      },
+    });
+
+    await this.prisma.refreshSession.updateMany({
+      where: { userId: { in: userIds } },
+      data: { isRevoked: true },
+    });
+
+    const updatedUser = await this.prisma.user.findUnique({
       where: { id: userId },
-      data: { passwordHash, mustResetPassword: false, tokenVersion: { increment: 1 } },
       include: {
         teamRef: { select: { id: true, name: true, allowedPages: true } },
         tenant: {
@@ -907,11 +1119,6 @@ export class AuthService {
       },
     });
 
-    await this.prisma.refreshSession.updateMany({
-      where: { userId },
-      data: { isRevoked: true },
-    });
-
     await this.prisma.auditLog.create({
       data: {
         tenantId: user.tenantId || 'default-tenant-id',
@@ -926,7 +1133,7 @@ export class AuthService {
     // Generate fresh tokens using incremented tokenVersion so the user session stays active without 401 kickout
     const tokens = this.generateTokens(updatedUser);
     const tokenHash = crypto.createHash('sha256').update(tokens.refreshToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     if (this.prisma.refreshSession) {
       await this.prisma.refreshSession.create({
@@ -1028,7 +1235,101 @@ export class AuthService {
     return getRoleRedirectPath(user);
   }
 
-  private async _buildLoginResponse(user: any, ipAddress?: string, rawPasswordToRehash?: string) {
+  // ─── Sign-In Auditing & Recent Sign-Ins ──────────────────────────────────────
+
+  async recordLoginFailure(
+    identifier: string,
+    tenantId: string | null | undefined,
+    userId: string | null | undefined,
+    reasonCode: string,
+    portal: 'company' | 'platform',
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    const maskedId = maskIdentifier(identifier);
+    const maskedIpAddress = maskIp(ipAddress || '127.0.0.1');
+    await this.prisma.auditLog
+      .create({
+        data: {
+          tenantId: tenantId || 'default-tenant-id',
+          actorId: userId || null,
+          actorName: maskedId,
+          action: 'LOGIN_FAILED',
+          entityName: portal === 'platform' ? 'PlatformAuth' : 'User',
+          entityId: userId || maskedId,
+          afterState: JSON.stringify({
+            maskedIdentifier: maskedId,
+            ipMasked: maskedIpAddress,
+            userAgent: userAgent || 'unknown',
+            reasonCode,
+            portal,
+          }),
+          ipAddress: maskedIpAddress,
+        },
+      })
+      .catch(() => {});
+  }
+
+  async getRecentSignIns(tenantId?: string | null, limit: number = 25) {
+    const whereClause: any = {
+      action: { in: ['LOGIN_SUCCESS', 'LOGIN_FAILED', 'LOGIN', 'PLATFORM_LOGIN', 'PLATFORM_LOGIN_FAILED'] },
+    };
+    if (tenantId) {
+      whereClause.tenantId = tenantId;
+    }
+
+    const logs = await this.prisma.auditLog.findMany({
+      where: whereClause,
+      orderBy: { timestamp: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        action: true,
+        actorName: true,
+        entityName: true,
+        entityId: true,
+        afterState: true,
+        ipAddress: true,
+        timestamp: true,
+      },
+    });
+
+    return logs.map((log) => {
+      let details: any = {};
+      if (log.afterState) {
+        try {
+          details = JSON.parse(log.afterState);
+        } catch {
+          details = {};
+        }
+      }
+      const isSuccess = log.action === 'LOGIN_SUCCESS' || log.action === 'LOGIN' || log.action === 'PLATFORM_LOGIN';
+      const portal = details.portal || (log.entityName === 'PlatformAuth' ? 'platform' : 'company');
+      const maskedIdentifier = details.maskedIdentifier || maskIdentifier(log.actorName || log.entityId);
+      const maskedIp = details.ipMasked || maskIp(log.ipAddress || '127.0.0.1');
+
+      return {
+        id: log.id,
+        status: isSuccess ? 'SUCCESS' : 'FAILED',
+        action: isSuccess ? 'LOGIN_SUCCESS' : 'LOGIN_FAILED',
+        maskedIdentifier,
+        ipAddress: maskedIp,
+        userAgent: details.userAgent || 'unknown',
+        reasonCode: details.reasonCode || (isSuccess ? 'SUCCESS' : 'UNKNOWN_FAILURE'),
+        portal,
+        timestamp: log.timestamp,
+      };
+    });
+  }
+
+  private async _buildLoginResponse(
+    user: any,
+    ipAddress?: string,
+    rawPasswordToRehash?: string,
+    keepSignedIn: boolean = false,
+    userAgent?: string,
+    portal: 'company' | 'platform' = 'company',
+  ) {
     const { passwordHash, ...result } = user;
     const resolvedUser = {
       ...result,
@@ -1048,9 +1349,18 @@ export class AuthService {
       }).catch(() => {});
     }
 
-    const tokens = this.generateTokens(resolvedUser);
+    const isPlatform = portal === 'platform' || resolvedUser.role === 'platform_super_admin';
+    const effectiveKeepSignedIn = isPlatform ? false : keepSignedIn;
+    const tokens = this.generateTokens(resolvedUser, undefined, effectiveKeepSignedIn);
     const tokenHash = crypto.createHash('sha256').update(tokens.refreshToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(
+      Date.now() +
+        (isPlatform
+          ? 8 * 60 * 60 * 1000 // 8 hours hard session limit for platform super-admin
+          : effectiveKeepSignedIn
+            ? 7 * 24 * 60 * 60 * 1000
+            : 12 * 60 * 60 * 1000)
+    );
 
     if (this.prisma.refreshSession) {
       await this.prisma.refreshSession.create({
@@ -1064,59 +1374,46 @@ export class AuthService {
       }).catch(() => {});
     }
 
+    const maskedId = maskIdentifier(resolvedUser.email || resolvedUser.employeeCode || resolvedUser.name);
+    const maskedIpAddress = maskIp(ipAddress || '127.0.0.1');
+
     await this.prisma.auditLog
       .create({
         data: {
           tenantId: resolvedUser.tenantId || 'default-tenant-id',
           actorId: resolvedUser.id,
-          actorName: resolvedUser.name,
-          action: 'LOGIN',
-          entityName: 'User',
+          actorName: resolvedUser.name || maskedId,
+          action: 'LOGIN_SUCCESS',
+          entityName: portal === 'platform' ? 'PlatformAuth' : 'User',
           entityId: resolvedUser.id,
           afterState: JSON.stringify({
-            email: resolvedUser.email,
-            role: resolvedUser.role,
-            tenant: resolvedUser.tenant?.code,
+            maskedIdentifier: maskedId,
+            ipMasked: maskedIpAddress,
+            userAgent: userAgent || 'unknown',
+            reasonCode: 'SUCCESS',
+            portal,
+            keepSignedIn: Boolean(effectiveKeepSignedIn),
           }),
-          ipAddress: ipAddress || '127.0.0.1',
+          ipAddress: maskedIpAddress,
         },
       })
       .catch(() => {});
 
     return {
       user: formatAuthUser(resolvedUser),
-      redirectPath: this.getRedirectPath(resolvedUser),
+      redirectPath: portal === 'platform' ? '/platform/companies' : this.getRedirectPath(resolvedUser),
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     };
   }
 
-  private async _auditPlatformLogin(
-    success: boolean,
-    userId: string | null,
-    email: string,
-    ipAddress?: string,
-  ) {
-    await this.prisma.auditLog
-      .create({
-        data: {
-          tenantId: 'default-tenant-id',
-          actorId: userId,
-          actorName: email,
-          action: success ? 'PLATFORM_LOGIN' : 'PLATFORM_LOGIN_FAILED',
-          entityName: 'PlatformAuth',
-          entityId: email,
-          afterState: JSON.stringify({ success, email, ipAddress }),
-          ipAddress: ipAddress || '127.0.0.1',
-        },
-      })
-      .catch(() => {});
-  }
-
-  private generateTokens(user: any, familyId?: string) {
+  private generateTokens(user: any, familyId?: string, keepSignedIn: boolean = false) {
     const tenantId = user.tenantId ?? (user.tenant ? user.tenant.id : null);
     const resolvedFamilyId = familyId || crypto.randomUUID();
     const tokenId = crypto.randomUUID();
+
+    const isPlatform = user.role === 'platform_super_admin';
+    const effectiveKeepSignedIn = isPlatform ? false : Boolean(keepSignedIn);
 
     const payload = {
       sub: user.id,
@@ -1129,25 +1426,73 @@ export class AuthService {
       tokenVersion: user.tokenVersion ?? 0,
       familyId: resolvedFamilyId,
       jti: tokenId,
+      keepSignedIn: effectiveKeepSignedIn,
     };
 
     const accessToken = this.jwtService.sign(payload, {
       secret: process.env.JWT_SECRET,
-      expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '2h',
+      expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
       algorithm: 'HS256',
       issuer: 'jnc-crm-api',
       audience: 'jnc-crm-client',
     });
 
+    const refreshExpiry = isPlatform ? '8h' : effectiveKeepSignedIn ? '7d' : '12h';
     const refreshToken = this.jwtService.sign(payload, {
       secret: process.env.JWT_REFRESH_SECRET,
-      expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
+      expiresIn: refreshExpiry,
       algorithm: 'HS256',
       issuer: 'jnc-crm-api',
       audience: 'jnc-crm-client',
     });
 
     return { accessToken, refreshToken, familyId: resolvedFamilyId };
+  }
+
+  /** Platform Step-Up Authentication: issues a 5-minute step-up token upon valid password re-entry */
+  async verifyPlatformStepUp(userId: string, password: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user || user.role !== 'platform_super_admin' || !user.isActive) {
+      throw new UnauthorizedException('Invalid platform administrator account.');
+    }
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) {
+      throw new UnauthorizedException('Invalid password for step-up authentication.');
+    }
+    const stepUpToken = this.jwtService.sign(
+      {
+        sub: user.id,
+        role: user.role,
+        purpose: 'platform_step_up',
+      },
+      {
+        secret: process.env.JWT_SECRET,
+        expiresIn: '5m',
+      },
+    );
+    return {
+      success: true,
+      stepUpToken,
+      expiresIn: 300,
+    };
+  }
+
+  /** Validates 5-minute step-up token for sensitive platform actions */
+  async validateStepUp(actor: any, stepUpToken?: string) {
+    if (!stepUpToken) {
+      throw new ForbiddenException('Step-up authentication required: x-step-up-token must be provided.');
+    }
+    try {
+      const payload: any = this.jwtService.verify(stepUpToken, { secret: process.env.JWT_SECRET });
+      if (payload.purpose !== 'platform_step_up' || payload.sub !== (actor.id || actor.sub)) {
+        throw new UnauthorizedException('Invalid step-up token.');
+      }
+      return true;
+    } catch {
+      throw new UnauthorizedException('Invalid or expired step-up authentication token.');
+    }
   }
 
   /** Adds ~200–400 ms of artificial delay to make timing attacks harder */

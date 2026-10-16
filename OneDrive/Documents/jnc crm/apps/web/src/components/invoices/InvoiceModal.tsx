@@ -8,9 +8,12 @@ import {
 import { Invoice, SignatorySettings, DocumentType, CompanyInvoiceProfile } from '../../types';
 import { invoicesApi } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBranding } from '../../contexts/BrandingContext';
+import { BRAND_CONFIG } from '../../config/brand';
 import { format } from 'date-fns';
 import InvoiceSettingsModal from './InvoiceSettingsModal';
 import { RecordPaymentModal } from './RecordPaymentModal';
+import DirectPrintModal from '../printing/DirectPrintModal';
 
 interface InvoiceModalProps {
   invoice: Invoice | null;
@@ -72,6 +75,7 @@ export function numberToIndianWords(amount: number): string {
 
 export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEditInvoice }: InvoiceModalProps) {
   const { user } = useAuth();
+  const { branding } = useBranding();
   const canAdmin = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'platform_super_admin';
 
   // Single Source of Truth Company Profile
@@ -117,6 +121,9 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   // Payment Recording Modal
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
+  // JNC Direct Printer Connection Modal
+  const [showDirectPrintModal, setShowDirectPrintModal] = useState(false);
+
   if (!invoice) return null;
 
   const isCreditNote = activeTemplate === 'credit_note';
@@ -131,6 +138,11 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
     invoice.customerState?.toLowerCase() !== '29';
 
   const profile = companyProfile || invoice?.companyProfile;
+  const rawLogo = profile?.logoUrl || branding?.companyLogoUrl;
+  const invoiceLogo =
+    rawLogo && typeof rawLogo === 'string' && !rawLogo.startsWith('data:') && rawLogo.trim() !== ''
+      ? rawLogo
+      : '/jnc-logo.jpg';
 
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
@@ -168,95 +180,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   };
 
   const handlePrint = () => {
-    const printContent = document.getElementById('printable-tax-invoice');
-    if (!printContent) {
-      window.print();
-      return;
-    }
-
-    const printWindow = window.open('', '_blank', 'width=880,height=1150');
-    if (!printWindow) {
-      window.print();
-      return;
-    }
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${isDC ? 'Delivery Challan' : isProforma ? 'Proforma Invoice' : isSEZ ? 'Tax Invoice (SEZ)' : 'Tax Invoice'} - ${invoice.invoiceNumber}</title>
-          <style>
-            @page {
-              size: A4 portrait;
-              margin: 0;
-            }
-            * {
-              box-sizing: border-box;
-              margin: 0;
-              padding: 0;
-            }
-            html, body {
-              width: 210mm;
-              height: 297mm;
-              margin: 0 auto;
-              padding: 0;
-              background: #ffffff;
-              color: #000000;
-              font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-            .invoice-box {
-              width: 100%;
-              max-width: 100%;
-              border: 1.5px solid #000000;
-              page-break-inside: avoid;
-              page-break-after: avoid;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-            }
-            th, td {
-              border-color: #000000 !important;
-            }
-            img {
-              max-width: 100%;
-              height: auto;
-            }
-            @media print {
-              html, body {
-                width: 100%;
-                height: 100%;
-                margin: 0;
-                padding: 0;
-              }
-              .invoice-box {
-                width: 100% !important;
-                border: 1.5px solid #000000 !important;
-                box-shadow: none !important;
-              }
-            }
-          </style>
-          <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-        </head>
-        <body class="p-0 m-0 bg-white flex items-center justify-center">
-          <div class="invoice-box">
-            ${printContent.innerHTML}
-          </div>
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.focus();
-                window.print();
-                window.close();
-              }, 250);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    setShowDirectPrintModal(true);
   };
 
   const handleOpenEmailModal = () => {
@@ -313,6 +237,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   };
 
   const effectiveSignatory = signatoryConfig || invoice.signatorySettings;
+  const effectiveCompanyName = effectiveSignatory?.companyName || profile?.companyName || BRAND_CONFIG.displayName;
   const lines = invoice.lines || [];
   
   // Calculate subtotal and total depending on document type
@@ -372,6 +297,19 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
               <div>
                 <h3 className="text-sm font-bold text-slate-950 dark:text-white flex items-center gap-2">
                   <span>{isDC ? 'Delivery Challan' : isProforma ? 'Proforma Invoice' : isCreditNote ? 'Credit Note' : isPO ? 'Purchase Order' : isSEZ ? 'SEZ / Export Invoice' : 'Tax Invoice'}</span>: <span className="font-mono text-amber-700 dark:text-crm-amber">{invoice.invoiceNumber}</span>
+                  {!isDC && (
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
+                        invoice.paymentStatus === 'paid'
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-green-500/15 dark:text-green-400 border-emerald-300 dark:border-green-500/30'
+                          : invoice.paymentStatus === 'partial'
+                          ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 border-amber-300 dark:border-amber-500/30'
+                          : 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-400 border-slate-300 dark:border-slate-500/30'
+                      }`}
+                    >
+                      {invoice.paymentStatus || 'unpaid'}
+                    </span>
+                  )}
                   {invoice.isVoided && (
                     <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-crm-coral border border-red-300 dark:border-red-500/40">
                       VOIDED
@@ -444,9 +382,9 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
               <button
                 onClick={handlePrint}
                 className="btn bg-white dark:bg-white/10 hover:bg-slate-100 dark:hover:bg-white/20 text-slate-800 dark:text-white border border-slate-300 dark:border-transparent text-xs gap-1.5 py-1.5 font-bold shadow-sm"
-                title="Print in exact A4 format"
+                title="Direct Printer Connection (JNC Hub & Options)"
               >
-                <Printer size={13} /> Print
+                <Printer size={13} className="text-crm-blue" /> Direct Print
               </button>
 
               <button
@@ -538,16 +476,23 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                   {/* Top Company Header with Official JNC Logo & Details */}
                   <div className="text-center space-y-1 pb-2 border-b border-black">
                     <div className="flex justify-center mb-1">
-                      <img src="/jnc-logo.jpg" alt="Logo" className="h-10 object-contain" />
+                      <img
+                        src={invoiceLogo}
+                        alt="Logo"
+                        className="h-10 object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/jnc-logo.jpg';
+                        }}
+                      />
                     </div>
                     <h2 className="text-sm font-bold text-black uppercase tracking-wider">
-                      {profile?.companyName || 'JS NETWORK COMMUNICATION'}
+                      {effectiveCompanyName}
                     </h2>
                     <p className="text-[10px] text-black">
                       Address :{profile?.addressLine1 || 'No, 18/19, 2nd Floor, Coconut Avenue'}, {profile?.addressLine2 || '3rd cross, 8th Phase JP Nagar'}, {profile?.city || 'Bangalore'} {profile?.pincode || '76'}.
                     </p>
                     <p className="text-[10px] text-black">
-                      Contact No: {profile?.phone || '+91 9663421455 / 9964219891'}{profile?.email ? `, E-mail: ${profile.email}` : ''}
+                      Contact No: {profile?.phone || '+91 9876543210'}{profile?.email ? `, E-mail: ${profile.email}` : ''}
                     </p>
                   </div>
 
@@ -582,7 +527,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                     <thead>
                       <tr className="border-b border-black font-bold text-center bg-gray-100">
                         <th className="py-1.5 px-2 w-10 border-r border-black font-bold text-black">SLNO</th>
-                        <th className="py-1.5 px-3 text-left border-r border-black font-bold text-black">ITEM DISCRIPTION</th>
+                        <th className="py-1.5 px-3 text-left border-r border-black font-bold text-black">ITEM DESCRIPTION</th>
                         <th className="py-1.5 px-2 w-14 border-r border-black font-bold text-black">Unit</th>
                         <th className="py-1.5 px-2 w-14 border-r border-black font-bold text-black">QTY</th>
                         <th className="py-1.5 px-2 w-24 text-right border-r border-black font-bold text-black">UNIT RATE</th>
@@ -646,11 +591,11 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                   <div className="p-3 text-[10px] space-y-1.5">
                     <p className="font-bold underline text-black">Terms and Conditions</p>
                     <div className="space-y-1 text-black">
-                      <p><strong className="font-bold">1. Delivery Address : </strong>{invoice.deliveryAddress || 'Exide Energy Solutions Limited, Plot No: 28P, 29 to 46, 47P, 50P, 51 to 66 & 67, Hi-tech Defence & Aerospace Park, Phase II, Devanahalli, Channarayapatna, Bangaluru Rural, Karnataka – 562135.'}</p>
-                      <p><strong className="font-bold">2. Delivery schedule : </strong>{invoice.deliverySchedule || 'First Lot 6000 Mtr on 30-08-2026 and second Lot 1000.'}</p>
-                      <p><strong className="font-bold">3. Billing Address : </strong>{invoice.billingAddress || profile?.companyName || 'JS Network Communication'}</p>
+                      <p><strong className="font-bold">1. Delivery Address : </strong>{invoice.deliveryAddress || 'Sample Logistics Park, Plot No: 100, Phase II, Bangalore, Karnataka – 560001.'}</p>
+                      <p><strong className="font-bold">2. Delivery schedule : </strong>{invoice.deliverySchedule || 'Lot 1 within 15 days, balance as agreed.'}</p>
+                      <p><strong className="font-bold">3. Billing Address : </strong>{invoice.billingAddress || effectiveCompanyName}</p>
                       <p><strong className="font-bold">4. Payment : </strong>{invoice.paymentTerms || 'Advance'}</p>
-                      <p><strong className="font-bold">5. GST : </strong>{profile?.gstin || '29AZWPJ2622A1ZD'}</p>
+                      <p><strong className="font-bold">5. GST : </strong>{profile?.gstin || '29ABCDE1234F1Z5'}</p>
                     </div>
                   </div>
                 </div>
@@ -658,10 +603,15 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 {/* PO Signatory Footer */}
                 <div className="pt-6 flex justify-between items-end">
                   <div>
-                    <img src="/jnc-logo.jpg" alt="Logo" className="h-6 object-contain opacity-80" />
+                    <img
+                      src={invoiceLogo}
+                      alt="Logo"
+                      style={{ maxHeight: '30px', maxWidth: '140px', width: 'auto', height: 'auto', objectFit: 'contain' }}
+                      className="h-6 object-contain opacity-80"
+                    />
                   </div>
                   <div className="text-right space-y-8">
-                    <p className="font-bold text-[10.5px] text-black">For {profile?.companyName || 'JS Network Communication'}</p>
+                    <p className="font-bold text-[10.5px] text-black">For {effectiveCompanyName}</p>
                     <p className="font-bold text-[10px] text-black">Authorised Signatory</p>
                   </div>
                 </div>
@@ -693,21 +643,25 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 <div className="grid grid-cols-2 border-b border-black divide-x divide-black bg-white text-black">
                   {/* Left Column: Company Details + Official Brand Logo */}
                   <div className="p-2 space-y-0.5 text-[10.5px] bg-white text-black">
-                    {/* Official JNC Logo */}
-                    <div className="mb-1">
+                    {/* Official Brand Logo */}
+                    <div className="mb-1 flex items-center">
                       <img
-                        src="/jnc-logo.jpg"
-                        alt="JS Network Communication Logo"
+                        src={invoiceLogo}
+                        alt="Logo"
+                        style={{ maxHeight: '38px', maxWidth: '150px', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }}
                         className="h-8 sm:h-9 object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/jnc-logo.jpg';
+                        }}
                       />
                     </div>
-                    <p className="font-bold text-xs text-black">{profile?.companyName || 'JS Network Communication'}</p>
+                    <p className="font-bold text-xs text-black">{effectiveCompanyName}</p>
                     <p className="text-black font-medium">{profile?.addressLine1 || 'No, 18/19, 2nd Floor, Coconut Avenue,'}</p>
                     <p className="text-black font-medium">{profile ? `${profile.addressLine2}, ${profile.city} ${profile.pincode}.` : '3rd cross, 8th Phase JP Nagar, Bangalore 76.'}</p>
-                    <p className="font-bold text-black">GST IN : {profile?.gstin || '29AZWPJ2622A1ZD'}.</p>
-                    <p className="text-black font-medium">MSME UDYAM Reg No: {profile?.msmeUdyamNo || 'UDYAM-KR-03-0292006'}.</p>
+                    <p className="font-bold text-black">GST IN : {profile?.gstin || '29ABCDE1234F1Z5'}.</p>
+                    <p className="text-black font-medium">MSME UDYAM Reg No: {profile?.msmeUdyamNo || 'UDYAM-XX-00-0000000'}.</p>
                     <p className="text-black font-medium">State Name : {profile?.state || 'Karnataka'}, Code - {profile?.stateCode || '29'}</p>
-                    <p className="text-black font-medium">Email : {profile?.email || 'jsnccrm@gmail.com'}</p>
+                    <p className="text-black font-medium">Email : {profile?.email || 'accounts@example.com'}</p>
                   </div>
 
                   {/* Right Column: Invoice Metadata Table with Full Continuous Borders */}
@@ -784,16 +738,26 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
 
                 {/* Items Table with Full Continuous Grid Lines (Expanded Center Section) */}
                 <div className="relative bg-white text-black">
-                  <table className="w-full text-[11px] border-collapse border-b border-black bg-white">
+                  <table className="w-full text-[11px] table-fixed border-collapse border-b border-black bg-white">
                     <thead>
                       <tr className="border-b border-black font-bold text-center bg-gray-100 print:bg-transparent">
-                        <th className="py-2 px-2 w-10 border-r border-black font-bold text-black">Sl No</th>
-                        <th className="py-2 px-3 text-left border-r border-black font-bold text-black">Description of Goods</th>
-                        {!isDC && <th className="py-2 px-2 w-24 border-r border-black font-bold text-black">HSN/ SAC</th>}
-                        <th className="py-2 px-2 w-14 border-r border-black font-bold text-black">{isDC ? 'UNIT' : 'Unit'}</th>
-                        {!isDC && <th className="py-2 px-2 w-20 text-right border-r border-black font-bold text-black">Unit Rate</th>}
-                        <th className="py-2 px-2 w-12 border-r border-black font-bold text-black">Qty</th>
-                        <th className="py-2 px-3 w-28 text-right font-bold text-black">{isDC ? 'Remarks/Rate' : 'Amount'}</th>
+                        <th className="py-2 px-2 w-[5.5%] border-r border-black font-bold text-black">Sl No</th>
+                        <th className="py-2 px-3 text-left w-[44.5%] border-r border-black font-bold text-black">Description of Goods</th>
+                        {!isDC ? (
+                          <>
+                            <th className="py-2 px-2 w-[10.5%] border-r border-black font-bold text-black">HSN/ SAC</th>
+                            <th className="py-2 px-2 w-[6.5%] border-r border-black font-bold text-black">Unit</th>
+                            <th className="py-2 px-2 w-[11.5%] text-right border-r border-black font-bold text-black">Unit Rate</th>
+                            <th className="py-2 px-2 w-[6.5%] border-r border-black font-bold text-black">Qty</th>
+                            <th className="py-2 px-3 w-[15%] text-right font-bold text-black">Amount</th>
+                          </>
+                        ) : (
+                          <>
+                            <th className="py-2 px-2 w-[10%] border-r border-black font-bold text-black">UNIT</th>
+                            <th className="py-2 px-2 w-[10%] border-r border-black font-bold text-black">Qty</th>
+                            <th className="py-2 px-3 w-[30%] text-right font-bold text-black">Remarks/Rate</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="bg-white">
@@ -1052,10 +1016,10 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                       </ol>
                     ) : isCreditNote ? (
                       <ol className="list-decimal pl-3 space-y-0.5 text-black leading-tight text-[10px]">
-                        <li>Any complaints should be reported within 2days on receipt of material after which no complaint will be entertained.</li>
+                        <li>Any complaints should be reported within 2 days on receipt of material after which no complaint will be entertained.</li>
                         <li>Goods once sold will not be exchanged or taken back.</li>
                         <li>Payment should be made strictly as per terms mentioned.</li>
-                        <li>If non payment as per terms agreed, JS network communication will have rights to seize the materials & take back.</li>
+                        <li>If non payment as per terms agreed, {effectiveCompanyName} will have rights to seize the materials & take back.</li>
                         <li>Advance amount will not be refunded for any circumstances.</li>
                       </ol>
                     ) : (
@@ -1063,8 +1027,8 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                         <li>Any complaints should be reported within 2 days on receipt of material after which no complaint will be entertained.</li>
                         <li>Goods once sold will not be exchanged or taken back.</li>
                         <li>Payment should be made strictly as per terms mentioned.</li>
-                        <li>If non payment as per terms agreed, JS Network Communication will have rights to seize the materials & take back.</li>
-                        <li>Advance amount will not be refunded for any circumstances. Subject to Bangalore Jurisdiction.</li>
+                        <li>If non payment as per terms agreed, {effectiveCompanyName} will have rights to seize the materials & take back.</li>
+                        <li>Advance amount will not be refunded for any circumstances.</li>
                       </ol>
                     )}
                   </div>
@@ -1075,7 +1039,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                     {!isDC ? (
                       <div className="p-2 border-b border-black space-y-0.5 text-[10px] bg-white text-black">
                         <p className="font-bold text-[10.5px] text-black">Company's Bank Details</p>
-                        <p><span className="font-medium">A/C Holder's Name : </span><strong>{profile?.bankDetails?.accountHolderName || 'JS Network Communication'}</strong></p>
+                        <p><span className="font-medium">A/C Holder's Name : </span><strong>{profile?.bankDetails?.accountHolderName || effectiveCompanyName}</strong></p>
                         <p><span className="font-medium">Bank Name : </span><strong>{profile?.bankDetails?.bankName || 'Karnataka Bank'}</strong></p>
                         <p><span className="font-medium">A/c No : </span><strong className="font-mono">{profile?.bankDetails?.accountNumber || '9222000100091501'}</strong></p>
                         <p><span className="font-medium">Branch & IFS Code : </span><strong>{profile?.bankDetails?.branch || 'J P Nagar 7th Phase'} & {profile?.bankDetails?.ifscCode || 'KARB0000922'}</strong></p>
@@ -1093,7 +1057,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
 
                     {/* Signatory Area */}
                     <div className="p-2 text-right flex-1 flex flex-col justify-between min-h-[75px] bg-white text-black">
-                      <p className="font-bold text-[10.5px] text-black">FOR {profile?.companyName || 'JS Network Communication'}</p>
+                      <p className="font-bold text-[10.5px] text-black">FOR {effectiveCompanyName}</p>
 
                       {/* Stamp & Signature Image Area */}
                       <div className="relative my-0.5 min-h-[36px] flex items-center justify-end">
@@ -1256,6 +1220,18 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
         onSuccess={() => {
           if (onInvoiceUpdated) onInvoiceUpdated();
         }}
+      />
+
+      {/* ─── JNC DIRECT PRINTER CONNECTION MODAL ───────────────────────────────── */}
+      <DirectPrintModal
+        isOpen={showDirectPrintModal}
+        onClose={() => setShowDirectPrintModal(false)}
+        invoice={invoice}
+        profile={profile}
+        signatoryConfig={effectiveSignatory}
+        activeTemplate={activeTemplate}
+        invoiceLogo={invoiceLogo}
+        onDownloadPdf={handleDownloadPdf}
       />
     </>
   );

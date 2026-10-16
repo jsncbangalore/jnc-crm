@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import LeadsPage from './pages/LeadsPage';
 import LeadFlowPage from './pages/LeadFlowPage';
+import StartSetupPage from './pages/StartSetupPage';
 import OrdersPage from './pages/OrdersPage';
 import InventoryPage from './pages/InventoryPage';
 import SuppliersPage from './pages/SuppliersPage';
@@ -22,6 +23,8 @@ import CustomObjectRecordsPage from './pages/CustomObjectRecordsPage';
 import PublicInquiryPage from './pages/PublicInquiryPage';
 import InvoicesPage from './pages/InvoicesPage';
 import BrandingSettingsPage from './pages/BrandingSettingsPage';
+import AdminSettingsPage from './pages/AdminSettingsPage';
+import SharedCartPage from './pages/SharedCartPage';
 import DailyActivitiesPage from './pages/DailyActivitiesPage';
 import NotificationsPage from './pages/NotificationsPage';
 import PlatformCompaniesPage from './pages/PlatformCompaniesPage';
@@ -164,6 +167,9 @@ function AppRoutes() {
       />
       <Route path="/inquiry" element={<PublicInquiryPage />} />
       <Route path="/quote-request" element={<PublicInquiryPage />} />
+      <Route path="/shared-cart" element={<SharedCartPage />} />
+      <Route path="/cart-share" element={<SharedCartPage />} />
+      <Route path="/cart" element={<SharedCartPage />} />
       <Route
         path="/platform/login"
         element={
@@ -177,6 +183,52 @@ function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route
+        path="/start-setup"
+        element={
+          <ProtectedRoute>
+            <CrmRouteGuard>
+              <StartSetupPage />
+            </CrmRouteGuard>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/users"
+        element={
+          <ProtectedRoute>
+            <TeamPageGuard pageKey="users">
+              <CrmRouteGuard>
+                <AdminSettingsPage initialTab="users" />
+              </CrmRouteGuard>
+            </TeamPageGuard>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/branding"
+        element={
+          <ProtectedRoute>
+            <TeamPageGuard pageKey="users">
+              <CrmRouteGuard>
+                <AdminSettingsPage initialTab="branding" />
+              </CrmRouteGuard>
+            </TeamPageGuard>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/setup"
+        element={
+          <ProtectedRoute>
+            <TeamPageGuard pageKey="users">
+              <CrmRouteGuard>
+                <AdminSettingsPage initialTab="users" />
+              </CrmRouteGuard>
+            </TeamPageGuard>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/"
         element={
           <ProtectedRoute>
@@ -186,8 +238,9 @@ function AppRoutes() {
       >
         <Route index element={<TeamPageGuard pageKey="dashboard"><CrmRouteGuard><RootLandingRoute /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="leads" element={<TeamPageGuard pageKey="leads"><CrmRouteGuard><LeadsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="lead-flow" element={<TeamPageGuard pageKey="leads"><CrmRouteGuard><LeadFlowPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="lead-setup" element={<Navigate to="/lead-flow" replace />} />
+        <Route path="lead-flow" element={<Navigate to="/start-setup" replace />} />
+        <Route path="start-setup" element={<Navigate to="/start-setup" replace />} />
+        <Route path="lead-setup" element={<Navigate to="/start-setup" replace />} />
         <Route path="notifications" element={<TeamPageGuard pageKey="dashboard"><CrmRouteGuard><NotificationsPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="orders" element={<TeamPageGuard pageKey="orders"><CrmRouteGuard><OrdersPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="invoices" element={<TeamPageGuard pageKey="invoices"><CrmRouteGuard><InvoicesPage /></CrmRouteGuard></TeamPageGuard>} />
@@ -196,10 +249,10 @@ function AppRoutes() {
         <Route path="suppliers" element={<Navigate to="/purchase-bills" replace />} />
         <Route path="shipments" element={<TeamPageGuard pageKey="shipments"><CrmRouteGuard><ShipmentsPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="quotations" element={<TeamPageGuard pageKey="quotations"><CrmRouteGuard><QuotationsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="users" element={<TeamPageGuard pageKey="users"><CrmRouteGuard><UsersPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="users" element={<Navigate to="/users" replace />} />
         <Route path="platform/companies" element={<PlatformOwnerGuard><PlatformCompaniesPage /></PlatformOwnerGuard>} />
         <Route path="platform/admins" element={<PlatformOwnerGuard><PlatformAdminsPage /></PlatformOwnerGuard>} />
-        <Route path="settings/branding" element={<TeamPageGuard pageKey="users"><CrmRouteGuard><BrandingSettingsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="settings/branding" element={<Navigate to="/settings/branding" replace />} />
         <Route path="automation" element={<TeamPageGuard pageKey="automation"><CrmRouteGuard><AutomationPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="setup/objects" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="setup/objects/:objectId" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />

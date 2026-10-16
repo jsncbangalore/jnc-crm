@@ -19,6 +19,8 @@ import {
   UpdateOrderStatusDto,
   CreateShipmentDto,
   UpdateShipmentStatusDto,
+  UpdateShipmentDto,
+  VerifyLiveTrackingUrlDto,
   RecordOrderPaymentDto,
 } from './orders.service';
 
@@ -93,18 +95,46 @@ export class OrdersController {
   }
 
   @Post('shipments')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   createShipment(@Body() dto: CreateShipmentDto, @CurrentUser() user: ScopedUser) {
     return this.ordersService.createShipment(dto, user);
   }
 
+  @Patch('shipments/:id')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
+  updateShipment(
+    @Param('id') id: string,
+    @Body() dto: UpdateShipmentDto,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.ordersService.updateShipment(id, dto, user);
+  }
+
   @Patch('shipments/:id/status')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   updateShipmentStatus(
     @Param('id') id: string,
     @Body() body: UpdateShipmentStatusDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.ordersService.updateShipmentStatus(id, body.status, user);
+  }
+
+  @Post('shipments/verify-live-url')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
+  verifyLiveTrackingUrl(@Body() dto: VerifyLiveTrackingUrlDto) {
+    return this.ordersService.verifyLiveTrackingUrl(dto);
+  }
+
+  @Post('shipments/:id/sync-tracking')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
+  syncShipmentTracking(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
+    return this.ordersService.syncShipmentTracking(id, user);
+  }
+
+  @Get('shipments/:id/live-timeline')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
+  getShipmentLiveTimeline(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
+    return this.ordersService.getShipmentLiveTimeline(id, user);
   }
 }

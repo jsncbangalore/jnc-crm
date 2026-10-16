@@ -18,8 +18,11 @@ import {
   HttpCode,
   HttpStatus,
   Req,
+  BadRequestException,
+  HttpException,
 } from '@nestjs/common';
 import { PlatformService, CreateTenantDto, UpdateTenantDto } from './platform.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -29,12 +32,23 @@ import {
   CreatePlatformAdminDto,
   TogglePlatformAdminActiveDto,
 } from './dto/platform-admin.dto';
+import { AuthService } from '../auth/auth.service';
+
+function extractStepUpToken(req: any, body?: any): string | undefined {
+  return (
+    (req?.headers?.['x-step-up-token'] as string) ||
+    body?.stepUpToken
+  );
+}
 
 @Controller('platform/tenants')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('platform_super_admin', 'platform_operations_manager', 'platform_account_onboarding', 'platform_client_support')
+@Roles('platform_super_admin')
 export class PlatformController {
-  constructor(private readonly platformService: PlatformService) {}
+  constructor(
+    private readonly platformService: PlatformService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Get()
   async listTenants() {
@@ -53,13 +67,30 @@ export class PlatformController {
   }
 
   @Put(':id')
-  async updateTenant(@Param('id') id: string, @Body() dto: UpdateTenantDto) {
-    return this.platformService.updateTenant(id, dto);
+  async updateTenant(
+    @Param('id') id: string,
+    @Body() dto: UpdateTenantDto,
+    @CurrentUser() user: any,
+    @Req() req: any,
+  ) {
+    if (dto.status === 'suspended' || dto.status === 'deactivated') {
+      const token = extractStepUpToken(req, dto);
+      await this.authService.validateStepUp(user, token);
+    }
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.updateTenant(id, dto, user, ip);
   }
 
   @Delete(':id')
-  async deleteTenant(@Param('id') id: string) {
-    return this.platformService.deleteTenant(id);
+  async deleteTenant(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Req() req: any,
+  ) {
+    const token = extractStepUpToken(req);
+    await this.authService.validateStepUp(user, token);
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.deleteTenant(id, user, ip);
   }
 
   @Post(':id/impersonate')
@@ -68,6 +99,8 @@ export class PlatformController {
     @CurrentUser() user: any,
     @Req() req: any,
   ) {
+    const token = extractStepUpToken(req);
+    await this.authService.validateStepUp(user, token);
     const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
     return this.platformService.impersonateTenant(id, user, ip);
   }
@@ -76,8 +109,32 @@ export class PlatformController {
   async resetTenantAdminPassword(
     @Param('id') id: string,
     @Body() dto: ResetTenantAdminPasswordDto,
+    @CurrentUser() user: any,
+    @Req() req: any,
   ) {
-    return this.platformService.resetTenantAdminPassword(id, dto);
+    const token = extractStepUpToken(req, dto);
+    await this.authService.validateStepUp(user, token);
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.resetTenantAdminPassword(id, dto, user, ip);
+  }
+
+  @Get(':id/users')
+  async listTenantUsers(@Param('id') id: string) {
+    return this.platformService.listTenantUsers(id);
+  }
+
+  @Post(':id/users')
+  @HttpCode(HttpStatus.CREATED)
+  async addTenantUser(
+    @Param('id') id: string,
+    @Body() dto: { name: string; email: string; phone?: string; role?: string; employeeCode?: string; password?: string },
+  ) {
+    return this.platformService.addTenantUser(id, dto);
+  }
+
+  @Delete(':id/users/:userId')
+  async deleteTenantUser(@Param('id') id: string, @Param('userId') userId: string) {
+    return this.platformService.deleteTenantUser(id, userId);
   }
 }
 
@@ -85,7 +142,10 @@ export class PlatformController {
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('platform_super_admin')
 export class PlatformAdminsController {
-  constructor(private readonly platformService: PlatformService) {}
+  constructor(
+    private readonly platformService: PlatformService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Get()
   async listPlatformAdmins() {
@@ -94,75 +154,109 @@ export class PlatformAdminsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createPlatformAdmin(@Body() dto: CreatePlatformAdminDto, @CurrentUser() actor: any) {
-    return this.platformService.createPlatformAdmin(dto, actor);
+  async createPlatformAdmin(
+    @Body() dto: CreatePlatformAdminDto,
+    @CurrentUser() actor: any,
+    @Req() req: any,
+  ) {
+    const token = extractStepUpToken(req, dto);
+    await this.authService.validateStepUp(actor, token);
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.createPlatformAdmin(dto, actor, ip);
   }
 
   @Patch(':id/toggle-active')
-  async toggleActive(@Param('id') id: string, @Body() body: TogglePlatformAdminActiveDto) {
-    return this.platformService.togglePlatformAdminActive(id, body?.isActive);
+  async toggleActive(
+    @Param('id') id: string,
+    @Body() body: TogglePlatformAdminActiveDto,
+    @CurrentUser() actor: any,
+    @Req() req: any,
+  ) {
+    const token = extractStepUpToken(req, body);
+    await this.authService.validateStepUp(actor, token);
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.togglePlatformAdminActive(id, body?.isActive, actor, ip);
   }
 
   @Post(':id/reset-password')
   async resetPassword(@Param('id') id: string) {
     return this.platformService.resetPlatformAdminUserPassword(id);
   }
-}
 
-@Controller('platform/analytics')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles('platform_super_admin', 'platform_operations_manager')
-export class PlatformAnalyticsController {
-  constructor(private readonly platformService: PlatformService) {}
-
-  @Get()
-  async getAnalytics() {
-    return this.platformService.getAnalytics();
-  }
-
-  @Post('send-summary')
-  async sendSummaryReport(@Body() body: { recipientEmail?: string }) {
-    return this.platformService.sendSummaryReport(body?.recipientEmail);
+  @Delete(':id')
+  async deletePlatformAdmin(
+    @Param('id') id: string,
+    @CurrentUser() actor: any,
+    @Req() req: any,
+  ) {
+    const token = extractStepUpToken(req);
+    await this.authService.validateStepUp(actor, token);
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.deletePlatformAdmin(id, actor, ip);
   }
 }
 
-@Controller('platform/system-info')
+const mailTestRateMap = new Map<string, number[]>();
+
+export function checkMailTestRateLimit(key: string): boolean {
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000; // 1 hour
+  const timestamps = mailTestRateMap.get(key) || [];
+  const validTimestamps = timestamps.filter((t) => now - t < windowMs);
+  if (validTimestamps.length >= 5) {
+    return false;
+  }
+  validTimestamps.push(now);
+  mailTestRateMap.set(key, validTimestamps);
+  return true;
+}
+
+export function resetMailTestRateLimit(key?: string) {
+  if (key) {
+    mailTestRateMap.delete(key);
+  } else {
+    mailTestRateMap.clear();
+  }
+}
+
+@Controller('platform')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('platform_super_admin')
-export class SystemInfoController {
-  @Get()
-  getSystemInfo() {
-    let commit = 'c7ba118';
-    try {
-      commit = require('child_process').execSync('git rev-parse --short HEAD', { encoding: 'utf8', timeout: 1000 }).trim();
-    } catch (e) {}
+export class PlatformMailTestController {
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly platformService: PlatformService,
+    private readonly authService: AuthService,
+  ) {}
 
-    let version = '1.0.0';
-    try {
-      version = require('../../../package.json').version || '1.0.0';
-    } catch (e) {}
+  @Get('recent-signins')
+  async getRecentSignIns() {
+    return this.authService.getRecentSignIns(null, 50);
+  }
 
-    const dbUrl = process.env.DATABASE_URL || '';
-    let projectRef = 'aybysdzuwwtqhnzhgiwp';
-    let host = 'aws-0-ap-south-1.pooler.supabase.com';
+  @Get('system-info')
+  async getSystemInfo() {
+    return this.platformService.getSystemInfo();
+  }
 
-    try {
-      const matchHost = dbUrl.match(/@([^:\/]+)/);
-      if (matchHost) host = matchHost[1];
-      const matchRef = dbUrl.match(/postgres\.([a-z0-9]+)|db\.([a-z0-9]+)\.supabase|org\/([a-z0-9]+)/i);
-      if (matchRef) {
-        projectRef = matchRef[1] || matchRef[2] || matchRef[3];
-      }
-    } catch (err) {}
+  @Get('mail-status')
+  async getMailStatus() {
+    return this.notificationsService.getMailStatus();
+  }
 
-    const maskedRef = projectRef.length > 8 ? `${projectRef.substring(0, 4)}***${projectRef.substring(projectRef.length - 4)}` : projectRef;
-
-    return {
-      version,
-      commit,
-      projectRef: maskedRef,
-      databaseProject: `Database project ${maskedRef} @ ${host}`,
-    };
+  @Post('mail-test')
+  @Roles('platform_super_admin')
+  async sendMailTest(@CurrentUser() user: any, @Req() req: any) {
+    const userEmail = user?.email;
+    if (!userEmail) {
+      throw new BadRequestException('Signed-in user email is required to send test email');
+    }
+    const key = user?.id || req?.ip || 'anonymous';
+    if (!checkMailTestRateLimit(key)) {
+      throw new HttpException('Rate limit exceeded: maximum 5 test emails per hour', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    const reqId = req?.headers?.['x-request-id'] || req?.id;
+    return this.notificationsService.sendTestMail(userEmail, reqId);
   }
 }
 

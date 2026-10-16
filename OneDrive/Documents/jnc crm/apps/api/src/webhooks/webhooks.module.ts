@@ -8,13 +8,15 @@
 import { Module } from '@nestjs/common';
 import { WebhooksService } from './webhooks.service';
 import { WebhooksController } from './webhooks.controller';
+import { PublicInquiryController } from './public-inquiry.controller';
 import { LeadsModule } from '../leads/leads.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
   imports: [LeadsModule, PrismaModule],
-  controllers: [WebhooksController],
+  controllers: [WebhooksController, PublicInquiryController],
   providers: [WebhooksService],
   exports: [WebhooksService],
 })
 export class WebhooksModule {}
+

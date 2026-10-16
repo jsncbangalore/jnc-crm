@@ -12,6 +12,7 @@ import {
   IsNumber,
   IsArray,
   Min,
+  IsBoolean,
 } from 'class-validator';
 
 export class CreateDirectInvoiceDto {
@@ -73,6 +74,10 @@ export class CreateDirectInvoiceDto {
 
   @IsString()
   @IsOptional()
+  deliveryAddress?: string;
+
+  @IsString()
+  @IsOptional()
   customerGstin?: string;
 
   @IsString()
@@ -82,6 +87,50 @@ export class CreateDirectInvoiceDto {
   @IsString()
   @IsOptional()
   paymentTerms?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentStatus?: string;
+
+  @IsString()
+  @IsOptional()
+  deliverySchedule?: string;
+
+  @IsString()
+  @IsOptional()
+  lutBondNo?: string;
+
+  @IsString()
+  @IsOptional()
+  lutValidity?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  lutAcknowledged?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isSez?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  advancePercent?: number;
+
+  @IsNumber()
+  @IsOptional()
+  advanceAdjusted?: number;
+
+  @IsNumber()
+  @IsOptional()
+  balanceDue?: number;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
+
+  @IsString()
+  @IsOptional()
+  transactionRef?: string;
 
   @IsString()
   @IsOptional()
@@ -107,19 +156,15 @@ export class CreateDirectInvoiceDto {
 export class UpdateInvoiceDto {
   @IsString()
   @IsOptional()
-  customerName?: string;
+  docType?: string;
 
   @IsString()
   @IsOptional()
-  customerAddress?: string;
+  invoiceNumber?: string;
 
   @IsString()
   @IsOptional()
-  customerGstin?: string;
-
-  @IsString()
-  @IsOptional()
-  paymentTerms?: string;
+  invoiceDate?: string;
 
   @IsString()
   @IsOptional()
@@ -127,15 +172,123 @@ export class UpdateInvoiceDto {
 
   @IsString()
   @IsOptional()
+  poDate?: string;
+
+  @IsString()
+  @IsOptional()
+  buyerOrderNo?: string;
+
+  @IsString()
+  @IsOptional()
+  referenceNo?: string;
+
+  @IsString()
+  @IsOptional()
+  customerName?: string;
+
+  @IsString()
+  @IsOptional()
+  customerPhone?: string;
+
+  @IsString()
+  @IsOptional()
+  customerEmail?: string;
+
+  @IsString()
+  @IsOptional()
+  customerAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  billingAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  shippingAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  deliveryAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  customerGstin?: string;
+
+  @IsString()
+  @IsOptional()
+  customerState?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentTerms?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentStatus?: string;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
+
+  @IsString()
+  @IsOptional()
+  deliverySchedule?: string;
+
+  @IsString()
+  @IsOptional()
+  lutBondNo?: string;
+
+  @IsString()
+  @IsOptional()
+  lutValidity?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  lutAcknowledged?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isSez?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  advancePercent?: number;
+
+  @IsNumber()
+  @IsOptional()
+  advanceAdjusted?: number;
+
+  @IsNumber()
+  @IsOptional()
+  balanceDue?: number;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
+
+  @IsString()
+  @IsOptional()
+  transactionRef?: string;
+
+  @IsString()
+  @IsOptional()
   notes?: string;
+
+  @IsArray()
+  @IsOptional()
+  lines?: any[];
 
   @IsArray()
   @IsOptional()
   items?: any[];
 
-  @IsString()
+  @IsNumber()
   @IsOptional()
-  status?: string;
+  discount?: number;
+
+  @IsNumber()
+  @IsOptional()
+  shippingCharges?: number;
 }
 
 export class CompanyProfileDto {
@@ -189,6 +342,10 @@ export class CompanyProfileDto {
 }
 
 export class SignatorySettingsDto {
+  @IsString()
+  @IsOptional()
+  companyName?: string;
+
   @IsString()
   @IsOptional()
   signatoryName?: string;
@@ -265,3 +422,27 @@ export class EmailInvoiceDto {
   @IsOptional()
   templateType?: string;
 }
+
+export class DirectPrintDto {
+  @IsString()
+  @IsOptional()
+  printerName?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(1)
+  copies?: number;
+
+  @IsString()
+  @IsOptional()
+  copyType?: string;
+
+  @IsString()
+  @IsOptional()
+  templateType?: string;
+
+  @IsString()
+  @IsOptional()
+  paperSize?: string;
+}
+

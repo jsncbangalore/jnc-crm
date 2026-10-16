@@ -12,6 +12,9 @@ import { CreateLeadDto, UpdateLeadStatusDto, CreateLeadActivityDto } from './dto
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
+import { parsePagination } from '../common/pagination.util';
+import { sanitizeHtml, stripAllHtml } from '../common/html-sanitize.util';
+
 
 @Injectable()
 export class LeadsService {
@@ -25,7 +28,8 @@ export class LeadsService {
     private auditService: AuditService,
   ) {}
 
-  private normalizePhone(phone: string): string {
+  private normalizePhone(phone?: string): string {
+    if (!phone) return '';
     const cleaned = phone.replace(/[^0-9]/g, '');
     if (cleaned.length === 10) return `91${cleaned}`;
     if (cleaned.startsWith('0') && cleaned.length === 11) return `91${cleaned.substring(1)}`;
@@ -117,22 +121,23 @@ export class LeadsService {
         leadNumber,
         source: dto.source || 'manual',
         status: 'new',
-        customerName: dto.customerName,
-        customerPhone: dto.customerPhone,
-        customerEmail: dto.customerEmail,
-        city: dto.city,
-        productCategory: dto.productCategory,
-        productName: dto.productName,
+        customerName: stripAllHtml(dto.customerName) || 'Lead',
+        customerPhone: stripAllHtml(dto.customerPhone) || '',
+        customerEmail: stripAllHtml(dto.customerEmail),
+        city: stripAllHtml(dto.city),
+        productCategory: stripAllHtml(dto.productCategory),
+        productName: stripAllHtml(dto.productName),
         quantity: dto.quantity ? Number(dto.quantity) : 1,
         estimatedValue: dto.estimatedValue ? Number(dto.estimatedValue) : 0,
         urgency: (dto as any).urgency || 'standard',
-        queryMessage: dto.queryMessage,
+        queryMessage: sanitizeHtml(dto.queryMessage),
         rawPayload: dto.rawPayload,
         isDuplicate: false,
         companyId,
         assignedToId,
-        createdById: actor?.id ?? null,
+        createdById: actor?.id && actor.id !== 'system-webhook' ? actor.id : null,
       },
+
       include: {
         assignedTo: {
           select: { id: true, name: true, employeeCode: true, email: true },
@@ -309,15 +314,13 @@ export class LeadsService {
       }
     }
 
-    const page = Number(query.page) || 1;
-    const limit = Number(query.limit) || 100;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip, take } = parsePagination(query, 25, 100);
 
     const [items, total] = await Promise.all([
       this.prisma.lead.findMany({
         where,
         skip,
-        take: limit,
+        take,
         orderBy: { createdAt: 'desc' },
         include: {
           assignedTo: {
@@ -443,10 +446,12 @@ export class LeadsService {
       }
       try {
         const branding = await this.notificationsService.getBranding(tenantId);
+        const sanitizedTitle = sanitizeHtml(dto.title);
+        const sanitizedDesc = sanitizeHtml(dto.description);
         await this.notificationsService.sendEmail({
           tenantId,
           to: lead.customerEmail,
-          subject: dto.title || `Update regarding your inquiry with ${branding.companyDisplayName}`,
+          subject: sanitizedTitle || `Update regarding your inquiry with ${branding.companyDisplayName}`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
               <div style="background: #2E5EFF; color: white; padding: 16px; border-radius: 6px; text-align: center; margin-bottom: 20px;">
@@ -454,7 +459,7 @@ export class LeadsService {
               </div>
               <p>Dear <strong>${lead.customerName}</strong>,</p>
               <div style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #2E5EFF; margin: 16px 0; font-size: 14px; line-height: 1.6; color: #1e293b;">
-                ${(dto.description || '').replace(/\n/g, '<br/>')}
+                ${(sanitizedDesc || '').replace(/\n/g, '<br/>')}
               </div>
               <p style="font-size: 13px; color: #64748b;">
                 Reference Inquiry: <strong>${lead.leadNumber}</strong>
@@ -474,12 +479,13 @@ export class LeadsService {
         leadId,
         userId: user.id,
         type: dto.type,
-        title: dto.title,
-        description: dto.description,
+        title: sanitizeHtml(dto.title),
+        description: sanitizeHtml(dto.description),
         scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
         isCompleted: dto.isCompleted !== undefined ? dto.isCompleted : true,
         completedAt: dto.isCompleted ? new Date() : null,
       },
+
       include: {
         performedBy: {
           select: { id: true, name: true, employeeCode: true },

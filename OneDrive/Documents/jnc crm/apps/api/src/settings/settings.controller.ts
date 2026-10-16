@@ -16,7 +16,19 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Res,
+  Query,
+  Req,
+  Headers,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { validateUploadedFile } from '../common/file-validator';
+import * as jwt from 'jsonwebtoken';
+
 import { SettingsService } from './settings.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
@@ -36,11 +48,90 @@ export class SettingsController {
 
   /**
    * GET /settings/branding
-   * Public endpoint to fetch company branding on app boot / pages.
+   * Tenant-aware endpoint to fetch company branding on app boot / pages.
    */
   @Get('branding')
-  async getBranding() {
-    return this.settingsService.getBranding();
+  async getBranding(
+    @Query('tenantId') queryTenantId?: string,
+    @Headers('x-tenant-id') headerTenantId?: string,
+    @Req() req?: any,
+  ) {
+    let tenantId = queryTenantId || headerTenantId;
+    if (!tenantId && req?.headers?.authorization) {
+      try {
+        const token = req.headers.authorization.replace(/^Bearer\s+/i, '');
+        const decoded: any = jwt.decode(token);
+        if (decoded?.tenantId) {
+          tenantId = decoded.tenantId;
+        }
+      } catch {}
+    }
+    return this.settingsService.getBranding(tenantId);
+  }
+
+  /**
+   * GET /settings/branding/logo
+   * Public tenant branding logo with Cross-Origin-Resource-Policy: cross-origin
+   */
+  @Get('branding/logo')
+  async getBrandingLogoDefault(@Res() res: Response) {
+    return this.settingsService.servePublicBrandingImage('logo', undefined, res);
+  }
+
+  @Get('branding/logo/:tenantKey')
+  async getBrandingLogo(@Param('tenantKey') tenantKey: string, @Res() res: Response) {
+    return this.settingsService.servePublicBrandingImage('logo', tenantKey, res);
+  }
+
+  @Post('branding/logo')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    }),
+  )
+  async uploadBrandingLogo(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    if (!file) throw new BadRequestException('Logo image file is required');
+    validateUploadedFile(file, 'document_or_image', 5 * 1024 * 1024);
+
+    return this.settingsService.uploadLogo(file, user);
+  }
+
+  @Post('branding/favicon')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
+    }),
+  )
+  async uploadBrandingFavicon(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    if (!file) throw new BadRequestException('Favicon file is required');
+    validateUploadedFile(file, 'document_or_image', 2 * 1024 * 1024);
+
+    return this.settingsService.uploadFavicon(file, user);
+  }
+
+
+  /**
+   * GET /settings/branding/stamp
+   * Public tenant branding stamp with Cross-Origin-Resource-Policy: cross-origin
+   */
+  @Get('branding/stamp')
+  async getBrandingStampDefault(@Res() res: Response) {
+    return this.settingsService.servePublicBrandingImage('stamp', undefined, res);
+  }
+
+  @Get('branding/stamp/:tenantKey')
+  async getBrandingStamp(@Param('tenantKey') tenantKey: string, @Res() res: Response) {
+    return this.settingsService.servePublicBrandingImage('stamp', tenantKey, res);
   }
 
   /**

@@ -9,8 +9,7 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { validatePasswordPolicy } from '../src/common/password-policy';
-
-const PROD_HOST = 'aws-0-ap-southeast-1.pooler.supabase.com';
+import { assertNotProductionDb } from './safety-check';
 
 function generateRandomSecurePassword(): string {
   // Generate random bytes and assemble a password meeting policy (>= 12 chars, symbols, upper, lower, digits)
@@ -19,13 +18,7 @@ function generateRandomSecurePassword(): string {
 }
 
 async function main() {
-  const dbUrl = process.env.DATABASE_URL || '';
-  if (dbUrl.includes(PROD_HOST)) {
-    console.error('\n[SECURITY ERROR] owner:reset refused to run on production database!');
-    console.error(`Host: ${PROD_HOST}`);
-    console.error('owner:reset can NEVER run against the production database under any circumstances.\n');
-    process.exit(1);
-  }
+  assertNotProductionDb('owner:reset');
 
   const prisma = new PrismaClient();
 
@@ -176,9 +169,9 @@ async function main() {
     console.log(`Email:          ${owner.email}`);
     console.log(`Employee Code:  ${owner.employeeCode}`);
     if (isGenerated) {
-      console.log(`Password:       ${finalPassword}`);
+      console.log(`Password:       (generated securely - never printed to console)`);
     } else {
-      console.log(`Password:       (set via OWNER_PASSWORD)`);
+      console.log(`Password:       (set from environment - never printed to console)`);
     }
     console.log('========================================================================\n');
   } catch (err: any) {

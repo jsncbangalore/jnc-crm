@@ -1,59 +1,59 @@
 [
   {
     "file": "auth/auth.service.ts",
-    "line": 48,
+    "line": 127,
     "model": "user",
     "method": "update",
     "reason": "Auth service reset failed login attempts by user ID on successful lockout expiry"
   },
   {
     "file": "auth/auth.service.ts",
-    "line": 96,
-    "model": "user",
-    "method": "update",
-    "reason": "Auth service record failed login attempt and lockout by user ID"
-  },
-  {
-    "file": "auth/auth.service.ts",
-    "line": 139,
-    "model": "user",
-    "method": "update",
-    "reason": "Auth service reset failed login attempts after successful authentication"
-  },
-  {
-    "file": "auth/auth.service.ts",
-    "line": 440,
+    "line": 471,
     "model": "user",
     "method": "findFirst",
     "reason": "Forgot password user lookup by verified email across platform"
   },
   {
     "file": "auth/auth.service.ts",
-    "line": 497,
+    "line": 529,
     "model": "user",
     "method": "update",
     "reason": "Password reset execution by verified single-use reset token"
   },
   {
     "file": "auth/auth.service.ts",
-    "line": 592,
+    "line": 705,
     "model": "user",
     "method": "findUnique",
     "reason": "Auth service change password current user lookup by verified JWT subject"
   },
   {
     "file": "auth/auth.service.ts",
-    "line": 601,
+    "line": 716,
     "model": "user",
     "method": "update",
     "reason": "Auth service change password hash update by verified JWT subject"
   },
   {
     "file": "auth/auth.service.ts",
-    "line": 612,
+    "line": 768,
     "model": "user",
     "method": "update",
     "reason": "Auth service update profile by verified authenticated user ID"
+  },
+  {
+    "file": "auth/auth.service.ts",
+    "line": 792,
+    "model": "user",
+    "method": "update",
+    "reason": "Auth service update profile avatar by verified authenticated user ID"
+  },
+  {
+    "file": "auth/auth.service.ts",
+    "line": 834,
+    "model": "user",
+    "method": "update",
+    "reason": "Auth service transparent password rehashing on successful authentication"
   },
   {
     "file": "auth/roles.guard.ts",
@@ -131,47 +131,5 @@
     "model": "user",
     "method": "findFirst",
     "reason": "Platform Super Admin email uniqueness check across platform (tenantId is null)"
-  },
-  {
-    "file": "webhooks/webhooks.service.ts",
-    "line": 30,
-    "model": "lead",
-    "method": "findFirst",
-    "reason": "External inbound webhook handler resolving lead by incoming phone before tenant context"
-  },
-  {
-    "file": "webhooks/webhooks.service.ts",
-    "line": 73,
-    "model": "lead",
-    "method": "findFirst",
-    "reason": "External inbound webhook handler resolving lead by email/phone from external portal"
-  },
-  {
-    "file": "webhooks/webhooks.service.ts",
-    "line": 117,
-    "model": "lead",
-    "method": "findFirst",
-    "reason": "External inbound webhook handler resolving lead from third-party lead provider"
-  },
-  {
-    "file": "webhooks/webhooks.service.ts",
-    "line": 142,
-    "model": "lead",
-    "method": "findFirst",
-    "reason": "External inbound webhook handler resolving lead for marketing attribution"
-  },
-  {
-    "file": "webhooks/webhooks.service.ts",
-    "line": 191,
-    "model": "lead",
-    "method": "findFirst",
-    "reason": "External inbound webhook handler matching lead from IndiaMART API"
-  },
-  {
-    "file": "webhooks/webhooks.service.ts",
-    "line": 223,
-    "model": "lead",
-    "method": "findFirst",
-    "reason": "External inbound webhook handler matching lead from WhatsApp webhook API"
   }
 ]

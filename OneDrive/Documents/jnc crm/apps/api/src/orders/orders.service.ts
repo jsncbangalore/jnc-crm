@@ -5,12 +5,16 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
+import { parsePagination } from '../common/pagination.util';
+import { BRAND_CONFIG } from '../common/brand';
+import { sanitizeHtml } from '../common/html-sanitize.util';
+import { LiveCourierTrackerService, LiveTrackingResult } from './live-courier-tracker.service';
 
 import { IsString, IsNotEmpty, IsOptional, IsArray, IsNumber } from 'class-validator';
 
@@ -131,6 +135,42 @@ export class UpdateShipmentStatusDto {
   status: string;
 }
 
+export class UpdateShipmentDto {
+  @IsString()
+  @IsOptional()
+  courierName?: string;
+
+  @IsString()
+  @IsOptional()
+  trackingNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  trackingUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+}
+
+export class VerifyLiveTrackingUrlDto {
+  @IsString()
+  @IsOptional()
+  trackingUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  courierName?: string;
+
+  @IsString()
+  @IsOptional()
+  trackingNumber?: string;
+}
+
 export class RecordOrderPaymentDto {
   @IsNumber()
   amount: number;
@@ -158,12 +198,60 @@ export class RecordOrderPaymentDto {
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private prisma: PrismaService,
     private scopingService: ScopingService,
     private notificationsService: NotificationsService,
     private auditService: AuditService,
+    private liveTracker: LiveCourierTrackerService,
   ) {}
+
+  /**
+   * Serializes user notes and structured live tracking into notes field
+   */
+  serializeShipmentNotes(userNotes?: string, liveTracking?: LiveTrackingResult | null): string {
+    return JSON.stringify({
+      userNotes: (userNotes || '').trim(),
+      liveTracking: liveTracking || null,
+    });
+  }
+
+  /**
+   * Safely parses user notes and structured live tracking
+   */
+  parseShipmentNotes(rawNotes?: string | null): { userNotes: string; liveTracking: LiveTrackingResult | null } {
+    if (!rawNotes) return { userNotes: '', liveTracking: null };
+    try {
+      const parsed = JSON.parse(rawNotes);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          userNotes: parsed.userNotes || '',
+          liveTracking: parsed.liveTracking || null,
+        };
+      }
+    } catch {
+      // Legacy plain text note
+    }
+    return { userNotes: rawNotes, liveTracking: null };
+  }
+
+  /**
+   * Formats shipment with clean user notes, liveTracking, and top-level tracking fields
+   */
+  formatShipmentWithLiveTracking(shipment: any) {
+    if (!shipment) return shipment;
+    const { userNotes, liveTracking } = this.parseShipmentNotes(shipment.notes);
+
+    return {
+      ...shipment,
+      notes: userNotes,
+      userNotes,
+      liveTracking: liveTracking || null,
+      trackingUrl: shipment.trackingUrl || liveTracking?.sourceUrl || null,
+    };
+  }
 
   private async resolveSkuForLine(
     line: { skuId?: string; name?: string; unitPrice: number; hsnCode?: string },
@@ -174,6 +262,7 @@ export class OrdersService {
     if (line.skuId && line.skuId.trim()) {
       const existing = await this.prisma.sku.findFirst({ where: { id: line.skuId, tenantId } });
       if (existing) return existing;
+      throw new NotFoundException(`SKU "${line.skuId}" not found in your organization.`);
     }
 
     const text = (line.name || '').trim();
@@ -273,8 +362,9 @@ export class OrdersService {
         subtotal,
         taxAmount,
         totalAmount,
-        notes: dto.notes,
+        notes: sanitizeHtml(dto.notes),
         status: 'confirmed',
+
         paymentStatus: 'pending',
         lines: {
           create: resolvedLines.map((l) => ({
@@ -295,7 +385,7 @@ export class OrdersService {
     // Reserve stock for each line
     for (const line of resolvedLines) {
       const stockItem = await this.prisma.stockItem.findFirst({
-        where: { skuId: line.skuId },
+        where: { skuId: line.skuId, warehouse: { tenantId } },
         orderBy: { quantityOnHand: 'desc' },
       });
       if (stockItem) {
@@ -359,15 +449,13 @@ export class OrdersService {
       }
     }
 
-    const page = Number(query.page) || 1;
-    const limit = Number(query.limit) || 50;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip, take } = parsePagination(query, 25, 100);
 
     const [items, total] = await Promise.all([
       this.prisma.order.findMany({
         where,
         skip,
-        take: limit,
+        take,
         orderBy: { confirmedAt: 'desc' },
         include: {
           lines: { include: { sku: true } },
@@ -462,7 +550,7 @@ export class OrdersService {
     });
 
     const allPayments = await this.prisma.paymentRecord.findMany({
-      where: { orderId: order.id },
+      where: { orderId: order.id, tenantId },
     });
     const totalPaid = allPayments.reduce((acc, p) => acc + p.amount, 0);
 
@@ -539,7 +627,7 @@ export class OrdersService {
       // Restore previously reserved stock
       for (const oldLine of order.lines) {
         const stockItem = await this.prisma.stockItem.findFirst({
-          where: { skuId: oldLine.skuId },
+          where: { skuId: oldLine.skuId, warehouse: { tenantId } },
         });
         if (stockItem) {
           await this.prisma.stockItem.update({
@@ -552,7 +640,7 @@ export class OrdersService {
       // Reserve new stock lines
       for (const newLine of resolvedLines) {
         const stockItem = await this.prisma.stockItem.findFirst({
-          where: { skuId: newLine.skuId },
+          where: { skuId: newLine.skuId, warehouse: { tenantId } },
           orderBy: { quantityOnHand: 'desc' },
         });
         if (stockItem) {
@@ -583,8 +671,9 @@ export class OrdersService {
         customerPhone: dto.customerPhone ?? order.customerPhone,
         customerEmail: dto.customerEmail !== undefined ? dto.customerEmail : order.customerEmail,
         shippingAddress: dto.shippingAddress !== undefined ? dto.shippingAddress : order.shippingAddress,
-        notes: dto.notes !== undefined ? dto.notes : order.notes,
+        notes: dto.notes !== undefined ? sanitizeHtml(dto.notes) : order.notes,
         paymentStatus: dto.paymentStatus ?? order.paymentStatus,
+
         subtotal,
         taxAmount,
         totalAmount,
@@ -640,19 +729,37 @@ export class OrdersService {
   }
 
   async createShipment(dto: CreateShipmentDto, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
     const order = await this.findOne(dto.orderId, user);
-    const count = await this.prisma.shipment.count();
+    const count = await this.prisma.shipment.count({ where: { tenantId } });
     const shipmentNumber = `JNC-SHIP-${String(count + 1).padStart(5, '0')}`;
+
+    // Perform initial live tracking probe
+    let initialLiveTracking: LiveTrackingResult | null = null;
+    try {
+      initialLiveTracking = await this.liveTracker.trackShipment({
+        trackingUrl: dto.trackingUrl,
+        courierName: dto.courierName,
+        trackingNumber: dto.trackingNumber,
+        dispatchedAt: new Date(),
+      });
+    } catch (e: any) {
+      this.logger.warn(`Initial live tracking probe failed: ${e.message}`);
+    }
+
+    const serializedNotes = this.serializeShipmentNotes(dto.notes, initialLiveTracking);
+    const initialStatus = initialLiveTracking?.status || 'dispatched';
 
     const shipment = await this.prisma.shipment.create({
       data: {
+        tenantId,
         shipmentNumber,
         orderId: dto.orderId,
         courierName: dto.courierName,
         trackingNumber: dto.trackingNumber,
         trackingUrl: dto.trackingUrl,
-        notes: dto.notes,
-        status: 'dispatched',
+        notes: serializedNotes,
+        status: initialStatus,
         dispatchedAt: new Date(),
       },
     });
@@ -661,45 +768,53 @@ export class OrdersService {
     await this.updateStatus(dto.orderId, { status: 'dispatched', note: `Dispatched via ${dto.courierName} (${dto.trackingNumber})` }, user);
 
     // Decrement actual on-hand stock now that it's been picked/packed
-    for (const line of order.lines) {
-      const stockItem = await this.prisma.stockItem.findFirst({
-        where: { skuId: line.skuId },
-        orderBy: { quantityOnHand: 'desc' },
-      });
-      if (stockItem) {
-        await this.prisma.stockItem.update({
-          where: { id: stockItem.id },
-          data: {
-            quantityOnHand: { decrement: line.quantity },
-            quantityReserved: { decrement: line.quantity },
-          },
+    if (order.lines && order.lines.length > 0) {
+      for (const line of order.lines) {
+        if (!line.skuId) continue;
+        const stockItem = await this.prisma.stockItem.findFirst({
+          where: { skuId: line.skuId, warehouse: { tenantId: order.tenantId } },
+          orderBy: { quantityOnHand: 'desc' },
         });
+        if (stockItem) {
+          await this.prisma.stockItem.update({
+            where: { id: stockItem.id },
+            data: {
+              quantityOnHand: Math.max(0, stockItem.quantityOnHand - line.quantity),
+              quantityReserved: Math.max(0, stockItem.quantityReserved - line.quantity),
+            },
+          });
+        }
       }
     }
 
-    // Send dispatch EMAIL notification to customer (NOT WhatsApp)
+    // Send dispatch EMAIL notification to customer (safely, non-blocking)
     if (order.customerEmail) {
-      const branding = await this.notificationsService.getBranding();
-      await this.notificationsService.sendEmail({
-        to: order.customerEmail,
-        subject: `Your Order ${order.orderNumber} Has Been Dispatched - ${branding.companyDisplayName}`,
-        html: this.buildDispatchEmailHtml(order, shipment, branding),
-        relatedEntityType: 'shipment',
-        relatedEntityId: shipment.id,
-      });
+      try {
+        const branding = await this.notificationsService.getBranding(tenantId);
+        await this.notificationsService.sendEmail({
+          tenantId,
+          to: order.customerEmail,
+          subject: `Your Order ${order.orderNumber} Has Been Dispatched - ${branding?.companyDisplayName || 'JNC'}`,
+          html: this.buildDispatchEmailHtml(order, shipment, branding),
+          relatedEntityType: 'shipment',
+          relatedEntityId: shipment.id,
+        });
+      } catch (emailErr: any) {
+        this.logger.warn(`Dispatch email notification skipped or failed: ${emailErr?.message || emailErr}`);
+      }
     }
 
     await this.prisma.statusHistory.create({
       data: {
         entityType: 'shipment',
         entityId: shipment.id,
-        toStatus: 'dispatched',
+        toStatus: initialStatus,
         changedById: user.id,
-        note: `Shipment created by ${user.employeeCode}`,
+        note: `Shipment created by ${user.employeeCode} (${initialLiveTracking?.statusLabel || 'Dispatched'})`,
       },
     });
 
-    return shipment;
+    return this.formatShipmentWithLiveTracking(shipment);
   }
 
   async updateShipmentStatus(shipmentId: string, status: string, user: ScopedUser) {
@@ -711,11 +826,13 @@ export class OrdersService {
     if (!shipment) throw new NotFoundException('Shipment not found');
 
     const oldStatus = shipment.status;
+    const deliveredAt = status === 'delivered' ? new Date() : (status === 'dispatched' || status === 'in_transit' ? null : shipment.deliveredAt);
+
     await this.prisma.shipment.updateMany({
       where: { id: shipmentId, tenantId },
       data: {
         status,
-        deliveredAt: status === 'delivered' ? new Date() : shipment.deliveredAt,
+        deliveredAt,
       },
     });
 
@@ -729,36 +846,95 @@ export class OrdersService {
       },
     });
 
-    // Auto-update order status on delivery
+    // Auto-update order status
     if (status === 'delivered') {
       await this.prisma.order.updateMany({
         where: { id: shipment.orderId, tenantId },
         data: { status: 'delivered' },
       });
 
-      // Send delivery EMAIL confirmation (NOT WhatsApp)
-      if (shipment.order.customerEmail) {
-        const branding = await this.notificationsService.getBranding();
-        await this.notificationsService.sendEmail({
-          to: shipment.order.customerEmail,
-          subject: `Your Order ${shipment.order.orderNumber} Has Been Delivered - ${branding.companyDisplayName}`,
-          html: this.buildDeliveryEmailHtml(shipment.order, branding),
-          relatedEntityType: 'order',
-          relatedEntityId: shipment.orderId,
-        });
+      // Send delivery EMAIL confirmation (safely, non-blocking)
+      if (shipment.order && shipment.order.customerEmail) {
+        try {
+          const branding = await this.notificationsService.getBranding(tenantId);
+          await this.notificationsService.sendEmail({
+            tenantId,
+            to: shipment.order.customerEmail,
+            subject: `Your Order ${shipment.order.orderNumber} Has Been Delivered - ${branding?.companyDisplayName || 'JNC'}`,
+            html: this.buildDeliveryEmailHtml(shipment.order, branding),
+            relatedEntityType: 'order',
+            relatedEntityId: shipment.orderId,
+          });
+        } catch (emailErr: any) {
+          this.logger.warn(`Delivery email confirmation skipped or failed: ${emailErr?.message || emailErr}`);
+        }
       }
+    } else if (status === 'in_transit' || status === 'dispatched') {
+      await this.prisma.order.updateMany({
+        where: { id: shipment.orderId, tenantId },
+        data: { status: 'dispatched' },
+      });
     }
 
     const updated = await this.prisma.shipment.findFirst({
       where: { id: shipmentId, tenantId },
       include: { order: true },
     });
-    return updated;
+    return this.formatShipmentWithLiveTracking(updated);
+  }
+
+  async updateShipment(shipmentId: string, dto: UpdateShipmentDto, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    const shipment = await this.prisma.shipment.findFirst({
+      where: { id: shipmentId, tenantId },
+      include: { order: true },
+    });
+    if (!shipment) throw new NotFoundException('Shipment not found');
+
+    const updateData: any = {};
+    if (dto.courierName !== undefined) updateData.courierName = dto.courierName.trim();
+    if (dto.trackingNumber !== undefined) updateData.trackingNumber = dto.trackingNumber.trim();
+    if (dto.trackingUrl !== undefined) updateData.trackingUrl = dto.trackingUrl.trim() || null;
+    if (dto.notes !== undefined) updateData.notes = dto.notes;
+
+    if (dto.status !== undefined && dto.status !== shipment.status) {
+      updateData.status = dto.status;
+      if (dto.status === 'delivered') {
+        updateData.deliveredAt = new Date();
+      } else if (dto.status === 'dispatched' || dto.status === 'in_transit') {
+        updateData.deliveredAt = null;
+      }
+    }
+
+    await this.prisma.shipment.updateMany({
+      where: { id: shipmentId, tenantId },
+      data: updateData,
+    });
+
+    if (dto.status === 'delivered') {
+      await this.prisma.order.updateMany({
+        where: { id: shipment.orderId, tenantId },
+        data: { status: 'delivered' },
+      });
+    } else if (dto.status === 'in_transit' || dto.status === 'dispatched') {
+      await this.prisma.order.updateMany({
+        where: { id: shipment.orderId, tenantId },
+        data: { status: 'dispatched' },
+      });
+    }
+
+    const updated = await this.prisma.shipment.findFirst({
+      where: { id: shipmentId, tenantId },
+      include: { order: true },
+    });
+    return this.formatShipmentWithLiveTracking(updated);
   }
 
   async listShipments(user: ScopedUser, query: { status?: string; search?: string; page?: number; limit?: number }) {
+    const tenantId = requireTenantId(user);
     const scopeWhere = this.scopingService.getOrderScope(user);
     const where: any = {
+      tenantId,
       order: {
         ...scopeWhere,
         deletedAt: null,
@@ -799,11 +975,138 @@ export class OrdersService {
       this.prisma.shipment.count({ where }),
     ]);
 
-    return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
+    const formattedItems = items.map((item) => this.formatShipmentWithLiveTracking(item));
+
+    return { items: formattedItems, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  /**
+   * Verifies live tracking URL / AWB in real-time (for modal preview)
+   */
+  async verifyLiveTrackingUrl(dto: VerifyLiveTrackingUrlDto): Promise<LiveTrackingResult> {
+    return this.liveTracker.trackShipment({
+      trackingUrl: dto.trackingUrl,
+      courierName: dto.courierName,
+      trackingNumber: dto.trackingNumber,
+      dispatchedAt: new Date(),
+    });
+  }
+
+  /**
+   * Synchronizes live courier tracking for an existing shipment
+   */
+  async syncShipmentTracking(shipmentId: string, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    const shipment = await this.prisma.shipment.findFirst({
+      where: { id: shipmentId, tenantId },
+      include: {
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            customerName: true,
+            customerPhone: true,
+            shippingAddress: true,
+            totalAmount: true,
+          },
+        },
+      },
+    });
+
+    if (!shipment) throw new NotFoundException('Shipment not found');
+
+    const liveResult = await this.liveTracker.trackShipment({
+      trackingUrl: shipment.trackingUrl || undefined,
+      courierName: shipment.courierName,
+      trackingNumber: shipment.trackingNumber,
+      dispatchedAt: shipment.dispatchedAt,
+    });
+
+    const { userNotes } = this.parseShipmentNotes(shipment.notes);
+    const serializedNotes = this.serializeShipmentNotes(userNotes, liveResult);
+
+    const oldStatus = shipment.status;
+    const newStatus = liveResult.status;
+
+    let updatedDeliveredAt = shipment.deliveredAt;
+    if (newStatus === 'delivered' && !shipment.deliveredAt) {
+      updatedDeliveredAt = new Date();
+    }
+
+    await this.prisma.shipment.updateMany({
+      where: { id: shipmentId, tenantId },
+      data: {
+        notes: serializedNotes,
+        status: newStatus,
+        deliveredAt: updatedDeliveredAt,
+      },
+    });
+
+    if (oldStatus !== newStatus) {
+      await this.prisma.statusHistory.create({
+        data: {
+          entityType: 'shipment',
+          entityId: shipment.id,
+          fromStatus: oldStatus,
+          toStatus: newStatus,
+          changedById: user.id,
+          note: `Live courier sync: ${liveResult.statusLabel}`,
+        },
+      });
+
+      if (newStatus === 'delivered') {
+        await this.prisma.order.updateMany({
+          where: { id: shipment.orderId, tenantId },
+          data: { status: 'delivered' },
+        });
+      }
+    }
+
+    const refreshed = await this.prisma.shipment.findFirst({
+      where: { id: shipmentId, tenantId },
+      include: {
+        order: {
+          include: {
+            lines: { include: { sku: true } },
+            invoices: true,
+            createdBy: { select: { id: true, name: true, employeeCode: true } },
+          },
+        },
+      },
+    });
+
+    return this.formatShipmentWithLiveTracking(refreshed);
+  }
+
+  /**
+   * Retrieves full transit timeline and tracking checkpoints
+   */
+  async getShipmentLiveTimeline(shipmentId: string, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    const shipment = await this.prisma.shipment.findFirst({
+      where: { id: shipmentId, tenantId },
+      include: {
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            customerName: true,
+            customerPhone: true,
+            shippingAddress: true,
+            totalAmount: true,
+          },
+        },
+      },
+    });
+
+    if (!shipment) throw new NotFoundException('Shipment not found');
+
+    const formatted = this.formatShipmentWithLiveTracking(shipment);
+    return formatted.liveTracking;
   }
 
   private buildDispatchEmailHtml(order: any, shipment: any, branding?: { companyDisplayName: string; companyPhone: string }): string {
-    const companyName = branding?.companyDisplayName || 'JS Network Communication';
+    const companyName = branding?.companyDisplayName || BRAND_CONFIG.displayName;
     const phone = branding?.companyPhone || '';
     return `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
@@ -829,7 +1132,7 @@ export class OrdersService {
   }
 
   private buildDeliveryEmailHtml(order: any, branding?: { companyDisplayName: string; companyPhone: string }): string {
-    const companyName = branding?.companyDisplayName || 'JS Network Communication';
+    const companyName = branding?.companyDisplayName || BRAND_CONFIG.displayName;
     const phone = branding?.companyPhone || '';
     return `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">

@@ -9,11 +9,12 @@ import { Module } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
 import { AuthModule } from '../auth/auth.module';
+import { LiveCourierTrackerService } from './live-courier-tracker.service';
 
 @Module({
   imports: [AuthModule],
   controllers: [OrdersController],
-  providers: [OrdersService],
-  exports: [OrdersService],
+  providers: [OrdersService, LiveCourierTrackerService],
+  exports: [OrdersService, LiveCourierTrackerService],
 })
 export class OrdersModule {}

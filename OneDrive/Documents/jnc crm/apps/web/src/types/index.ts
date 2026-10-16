@@ -5,7 +5,24 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-export type Role = 'platform_super_admin' | 'tenant_admin' | 'admin' | 'sub_admin' | 'employee' | 'store_manager' | 'project_manager' | 'developer_lead' | 'developer' | 'finance' | 'accountant' | 'client' | 'customer';
+export type Role =
+  | 'platform_super_admin'
+  | 'platform_admin'
+  | 'platform_support'
+  | 'platform_billing'
+  | 'platform_developer'
+  | 'tenant_admin'
+  | 'admin'
+  | 'sub_admin'
+  | 'employee'
+  | 'store_manager'
+  | 'project_manager'
+  | 'developer_lead'
+  | 'developer'
+  | 'finance'
+  | 'accountant'
+  | 'client'
+  | 'customer';
 export type LeadSource = 'indiamart' | 'web' | 'whatsapp' | 'manual';
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'quoted' | 'won' | 'lost';
 export type OrderStatus = 'confirmed' | 'processing' | 'dispatched' | 'delivered' | 'cancelled';
@@ -225,6 +242,7 @@ export interface Company {
 }
 
 export interface SignatorySettings {
+  companyName?: string;
   signatoryName: string;
   signatoryDesignation: string;
   signatureImage?: string | null;
@@ -242,6 +260,7 @@ export type DocumentType = 'tax_invoice' | 'sez_invoice' | 'proforma_invoice' | 
 export interface CompanyInvoiceProfile {
   companyName: string;
   tradingName: string;
+  logoUrl?: string;
   addressLine1: string;
   addressLine2: string;
   city: string;

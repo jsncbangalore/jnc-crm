@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Upload, Check, Image as ImageIcon, Trash2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { invoicesApi } from '../../services/api';
 import { SignatorySettings } from '../../types';
+import { BRAND_CONFIG } from '../../config/brand';
 
 interface InvoiceSettingsModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface InvoiceSettingsModalProps {
 
 export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: InvoiceSettingsModalProps) {
   const [settings, setSettings] = useState<SignatorySettings>({
+    companyName: '',
     signatoryName: '',
     signatoryDesignation: '',
     signatureImage: null,
@@ -37,6 +39,7 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
       const { data } = await invoicesApi.getSignatorySettings();
       if (data) {
         setSettings({
+          companyName: data.companyName || BRAND_CONFIG.displayName || 'JNC Network & Power Solutions',
           signatoryName: data.signatoryName || '',
           signatoryDesignation: data.signatoryDesignation || '',
           signatureImage: data.signatureImage || null,
@@ -72,6 +75,11 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
   };
 
   const handleSave = async () => {
+    if (!settings.companyName?.trim()) {
+      alert('Please provide your Company / Business name');
+      return;
+    }
+
     if (!settings.signatoryName.trim()) {
       alert('Please provide a signatory name');
       return;
@@ -133,13 +141,30 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
               </p>
             </div>
 
+            {/* Company / Business Trade Name */}
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042] space-y-1.5">
+              <label className="label font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between">
+                <span>Company / Business Trade Name *</span>
+                <span className="text-[10px] font-normal text-slate-500">Appears as &quot;For &lt;Company Name&gt;&quot;, in header & declarations</span>
+              </label>
+              <input
+                className="input text-xs font-semibold"
+                placeholder="e.g. JNC Network & Power Solutions"
+                value={settings.companyName || ''}
+                onChange={(e) => setSettings({ ...settings, companyName: e.target.value })}
+              />
+              <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                Updating this name automatically sets the company title across all invoice types, signatory blocks, and delivery declarations.
+              </p>
+            </div>
+
             {/* Text Fields */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">Signatory Name *</label>
                 <input
                   className="input text-xs"
-                  placeholder="Enter signatory name"
+                  placeholder="e.g. Authorized Signatory or Signatory Name"
                   value={settings.signatoryName}
                   onChange={(e) => setSettings({ ...settings, signatoryName: e.target.value })}
                 />
@@ -149,7 +174,7 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
                 <label className="label">Designation / Role *</label>
                 <input
                   className="input text-xs"
-                  placeholder="Enter designation / role"
+                  placeholder="e.g. Proprietor / Director"
                   value={settings.signatoryDesignation}
                   onChange={(e) => setSettings({ ...settings, signatoryDesignation: e.target.value })}
                 />
@@ -256,7 +281,9 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
               </span>
               <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex justify-end">
                 <div className="text-right w-64 space-y-1">
-                  <p className="text-xs font-bold text-gray-800">For JS Network Communication</p>
+                  <p className="text-xs font-bold text-gray-800">
+                    For {settings.companyName || BRAND_CONFIG.displayName || 'JNC Network & Power Solutions'}
+                  </p>
                   
                   {/* Signature & Stamp overlapping area */}
                   <div className="relative my-2 min-h-[60px] flex items-center justify-end">

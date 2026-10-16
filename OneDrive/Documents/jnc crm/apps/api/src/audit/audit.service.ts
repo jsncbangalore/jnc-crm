@@ -7,6 +7,9 @@
 
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ScopedUser } from '../auth/scoping.service';
+import { requireTenantId } from '../common/tenant.util';
+import { parsePagination } from '../common/pagination.util';
 
 export interface CreateAuditLogDto {
   tenantId?: string;
@@ -38,7 +41,7 @@ export class AuditService {
     try {
       return await this.prisma.auditLog.create({
         data: {
-          tenantId: dto.tenantId || null,
+          tenantId: dto.tenantId || 'default-tenant-id',
           actorId: dto.actorId,
           actorName: dto.actorName,
           action: dto.action,
@@ -55,21 +58,26 @@ export class AuditService {
     }
   }
 
-  async getLogs(query: {
-    tenantId?: string;
-    entityName?: string;
-    entityId?: string;
-    actorId?: string;
-    search?: string;
-    page?: number;
-    limit?: number;
-  }) {
-    const page = Number(query.page) || 1;
-    const limit = Number(query.limit) || 50;
-    const skip = (page - 1) * limit;
+  async getLogs(
+    query: {
+      tenantId?: string;
+      entityName?: string;
+      entityId?: string;
+      actorId?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    },
+    user?: ScopedUser,
+  ) {
+    const { page, limit, skip, take } = parsePagination(query, 50, 100);
 
     const where: any = {};
-    if (query.tenantId) where.tenantId = query.tenantId;
+    if (user && user.role !== 'platform_super_admin') {
+      where.tenantId = requireTenantId(user);
+    } else if (query.tenantId) {
+      where.tenantId = query.tenantId;
+    }
     if (query.entityName) where.entityName = query.entityName;
     if (query.entityId) where.entityId = query.entityId;
     if (query.actorId) where.actorId = query.actorId;

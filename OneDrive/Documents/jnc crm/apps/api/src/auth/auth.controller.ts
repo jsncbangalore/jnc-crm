@@ -35,26 +35,14 @@ import { AuthGuard } from '@nestjs/passport';
 import { CurrentUser } from './current-user.decorator';
 import { Response, Request } from 'express';
 import { isAllowedOrigin } from '../common/cors-config';
-
-const REFRESH_COOKIE_NAME = 'jnc_refresh_token';
-
-function getRefreshCookieOptions() {
-  const isSecure =
-    process.env.COOKIE_SECURE === 'false'
-      ? false
-      : (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging');
-  const cookieDomain =
-    process.env.COOKIE_DOMAIN ||
-    (process.env.NODE_ENV === 'production' ? '.jsnc.co.in' : undefined);
-  return {
-    httpOnly: true,
-    secure: isSecure,
-    sameSite: 'lax' as const,
-    path: '/api/v1',
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    ...(cookieDomain ? { domain: cookieDomain } : {}),
-  };
-}
+import {
+  AUTH_COOKIE_PATH,
+  REFRESH_COOKIE_NAME,
+  SESSION_ACTIVE_COOKIE_NAME,
+  getRefreshCookieOptions,
+  getSessionIndicatorCookieOptions,
+  isSecureCookie,
+} from '../common/cookie.util';
 
 function enforceCsrf(req: Request) {
   // 1. Require custom header X-Requested-With
@@ -85,10 +73,13 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const ip = req.ip || req.socket?.remoteAddress;
-    const result: any = await this.authService.login(loginDto, ip);
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    const result: any = await this.authService.login(loginDto, ip, userAgent);
 
     if (result && result.refreshToken) {
-      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions());
+      const keepSignedIn = Boolean(loginDto.keepSignedIn);
+      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(AUTH_COOKIE_PATH, keepSignedIn));
+      res.cookie(SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(keepSignedIn));
       return result;
     }
     return result;
@@ -104,10 +95,12 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const ip = req.ip || req.socket?.remoteAddress;
-    const result: any = await this.authService.selectCompany(dto, ip);
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    const result: any = await this.authService.selectCompany(dto, ip, userAgent);
 
     if (result && result.refreshToken) {
-      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions());
+      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(AUTH_COOKIE_PATH, false));
+      res.cookie(SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(false));
       return result;
     }
     return result;
@@ -118,7 +111,8 @@ export class AuthController {
   @Post('forgot-password')
   async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
     const ip = req.ip || req.socket?.remoteAddress;
-    return this.authService.forgotPassword(dto, ip);
+    const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : undefined);
+    return this.authService.forgotPassword(dto, ip, origin);
   }
 
   /** Reset password with token from email link — rate limit: 5 / 15 min */
@@ -145,13 +139,15 @@ export class AuthController {
     const result = await this.authService.refreshToken(rawRefreshToken, ip);
 
     if (result && result.refreshToken) {
-      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions());
+      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(AUTH_COOKIE_PATH, false));
+      res.cookie(SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(false));
       return result;
     }
     return result;
   }
 
   /** User logout — revokes server-side refresh token and clears cookie */
+  @HttpCode(HttpStatus.OK)
   @Post('logout')
   async logout(
     @Req() req: Request,
@@ -163,25 +159,39 @@ export class AuthController {
     const ip = req.ip || req.socket?.remoteAddress;
     await this.authService.logout(tokenFromCookie, undefined, ip);
 
-    const cookieOpts = getRefreshCookieOptions();
+    res.clearCookie(REFRESH_COOKIE_NAME, {
+      path: AUTH_COOKIE_PATH,
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: isSecureCookie(),
+    });
+    // Also clear legacy path if any
     res.clearCookie(REFRESH_COOKIE_NAME, {
       path: '/api/v1',
       httpOnly: true,
-      sameSite: 'lax',
-      secure: cookieOpts.secure,
-      ...(cookieOpts.domain ? { domain: cookieOpts.domain } : {}),
-    });
-    res.clearCookie(REFRESH_COOKIE_NAME, {
-      path: '/api/v1/auth',
-      httpOnly: true,
       sameSite: 'strict',
-      secure: cookieOpts.secure,
+      secure: isSecureCookie(),
+    });
+    res.clearCookie(SESSION_ACTIVE_COOKIE_NAME, {
+      path: '/',
+      httpOnly: false,
+      sameSite: 'strict',
+      secure: isSecureCookie(),
     });
     res.setHeader('Clear-Site-Data', '"cache", "storage"');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     return { success: true, message: 'Logged out successfully' };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('recent-signins')
+  async getRecentSignIns(@CurrentUser() user: any) {
+    if (user.role !== 'admin' && user.role !== 'tenant_admin' && user.role !== 'platform_super_admin') {
+      throw new ForbiddenException('You do not have permission to view sign-in logs.');
+    }
+    return this.authService.getRecentSignIns(user.tenantId, 25);
   }
 
   /** Sign out of all devices (increments tokenVersion and revokes all refresh tokens) */
@@ -197,12 +207,17 @@ export class AuthController {
     const ip = req.ip || req.socket?.remoteAddress;
     await this.authService.logoutAll(user.id, ip);
 
-    const cookieOpts = getRefreshCookieOptions();
     res.clearCookie(REFRESH_COOKIE_NAME, {
-      path: '/api/v1/auth',
+      path: AUTH_COOKIE_PATH,
       httpOnly: true,
       sameSite: 'strict',
-      secure: cookieOpts.secure,
+      secure: isSecureCookie(),
+    });
+    res.clearCookie(SESSION_ACTIVE_COOKIE_NAME, {
+      path: '/',
+      httpOnly: false,
+      sameSite: 'strict',
+      secure: isSecureCookie(),
     });
     res.setHeader('Clear-Site-Data', '"cache", "storage"');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -238,7 +253,8 @@ export class AuthController {
     const result: any = await this.authService.changePassword(user.id, body.currentPass, body.newPass, ip);
 
     if (result && result.refreshToken) {
-      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions());
+      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(AUTH_COOKIE_PATH, false));
+      res.cookie(SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(false));
       const { refreshToken, ...rest } = result;
       return rest;
     }
