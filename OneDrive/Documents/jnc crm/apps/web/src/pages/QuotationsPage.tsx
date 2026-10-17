@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { BRAND_CONFIG } from '../config/brand';
 import { format } from 'date-fns';
 import { executeDirectPrint } from '../utils/directPrint';
+import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 
 interface QuotationLineItem {
   skuId: string;
@@ -28,6 +29,7 @@ export default function QuotationsPage() {
 
   const [quotations, setQuotations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -77,8 +79,11 @@ export default function QuotationsPage() {
       if (statusFilter !== 'all') params.status = statusFilter;
       const { data } = await quotationsApi.list(params);
       setQuotations(data.items || []);
-    } catch (err) {
+      setError(null);
+    } catch (err: any) {
       console.error('Failed to load quotations', err);
+      setError(parseApiError(err));
+      setQuotations([]);
     } finally {
       setLoading(false);
     }
@@ -439,7 +444,7 @@ export default function QuotationsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {loading && !error && (
               <tr>
                 <td colSpan={10} className="text-center py-12 text-slate-700 dark:text-slate-400 text-xs font-medium">
                   <div className="flex items-center justify-center gap-2">
@@ -449,7 +454,19 @@ export default function QuotationsPage() {
                 </td>
               </tr>
             )}
-            {!loading && quotations.length === 0 && (
+            {error && quotations.length === 0 && (
+              <tr>
+                <td colSpan={10} className="p-6">
+                  <ErrorStateCard
+                    message={error.message}
+                    status={error.status}
+                    isNetworkError={error.isNetworkError}
+                    onRetry={fetchQuotations}
+                  />
+                </td>
+              </tr>
+            )}
+            {!loading && !error && quotations.length === 0 && (
               <tr>
                 <td colSpan={10} className="text-center py-12 text-slate-700 dark:text-slate-400 text-xs">
                   <p className="font-bold text-slate-950 dark:text-slate-300">No quotations found matching your current filter.</p>

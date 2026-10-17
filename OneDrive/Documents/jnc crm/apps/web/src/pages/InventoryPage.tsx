@@ -43,6 +43,7 @@ import Papa from 'papaparse';
 import { useSearchParams } from 'react-router-dom';
 import { inventoryApi, fetchPrivateFileBlobUrl } from '../services/api';
 import { Sku, ProjectStockPosition } from '../types';
+import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import { useAuth } from '../contexts/AuthContext';
 import { AddComponentModal } from '../components/inventory/AddComponentModal';
 import { EditComponentModal } from '../components/inventory/EditComponentModal';
@@ -83,6 +84,7 @@ export default function InventoryPage() {
   const [skus, setSkus] = useState<Sku[]>([]);
   const [positions, setPositions] = useState<ProjectStockPosition[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
 
   // Buy List / Procurement Cart State
   const [buyList, setBuyList] = useState<BuyListItem[]>(() => {
@@ -262,8 +264,12 @@ export default function InventoryPage() {
 
       setSkus(skusList);
       setPositions(posList);
+      setError(null);
     } catch (err: any) {
       console.error('Failed to load inventory data:', err);
+      setError(parseApiError(err));
+      setSkus([]);
+      setPositions([]);
     } finally {
       setLoading(false);
     }
@@ -987,11 +993,22 @@ export default function InventoryPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-[#2A3042]/40">
-                  {loading ? (
+                  {loading && !error ? (
                     <tr>
                       <td colSpan={8} className="text-center py-12 text-slate-400">
                         <RefreshCw size={20} className="animate-spin mx-auto text-crm-blue mb-2" />
                         <span>Loading components inventory...</span>
+                      </td>
+                    </tr>
+                  ) : error && filteredList.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-6">
+                        <ErrorStateCard
+                          message={error.message}
+                          status={error.status}
+                          isNetworkError={error.isNetworkError}
+                          onRetry={fetchData}
+                        />
                       </td>
                     </tr>
                   ) : filteredList.length === 0 ? (

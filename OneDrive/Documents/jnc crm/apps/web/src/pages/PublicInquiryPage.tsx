@@ -1,37 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Cpu, Send, CheckCircle2, Phone, Mail, MapPin, Sparkles, Building, Layers, Globe, Radio, Bell, Shield, PhoneCall
+  Send, CheckCircle2, Phone, Mail, Globe, AlertCircle, Building2, ExternalLink
 } from 'lucide-react';
 import axios from 'axios';
-import { BRAND_CONFIG } from '../config/brand';
 
-const FALLBACK_PRODUCT_CATEGORIES = [
-  'PA System (Public Address & Amplifiers)',
-  'Talk Back System (Two-Way Communication)',
-  'Addressable Talk Back System',
-  'Fire Alarm System (3-in-1)',
-  'Nurse Call System (Hospital Intercom)',
-  'EPABX / IPABX Telephony Systems',
-  'CCTV & Video Surveillance',
-  'Access Control & Biometric Attendance',
-  'Panic Alarm & Emergency Alert Systems',
-  'Network Infrastructure & Uninterrupted Power',
-  'Electronic Components & Microcontrollers',
-  'Other Custom Requirement',
-];
+interface FormProduct {
+  name: string;
+  category?: string;
+}
+
+interface WebFormFieldItem {
+  show: boolean;
+  required: boolean;
+}
+
+interface WebFormConfig {
+  companyName: string;
+  logoUrl?: string | null;
+  phone?: string;
+  email?: string;
+  website?: string;
+  brandColor: string;
+  headline: string;
+  description: string;
+  submitButtonText: string;
+  thankYouTitle: string;
+  thankYouMessage: string;
+  redirectUrl?: string | null;
+  products: FormProduct[];
+  fields: Record<string, WebFormFieldItem>;
+  isEnabled: boolean;
+}
 
 export default function PublicInquiryPage() {
-  const [companyInfo, setCompanyInfo] = useState({
-    name: BRAND_CONFIG.displayName,
-    phone: '',
-    email: '',
-    website: '',
-    address: '',
-    logoUrl: '',
-  });
-
-  const [productsList, setProductsList] = useState<Array<{ name: string; category: string; skuCode?: string }>>([]);
+  const [config, setConfig] = useState<WebFormConfig | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -39,8 +44,8 @@ export default function PublicInquiryPage() {
     email: '',
     company: '',
     city: '',
-    productCategory: 'PA System (Public Address & Amplifiers)',
-    productName: '',
+    product: '',
+    customProduct: '',
     quantity: '',
     urgency: 'medium',
     message: '',
@@ -49,224 +54,279 @@ export default function PublicInquiryPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [submittedLeadId, setSubmittedLeadId] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
-  // Load tenant branding & inventory product catalog dynamically
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Notify parent window of height for seamless iframe embedding
+  const postHeightToParent = () => {
+    try {
+      if (window.parent && window.parent !== window) {
+        const height = document.body.scrollHeight || document.documentElement.scrollHeight;
+        window.parent.postMessage({ type: 'CRM_FORM_RESIZE', height }, '*');
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    postHeightToParent();
+    const handleResize = () => postHeightToParent();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isLoading, submittedLeadId, config]);
+
+  // Load tenant public form configuration
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const key = params.get('key');
-    const infoEndpoint = key ? `/api/v1/webhooks/inquiry-info/${key}` : '/api/v1/webhooks/inquiry-info';
 
-    axios.get(infoEndpoint)
+    if (!key || !key.trim()) {
+      setIsLoading(false);
+      setLoadError('This form is not available');
+      return;
+    }
+
+    axios
+      .get(`/api/v1/webhooks/inquiry-info/${encodeURIComponent(key.trim())}`)
       .then((res) => {
-        if (res.data?.company) {
-          const comp = res.data.company;
-          setCompanyInfo({
-            name: comp.name || BRAND_CONFIG.displayName,
-            phone: comp.phone || '',
-            email: comp.email || '',
-            website: comp.website || '',
-            address: comp.address || '',
-            logoUrl: comp.logoUrl || '',
-          });
-        }
-        if (Array.isArray(res.data?.products) && res.data.products.length > 0) {
-          setProductsList(res.data.products);
+        const data: WebFormConfig = res.data;
+        setConfig(data);
+        if (Array.isArray(data.products) && data.products.length > 0) {
           setFormData((prev) => ({
             ...prev,
-            productCategory: res.data.products[0].name,
+            product: data.products[0].name,
           }));
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        const msg = err?.response?.data?.message || 'This form is not available';
+        setLoadError(msg);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   }, []);
+
+  // Handle redirect after successful submission
+  useEffect(() => {
+    if (submittedLeadId && config?.redirectUrl) {
+      setCountdown(4);
+      const interval = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(interval);
+            window.location.href = config.redirectUrl!;
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [submittedLeadId, config]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    setErrorMsg(null);
+    setSubmitError(null);
+
+    const params = new URLSearchParams(window.location.search);
+    const key = params.get('key');
+
+    if (!key) {
+      setSubmitError('Missing form authorization key.');
+      setSubmitting(false);
+      return;
+    }
+
+    const selectedProduct = formData.product === '__OTHER__' 
+      ? formData.customProduct 
+      : (formData.product || formData.customProduct);
+
+    const payload = {
+      name: formData.name,
+      phone: formData.phone,
+      email: formData.email,
+      company: formData.company,
+      city: formData.city,
+      product: selectedProduct,
+      quantity: formData.quantity,
+      urgency: formData.urgency,
+      message: formData.message,
+      _hp_company_trap: formData._hp_company_trap,
+      submissionId: 'WEB-' + Date.now().toString(),
+    };
 
     try {
-      const params = new URLSearchParams(window.location.search);
-      const key = params.get('key');
-      const submitEndpoint = key ? `/api/v1/webhooks/website/${key}` : '/api/v1/webhooks/website';
-
-      const payload = {
-        name: formData.name,
-        phone: formData.phone,
-        email: formData.email,
-        company: formData.company,
-        city: formData.city,
-        productCategory: formData.productCategory,
-        productName: formData.productName || formData.productCategory,
-        quantity: formData.quantity,
-        urgency: formData.urgency,
-        submissionId: 'INQ-' + Date.now().toString(),
-        _hp_company_trap: formData._hp_company_trap,
-        queryMessage: `[RFQ via ${companyInfo.name || BRAND_CONFIG.displayName} Inquiry Form]\nCategory/Product: ${formData.productCategory}\nItem/Specification: ${formData.productName || 'Standard Package'}\nTarget Qty: ${formData.quantity || 'Not specified'}\nUrgency: ${formData.urgency.toUpperCase()}\n\nClient Note: ${formData.message || 'None'}`,
-      };
-
-      const response = await axios.post(submitEndpoint, payload);
-      setSubmittedLeadId(response.data.leadId || 'INQ-' + Date.now().toString().slice(-6));
-    } catch (err: any) {
-      const fallbackPhone = companyInfo.phone || BRAND_CONFIG.phone || '';
-      setErrorMsg(
-        err?.response?.data?.message ||
-        `Failed to submit inquiry. ${fallbackPhone ? `Please call ${fallbackPhone} directly.` : 'Please try again later.'}`
+      const response = await axios.post(
+        `/api/v1/webhooks/website/${encodeURIComponent(key.trim())}`,
+        payload
       );
+      setSubmittedLeadId(response.data?.leadId || 'INQ-' + Date.now().toString().slice(-6));
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Failed to submit form. Please check your information and try again.';
+      setSubmitError(msg);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const displayName = companyInfo.name || BRAND_CONFIG.displayName;
-  const displayPhone = companyInfo.phone || BRAND_CONFIG.phone || '';
-  const displayEmail = companyInfo.email || BRAND_CONFIG.email || '';
-  const displayWebsite = companyInfo.website || BRAND_CONFIG.website || '';
-  const displayAddress = companyInfo.address || BRAND_CONFIG.address || '';
+  const brandColor = config?.brandColor || '#2563eb';
+
+  // Loading State
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-slate-300 border-t-slate-800 rounded-full animate-spin" />
+          <p className="text-xs text-slate-500 font-medium">Loading form...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error / Form Disabled / Invalid Key State
+  if (loadError || !config) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 antialiased">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-sm space-y-4">
+          <div className="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 text-slate-500 flex items-center justify-center mx-auto">
+            <AlertCircle size={24} />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-slate-900">This form is not available</h1>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              The link you followed may have expired, or the form is currently paused by the administrator.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const fields = config.fields || {};
+  const isFieldVisible = (name: string, defaultShow = true) => fields[name]?.show ?? defaultShow;
+  const isFieldRequired = (name: string, defaultReq = false) => fields[name]?.required ?? defaultReq;
 
   return (
-    <div className="min-h-screen bg-[#0A0C10] text-slate-100 flex flex-col justify-between selection:bg-crm-blue selection:text-white">
-      {/* Ambient background glows */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-crm-blue/15 rounded-full blur-3xl" />
-        <div className="absolute top-1/3 -right-40 w-96 h-96 bg-crm-violet/15 rounded-full blur-3xl" />
-      </div>
-
+    <div ref={containerRef} className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-between antialiased">
       {/* Header */}
-      <header className="border-b border-[#1E2230] bg-slate-50 dark:bg-[#0F1117]/90 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <header className="bg-white border-b border-slate-200/80 sticky top-0 z-20">
+        <div className="max-w-3xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-crm-blue to-crm-violet flex items-center justify-center shadow-glow-blue">
-              <Cpu size={20} className="text-white" />
-            </div>
+            {config.logoUrl ? (
+              <img
+                src={config.logoUrl}
+                alt={config.companyName}
+                className="h-9 max-w-[140px] object-contain rounded-md"
+              />
+            ) : (
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-xs"
+                style={{ backgroundColor: brandColor }}
+              >
+                <Building2 size={18} />
+              </div>
+            )}
             <div>
-              <h1 className="text-base font-black tracking-tight text-slate-950 dark:text-white flex items-center gap-2">
-                {displayName}
+              <h1 className="text-sm font-bold text-slate-900 leading-tight">
+                {config.companyName}
               </h1>
-              <p className="text-[11px] text-slate-400 font-medium">
-                Official Product Inquiry & Quotation Desk
-              </p>
+              <p className="text-[11px] text-slate-500">Official Inquiry Desk</p>
             </div>
           </div>
 
-          <div className="hidden md:flex items-center gap-4 text-xs text-slate-400">
-            {displayPhone && (
-              <a href={`tel:${displayPhone}`} className="flex items-center gap-1.5 text-crm-teal hover:underline font-medium">
-                <Phone size={13} /> {displayPhone}
+          <div className="hidden sm:flex items-center gap-4 text-xs text-slate-500">
+            {config.phone && (
+              <a href={`tel:${config.phone}`} className="flex items-center gap-1.5 hover:text-slate-800 transition-colors">
+                <Phone size={13} style={{ color: brandColor }} />
+                <span>{config.phone}</span>
               </a>
             )}
-            {displayEmail && (
-              <a href={`mailto:${displayEmail}`} className="flex items-center gap-1.5 text-crm-blue-light hover:underline font-medium">
-                <Mail size={13} /> {displayEmail}
-              </a>
-            )}
-            {displayWebsite && (
-              <a
-                href={displayWebsite.startsWith('http') ? displayWebsite : `https://${displayWebsite}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 text-slate-300 hover:text-white font-medium"
-              >
-                <Globe size={13} /> {displayWebsite.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+            {config.email && (
+              <a href={`mailto:${config.email}`} className="flex items-center gap-1.5 hover:text-slate-800 transition-colors">
+                <Mail size={13} style={{ color: brandColor }} />
+                <span>{config.email}</span>
               </a>
             )}
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-3xl w-full mx-auto px-4 py-8 relative z-10 flex-1 flex flex-col justify-center">
+      {/* Main Container */}
+      <main className="max-w-2xl w-full mx-auto px-4 py-8 flex-1 flex flex-col justify-center">
         {submittedLeadId ? (
+          /* Thank You Screen */
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
+            initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-[#131620] border border-green-500/30 rounded-3xl p-8 sm:p-12 text-center shadow-2xl shadow-green-500/5 space-y-6"
+            className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 text-center shadow-xs space-y-6"
           >
-            <div className="w-20 h-20 rounded-2xl bg-green-500/15 border border-green-500/30 text-green-400 flex items-center justify-center mx-auto">
-              <CheckCircle2 size={40} />
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto"
+              style={{ backgroundColor: `${brandColor}15`, color: brandColor }}
+            >
+              <CheckCircle2 size={36} />
             </div>
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-black text-slate-950 dark:text-white">Inquiry Received!</h2>
-              <p className="text-slate-400 text-sm mt-2 max-w-md mx-auto">
-                Thank you, <strong className="text-white">{formData.name}</strong>. Your request for{' '}
-                <strong className="text-crm-teal">{formData.productCategory}</strong> has been received by our technical engineering & sales team.
+
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold text-slate-900">
+                {config.thankYouTitle || 'Thank You!'}
+              </h2>
+              <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+                {config.thankYouMessage || 'Your inquiry has been received. Our team will contact you soon.'}
               </p>
             </div>
 
-            <div className="p-4 bg-[#1A1E2B] rounded-2xl border border-slate-200 dark:border-[#2A3042] max-w-sm mx-auto text-left text-xs space-y-2">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Inquiry Reference:</span>
-                <span className="font-mono text-crm-teal font-bold">{submittedLeadId}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">System:</span>
-                <span className="text-white font-medium truncate max-w-[180px]">{formData.productCategory}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Contact:</span>
-                <span className="text-slate-300">{formData.phone}</span>
-              </div>
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 max-w-xs mx-auto text-xs text-slate-600 flex justify-between items-center">
+              <span className="text-slate-500">Reference Number:</span>
+              <span className="font-mono font-bold text-slate-900">{submittedLeadId}</span>
             </div>
 
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button
-                onClick={() => {
-                  setSubmittedLeadId(null);
-                  setFormData({
-                    name: '',
-                    phone: '',
-                    email: '',
-                    company: '',
-                    city: '',
-                    productCategory: productsList[0]?.name || 'PA System (Public Address & Amplifiers)',
-                    productName: '',
-                    quantity: '',
-                    urgency: 'medium',
-                    message: '',
-                    _hp_company_trap: '',
-                  });
-                }}
-                className="btn bg-white/10 hover:bg-white/20 text-white text-xs px-6 py-2.5 rounded-xl transition-all"
-              >
-                Submit Another Request
-              </button>
-              <a
-                href={displayWebsite || '#'}
-                target="_blank"
-                rel="noreferrer"
-                className="btn-ghost text-xs px-5 py-2.5 text-slate-300 hover:text-white"
-              >
-                Visit Official Website →
-              </a>
-            </div>
+            {config.redirectUrl && (
+              <div className="pt-2 space-y-3">
+                <p className="text-xs text-slate-500">
+                  Redirecting in <span className="font-bold text-slate-800">{countdown}s</span>...
+                </p>
+                <a
+                  href={config.redirectUrl}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl text-white transition-opacity hover:opacity-90 shadow-xs"
+                  style={{ backgroundColor: brandColor }}
+                >
+                  <span>Continue</span>
+                  <ExternalLink size={13} />
+                </a>
+              </div>
+            )}
           </motion.div>
         ) : (
+          /* Inquiry Form Card */
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-[#131620] border border-[#222738] rounded-3xl p-6 sm:p-10 shadow-2xl shadow-black/60"
+            className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6"
           >
-            <div className="mb-8">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-crm-blue/15 border border-crm-blue/30 text-crm-blue-light text-xs font-semibold mb-3">
-                <Sparkles size={13} /> Official Quote & Solution Design Request
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-black text-slate-950 dark:text-white tracking-tight">
-                Request Product Pricing & Availability
+            <div>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                {config.headline || 'Request a Quote'}
               </h2>
-              <p className="text-slate-400 text-sm mt-1">
-                Tell us your system requirements (PA Systems, Fire Alarms, Talk Back, Security, Networking) to get a competitive quotation.
-              </p>
+              {config.description && (
+                <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed">
+                  {config.description}
+                </p>
+              )}
             </div>
 
-            {errorMsg && (
-              <div className="mb-6 p-4 rounded-xl bg-crm-coral/15 border border-crm-coral/30 text-crm-coral text-xs">
-                {errorMsg}
+            {submitError && (
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0 text-red-500" />
+                <span>{submitError}</span>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" data-lpignore="true">
-              {/* Anti-spam Honeypot field (hidden from real users) */}
+            <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+              {/* Anti-spam Honeypot field (hidden from legitimate users) */}
               <div style={{ display: 'none' }} aria-hidden="true">
                 <input
                   type="text"
@@ -278,171 +338,210 @@ export default function PublicInquiryPage() {
                 />
               </div>
 
-              {/* Product Category Selection */}
-              <div>
-                <label className="label font-bold text-slate-950 dark:text-white">Select Product / System Category *</label>
-                <select
-                  required
-                  className="input text-xs bg-[#1A1E2B] border-slate-200 dark:border-[#2A3042]"
-                  value={formData.productCategory}
-                  onChange={(e) => setFormData({ ...formData, productCategory: e.target.value })}
-                >
-                  {productsList.length > 0 ? (
-                    <>
-                      {productsList.map((prod, idx) => (
-                        <option key={idx} value={prod.name}>
-                          {prod.category && prod.category !== 'General' ? `[${prod.category}] ` : ''}{prod.name}
-                        </option>
-                      ))}
-                      <option value="Other Custom Requirement">Other Custom Requirement</option>
-                    </>
+              {/* Product Selection (only if show: true) */}
+              {isFieldVisible('product', true) && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Product / Service {isFieldRequired('product', false) && <span className="text-red-500">*</span>}
+                  </label>
+                  {config.products && config.products.length > 0 ? (
+                    <div className="space-y-2">
+                      <select
+                        required={isFieldRequired('product', false)}
+                        value={formData.product}
+                        onChange={(e) => setFormData({ ...formData, product: e.target.value })}
+                        className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"
+                      >
+                        {config.products.map((p, idx) => (
+                          <option key={idx} value={p.name}>
+                            {p.category && p.category !== 'General' ? `[${p.category}] ` : ''}{p.name}
+                          </option>
+                        ))}
+                        <option value="__OTHER__">Other / Custom Requirement</option>
+                      </select>
+
+                      {formData.product === '__OTHER__' && (
+                        <input
+                          type="text"
+                          required
+                          placeholder="Please specify product or service needed..."
+                          value={formData.customProduct}
+                          onChange={(e) => setFormData({ ...formData, customProduct: e.target.value })}
+                          className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"
+                        />
+                      )}
+                    </div>
                   ) : (
-                    FALLBACK_PRODUCT_CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))
+                    <input
+                      type="text"
+                      required={isFieldRequired('product', false)}
+                      placeholder="e.g. Fiber Optic Patch Cables, UPS 5kVA..."
+                      value={formData.customProduct}
+                      onChange={(e) => setFormData({ ...formData, customProduct: e.target.value })}
+                      className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"
+                    />
                   )}
-                </select>
+                </div>
+              )}
+
+              {/* Row: Name & Phone */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {isFieldVisible('name', true) && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Your Name {isFieldRequired('name', true) && <span className="text-red-500">*</span>}
+                    </label>
+                    <input
+                      type="text"
+                      required={isFieldRequired('name', true)}
+                      placeholder="John Doe"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"
+                    />
+                  </div>
+                )}
+
+                {isFieldVisible('phone', true) && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Phone Number {isFieldRequired('phone', true) && <span className="text-red-500">*</span>}
+                    </label>
+                    <input
+                      type="tel"
+                      required={isFieldRequired('phone', true)}
+                      placeholder="e.g. 9845012345"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* Row 1: Name & Phone */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Your Name *</label>
-                  <input
-                    type="text"
-                    name="client_contact_name"
-                    required
-                    autoComplete="off"
-                    className="input text-xs"
-                    placeholder="e.g. Rajesh Sharma"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="label">Mobile / WhatsApp Number *</label>
-                  <input
-                    type="tel"
-                    name="client_contact_phone"
-                    required
-                    autoComplete="off"
-                    className="input text-xs"
-                    placeholder="e.g. 9845012345"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  />
-                </div>
-              </div>
+              {/* Row: Email & Company */}
+              {(isFieldVisible('email', true) || isFieldVisible('company', true)) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {isFieldVisible('email', true) && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-700">
+                        Email Address {isFieldRequired('email', false) && <span className="text-red-500">*</span>}
+                      </label>
+                      <input
+                        type="email"
+                        required={isFieldRequired('email', false)}
+                        placeholder="john@example.com"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"
+                      />
+                    </div>
+                  )}
 
-              {/* Row 2: Email & Company */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Email Address</label>
-                  <input
-                    type="email"
-                    name="client_contact_email"
-                    autoComplete="off"
-                    className="input text-xs"
-                    placeholder="e.g. rajesh@company.in"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
+                  {isFieldVisible('company', true) && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-700">
+                        Company Name {isFieldRequired('company', false) && <span className="text-red-500">*</span>}
+                      </label>
+                      <input
+                        type="text"
+                        required={isFieldRequired('company', false)}
+                        placeholder="Company or Organization"
+                        value={formData.company}
+                        onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                        className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"
+                      />
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="label">Company / Organization Name</label>
-                  <input
-                    type="text"
-                    name="client_org_name"
-                    autoComplete="off"
-                    className="input text-xs"
-                    placeholder="e.g. Apollo Hospital / Tech Park Facility"
-                    value={formData.company}
-                    onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                  />
-                </div>
-              </div>
+              )}
 
-              {/* Row 3: Product Required & Quantity */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2">
-                  <label className="label">Specific Model / Requirements / Part Number</label>
-                  <input
-                    type="text"
-                    name="client_product_desc"
-                    autoComplete="off"
-                    className="input text-xs"
-                    placeholder="e.g. 240W Amplifier, 8 Zone Addressable Panel, Smoke Detectors..."
-                    value={formData.productName}
-                    onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="label">Quantity / Units</label>
-                  <input
-                    type="text"
-                    name="client_order_qty"
-                    autoComplete="off"
-                    className="input text-xs"
-                    placeholder="e.g. 10 units / Complete Setup"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                  />
-                </div>
-              </div>
+              {/* Row: City & Quantity */}
+              {(isFieldVisible('city', true) || isFieldVisible('quantity', true)) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {isFieldVisible('city', true) && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-700">
+                        City / Location {isFieldRequired('city', false) && <span className="text-red-500">*</span>}
+                      </label>
+                      <input
+                        type="text"
+                        required={isFieldRequired('city', false)}
+                        placeholder="e.g. Bengaluru"
+                        value={formData.city}
+                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                        className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"
+                      />
+                    </div>
+                  )}
 
-              {/* Row 4: City & Urgency */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Project City / State</label>
-                  <input
-                    type="text"
-                    name="client_project_city"
-                    autoComplete="off"
-                    className="input text-xs"
-                    placeholder="e.g. Bengaluru, Karnataka"
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  />
+                  {isFieldVisible('quantity', true) && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-700">
+                        Quantity Needed {isFieldRequired('quantity', false) && <span className="text-red-500">*</span>}
+                      </label>
+                      <input
+                        type="text"
+                        required={isFieldRequired('quantity', false)}
+                        placeholder="e.g. 5 units, 100 meters"
+                        value={formData.quantity}
+                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                        className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"
+                      />
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="label">Timeline / Urgency</label>
+              )}
+
+              {/* Urgency */}
+              {isFieldVisible('urgency', false) && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Requirement Timeline
+                  </label>
                   <select
-                    className="input text-xs"
                     value={formData.urgency}
                     onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
+                    className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"
                   >
-                    <option value="high">Urgent (Ready stock / Immediate installation)</option>
+                    <option value="high">Immediate (Ready Stock)</option>
                     <option value="medium">Standard (1-2 weeks)</option>
-                    <option value="low">Planning / Future Project Tender</option>
+                    <option value="low">Planning / Tender</option>
                   </select>
                 </div>
-              </div>
+              )}
 
-              {/* Additional Message */}
-              <div>
-                <label className="label">Project Details / Custom Specifications</label>
-                <textarea
-                  rows={3}
-                  className="input text-xs resize-none"
-                  placeholder="Mention site layout details, cable distance, number of zones, or any customization needed..."
-                  value={formData.message}
-                  onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                />
-              </div>
+              {/* Message */}
+              {isFieldVisible('message', true) && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Message / Specifications {isFieldRequired('message', false) && <span className="text-red-500">*</span>}
+                  </label>
+                  <textarea
+                    rows={3}
+                    required={isFieldRequired('message', false)}
+                    placeholder="Enter any additional requirements, questions, or notes..."
+                    value={formData.message}
+                    onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                    className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all resize-none"
+                  />
+                </div>
+              )}
 
-              <div className="pt-3">
+              {/* Submit Button */}
+              <div className="pt-2">
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full btn bg-gradient-to-r from-crm-blue to-crm-violet hover:from-crm-blue-hover hover:to-crm-violet-hover text-white font-bold py-3.5 rounded-xl shadow-glow-blue flex items-center justify-center gap-2 text-sm transition-all"
+                  className="w-full py-3 px-4 rounded-xl text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-opacity hover:opacity-95 cursor-pointer disabled:opacity-50"
+                  style={{ backgroundColor: brandColor }}
                 >
                   {submitting ? (
-                    'Submitting to Engineering Desk...'
+                    'Submitting...'
                   ) : (
                     <>
-                      <Send size={16} /> Submit Requirement for Quotation
+                      <Send size={14} />
+                      <span>{config.submitButtonText || 'Submit Inquiry'}</span>
                     </>
                   )}
                 </button>
@@ -452,19 +551,21 @@ export default function PublicInquiryPage() {
         )}
       </main>
 
-      {/* Footer with verified official company credentials */}
-      <footer className="border-t border-[#1E2230] py-6 text-xs text-slate-400 bg-slate-50 dark:bg-[#0F1117]/80">
-        <div className="max-w-5xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
-          <div>
-            <p className="font-bold text-slate-950 dark:text-white">{displayName}</p>
-            {displayAddress && (
-              <p className="text-slate-500 mt-0.5">{displayAddress}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-4 text-slate-400">
-            {displayPhone && <span>{displayPhone}</span>}
-            {displayEmail && <span>{displayEmail}</span>}
-          </div>
+      {/* Footer */}
+      <footer className="bg-white border-t border-slate-200/80 py-4 text-center text-xs text-slate-400">
+        <div className="max-w-3xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <p className="font-medium text-slate-600">&copy; {new Date().getFullYear()} {config.companyName}</p>
+          {config.website && (
+            <a
+              href={config.website.startsWith('http') ? config.website : `https://${config.website}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 hover:text-slate-700 transition-colors"
+            >
+              <Globe size={12} />
+              <span>{config.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
+            </a>
+          )}
         </div>
       </footer>
     </div>

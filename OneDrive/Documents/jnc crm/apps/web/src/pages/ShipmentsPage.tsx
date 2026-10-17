@@ -15,12 +15,14 @@ import {
 import { ordersApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
+import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 
 export default function ShipmentsPage() {
   const { user } = useAuth();
   const [shipments, setShipments] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -91,8 +93,11 @@ export default function ShipmentsPage() {
       if (statusFilter !== 'all') params.status = statusFilter;
       const { data } = await ordersApi.listShipments(params);
       setShipments(data.items || []);
-    } catch (err) {
+      setError(null);
+    } catch (err: any) {
       console.error('Failed to load shipments', err);
+      setError(parseApiError(err));
+      setShipments([]);
     } finally {
       setLoading(false);
     }
@@ -460,7 +465,23 @@ export default function ShipmentsPage() {
             ))}
           </tbody>
         </table>
-        {!loading && shipments.length === 0 && (
+        {loading && !error && (
+          <div className="py-12 px-4 text-center">
+            <RefreshCw size={24} className="animate-spin text-crm-blue mx-auto mb-2" />
+            <p className="text-xs text-slate-500">Loading shipments...</p>
+          </div>
+        )}
+        {error && shipments.length === 0 && (
+          <div className="p-6">
+            <ErrorStateCard
+              message={error.message}
+              status={error.status}
+              isNetworkError={error.isNetworkError}
+              onRetry={fetchShipments}
+            />
+          </div>
+        )}
+        {!loading && !error && shipments.length === 0 && (
           <div className="py-12 px-4 text-center">
             <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500 flex items-center justify-center mx-auto mb-3">
               <Truck size={24} />

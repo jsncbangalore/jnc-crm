@@ -635,7 +635,7 @@ export class NotificationsService {
     const maskedRecipient = maskRecipient(options.to);
     const finalReason = status === 'sent' ? null : (detectedReason || mapProviderError(providerUsed, null, errorMessage));
 
-    await this.prisma.mailLog.create({
+    await (this.prisma as any).mailLog?.create({
       data: {
         tenantId: tenantId || null,
         purpose: options.purpose || options.relatedEntityType || 'general_notification',
@@ -723,15 +723,18 @@ export class NotificationsService {
       smtpPortBlockedWarning = true;
     }
 
+    const mailLogModel = (this.prisma as any).mailLog;
     const [recentFailures, totalSent, totalFailed, totalNotConfigured] = await Promise.all([
-      this.prisma.mailLog.findMany({
-        where: { status: { in: ['failed', 'not_configured'] } },
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-      }).catch(() => []),
-      this.prisma.mailLog.count({ where: { status: 'sent' } }).catch(() => 0),
-      this.prisma.mailLog.count({ where: { status: 'failed' } }).catch(() => 0),
-      this.prisma.mailLog.count({ where: { status: 'not_configured' } }).catch(() => 0),
+      mailLogModel?.findMany
+        ? mailLogModel.findMany({
+            where: { status: { in: ['failed', 'not_configured'] } },
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+          }).catch(() => [])
+        : Promise.resolve([]),
+      mailLogModel?.count ? mailLogModel.count({ where: { status: 'sent' } }).catch(() => 0) : Promise.resolve(0),
+      mailLogModel?.count ? mailLogModel.count({ where: { status: 'failed' } }).catch(() => 0) : Promise.resolve(0),
+      mailLogModel?.count ? mailLogModel.count({ where: { status: 'not_configured' } }).catch(() => 0) : Promise.resolve(0),
     ]);
 
     return {

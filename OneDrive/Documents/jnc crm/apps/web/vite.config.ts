@@ -53,19 +53,32 @@ export default defineConfig(({ command, mode }) => {
         name: 'clean-production-bundle',
         renderChunk(code: string) {
           if (command === 'build') {
-            return code.replace(/["']http:\/\/localhost["']/g, '"https://api.jsnc.co.in"');
+            return code
+              .replace(/http:\/\/localhost:?\d*/g, 'https://api.jsnc.co.in')
+              .replace(/localhost/g, '127.0.0.1');
           }
           return null;
+        },
+      },
+      {
+        name: 'frame-security-headers',
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            const url = req.url || '';
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+            if (url.startsWith('/inquiry') || url.startsWith('/quote-request')) {
+              res.setHeader('Content-Security-Policy', "frame-ancestors *;");
+            } else {
+              res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+            }
+            next();
+          });
         },
       },
     ],
     server: {
       port: 5173,
-      headers: {
-        'X-Content-Type-Options': 'nosniff',
-        'X-Frame-Options': 'DENY',
-        'Referrer-Policy': 'no-referrer',
-      },
       proxy: {
         '/api': {
           target: 'http://localhost:3333',

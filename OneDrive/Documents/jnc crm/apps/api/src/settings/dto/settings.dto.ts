@@ -199,3 +199,50 @@ export class UpdateMailAccountDto {
   @IsBoolean()
   isActive?: boolean;
 }
+
+export class UpdateWebFormSettingsDto {
+  @IsOptional()
+  @IsString()
+  logoUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  brandColor?: string;
+
+  @IsOptional()
+  @IsString()
+  headline?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  submitButtonText?: string;
+
+  @IsOptional()
+  @IsString()
+  thankYouTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  thankYouMessage?: string;
+
+  @IsOptional()
+  @IsString()
+  redirectUrl?: string | null;
+
+  @IsOptional()
+  products?: Array<{ name: string; category?: string }>;
+
+  @IsOptional()
+  fields?: Record<string, { show: boolean; required: boolean }>;
+
+  @IsOptional()
+  allowedOrigins?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  isEnabled?: boolean;
+}

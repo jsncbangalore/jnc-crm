@@ -10,7 +10,7 @@ import {
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePopup } from '../../contexts/PopupContext';
-import { leadsApi, usersApi, getApiBaseUrl } from '../../services/api';
+import { leadsApi, usersApi, getApiBaseUrl, webhooksApi } from '../../services/api';
 import { User as UserType } from '../../types';
 
 export interface LeadSetupViewProps {
@@ -45,6 +45,8 @@ export function LeadSetupView({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [employees, setEmployees] = useState<UserType[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [tenantWebhookKey, setTenantWebhookKey] = useState<string>(() => localStorage.getItem('jnc_tenant_webhook_key') || '');
+  const [webhookVerifyToken, setWebhookVerifyToken] = useState<string>('jnc_meta_verify_secret_2026');
 
   // Form states for routing configuration
   const [assignmentMode, setAssignmentMode] = useState<'round_robin' | 'direct' | 'claim'>('round_robin');
@@ -54,13 +56,17 @@ export function LeadSetupView({
   const [autoAckEmail, setAutoAckEmail] = useState<boolean>(true);
   const [autoAckWhatsapp, setAutoAckWhatsapp] = useState<boolean>(true);
 
-  // Webhook and API URLs
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://admin.jsnc.co.in';
+  // Webhook and API URLs (Guaranteed full absolute HTTPS URLs with tenant key)
+  const origin = typeof window !== 'undefined'
+    ? (import.meta.env.VITE_PUBLIC_API_URL || window.location.origin)
+    : 'https://admin.jsnc.co.in';
+  const isDevHost = typeof window !== 'undefined' && (window.location.hostname.startsWith('local') || window.location.hostname === '127.0.0.1');
+
   const publicInquiryUrl = `${origin}/inquiry`;
-  const indiamartWebhookUrl = `${origin}/api/v1/webhooks/indiamart`;
-  const whatsappWebhookUrl = `${origin}/api/v1/webhooks/whatsapp`;
-  const apiBase = getApiBaseUrl().replace(/\/api\/v1\/?$/, '');
-  const liveSubmitUrl = `${apiBase}/api/v1/webhooks/website`;
+  const metaWebhookUrl = `${origin}/api/v1/webhooks/meta/${tenantWebhookKey || 'whk_tenant_key'}`;
+  const whatsappWebhookUrl = `${origin}/api/v1/webhooks/whatsapp/${tenantWebhookKey || 'whk_tenant_key'}`;
+  const indiamartWebhookUrl = `${origin}/api/v1/webhooks/indiamart/${tenantWebhookKey || 'whk_tenant_key'}`;
+  const liveSubmitUrl = `${origin}/api/v1/webhooks/website/${tenantWebhookKey || 'whk_tenant_key'}`;
 
   // Custom Web-to-Lead Form Generator states
   const [generatorCompany, setGeneratorCompany] = useState<string>('JS Network Communication');
@@ -132,6 +138,18 @@ export function LeadSetupView({
         if (Array.isArray(res.data)) {
           setEmployees(res.data);
           if (res.data.length > 0) setSelectedRepId(res.data[0].id);
+        }
+      })
+      .catch(() => {});
+
+    webhooksApi.getConfig()
+      .then((res: any) => {
+        if (res.data?.webhookKey) {
+          setTenantWebhookKey(res.data.webhookKey);
+          localStorage.setItem('jnc_tenant_webhook_key', res.data.webhookKey);
+        }
+        if (res.data?.verifyToken) {
+          setWebhookVerifyToken(res.data.verifyToken);
         }
       })
       .catch(() => {});
@@ -1272,11 +1290,11 @@ export function LeadSetupView({
           ══════════════════════════════════════════════════════════════════ */}
           {activeTab === 'whatsapp' && (
             <div className="space-y-5">
-              <div className="bg-slate-50 dark:bg-[#181B26] p-4 rounded-xl border border-slate-200 dark:border-[#2A3042]">
-                <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="bg-slate-50 dark:bg-[#181B26] p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-3">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <MessageSquare size={14} className="text-emerald-500" />
-                    Meta WhatsApp Cloud API Webhook Callback URL
+                    Meta Lead Ads &amp; WhatsApp Cloud API Webhook Callback URL
                   </span>
                   <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">
                     GET Handshake + POST Inbound
@@ -1286,18 +1304,24 @@ export function LeadSetupView({
                   <input
                     type="text"
                     readOnly
-                    value={whatsappWebhookUrl}
-                    className="input font-mono text-xs text-slate-800 dark:text-slate-200 bg-white dark:bg-[#13161F] flex-1 cursor-text select-all"
+                    value={metaWebhookUrl}
+                    className="input font-mono text-xs text-blue-600 dark:text-blue-400 font-bold bg-white dark:bg-[#13161F] flex-1 cursor-text select-all"
                   />
                   <button
-                    onClick={() => handleCopy(whatsappWebhookUrl, 'whatsapp-webhook')}
+                    onClick={() => handleCopy(metaWebhookUrl, 'meta-webhook')}
                     className="btn btn-secondary text-xs flex items-center gap-1.5 shrink-0"
                   >
-                    {copiedKey === 'whatsapp-webhook' ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                    <span>{copiedKey === 'whatsapp-webhook' ? 'Copied!' : 'Copy URL'}</span>
+                    {copiedKey === 'meta-webhook' ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                    <span>{copiedKey === 'meta-webhook' ? 'Copied!' : 'Copy URL'}</span>
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+                {isDevHost && (
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                    <AlertCircle size={14} className="text-amber-500 shrink-0" />
+                    <span>Local Dev Environment Detected: Meta servers require a public HTTPS URL (use your live domain or a Cloudflare Tunnel URL when pasting into Meta Developers).</span>
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Configure this in <strong>Meta for Developers &gt; WhatsApp &gt; Configuration &gt; Callback URL</strong>.
                 </p>
               </div>
@@ -1314,11 +1338,11 @@ export function LeadSetupView({
                       <input
                         type="text"
                         readOnly
-                        value="jnc_crm_whatsapp_verify_token_prod"
+                        value={webhookVerifyToken}
                         className="input text-xs font-mono bg-slate-50 dark:bg-[#181B26] flex-1"
                       />
                       <button
-                        onClick={() => handleCopy('jnc_crm_whatsapp_verify_token_prod', 'whatsapp-verify')}
+                        onClick={() => handleCopy(webhookVerifyToken, 'whatsapp-verify')}
                         className="btn btn-secondary text-xs shrink-0"
                       >
                         {copiedKey === 'whatsapp-verify' ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}

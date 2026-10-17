@@ -121,6 +121,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStoredRefreshToken(null, true);
       setPlatformUser(null);
       setShowInactivityModal(false);
+      try {
+        sessionStorage.removeItem('jnc_portal');
+      } catch {}
       if (window.location.pathname !== '/platform/login') {
         window.history.replaceState(null, '', '/platform/login');
         window.location.href = '/platform/login';
@@ -182,12 +185,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const savedPortal = typeof window !== 'undefined' ? sessionStorage.getItem('jnc_portal') : null;
     const isPlatformRoute = currentPath.startsWith('/platform');
 
     (async () => {
       try {
-        if (isPlatformRoute) {
-          // Restore primary platform session
+        if (savedPortal === 'platform') {
+          // Restore ONLY platform session
           try {
             const { data } = await platformAuthApi.refresh();
             if (isMounted && data) {
@@ -199,31 +203,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               if (data.user) {
                 setPlatformUser(data.user);
               }
+              if (!isPlatformRoute && typeof window !== 'undefined') {
+                window.location.replace('/platform/companies');
+                return;
+              }
             }
           } catch {
-            // If platform refresh fails, check if a staff user is logged in
-            // so PlatformOwnerGuard can display the "client-company portal" notice without redirect loop
-            try {
-              const { data: staffData } = await authApi.refresh();
-              if (isMounted && staffData) {
-                lastActivityRef.current = Date.now();
-                setStaffAccessToken(staffData.accessToken);
-                if (staffData.refreshToken) {
-                  setStoredRefreshToken(staffData.refreshToken, false);
-                }
-                if (staffData.user) {
-                  setStaffUser(staffData.user);
-                }
-              }
-            } catch {
-              if (isMounted) {
-                setPlatformAccessToken(null);
-                setPlatformUser(null);
-              }
+            if (isMounted) {
+              setPlatformAccessToken(null);
+              setPlatformUser(null);
             }
           }
-        } else {
-          // Restore primary staff session
+        } else if (savedPortal === 'staff') {
+          // Restore ONLY staff session
           const impToken =
             typeof window !== 'undefined'
               ? sessionStorage.getItem('jnc_impersonate_token')
@@ -261,24 +253,97 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             }
           } catch {
-            // If staff refresh fails, check if a platform admin is logged in
-            // so CrmRouteGuard can display the "Impersonation Required" notice
+            if (isMounted) {
+              setStaffAccessToken(null);
+              setStaffUser(null);
+            }
+          }
+        } else {
+          // savedPortal not recorded in sessionStorage
+          if (isPlatformRoute) {
             try {
-              const { data: platData } = await platformAuthApi.refresh();
-              if (isMounted && platData) {
+              const { data } = await platformAuthApi.refresh();
+              if (isMounted && data) {
+                try { sessionStorage.setItem('jnc_portal', 'platform'); } catch {}
                 lastActivityRef.current = Date.now();
-                setPlatformAccessToken(platData.accessToken);
-                if (platData.refreshToken) {
-                  setStoredRefreshToken(platData.refreshToken, true);
+                setPlatformAccessToken(data.accessToken);
+                if (data.refreshToken) {
+                  setStoredRefreshToken(data.refreshToken, true);
                 }
-                if (platData.user) {
-                  setPlatformUser(platData.user);
+                if (data.user) {
+                  setPlatformUser(data.user);
                 }
               }
             } catch {
               if (isMounted) {
-                setStaffAccessToken(null);
-                setStaffUser(null);
+                setPlatformAccessToken(null);
+                setPlatformUser(null);
+              }
+            }
+          } else {
+            const impToken =
+              typeof window !== 'undefined'
+                ? sessionStorage.getItem('jnc_impersonate_token')
+                : null;
+            if (impToken) {
+              setStaffAccessToken(impToken);
+              try {
+                const meRes = await authApi.me();
+                if (isMounted && meRes.data) {
+                  lastActivityRef.current = Date.now();
+                  setStaffUser(meRes.data);
+                  setIsLoading(false);
+                  return;
+                }
+              } catch {
+                sessionStorage.removeItem('jnc_impersonate_token');
+              }
+            }
+
+            try {
+              const { data } = await authApi.refresh();
+              if (isMounted && data) {
+                try { sessionStorage.setItem('jnc_portal', 'staff'); } catch {}
+                lastActivityRef.current = Date.now();
+                setStaffAccessToken(data.accessToken);
+                if (data.refreshToken) {
+                  setStoredRefreshToken(data.refreshToken, false);
+                }
+                if (data.user) {
+                  setStaffUser(data.user);
+                } else {
+                  const meRes = await authApi.me();
+                  if (isMounted && meRes.data) {
+                    setStaffUser(meRes.data);
+                  }
+                }
+              }
+            } catch {
+              // Staff refresh failed; if platform refresh works, do not render company CRM; redirect to /platform/companies
+              try {
+                const { data: platData } = await platformAuthApi.refresh();
+                if (isMounted && platData) {
+                  try { sessionStorage.setItem('jnc_portal', 'platform'); } catch {}
+                  lastActivityRef.current = Date.now();
+                  setPlatformAccessToken(platData.accessToken);
+                  if (platData.refreshToken) {
+                    setStoredRefreshToken(platData.refreshToken, true);
+                  }
+                  if (platData.user) {
+                    setPlatformUser(platData.user);
+                  }
+                  if (typeof window !== 'undefined') {
+                    window.location.replace('/platform/companies');
+                    return;
+                  }
+                }
+              } catch {
+                if (isMounted) {
+                  setStaffAccessToken(null);
+                  setStaffUser(null);
+                  setPlatformAccessToken(null);
+                  setPlatformUser(null);
+                }
               }
             }
           }
@@ -361,6 +426,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     lastActivityRef.current = Date.now();
+    try {
+      sessionStorage.setItem('jnc_portal', 'staff');
+    } catch {}
     setStaffAccessToken(data.accessToken);
     if (data.refreshToken) {
       setStoredRefreshToken(data.refreshToken, false);
@@ -378,6 +446,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const platformLogin = async (email: string, password: string) => {
     const { data } = await platformAuthApi.login(email, password);
     lastActivityRef.current = Date.now();
+    try {
+      sessionStorage.setItem('jnc_portal', 'platform');
+    } catch {}
     setPlatformAccessToken(data.accessToken);
     setStaffAccessToken(data.accessToken);
     if (data.refreshToken) {
@@ -396,6 +467,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const selectCompany = async (selectionToken: string, companyCode: string) => {
     const { data } = await authApi.selectCompany(selectionToken, companyCode);
     lastActivityRef.current = Date.now();
+    try {
+      sessionStorage.setItem('jnc_portal', 'staff');
+    } catch {}
     setStaffAccessToken(data.accessToken);
     if (data.refreshToken) {
       setStoredRefreshToken(data.refreshToken, false);

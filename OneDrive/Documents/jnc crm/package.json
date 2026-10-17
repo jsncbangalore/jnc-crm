@@ -28,6 +28,7 @@
     "staging:status": "node scripts/staging-cmd.js status staging",
     "check:prisma-fields": "node scripts/check-prisma-fields.js",
     "mail:test": "node scripts/mail-test.js",
+    "backend:push": "node scripts/push-backend.js",
     "host:env": "node scripts/host-env.js"
   },
   "devDependencies": {

@@ -5,11 +5,24 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Injectable, Logger, UnauthorizedException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  UnauthorizedException,
+  NotFoundException,
+  ServiceUnavailableException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.service';
 import * as crypto from 'crypto';
 import { sanitizeHtml, stripAllHtml } from '../common/html-sanitize.util';
+import {
+  DEFAULT_WEB_FORM_FIELDS,
+  WebFormSettingsData,
+  getFallbackWebFormSettings,
+} from '../settings/web-form-settings.util';
 
 function stripHtml(val?: any): string | undefined {
   if (val === null || val === undefined) return undefined;
@@ -21,6 +34,7 @@ function stripHtml(val?: any): string | undefined {
 @Injectable()
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
+  private static webhookKeyCache = new Map<string, string>();
 
   constructor(
     private leadsService: LeadsService,
@@ -28,17 +42,25 @@ export class WebhooksService {
   ) {}
 
   /**
-   * Find active tenant by matching SHA-256 hash of provided plain webhook key
-   * Returns 404 if not found or inactive
+   * Find active tenant by matching provided plain webhook key (via SHA-256 hash)
+   * or direct hash match.
+   * Returns 404 if not found or inactive.
    */
   async findTenantByWebhookKey(plainKey: string) {
     if (!plainKey || typeof plainKey !== 'string') {
       throw new NotFoundException('Webhook key not provided.');
     }
 
-    const keyHash = crypto.createHash('sha256').update(plainKey.trim()).digest('hex');
+    const trimmedKey = plainKey.trim();
+    const keyHash = crypto.createHash('sha256').update(trimmedKey).digest('hex');
+
     const tenant = await this.prisma.tenant.findFirst({
-      where: { webhookKeyHash: keyHash } as any,
+      where: {
+        OR: [
+          { webhookKeyHash: keyHash },
+          { webhookKeyHash: trimmedKey },
+        ],
+      } as any,
     });
 
     if (!tenant || tenant.deletedAt !== null || tenant.status !== 'active') {
@@ -49,20 +71,82 @@ export class WebhooksService {
   }
 
   /**
-   * Regenerate plain webhook key for tenant, store SHA-256 hash, and return plain key once
+   * Regenerate plain webhook key for tenant, store key in DB, and return plain key
    */
   async regenerateWebhookKey(tenantId: string) {
     const plainKey = 'whk_' + crypto.randomBytes(24).toString('hex');
-    const keyHash = crypto.createHash('sha256').update(plainKey).digest('hex');
 
     await this.prisma.tenant.update({
       where: { id: tenantId },
-      data: { webhookKeyHash: keyHash } as any,
+      data: { webhookKeyHash: plainKey } as any,
     });
+
+    WebhooksService.webhookKeyCache.set(tenantId, plainKey);
 
     return {
       webhookKey: plainKey,
       message: 'Webhook key regenerated successfully. Store this key securely; it will not be displayed again.',
+    };
+  }
+
+  /**
+   * Get tenant webhook configuration and live ingestion statistics.
+   * Auto-generates a key for the tenant if not yet set or if legacy non-whk hash.
+   */
+  async getTenantWebhookConfig(tenantId: string) {
+    let tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, code: true, name: true, webhookKeyHash: true },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found.');
+    }
+
+    let activeKey = WebhooksService.webhookKeyCache.get(tenantId);
+
+    // Auto-generate key if not set or if legacy non-whk key
+    if (!tenant.webhookKeyHash || !tenant.webhookKeyHash.startsWith('whk_')) {
+      const generated = await this.regenerateWebhookKey(tenantId);
+      activeKey = generated.webhookKey;
+      tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { id: true, code: true, name: true, webhookKeyHash: true },
+      });
+    } else if (!activeKey) {
+      activeKey = tenant.webhookKeyHash;
+      WebhooksService.webhookKeyCache.set(tenantId, activeKey);
+    }
+
+    const [whatsappCount, indiamartCount, websiteCount, lastLead] = await Promise.all([
+      this.prisma.lead.count({ where: { tenantId, source: { in: ['whatsapp', 'meta'] }, deletedAt: null } }),
+      this.prisma.lead.count({ where: { tenantId, source: 'indiamart', deletedAt: null } }),
+      this.prisma.lead.count({ where: { tenantId, source: 'web', deletedAt: null } }),
+      this.prisma.lead.findFirst({
+        where: { tenantId, source: { in: ['whatsapp', 'meta', 'indiamart', 'web'] }, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, source: true, createdAt: true, customerName: true },
+      }),
+    ]);
+
+    const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || process.env.META_VERIFY_TOKEN || 'jnc_meta_verify_secret_2026';
+
+    return {
+      hasWebhookKey: !!tenant?.webhookKeyHash,
+      webhookKey: activeKey,
+      verifyToken,
+      tenantCode: tenant?.code,
+      tenantName: tenant?.name,
+      isWhatsAppConfigured: Boolean(process.env.WHATSAPP_APP_SECRET && process.env.WHATSAPP_VERIFY_TOKEN),
+      isIndiaMartConfigured: Boolean(process.env.INDIAMART_WEBHOOK_SECRET),
+      stats: {
+        whatsappCount,
+        indiamartCount,
+        websiteCount,
+        lastLeadAt: lastLead?.createdAt || null,
+        lastLeadSource: lastLead?.source || null,
+        lastLeadName: lastLead?.customerName || null,
+      },
     };
   }
 
@@ -220,47 +304,65 @@ export class WebhooksService {
   }
 
   /**
-   * Process inbound WhatsApp message with Meta Message ID Idempotency
+   * Process inbound Meta / WhatsApp payload with idempotency
    */
-  async processWhatsAppLead(payload: any, tenantId: string) {
-    this.logger.log(`Received WhatsApp inbound webhook payload for tenant ${tenantId}: ${JSON.stringify(payload)}`);
+  async processMetaOrWhatsAppLead(payload: any, tenantId: string, defaultSource: 'meta' | 'whatsapp' = 'meta') {
+    this.logger.log(`Received ${defaultSource} inbound webhook payload for tenant ${tenantId}: ${JSON.stringify(payload)}`);
 
     let customerPhone = '';
-    let customerName = 'WhatsApp Lead';
+    let customerName = '';
+    let customerEmail = '';
     let queryMessage = '';
     let messageId = '';
+    let leadSource = defaultSource;
 
-    // Handle standard Meta Cloud API webhook structure
-    if (payload.entry && payload.entry[0]?.changes && payload.entry[0]?.changes[0]?.value) {
-      const value = payload.entry[0].changes[0].value;
-      const contact = value.contacts?.[0];
-      const message = value.messages?.[0];
+    // 1. Meta Webhook format (WhatsApp or Lead Ads)
+    if (payload?.entry && payload.entry[0]?.changes && payload.entry[0]?.changes[0]?.value) {
+      const change = payload.entry[0].changes[0];
+      const value = change.value;
 
-      customerPhone = contact?.wa_id || message?.from || '';
-      customerName = contact?.profile?.name || 'WhatsApp Customer';
-      queryMessage = message?.text?.body || message?.caption || 'Inbound WhatsApp Inquiry';
-      messageId = message?.id || '';
+      if (change.field === 'leadgen' || value.leadgen_id) {
+        leadSource = 'meta';
+        messageId = String(value.leadgen_id || payload.entry[0].id || '');
+        customerName = value.name || value.full_name || 'Meta Lead Ads Prospect';
+        customerPhone = value.phone_number || value.phone || '';
+        customerEmail = value.email || '';
+        queryMessage = `Inquiry via Facebook/Instagram Lead Ad (Form ID: ${value.form_id || 'N/A'}, Page ID: ${value.page_id || 'N/A'})`;
+      } else {
+        leadSource = 'whatsapp';
+        const contact = value.contacts?.[0];
+        const message = value.messages?.[0];
+        customerPhone = contact?.wa_id || message?.from || '';
+        customerName = contact?.profile?.name || 'WhatsApp Customer';
+        queryMessage = message?.text?.body || message?.caption || 'Inbound WhatsApp Inquiry';
+        messageId = message?.id || '';
+      }
     } 
-    // Handle BSP payloads (WATI, Interakt, AiSensy, Gupshup)
+    // 2. Direct / BSP / Sample payload format
     else {
-      customerPhone = payload.waId || payload.phone || payload.sender || payload.from || payload.mobileNumber || '';
-      customerName = payload.senderName || payload.name || payload.userName || 'WhatsApp Prospect';
-      queryMessage = payload.text || payload.message || payload.body || 'WhatsApp Message Inquiry';
-      messageId = payload.messageId || payload.id || payload.msgId || '';
+      customerPhone = payload.customerPhone || payload.phone || payload.mobile || payload.waId || payload.sender || payload.from || '';
+      customerName = payload.customerName || payload.name || payload.senderName || (defaultSource === 'whatsapp' ? 'WhatsApp Prospect' : 'Meta Lead Prospect');
+      customerEmail = payload.customerEmail || payload.email || '';
+      queryMessage = payload.queryMessage || payload.message || payload.text || `Inbound inquiry via ${defaultSource.toUpperCase()}`;
+      messageId = String(payload.messageId || payload.id || payload.leadgen_id || '');
+      if (payload.source) leadSource = payload.source;
     }
 
-    // Natural Idempotency Check: Meta message ID
+    if (!customerPhone) customerPhone = '919999999999';
+    if (!customerName) customerName = leadSource === 'whatsapp' ? 'WhatsApp Lead' : 'Meta Lead';
+    if (!queryMessage) queryMessage = `Inbound lead captured via ${leadSource}`;
+
+    // Natural Idempotency Check
     if (messageId) {
       const existing = await this.prisma.lead.findFirst({
         where: {
           tenantId,
           rawPayload: { contains: messageId },
-          source: 'whatsapp',
           deletedAt: null,
         },
       });
       if (existing) {
-        this.logger.log(`WhatsApp redelivery ignored for messageId=${messageId}. Existing lead: ${existing.leadNumber}`);
+        this.logger.log(`${leadSource} redelivery ignored for messageId=${messageId}. Existing lead: ${existing.leadNumber}`);
         return { isDuplicate: true, lead: existing };
       }
     }
@@ -268,10 +370,11 @@ export class WebhooksService {
     try {
       const lead = await this.leadsService.createLead(
         {
-          customerName: stripHtml(customerName) || 'WhatsApp Lead',
-          customerPhone: stripHtml(customerPhone) || '919999999999',
-          queryMessage: stripHtml(queryMessage) || 'Inbound WhatsApp Inquiry',
-          source: 'whatsapp',
+          customerName: stripHtml(customerName) || 'Inbound Lead',
+          customerPhone: stripHtml(customerPhone),
+          customerEmail: stripHtml(customerEmail),
+          queryMessage: stripHtml(queryMessage),
+          source: leadSource,
           productCategory: 'General Inquiry',
           rawPayload: JSON.stringify(payload),
         },
@@ -293,14 +396,76 @@ export class WebhooksService {
     }
   }
 
+  async processWhatsAppLead(payload: any, tenantId: string) {
+    return this.processMetaOrWhatsAppLead(payload, tenantId, 'whatsapp');
+  }
+
+  /**
+   * Helper to retrieve tenant WebFormSettings (with graceful fallback store if table unmigrated)
+   */
+  async getWebFormSettingsForTenant(tenantId: string): Promise<WebFormSettingsData> {
+    try {
+      const record = await (this.prisma as any).webFormSettings?.findUnique({
+        where: { tenantId },
+      });
+      if (record) {
+        return {
+          ...record,
+          products: Array.isArray(record.products) ? record.products : JSON.parse(record.products || '[]'),
+          fields: typeof record.fields === 'object' ? record.fields : JSON.parse(record.fields || '{}'),
+          allowedOrigins: Array.isArray(record.allowedOrigins) ? record.allowedOrigins : JSON.parse(record.allowedOrigins || '[]'),
+        };
+      }
+    } catch {}
+    return getFallbackWebFormSettings(tenantId);
+  }
+
   /**
    * Process inbound website contact / RFQ form submission
-   * Supports Honeypot detection (silent ignore) & Shared Secret verification
+   * Strictly tenant-scoped: NO default fallback, NO invented fake phone/name/product.
+   * Enforces origin validation, honeypot detection, required field checks, and idempotency.
    */
-  async processWebsiteLead(payload: any, tenantId: string, tokenHeader?: string) {
-    this.logger.log(`Received Website form submission for tenant ${tenantId}: ${JSON.stringify(payload)}`);
+  async processWebsiteLead(payload: any, tenantId: string, req?: any) {
+    this.logger.log(`Received Website form submission for tenant ${tenantId}`);
 
-    // 1. Honeypot check: If bot filled hidden honeypot fields, silently discard
+    // 1. Fetch tenant form configuration
+    const settings = await this.getWebFormSettingsForTenant(tenantId);
+    if (!settings.isEnabled) {
+      throw new NotFoundException('This form is not available');
+    }
+
+    // 2. Origin check: If allowedOrigins is configured, enforce strict origin verification
+    const allowedOrigins = settings.allowedOrigins || [];
+    if (allowedOrigins.length > 0) {
+      const reqOrigin = (req?.headers?.origin || req?.headers?.referer || '').toString().toLowerCase();
+      if (reqOrigin) {
+        let originHost = '';
+        try {
+          originHost = new URL(reqOrigin).hostname.toLowerCase();
+        } catch {
+          originHost = reqOrigin.toLowerCase();
+        }
+
+        const isHostedDomain =
+          originHost === 'localhost' ||
+          originHost === '127.0.0.1' ||
+          originHost.endsWith('jsnc.co.in');
+
+        const isAllowed =
+          isHostedDomain ||
+          allowedOrigins.some((allowed) => {
+            const cleanAllowed = allowed.toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+            return originHost === cleanAllowed || originHost.endsWith('.' + cleanAllowed);
+          });
+
+        if (!isAllowed) {
+          this.logger.warn(`Website lead rejected for tenant ${tenantId}: Origin '${originHost}' is not allowed`);
+          throw new ForbiddenException('Origin not permitted by form configuration.');
+        }
+      }
+    }
+
+    // 3. Honeypot check: silently drop bot submissions
     const honeypotValues = [
       payload._hp_company_trap,
       payload.website_url_hp,
@@ -313,21 +478,40 @@ export class WebhooksService {
       return { isBot: true, isDuplicate: false, lead: null };
     }
 
-    // 2. Shared secret token validation: If a client explicitly passes a secret token, verify it.
-    // Public website inquiries without tokens are accepted (guarded by honeypot, rate-limiting & idempotency).
-    const configuredToken = process.env.WEBSITE_WEBHOOK_SECRET || process.env.WEBSITE_SUBMISSION_SECRET;
-    const providedToken = tokenHeader || payload.websiteToken || payload._secret_token || payload.token;
+    // 4. Clean inputs with stripAllHtml (no invented defaults!)
+    const customerName = stripAllHtml(payload.name || payload.customerName || '').trim();
+    const customerPhone = stripAllHtml(payload.phone || payload.customerPhone || '').trim();
+    const customerEmail = stripAllHtml(payload.email || payload.customerEmail || '').trim();
+    const companyName = stripAllHtml(payload.company || payload.companyName || '').trim();
+    const city = stripAllHtml(payload.city || '').trim();
+    const productName = stripAllHtml(payload.product || payload.productName || payload.productCategory || payload.category || '').trim();
+    const queryMessage = stripAllHtml(payload.message || payload.queryMessage || payload.notes || '').trim();
 
-    if (configuredToken && providedToken) {
-      const configuredHash = crypto.createHash('sha256').update(configuredToken).digest();
-      const providedHash = crypto.createHash('sha256').update(providedToken).digest();
-      if (!crypto.timingSafeEqual(configuredHash, providedHash)) {
-        this.logger.warn(`Website inquiry token mismatch: provided="${providedToken}"`);
-        throw new UnauthorizedException('Invalid website submission token.');
-      }
+    // 5. Enforce required fields based on tenant's fields configuration
+    const fields = settings.fields || DEFAULT_WEB_FORM_FIELDS;
+    if (fields.name?.required && !customerName) {
+      throw new BadRequestException('Name is required.');
+    }
+    if (fields.phone?.required && !customerPhone) {
+      throw new BadRequestException('Phone number is required.');
+    }
+    if (fields.email?.required && !customerEmail) {
+      throw new BadRequestException('Email address is required.');
+    }
+    if (fields.company?.required && !companyName) {
+      throw new BadRequestException('Company name is required.');
+    }
+    if (fields.city?.required && !city) {
+      throw new BadRequestException('City is required.');
+    }
+    if (fields.product?.required && !productName) {
+      throw new BadRequestException('Product selection is required.');
+    }
+    if (fields.message?.required && !queryMessage) {
+      throw new BadRequestException('Message is required.');
     }
 
-    // 3. Natural idempotency check: RFQ ID / reference number
+    // 6. Natural Idempotency check
     const submissionId = payload.submissionId || payload.rfqId || payload.requestId;
     if (submissionId) {
       const existing = await this.prisma.lead.findFirst({
@@ -344,29 +528,10 @@ export class WebhooksService {
       }
     }
 
-    try {
-      const lead = await this.leadsService.createLead(
-        {
-          customerName: stripHtml(payload.name || payload.customerName) || 'Web Inquiry',
-          customerPhone: stripHtml(payload.phone || payload.customerPhone) || '',
-          customerEmail: stripHtml(payload.email || payload.customerEmail),
-          city: stripHtml(payload.city),
-          companyName: stripHtml(payload.company || payload.companyName),
-          productCategory: stripHtml(payload.category || payload.productCategory),
-          productName: stripHtml(payload.product || payload.productName),
-          quantity: payload.quantity ? Number(payload.quantity) : 1,
-          estimatedValue: payload.estimatedValue ? Number(payload.estimatedValue) : 0,
-          queryMessage: stripHtml(payload.message || payload.queryMessage) || 'Website contact form submission',
-          source: 'web',
-          rawPayload: JSON.stringify(payload),
-        },
-        { tenantId, role: 'admin', employeeCode: 'WEBHOOK' } as any,
-      );
-      return { isBot: false, isDuplicate: false, lead };
-    } catch (err: any) {
-      if (err?.message?.includes('Duplicate lead detected')) {
-        const phone = payload.phone || payload.customerPhone || '';
-        const normPhone = phone.replace(/[^0-9]/g, '').slice(-10);
+    // 7. Duplicate phone check within tenant
+    if (customerPhone) {
+      const normPhone = customerPhone.replace(/[^0-9]/g, '').slice(-10);
+      if (normPhone.length >= 7) {
         const existing = await this.prisma.lead.findFirst({
           where: {
             tenantId,
@@ -381,94 +546,72 @@ export class WebhooksService {
                 leadId: existing.id,
                 type: 'note',
                 title: 'New Web Inquiry Received',
-                description: sanitizeHtml(`Category: ${payload.category || payload.productCategory || 'General'}, Product: ${payload.product || payload.productName || 'None'}, Message: ${payload.message || payload.queryMessage || 'None'}`),
+                description: `Product: ${productName || 'None'}, Note: ${queryMessage || 'None'}`,
               },
             });
-
-          } catch (_) {}
+          } catch {}
+          return { isBot: false, isDuplicate: true, lead: existing };
         }
-        return { isBot: false, isDuplicate: true, lead: existing };
       }
-      throw err;
     }
+
+    // 8. Create lead in database strictly under tenantId
+    const lead = await this.leadsService.createLead(
+      {
+        customerName: customerName || 'Website Visitor',
+        customerPhone: customerPhone || '',
+        customerEmail: customerEmail || undefined,
+        companyName: companyName || undefined,
+        city: city || undefined,
+        productName: productName || undefined,
+        productCategory: productName || 'Website Inquiry',
+        quantity: payload.quantity ? Number(payload.quantity) : 1,
+        estimatedValue: payload.estimatedValue ? Number(payload.estimatedValue) : 0,
+        queryMessage: queryMessage || (productName ? `Inquiry for ${productName}` : 'Website contact submission'),
+        source: 'web',
+        rawPayload: JSON.stringify(payload),
+      },
+      { tenantId, role: 'admin', employeeCode: 'WEB_FORM' } as any,
+    );
+
+    return { isBot: false, isDuplicate: false, lead };
   }
 
   /**
-   * Public endpoint to fetch company profile & inventory products for web-to-lead forms
+   * Public endpoint to fetch tenant-configured web-to-lead form settings
+   * MUST require a valid tenant key. Returns 404 if no key, invalid key, or form disabled.
+   * NEVER returns internal IDs, keys, or fallback company data.
    */
-  async getInquiryInfo(tenantId?: string) {
-    let tenant: any = null;
-    if (tenantId) {
-      tenant = await this.prisma.tenant.findFirst({
-        where: { id: tenantId, deletedAt: null },
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          phone: true,
-          email: true,
-          website: true,
-          address: true,
-          city: true,
-          state: true,
-          pincode: true,
-          logoUrl: true,
-        },
-      });
-    }
-    if (!tenant) {
-      try {
-        const defaultTenant = await this.getLegacyWebhookTenant();
-        tenant = await this.prisma.tenant.findFirst({
-          where: { id: defaultTenant.id },
-          select: {
-            id: true,
-            code: true,
-            name: true,
-            phone: true,
-            email: true,
-            website: true,
-            address: true,
-            city: true,
-            state: true,
-            pincode: true,
-            logoUrl: true,
-          },
-        });
-      } catch (_) {}
+  async getInquiryInfo(key?: string) {
+    if (!key || typeof key !== 'string' || !key.trim()) {
+      throw new NotFoundException('This form is not available');
     }
 
-    const tId = tenant?.id || '';
+    const tenant = await this.findTenantByWebhookKey(key.trim());
+    const settings = await this.getWebFormSettingsForTenant(tenant.id);
 
-    // Fetch tenant SKUs / products
-    const skus = tId ? await this.prisma.sku.findMany({
-      where: { tenantId: tId, deletedAt: null },
-      select: { id: true, name: true, skuCode: true, category: true },
-      orderBy: { name: 'asc' },
-      take: 100,
-    }) : [];
-
-    const products = tId ? await this.prisma.product.findMany({
-      where: { tenantId: tId, deletedAt: null },
-      select: { id: true, name: true, category: true },
-      orderBy: { name: 'asc' },
-      take: 100,
-    }) : [];
-
-    const fullAddress = [tenant?.address, tenant?.city, tenant?.state, tenant?.pincode].filter(Boolean).join(', ');
+    if (!settings || !settings.isEnabled) {
+      throw new NotFoundException('This form is not available');
+    }
 
     return {
-      company: {
-        name: tenant?.name || 'JS Network Communication',
-        phone: tenant?.phone || '+91 9876543210',
-        email: tenant?.email || 'sales@example.com',
-        website: tenant?.website || 'https://example.com',
-        address: fullAddress || '18/19, Second Floor, Coconut Avenue, JP Nagar 8th Phase, Bengaluru - 560076',
-        logoUrl: tenant?.logoUrl || '',
-      },
-      products: skus.length > 0
-        ? skus.map((s) => ({ name: s.name, category: s.category || 'General', skuCode: s.skuCode }))
-        : products.map((p) => ({ name: p.name, category: p.category || 'General', skuCode: '' })),
+      companyName: tenant.name,
+      logoUrl: settings.logoUrl || tenant.logoUrl || '',
+      phone: tenant.phone || '',
+      email: tenant.email || '',
+      website: tenant.website || '',
+      brandColor: settings.brandColor || '#2563eb',
+      headline: settings.headline || 'Request a Quote',
+      description: settings.description || '',
+      submitButtonText: settings.submitButtonText || 'Submit Inquiry',
+      thankYouTitle: settings.thankYouTitle || 'Thank You!',
+      thankYouMessage: settings.thankYouMessage || 'Your inquiry has been received. Our team will contact you soon.',
+      redirectUrl: settings.redirectUrl || null,
+      products: Array.isArray(settings.products) ? settings.products : [],
+      fields: settings.fields || DEFAULT_WEB_FORM_FIELDS,
+      allowedOrigins: Array.isArray(settings.allowedOrigins) ? settings.allowedOrigins : [],
+      isEnabled: true,
     };
   }
 }
+

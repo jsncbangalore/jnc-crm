@@ -13,6 +13,14 @@ import { encryptAtRest } from '../common/encryption.util';
 import { BRAND_CONFIG } from '../common/brand';
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  WebFormSettingsData,
+  validateAndSanitizeWebFormInput,
+  getFallbackWebFormSettings,
+  saveFallbackWebFormSettings,
+  createDefaultWebFormSettings,
+} from './web-form-settings.util';
+import { UpdateWebFormSettingsDto } from './dto/settings.dto';
 
 export interface CompanyBrandingConfig {
   companyDisplayName: string;
@@ -511,4 +519,69 @@ export class SettingsService {
 
     return res.status(404).send('Branding image not found');
   }
+
+  /**
+   * GET /settings/web-form
+   * Retrieve tenant-specific web form settings
+   */
+  async getWebFormSettings(tenantId: string): Promise<WebFormSettingsData> {
+    try {
+      const record = await (this.prisma as any).webFormSettings?.findUnique({
+        where: { tenantId },
+      });
+      if (record) {
+        return {
+          ...record,
+          products: Array.isArray(record.products) ? record.products : JSON.parse(record.products || '[]'),
+          fields: typeof record.fields === 'object' ? record.fields : JSON.parse(record.fields || '{}'),
+          allowedOrigins: Array.isArray(record.allowedOrigins) ? record.allowedOrigins : JSON.parse(record.allowedOrigins || '[]'),
+        };
+      }
+    } catch (err: any) {
+      // If table doesn't exist yet, seamlessly use persistent fallback store
+    }
+    return getFallbackWebFormSettings(tenantId);
+  }
+
+  /**
+   * PUT /settings/web-form
+   * Update tenant-specific web form settings (tenant_admin or admin only)
+   */
+  async updateWebFormSettings(
+    user: ScopedUser,
+    dto: UpdateWebFormSettingsDto,
+  ): Promise<WebFormSettingsData> {
+    const tenantId = requireTenantId(user);
+    if (user.role !== 'tenant_admin' && user.role !== 'admin') {
+      throw new ForbiddenException('Only Administrators are authorized to modify Web Form settings.');
+    }
+
+    const validated = validateAndSanitizeWebFormInput(dto);
+
+    try {
+      if ((this.prisma as any).webFormSettings) {
+        const record = await (this.prisma as any).webFormSettings.upsert({
+          where: { tenantId },
+          create: {
+            tenantId,
+            ...createDefaultWebFormSettings(tenantId),
+            ...validated,
+          },
+          update: validated,
+        });
+        saveFallbackWebFormSettings(tenantId, validated);
+        return {
+          ...record,
+          products: Array.isArray(record.products) ? record.products : JSON.parse(record.products || '[]'),
+          fields: typeof record.fields === 'object' ? record.fields : JSON.parse(record.fields || '{}'),
+          allowedOrigins: Array.isArray(record.allowedOrigins) ? record.allowedOrigins : JSON.parse(record.allowedOrigins || '[]'),
+        };
+      }
+    } catch (err: any) {
+      this.logger.warn(`Prisma WebFormSettings unavailable, updating fallback store: ${err.message}`);
+    }
+
+    return saveFallbackWebFormSettings(tenantId, validated);
+  }
 }
+

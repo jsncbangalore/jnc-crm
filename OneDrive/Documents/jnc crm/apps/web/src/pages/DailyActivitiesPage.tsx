@@ -10,6 +10,7 @@ import { usePopup } from '../contexts/PopupContext';
 import { activitiesApi } from '../services/api';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
+import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 
 type ProjectAssignment = {
   id: string;
@@ -71,6 +72,7 @@ export default function DailyActivitiesPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
   const [logsLoading, setLogsLoading] = useState(false);
 
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -122,7 +124,10 @@ export default function DailyActivitiesPage() {
     try {
       const res = await activitiesApi.listProjects();
       setProjects(res.data || []);
-    } catch {
+      setError(null);
+    } catch (err: any) {
+      console.error('Failed to load projects', err);
+      setError(parseApiError(err));
       setProjects([]);
     } finally {
       setLoading(false);
@@ -415,9 +420,18 @@ export default function DailyActivitiesPage() {
       {/* ─── Projects Grid ──────────────────────────────────────────────────────── */}
       {view === 'projects' && (
         <>
-          {loading ? (
+          {loading && !error ? (
             <div className="flex justify-center py-20">
               <div className="flex gap-1">{[0,1,2].map(i => <div key={i} className="w-2 h-2 rounded-full bg-crm-blue animate-bounce" style={{ animationDelay: `${i*0.15}s` }} />)}</div>
+            </div>
+          ) : error && projects.length === 0 ? (
+            <div className="py-8">
+              <ErrorStateCard
+                message={error.message}
+                status={error.status}
+                isNetworkError={error.isNetworkError}
+                onRetry={fetchProjects}
+              />
             </div>
           ) : projects.length === 0 ? (
             <div className="text-center py-20 text-slate-400">

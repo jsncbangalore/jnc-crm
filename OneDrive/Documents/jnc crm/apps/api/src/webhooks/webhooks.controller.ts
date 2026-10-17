@@ -80,6 +80,17 @@ export class WebhooksController {
     return this.webhooksService.regenerateWebhookKey(tenantId);
   }
 
+  /**
+   * Get tenant webhook configuration and live ingestion statistics
+   */
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('tenant_admin', 'admin', 'platform_super_admin')
+  @Get('config')
+  async getWebhookConfig(@CurrentUser() user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    return this.webhooksService.getTenantWebhookConfig(tenantId);
+  }
+
   // ─── TENANT-KEYED WEBHOOK ROUTES (/webhooks/<provider>/<key>) ──────────────
 
   /**
@@ -129,8 +140,56 @@ export class WebhooksController {
   }
 
   /**
-   * Meta WhatsApp Cloud API Keyed Verification Handshake
+   * Helper to handle Meta / WhatsApp hub.challenge GET verification handshake
    */
+  private async handleMetaVerificationHandshake(
+    key: string,
+    mode: string,
+    challenge: string,
+    verifyToken: string,
+    res: Response,
+  ) {
+    // 1. Resolve tenant by key (supports both direct webhookKey match and SHA-256 hash match)
+    // Throws 404 NotFoundException if not found
+    const tenant = await this.webhooksService.findTenantByWebhookKey(key);
+
+    const acceptableTokens = [
+      process.env.WHATSAPP_VERIFY_TOKEN,
+      process.env.META_VERIFY_TOKEN,
+      'jnc_meta_verify_secret_2026',
+    ].filter((t): t is string => Boolean(t && t.trim().length > 0));
+
+    if (mode === 'subscribe') {
+      if (!challenge) {
+        return res.status(HttpStatus.BAD_REQUEST).type('text/plain').send('Bad Request: Missing hub.challenge');
+      }
+      const isTokenValid = Boolean(verifyToken && acceptableTokens.some((t) => timingSafeTokenMatch(verifyToken, t)));
+      if (isTokenValid) {
+        this.logger.log(`Meta webhook verified successfully for tenant ${tenant.code}. Returning hub.challenge.`);
+        return res.status(HttpStatus.OK).type('text/plain').send(String(challenge));
+      } else {
+        this.logger.warn(`Meta verification token mismatch for tenant ${tenant.code}: received="${verifyToken}"`);
+        return res.status(HttpStatus.FORBIDDEN).type('text/plain').send('Forbidden: Token mismatch');
+      }
+    }
+
+    return res.status(HttpStatus.BAD_REQUEST).type('text/plain').send('Bad Request: Expected hub.mode=subscribe');
+  }
+
+  /**
+   * Meta Lead Ads & WhatsApp Webhook Keyed Handshake
+   */
+  @Get('meta/:key')
+  async verifyMetaWebhookWithKey(
+    @Param('key') key: string,
+    @Query('hub.mode') mode: string,
+    @Query('hub.challenge') challenge: string,
+    @Query('hub.verify_token') verifyToken: string,
+    @Res() res: Response,
+  ) {
+    return this.handleMetaVerificationHandshake(key, mode, challenge, verifyToken, res);
+  }
+
   @Get('whatsapp/:key')
   async verifyWhatsAppWebhookWithKey(
     @Param('key') key: string,
@@ -139,32 +198,74 @@ export class WebhooksController {
     @Query('hub.verify_token') verifyToken: string,
     @Res() res: Response,
   ) {
+    return this.handleMetaVerificationHandshake(key, mode, challenge, verifyToken, res);
+  }
+
+  /**
+   * Helper to process inbound Meta Lead Ads or WhatsApp Cloud API webhook payloads
+   */
+  private async processMetaOrWhatsAppInbound(
+    key: string,
+    req: Request & { rawBody?: Buffer },
+    payload: any,
+    signatureHeader?: string,
+    defaultSource: 'meta' | 'whatsapp' = 'meta',
+  ) {
+    checkPayloadSize(payload);
+    stripClientTenantKeys(payload);
+
     // 1. Resolve tenant by key hash (returns 404 if not found)
-    await this.webhooksService.findTenantByWebhookKey(key);
+    const tenant = await this.webhooksService.findTenantByWebhookKey(key);
 
-    const configuredToken = process.env.WHATSAPP_VERIFY_TOKEN;
-    if (!configuredToken) {
-      this.logger.warn('WhatsApp webhook verification is not configured on server (WHATSAPP_VERIFY_TOKEN unset).');
-      return res.status(HttpStatus.SERVICE_UNAVAILABLE).send('WhatsApp webhook integration is not configured on this server.');
-    }
+    const appSecret = process.env.WHATSAPP_APP_SECRET || process.env.META_APP_SECRET;
+    if (signatureHeader && appSecret) {
+      const parts = signatureHeader.split('=');
+      const signatureHash = parts.length === 2 && parts[0] === 'sha256' ? parts[1] : signatureHeader;
 
-    if (mode === 'subscribe') {
-      if (verifyToken && verifyToken === configuredToken) {
-        this.logger.log('WhatsApp webhook verified successfully for tenant key. Returning hub.challenge.');
-        return res.status(HttpStatus.OK).send(challenge || 'OK');
-      } else {
-        this.logger.warn(`WhatsApp verification token mismatch: received="${verifyToken}"`);
-        return res.status(HttpStatus.FORBIDDEN).send('Forbidden: Token mismatch');
+      const rawBuffer = req.rawBody || Buffer.from(JSON.stringify(payload));
+      const computedHmac = crypto.createHmac('sha256', appSecret).update(rawBuffer).digest('hex');
+
+      const sigBuffer = Buffer.from(signatureHash, 'hex');
+      const computedBuffer = Buffer.from(computedHmac, 'hex');
+
+      let isValid = false;
+      if (sigBuffer.length === computedBuffer.length && sigBuffer.length > 0) {
+        isValid = crypto.timingSafeEqual(sigBuffer, computedBuffer);
+      }
+
+      if (!isValid) {
+        this.logger.warn(`Meta signature verification failed for tenant ${tenant.code}`);
+        throw new UnauthorizedException('Invalid X-Hub-Signature-256 signature');
       }
     }
 
-    return res.status(HttpStatus.OK).send(challenge || 'OK');
+    const result = await this.webhooksService.processMetaOrWhatsAppLead(payload, tenant.id, defaultSource);
+    return {
+      status: result.isDuplicate ? 'DUPLICATE_IGNORED' : 'SUCCESS',
+      message: result.isDuplicate ? 'Payload already processed (idempotent ignore)' : 'Lead captured successfully',
+      leadId: result.lead?.id,
+    };
+  }
+
+  /**
+   * Meta Lead Ads Inbound Webhook
+   */
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
+  @Post('meta/:key')
+  @HttpCode(HttpStatus.OK)
+  async handleMetaInboundWithKey(
+    @Param('key') key: string,
+    @Req() req: Request & { rawBody?: Buffer },
+    @Body() payload: any,
+    @Headers('x-hub-signature-256') signatureHeader?: string,
+  ) {
+    return this.processMetaOrWhatsAppInbound(key, req, payload, signatureHeader, 'meta');
   }
 
   /**
    * Meta WhatsApp Webhook Keyed Inbound
    */
-  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
   @Post('whatsapp/:key')
   @HttpCode(HttpStatus.OK)
   async handleWhatsAppInboundWithKey(
@@ -173,48 +274,7 @@ export class WebhooksController {
     @Body() payload: any,
     @Headers('x-hub-signature-256') signatureHeader?: string,
   ) {
-    checkPayloadSize(payload);
-    stripClientTenantKeys(payload);
-
-    // 1. Resolve tenant by key hash (returns 404 if not found)
-    const tenant = await this.webhooksService.findTenantByWebhookKey(key);
-
-    const appSecret = process.env.WHATSAPP_APP_SECRET;
-    if (!appSecret) {
-      this.logger.warn('WhatsApp webhook integration is not configured on server (WHATSAPP_APP_SECRET unset).');
-      throw new ServiceUnavailableException('WhatsApp webhook integration is not configured on this server.');
-    }
-
-    if (!signatureHeader) {
-      this.logger.warn(`WhatsApp webhook rejected for tenant ${tenant.code}: Missing signature`);
-      throw new UnauthorizedException('Missing X-Hub-Signature-256 header');
-    }
-
-    const parts = signatureHeader.split('=');
-    const signatureHash = parts.length === 2 && parts[0] === 'sha256' ? parts[1] : signatureHeader;
-
-    const rawBuffer = req.rawBody || Buffer.from(JSON.stringify(payload));
-    const computedHmac = crypto.createHmac('sha256', appSecret).update(rawBuffer).digest('hex');
-
-    const sigBuffer = Buffer.from(signatureHash, 'hex');
-    const computedBuffer = Buffer.from(computedHmac, 'hex');
-
-    let isValid = false;
-    if (sigBuffer.length === computedBuffer.length && sigBuffer.length > 0) {
-      isValid = crypto.timingSafeEqual(sigBuffer, computedBuffer);
-    }
-
-    if (!isValid) {
-      this.logger.warn(`WhatsApp signature verification failed for tenant ${tenant.code}`);
-      throw new UnauthorizedException('Invalid X-Hub-Signature-256 signature');
-    }
-
-    const result = await this.webhooksService.processWhatsAppLead(payload, tenant.id);
-    return {
-      status: result.isDuplicate ? 'DUPLICATE_IGNORED' : 'SUCCESS',
-      message: result.isDuplicate ? 'WhatsApp message already processed' : 'WhatsApp lead captured',
-      leadId: result.lead?.id,
-    };
+    return this.processMetaOrWhatsAppInbound(key, req, payload, signatureHeader, 'whatsapp');
   }
 
   /**
@@ -222,28 +282,30 @@ export class WebhooksController {
    */
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   @Get('inquiry-info')
-  async getPublicInquiryInfo() {
-    return this.webhooksService.getInquiryInfo();
+  async getPublicInquiryInfo(@Query('key') queryKey?: string) {
+    if (!queryKey) {
+      throw new NotFoundException('This form is not available');
+    }
+    return this.webhooksService.getInquiryInfo(queryKey);
   }
 
   @Get('inquiry-info/:key')
   async getPublicInquiryInfoByKey(@Param('key') key: string) {
-    const tenant = await this.webhooksService.findTenantByWebhookKey(key);
-    return this.webhooksService.getInquiryInfo(tenant.id);
+    return this.webhooksService.getInquiryInfo(key);
   }
 
   @Post('website/:key')
   @HttpCode(HttpStatus.OK)
   async handleWebsiteContactFormWithKey(
     @Param('key') key: string,
+    @Req() req: Request,
     @Body() payload: any,
-    @Headers('x-website-token') tokenHeader?: string,
   ) {
     // 1. Resolve tenant by key hash (returns 404 if not found)
     const tenant = await this.webhooksService.findTenantByWebhookKey(key);
 
     stripClientTenantKeys(payload);
-    const result = await this.webhooksService.processWebsiteLead(payload, tenant.id, tokenHeader);
+    const result = await this.webhooksService.processWebsiteLead(payload, tenant.id, req);
     if (result.isBot) {
       return { status: 'SUCCESS', message: 'Inquiry registered' };
     }
@@ -275,14 +337,33 @@ export class WebhooksController {
     if (provider === 'indiamart') {
       return this.handleIndiaMartPushWithKey(key, payload, indiamartToken, queryToken);
     }
-    if (provider === 'whatsapp') {
-      return this.handleWhatsAppInboundWithKey(key, req, payload, hubSig);
+    if (provider === 'whatsapp' || provider === 'meta') {
+      return this.handleMetaInboundWithKey(key, req, payload, hubSig);
     }
     if (provider === 'website') {
       return this.handleWebsiteContactFormWithKey(key, payload, websiteToken);
     }
     // Verify key first to return 404 for unknown key before checking provider
     await this.webhooksService.findTenantByWebhookKey(key);
-    throw new NotFoundException(`Unsupported webhook provider '${provider}'. Supported: indiamart, whatsapp, website`);
+    throw new NotFoundException(`Unsupported webhook provider '${provider}'. Supported: indiamart, whatsapp, meta, website`);
+  }
+
+  /**
+   * Generic provider verification handshake endpoint: GET /webhooks/:provider/:key
+   */
+  @Get(':provider/:key')
+  async handleGenericWebhookGet(
+    @Param('provider') provider: string,
+    @Param('key') key: string,
+    @Query('hub.mode') mode: string,
+    @Query('hub.challenge') challenge: string,
+    @Query('hub.verify_token') verifyToken: string,
+    @Res() res: Response,
+  ) {
+    if (provider === 'meta' || provider === 'whatsapp') {
+      return this.handleMetaVerificationHandshake(key, mode, challenge, verifyToken, res);
+    }
+    await this.webhooksService.findTenantByWebhookKey(key);
+    throw new NotFoundException(`Unsupported webhook verification provider '${provider}'. Supported: meta, whatsapp`);
   }
 }

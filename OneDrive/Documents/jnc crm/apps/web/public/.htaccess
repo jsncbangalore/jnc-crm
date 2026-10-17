@@ -31,11 +31,11 @@
 
 # Security Headers (Clickjacking, MIME sniffing, HSTS, CSP, Permissions)
 <IfModule mod_headers.c>
-  Header always set X-Frame-Options "DENY"
+  Header always set X-Frame-Options "SAMEORIGIN"
   Header always set X-Content-Type-Options "nosniff"
-  Header always set Referrer-Policy "no-referrer"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
   Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob: 'sha256-Cs3xweHfN6/exhMJa/lvORdNpw/D/3opQrftbtgzQEs='; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://api.jsnc.co.in; connect-src 'self' https://api.jsnc.co.in; frame-ancestors 'none';"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob: 'sha256-Cs3xweHfN6/exhMJa/lvORdNpw/D/3opQrftbtgzQEs='; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://api.jsnc.co.in; connect-src 'self' https://api.jsnc.co.in; frame-ancestors 'self' *;"
   Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 
   # index.html: no-cache, must-revalidate (never cache private SPA shell)

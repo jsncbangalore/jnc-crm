@@ -30,6 +30,27 @@ export const getApiBaseUrl = () => {
   return 'https://api.jsnc.co.in/api/v1';
 };
 
+/**
+ * Resolves the public HTTPS base URL for external incoming webhooks (Meta, IndiaMART, etc.)
+ * Strictly avoids returning naked relative paths like "/api/v1".
+ */
+export const getPublicWebhookBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const customTunnel = localStorage.getItem('jnc_custom_webhook_domain');
+    if (customTunnel && customTunnel.trim().startsWith('http')) {
+      return customTunnel.trim().replace(/\/+$/, '');
+    }
+    const isDevHost = window.location.hostname.startsWith('local') || window.location.hostname === '127.0.0.1';
+    if (origin.startsWith('https://') && !isDevHost) {
+      return origin;
+    }
+  }
+  if (import.meta.env.VITE_PUBLIC_API_URL) {
+    return (import.meta.env.VITE_PUBLIC_API_URL as string).replace(/\/+$/, '');
+  }
+  return 'https://admin.jsnc.co.in';
+};
+
 const api = axios.create({
   baseURL: getApiBaseUrl(),
   headers: {
@@ -805,6 +826,13 @@ export const mailAccountsApi = {
   delete: (id: string) => api.delete(`/settings/mail-accounts/${id}`),
 };
 
+export const webFormApi = {
+  getSettings: () => api.get('/settings/web-form'),
+  updateSettings: (data: any) => api.put('/settings/web-form', data),
+  getWebhookConfig: () => api.get('/webhooks/config'),
+  regenerateKey: () => api.post('/webhooks/regenerate-key'),
+};
+
 // ─── Companies / Accounts ─────────────────────────────────────────────────────
 export const companiesApi = {
   list: (params?: Record<string, any>) => api.get('/companies', { params }),
@@ -907,5 +935,9 @@ export const activitiesApi = {
     api.delete(`/activities/projects/${projectId}/logs/${logId}`),
 };
 
-
-
+// ─── Webhooks & Ingestion Configuration ─────────────────────────────────────
+export const webhooksApi = {
+  getConfig: () => api.get('/webhooks/config'),
+  regenerateKey: () => api.post('/webhooks/regenerate-key'),
+  getInquiryInfo: (key?: string) => api.get(key ? `/webhooks/inquiry-info/${key}` : '/webhooks/inquiry-info'),
+};

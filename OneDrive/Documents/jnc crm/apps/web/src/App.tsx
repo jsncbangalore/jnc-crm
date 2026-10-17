@@ -109,30 +109,8 @@ function CrmRouteGuard({ children }: { children: React.ReactNode }) {
   const isImpersonating =
     typeof window !== 'undefined' && !!sessionStorage.getItem('jnc_impersonate_token');
 
-  if (isPlatformOwner(user) && !isImpersonating) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-[#0F1117] flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
-            <span className="text-xl font-bold">!</span>
-          </div>
-          <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            Impersonation Required
-          </h3>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Impersonate a company from the client-companies portal to view CRM records.
-          </p>
-          <div>
-            <a
-              href="/platform/companies"
-              className="inline-block px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-all"
-            >
-              Go to Client Companies
-            </a>
-          </div>
-        </div>
-      </div>
-    );
+  if ((isPlatformOwner(user) || user?.role === 'platform_super_admin') && !user?.tenantId && !isImpersonating) {
+    return <Navigate to="/platform/companies" replace />;
   }
   return <>{children}</>;
 }
@@ -151,7 +129,11 @@ function RootLandingRoute() {
 }
 
 function AppRoutes() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuth();
+
+  if (!isLoading && isAuthenticated && user?.mustResetPassword) {
+    return <ForcePasswordResetPage />;
+  }
 
   return (
     <Routes>

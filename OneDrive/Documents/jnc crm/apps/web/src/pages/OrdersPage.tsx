@@ -9,10 +9,12 @@ import InvoiceModal from '../components/invoices/InvoiceModal';
 import CreateOrderModal from '../components/orders/CreateOrderModal';
 import EditOrderModal from '../components/orders/EditOrderModal';
 import { RecordPaymentModal } from '../components/invoices/RecordPaymentModal';
+import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
@@ -30,8 +32,11 @@ export default function OrdersPage() {
       setLoading(true);
       const { data } = await ordersApi.list({ search, status: statusFilter, limit: 100 });
       setOrders(data.items || []);
-    } catch (err) {
+      setError(null);
+    } catch (err: any) {
       console.error(err);
+      setError(parseApiError(err));
+      setOrders([]);
     } finally {
       setLoading(false);
     }
@@ -251,7 +256,29 @@ export default function OrdersPage() {
                 </motion.tr>
               );
             })}
-            {!loading && orders.length === 0 && (
+            {loading && !error && (
+              <tr>
+                <td colSpan={10} className="text-center py-12 text-slate-500">
+                  <div className="flex items-center justify-center gap-2">
+                    <RefreshCw size={14} className="animate-spin text-crm-blue" />
+                    <span>Loading orders...</span>
+                  </div>
+                </td>
+              </tr>
+            )}
+            {error && orders.length === 0 && (
+              <tr>
+                <td colSpan={10} className="p-6">
+                  <ErrorStateCard
+                    message={error.message}
+                    status={error.status}
+                    isNetworkError={error.isNetworkError}
+                    onRetry={fetchOrders}
+                  />
+                </td>
+              </tr>
+            )}
+            {!loading && !error && orders.length === 0 && (
               <tr>
                 <td colSpan={10} className="text-center text-slate-500 py-12">
                   No orders found. Confirm an order to generate GST invoices.

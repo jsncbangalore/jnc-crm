@@ -13,6 +13,7 @@ import InvoiceModal from '../components/invoices/InvoiceModal';
 import CreateDocumentModal from '../components/invoices/CreateDocumentModal';
 import InvoiceSettingsModal from '../components/invoices/InvoiceSettingsModal';
 import { useAuth } from '../contexts/AuthContext';
+import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 
 export default function InvoicesPage() {
   const { user } = useAuth();
@@ -20,6 +21,7 @@ export default function InvoicesPage() {
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
   const [search, setSearch] = useState('');
   const [docTypeFilter, setDocTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -73,8 +75,11 @@ export default function InvoicesPage() {
         limit: 100,
       });
       setInvoices(data.items || []);
-    } catch (err) {
+      setError(null);
+    } catch (err: any) {
       console.error('Failed to load invoices', err);
+      setError(parseApiError(err));
+      setInvoices([]);
     } finally {
       setLoading(false);
     }
@@ -415,11 +420,22 @@ export default function InvoicesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-[#2A3042]/50">
-              {loading ? (
+              {loading && !error ? (
                 <tr>
                   <td colSpan={10} className="py-12 text-center text-slate-500 font-medium">
                     <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-crm-blue" />
                     Loading documents...
+                  </td>
+                </tr>
+              ) : error && invoices.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="p-6">
+                    <ErrorStateCard
+                      message={error.message}
+                      status={error.status}
+                      isNetworkError={error.isNetworkError}
+                      onRetry={fetchInvoices}
+                    />
                   </td>
                 </tr>
               ) : invoices.length === 0 ? (
@@ -544,11 +560,18 @@ export default function InvoicesPage() {
 
       {/* ─── MOBILE CARDS VIEW (< 1024px) ────────────────────────────── */}
       <div className="lg:hidden space-y-3">
-        {loading ? (
+        {loading && !error ? (
           <div className="card p-8 text-center text-slate-500 text-xs">
             <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-crm-blue" />
             Loading documents...
           </div>
+        ) : error && invoices.length === 0 ? (
+          <ErrorStateCard
+            message={error.message}
+            status={error.status}
+            isNetworkError={error.isNetworkError}
+            onRetry={fetchInvoices}
+          />
         ) : invoices.length === 0 ? (
           <div className="card p-8 text-center text-slate-600 dark:text-slate-400 text-xs space-y-2">
             <FileText size={24} className="mx-auto text-slate-400 dark:text-slate-600" />

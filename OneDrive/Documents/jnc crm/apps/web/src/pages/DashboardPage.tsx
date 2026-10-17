@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
@@ -15,6 +15,7 @@ import { dashboardApi } from '../services/api';
 import { DashboardKpis } from '../types';
 import { KpiCard } from '../components/ui/KpiCard';
 import { OrderStatusBadge } from '../components/ui/Badge';
+import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import { format } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -45,6 +46,9 @@ export default function DashboardPage() {
   const [kpis, setKpis] = useState<DashboardKpis | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
+  const errorRef = useRef(error);
+  errorRef.current = error;
 
   // Dynamic Time-of-Day Greeting
   const timeGreeting = useMemo(() => {
@@ -75,8 +79,10 @@ export default function DashboardPage() {
     try {
       const { data } = await dashboardApi.getKpis();
       setKpis(data);
-    } catch (err) {
+      setError(null);
+    } catch (err: any) {
       console.error('Failed to load dashboard KPIs', err);
+      setError(parseApiError(err));
     } finally {
       setLoading(false);
       if (manual) setIsRefreshing(false);
@@ -85,7 +91,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchKpis();
-    const interval = setInterval(() => fetchKpis(false), 30_000); // 30s auto-refresh
+    const interval = setInterval(() => {
+      // Stop the 30 second auto refresh after a 403, and keep it for network errors only (or when no error).
+      if (errorRef.current && errorRef.current.status === 403) {
+        return;
+      }
+      fetchKpis(false);
+    }, 30_000); // 30s auto-refresh
     return () => clearInterval(interval);
   }, []);
 
@@ -133,7 +145,7 @@ export default function DashboardPage() {
   const wonLeadsCount = kpis?.leadsByStatus?.won || 0;
   const wonRate = totalPieCount > 0 ? Math.round((wonLeadsCount / totalPieCount) * 100) : 0;
 
-  if (loading || !kpis) {
+  if (loading && !kpis && !error) {
     return (
       <div className="space-y-4 animate-pulse">
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -147,6 +159,29 @@ export default function DashboardPage() {
         </div>
       </div>
     );
+  }
+
+  if (error && !kpis) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-[#2A3042]">
+          <div>
+            <h1 className="text-2xl font-black text-slate-950 dark:text-white">Command Dashboard</h1>
+            <p className="text-xs text-slate-500 mt-1">Real-time overview of sales, pipeline, and inventory status</p>
+          </div>
+        </div>
+        <ErrorStateCard
+          message={error.message}
+          status={error.status}
+          isNetworkError={error.isNetworkError}
+          onRetry={() => fetchKpis(true)}
+        />
+      </div>
+    );
+  }
+
+  if (!kpis) {
+    return null;
   }
 
   return (

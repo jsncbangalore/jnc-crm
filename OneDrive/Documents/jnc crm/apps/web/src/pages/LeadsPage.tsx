@@ -12,6 +12,7 @@ import { leadsApi, usersApi } from '../services/api';
 import { Lead, LeadStatus, LeadSource, User as UserType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { usePopup } from '../contexts/PopupContext';
+import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import LeadSetupModal, { LeadSetupView } from '../components/leads/LeadSetupModal';
 import { format, formatDistanceToNow, isToday } from 'date-fns';
 import Papa from 'papaparse';
@@ -96,6 +97,7 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [employees, setEmployees] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [urgencyFilter, setUrgencyFilter] = useState<string>('all');
@@ -214,8 +216,11 @@ export default function LeadsPage() {
 
       const { data } = await leadsApi.list(params);
       setLeads(data.items || []);
-    } catch (err) {
+      setError(null);
+    } catch (err: any) {
       console.error('Failed to load leads:', err);
+      setError(parseApiError(err));
+      setLeads([]);
     } finally {
       setLoading(false);
     }
@@ -693,7 +698,14 @@ export default function LeadsPage() {
       )}
 
       {/* ─── TAB CONTENT: Pipeline Kanban vs Table ────────────────────────── */}
-      {activeTab === 'pipeline' && (
+      {error && leads.length === 0 ? (
+        <ErrorStateCard
+          message={error.message}
+          status={error.status}
+          isNetworkError={error.isNetworkError}
+          onRetry={fetchLeads}
+        />
+      ) : activeTab === 'pipeline' && (
         view === 'kanban' ? (
           <div
             ref={kanbanContainerRef}

@@ -90,8 +90,35 @@ model Tenant {
   auditLogs       AuditLog[]
   paymentRecords  PaymentRecord[]
   stockPositions  ProjectStockPosition[]
+  webFormSettings WebFormSettings?
 
   @@index([status])
+}
+
+// ==========================================
+// 1B. WEB-TO-LEAD FORM SETTINGS
+// ==========================================
+model WebFormSettings {
+  id               String   @id @default(uuid())
+  tenantId         String   @unique
+  logoUrl          String?
+  brandColor       String   @default("#2563eb")
+  headline         String   @default("Request a Quote")
+  description      String   @default("Please fill out the form below and our team will get in touch shortly.")
+  submitButtonText String   @default("Submit Inquiry")
+  thankYouTitle    String   @default("Thank You!")
+  thankYouMessage  String   @default("Your inquiry has been received. Our team will contact you soon.")
+  redirectUrl      String?
+  products         Json     @default("[]")
+  fields           Json     @default("{\"name\":{\"show\":true,\"required\":true},\"phone\":{\"show\":true,\"required\":true},\"email\":{\"show\":true,\"required\":false},\"company\":{\"show\":true,\"required\":false},\"city\":{\"show\":true,\"required\":false},\"product\":{\"show\":true,\"required\":false},\"quantity\":{\"show\":true,\"required\":false},\"urgency\":{\"show\":true,\"required\":false},\"message\":{\"show\":true,\"required\":false}}")
+  allowedOrigins   Json     @default("[]")
+  isEnabled        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
 }
 
 // ==========================================

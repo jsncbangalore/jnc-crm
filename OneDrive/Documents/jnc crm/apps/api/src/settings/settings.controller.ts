@@ -35,11 +35,13 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
+import { requireTenantId } from '../common/tenant.util';
 import {
   UpdateBrandingDto,
   UpdateCompanyProfileDto,
   CreateMailAccountDto,
   UpdateMailAccountDto,
+  UpdateWebFormSettingsDto,
 } from './dto/settings.dto';
 
 @Controller('settings')
@@ -210,5 +212,31 @@ export class SettingsController {
   @Roles('platform_super_admin', 'tenant_admin')
   async deleteMailAccount(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.settingsService.deleteMailAccount(user, id);
+  }
+
+  /**
+   * GET /settings/web-form
+   * Retrieve tenant-specific web form settings (tenant_admin, admin, platform_super_admin)
+   */
+  @Get('web-form')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('tenant_admin', 'admin', 'platform_super_admin')
+  async getWebFormSettings(@CurrentUser() user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    return this.settingsService.getWebFormSettings(tenantId);
+  }
+
+  /**
+   * PUT /settings/web-form
+   * Update tenant-specific web form settings (tenant_admin or admin only)
+   */
+  @Put('web-form')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('tenant_admin', 'admin')
+  async updateWebFormSettings(
+    @CurrentUser() user: ScopedUser,
+    @Body() body: UpdateWebFormSettingsDto,
+  ) {
+    return this.settingsService.updateWebFormSettings(user, body);
   }
 }
