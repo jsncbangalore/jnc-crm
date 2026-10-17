@@ -88,6 +88,21 @@ export const isPlatformPath = (pathname?: string): boolean => {
   return p.startsWith('/platform');
 };
 
+export const isPublicRoute = (pathname?: string): boolean => {
+  const p = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
+  return (
+    p === '/login' ||
+    p === '/platform/login' ||
+    p === '/forgot-password' ||
+    p.startsWith('/reset-password') ||
+    p === '/inquiry' ||
+    p === '/quote-request' ||
+    p === '/shared-cart' ||
+    p === '/cart-share' ||
+    p === '/cart'
+  );
+};
+
 export const setAccessToken = (token: string | null, forcePlatform?: boolean) => {
   const isPlatform = forcePlatform !== undefined ? forcePlatform : isPlatformPath();
   if (isPlatform) {
@@ -232,9 +247,7 @@ export const performStaffRefresh = async (): Promise<any> => {
         }
         if (
           typeof window !== 'undefined' &&
-          window.location.pathname !== '/login' &&
-          window.location.pathname !== '/platform/login' &&
-          !window.location.pathname.startsWith('/reset-password')
+          !isPublicRoute(window.location.pathname)
         ) {
           try {
             sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');
@@ -322,7 +335,7 @@ export const performPlatformRefresh = async (): Promise<any> => {
         if (typeof document !== 'undefined') {
           document.cookie = 'jnc_platform_session_active=; Path=/; Max-Age=0; SameSite=Lax';
         }
-        if (typeof window !== 'undefined' && window.location.pathname !== '/platform/login') {
+        if (typeof window !== 'undefined' && !isPublicRoute(window.location.pathname)) {
           try {
             sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');
           } catch {}
@@ -365,7 +378,7 @@ api.interceptors.response.use(
         if (typeof document !== 'undefined') {
           document.cookie = 'jnc_platform_session_active=; Path=/; Max-Age=0; SameSite=Lax';
         }
-        if (typeof window !== 'undefined' && window.location.pathname !== '/platform/login') {
+        if (typeof window !== 'undefined' && !isPublicRoute(window.location.pathname)) {
           try {
             sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');
           } catch {}
@@ -379,8 +392,7 @@ api.interceptors.response.use(
         }
         if (
           typeof window !== 'undefined' &&
-          window.location.pathname !== '/login' &&
-          !window.location.pathname.startsWith('/reset-password')
+          !isPublicRoute(window.location.pathname)
         ) {
           try {
             sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');

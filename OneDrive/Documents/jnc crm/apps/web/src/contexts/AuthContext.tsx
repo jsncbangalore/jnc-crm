@@ -168,8 +168,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-    const isPublicInquiry = currentPath === '/inquiry' || currentPath === '/quote-request';
-    if (isPublicInquiry) {
+    const isPublicStatic =
+      currentPath === '/forgot-password' ||
+      currentPath.startsWith('/reset-password') ||
+      currentPath === '/inquiry' ||
+      currentPath === '/quote-request' ||
+      currentPath === '/shared-cart' ||
+      currentPath === '/cart-share' ||
+      currentPath === '/cart';
+
+    if (isPublicStatic) {
       setIsLoading(false);
       return;
     }

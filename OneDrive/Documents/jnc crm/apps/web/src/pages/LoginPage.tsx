@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth, CompanyChoice } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, RefreshCw, AlertCircle, ArrowLeft, Clock } from 'lucide-react';
 import AuthLayout from '../components/layout/AuthLayout';
 import { getRoleRedirectPath } from '../utils/roles';
@@ -226,12 +226,12 @@ export default function LoginPage() {
                   >
                     Password
                   </label>
-                  <a
-                    href="/forgot-password"
+                  <Link
+                    to="/forgot-password"
                     className="text-[13px] font-medium text-[#2563EB] hover:underline transition-colors"
                   >
                     Forgot password?
-                  </a>
+                  </Link>
                 </div>
                 <div className="relative">
                   {/* Browsers may still autofill despite these attributes */}
