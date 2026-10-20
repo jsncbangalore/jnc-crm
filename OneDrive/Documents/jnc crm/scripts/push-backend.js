@@ -52,6 +52,8 @@ try {
     execSync(`git clone ${REMOTE_URL} "${TARGET_REPO}"`, { stdio: 'inherit' });
   } else {
     console.log('[1/4] Pulling latest changes from remote...');
+    run('git reset --hard HEAD');
+    run('git clean -fd');
     run('git fetch origin main');
     run('git checkout main');
     run('git pull origin main --rebase');
