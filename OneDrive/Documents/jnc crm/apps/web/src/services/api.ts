@@ -841,6 +841,18 @@ export const mailAccountsApi = {
   create: (data: any) => api.post('/settings/mail-accounts', data),
   update: (id: string, data: any) => api.put(`/settings/mail-accounts/${id}`, data),
   delete: (id: string) => api.delete(`/settings/mail-accounts/${id}`),
+  detect: (email: string) => api.post('/settings/mail-accounts/detect', { email }),
+  test: (data: {
+    id?: string;
+    email?: string;
+    smtpHost?: string;
+    smtpPort?: number;
+    encryption?: 'starttls' | 'ssl';
+    smtpUser?: string;
+    smtpPass?: string;
+    sendTestEmail?: boolean;
+  }) => api.post('/settings/mail-accounts/test', data),
+  domainHealth: (id: string) => api.get(`/settings/mail-accounts/${id}/domain-health`),
 };
 
 export const webFormApi = {

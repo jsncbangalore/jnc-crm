@@ -23,7 +23,37 @@ export type MailReasonCode =
   | 'missing_configuration'
   | 'network_error'
   | 'validation_error'
+  | 'certificate_error'
   | null;
+
+export function isCertificateError(err: any): boolean {
+  if (!err) return false;
+  const code = (err.code || '').toUpperCase();
+  const msg = (err.message || '').toLowerCase();
+  const certCodes = [
+    'SELF_SIGNED_CERT_IN_CHAIN',
+    'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+    'DEPTH_ZERO_SELF_SIGNED_CERT',
+    'CERT_HAS_EXPIRED',
+    'CERT_NOT_YET_VALID',
+    'ERR_TLS_CERT_ALTNAME_INVALID',
+    'UNABLE_TO_GET_ISSUER_CERT',
+    'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  ];
+  if (certCodes.includes(code)) return true;
+  if (
+    msg.includes('certificate') ||
+    msg.includes('cert_') ||
+    msg.includes('self-signed') ||
+    msg.includes('self signed') ||
+    msg.includes('not trusted') ||
+    msg.includes('unable to verify') ||
+    msg.includes('tls_cert')
+  ) {
+    return true;
+  }
+  return false;
+}
 
 export interface MailDispatchResult {
   status: MailDeliveryStatus;
@@ -101,6 +131,9 @@ export function mapProviderError(
   }
 
   // SMTP or generic fallback
+  if (isCertificateError({ message: msg })) {
+    return 'certificate_error';
+  }
   if (msg.includes('timeout') || msg.includes('timedout') || msg.includes('etimedout') || msg.includes('esocket')) {
     return 'timeout';
   }
@@ -198,6 +231,7 @@ export class NotificationsService {
           tenantId: targetTenantId,
           isActive: true,
           OR: [
+            { purpose: 'ALL' },
             { purpose: senderType === 'invoice' ? 'BILLING_INVOICES' : 'PRIMARY_ALERTS' },
             { purpose: 'PRIMARY_ALERTS' },
             { purpose: 'SALES_OUTBOUND' },
@@ -207,21 +241,22 @@ export class NotificationsService {
       });
 
       if (mailAccount) {
-        const cacheKey = `${mailAccount.id}_${mailAccount.smtpHost}_${mailAccount.smtpUser}`;
+        const isSsl = mailAccount.encryption === 'ssl' || mailAccount.isSecure || mailAccount.smtpPort === 465;
+        const cacheKey = `${mailAccount.id}_${mailAccount.smtpHost}_${mailAccount.smtpPort}_${isSsl}_${mailAccount.smtpUser}`;
         let transporter = this.transporterCache.get(cacheKey);
         if (!transporter) {
           transporter = nodemailer.createTransport({
             host: mailAccount.smtpHost,
             port: mailAccount.smtpPort,
-            secure: mailAccount.isSecure || mailAccount.smtpPort === 465,
+            secure: isSsl,
+            requireTLS: !isSsl,
             auth: {
               user: mailAccount.smtpUser,
               pass: decryptAtRest(mailAccount.smtpPass) || mailAccount.smtpPass,
             },
-            tls: { rejectUnauthorized: false },
-            connectionTimeout: 15000,
-            greetingTimeout: 15000,
-            socketTimeout: 20000,
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 10000,
           } as any);
           this.transporterCache.set(cacheKey, transporter);
         }
@@ -244,20 +279,22 @@ export class NotificationsService {
       const isGmail = primaryUser.toLowerCase().includes('@gmail.com');
       const host = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'smtpout.secureserver.net');
       const port = Number(process.env.SMTP_PORT) || (isGmail ? 465 : 587);
+      const isSsl = port === 465;
 
-      let transporter = this.transporterCache.get('default_root_smtp');
+      const cacheKey = `default_root_smtp_${host}_${port}_${isSsl}`;
+      let transporter = this.transporterCache.get(cacheKey);
       if (!transporter) {
         transporter = nodemailer.createTransport({
           host,
           port,
-          secure: port === 465,
+          secure: isSsl,
+          requireTLS: !isSsl,
           auth: { user: primaryUser, pass: primaryPass },
-          tls: { rejectUnauthorized: false },
-          connectionTimeout: 15000,
-          greetingTimeout: 15000,
-          socketTimeout: 20000,
+          connectionTimeout: 10000,
+          greetingTimeout: 10000,
+          socketTimeout: 10000,
         } as any);
-        this.transporterCache.set('default_root_smtp', transporter);
+        this.transporterCache.set(cacheKey, transporter);
       }
 
       return {
@@ -489,8 +526,13 @@ export class NotificationsService {
         }
       } catch (err: any) {
         status = 'failed';
-        errorMessage = err.message || 'Tenant SMTP connection failed';
-        detectedReason = mapProviderError('smtp', null, errorMessage);
+        if (isCertificateError(err)) {
+          errorMessage = 'The mail server certificate is not trusted';
+          detectedReason = 'certificate_error';
+        } else {
+          errorMessage = err.message || 'Tenant SMTP connection failed';
+          detectedReason = mapProviderError('smtp', null, errorMessage);
+        }
         this.logger.error(`[MAIL ERROR] ReqId: ${reqId} | Provider: smtp-tenant | To: ${options.to} | Reason: ${errorMessage}`);
       }
     }
@@ -555,8 +597,13 @@ export class NotificationsService {
           }
         } catch (err: any) {
           status = 'failed';
-          errorMessage = err.message || 'System SMTP connection failed';
-          detectedReason = mapProviderError('smtp', null, errorMessage);
+          if (isCertificateError(err)) {
+            errorMessage = 'The mail server certificate is not trusted';
+            detectedReason = 'certificate_error';
+          } else {
+            errorMessage = err.message || 'System SMTP connection failed';
+            detectedReason = mapProviderError('smtp', null, errorMessage);
+          }
           this.logger.error(`[MAIL ERROR] ReqId: ${reqId} | Provider: smtp | To: ${options.to} | Reason: ${errorMessage}`);
         }
       }
@@ -565,7 +612,8 @@ export class NotificationsService {
     // 5. Automated Resilient Fallback Cascade:
     // If primary provider failed (e.g. SMTP blocked by cloud firewall like Render Free Tier),
     // automatically retry with available HTTPS APIs or secondary transports so delivery never drops.
-    if (status !== 'sent') {
+    // Security Rule: If a certificate error happens, never fall back to an unverified connection.
+    if (status !== 'sent' && detectedReason !== 'certificate_error') {
       if (providerUsed !== 'resend' && process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim()) {
         this.logger.log(`[MAIL FALLBACK] Primary provider '${providerUsed}' failed (${errorMessage}). Retrying via Resend HTTPS API...`);
         const resendResult = await this.sendViaResend(options, fromEmail, senderName);

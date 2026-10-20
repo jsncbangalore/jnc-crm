@@ -125,6 +125,45 @@ export class UpdateCompanyProfileDto {
   logoUrl?: string;
 }
 
+export class DetectMailProviderDto {
+  @IsEmail()
+  email: string;
+}
+
+export class TestMailAccountDto {
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  smtpHost?: string;
+
+  @IsOptional()
+  @IsNumber()
+  smtpPort?: number;
+
+  @IsOptional()
+  @IsString()
+  encryption?: 'starttls' | 'ssl';
+
+  @IsOptional()
+  @IsString()
+  smtpUser?: string;
+
+  @IsOptional()
+  @IsString()
+  smtpPass?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  sendTestEmail?: boolean;
+}
+
 export class CreateMailAccountDto {
   @IsString()
   name: string;
@@ -150,12 +189,20 @@ export class CreateMailAccountDto {
   smtpPass: string;
 
   @IsOptional()
+  @IsString()
+  encryption?: 'starttls' | 'ssl';
+
+  @IsOptional()
   @IsBoolean()
   isSecure?: boolean;
 
   @IsOptional()
   @IsString()
   purpose?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  useForAllPurposes?: boolean;
 }
 
 export class UpdateMailAccountDto {
@@ -186,6 +233,10 @@ export class UpdateMailAccountDto {
   @IsOptional()
   @IsString()
   smtpPass?: string;
+
+  @IsOptional()
+  @IsString()
+  encryption?: 'starttls' | 'ssl';
 
   @IsOptional()
   @IsBoolean()

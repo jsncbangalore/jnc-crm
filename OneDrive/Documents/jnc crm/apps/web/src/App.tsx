@@ -200,6 +200,30 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/settings/mail"
+        element={
+          <ProtectedRoute>
+            <TeamPageGuard pageKey="users">
+              <CrmRouteGuard>
+                <AdminSettingsPage initialTab="mail" />
+              </CrmRouteGuard>
+            </TeamPageGuard>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/mail-accounts"
+        element={
+          <ProtectedRoute>
+            <TeamPageGuard pageKey="users">
+              <CrmRouteGuard>
+                <AdminSettingsPage initialTab="mail" />
+              </CrmRouteGuard>
+            </TeamPageGuard>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/setup"
         element={
           <ProtectedRoute>

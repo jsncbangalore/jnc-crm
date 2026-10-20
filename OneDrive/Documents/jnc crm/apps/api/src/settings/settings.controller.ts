@@ -41,6 +41,8 @@ import {
   UpdateCompanyProfileDto,
   CreateMailAccountDto,
   UpdateMailAccountDto,
+  DetectMailProviderDto,
+  TestMailAccountDto,
   UpdateWebFormSettingsDto,
 } from './dto/settings.dto';
 
@@ -212,6 +214,35 @@ export class SettingsController {
   @Roles('platform_super_admin', 'tenant_admin')
   async deleteMailAccount(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.settingsService.deleteMailAccount(user, id);
+  }
+
+  @Post('mail-accounts/detect')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('platform_super_admin', 'tenant_admin')
+  @HttpCode(HttpStatus.OK)
+  async detectMailProvider(@Body() body: DetectMailProviderDto) {
+    return this.settingsService.detectMailProvider(body.email);
+  }
+
+  @Post('mail-accounts/test')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('platform_super_admin', 'tenant_admin')
+  @HttpCode(HttpStatus.OK)
+  async testMailAccount(
+    @CurrentUser() user: ScopedUser,
+    @Body() body: TestMailAccountDto,
+  ) {
+    return this.settingsService.testMailAccount(user, body);
+  }
+
+  @Get('mail-accounts/:id/domain-health')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('platform_super_admin', 'tenant_admin')
+  async getDomainHealth(
+    @Param('id') id: string,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.settingsService.getDomainHealth(user, id);
   }
 
   /**

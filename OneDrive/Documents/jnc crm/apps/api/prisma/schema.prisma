@@ -367,6 +367,7 @@ model MailAccount {
   smtpUser     String
   smtpPass     String   // Encrypted at rest
   isSecure     Boolean  @default(false)
+  encryption   String   @default("starttls") // 'starttls' | 'ssl'
   purpose      String   @default("PRIMARY_ALERTS") // PRIMARY_ALERTS | BILLING_INVOICES | SALES_OUTBOUND
   isActive     Boolean  @default(true)
   createdById  String?

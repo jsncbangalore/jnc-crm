@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ShieldCheck, Building2, Sun, Moon } from 'lucide-react';
+import { ShieldCheck, Building2, Mail, Sun, Moon } from 'lucide-react';
 import { useBranding } from '../contexts/BrandingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import UsersPage from './UsersPage';
 import BrandingSettingsPage from './BrandingSettingsPage';
+import MailAccountsPage from './MailAccountsPage';
 
 interface AdminSettingsPageProps {
-  initialTab?: 'users' | 'branding';
+  initialTab?: 'users' | 'branding' | 'mail';
 }
 
 export default function AdminSettingsPage({ initialTab = 'users' }: AdminSettingsPageProps) {
@@ -16,23 +17,28 @@ export default function AdminSettingsPage({ initialTab = 'users' }: AdminSetting
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [activeTab, setActiveTab] = useState<'users' | 'branding'>(() => {
+  const [activeTab, setActiveTab] = useState<'users' | 'branding' | 'mail'>(() => {
+    if (location.pathname.includes('mail')) return 'mail';
     if (location.pathname.includes('branding')) return 'branding';
     return initialTab;
   });
 
   useEffect(() => {
-    if (location.pathname.includes('branding')) {
+    if (location.pathname.includes('mail')) {
+      setActiveTab('mail');
+    } else if (location.pathname.includes('branding')) {
       setActiveTab('branding');
     } else if (location.pathname.includes('users')) {
       setActiveTab('users');
     }
   }, [location.pathname]);
 
-  const handleTabChange = (tab: 'users' | 'branding') => {
+  const handleTabChange = (tab: 'users' | 'branding' | 'mail') => {
     setActiveTab(tab);
     if (tab === 'users') {
       navigate('/users', { replace: true });
+    } else if (tab === 'mail') {
+      navigate('/settings/mail', { replace: true });
     } else {
       navigate('/settings/branding', { replace: true });
     }
@@ -92,6 +98,18 @@ export default function AdminSettingsPage({ initialTab = 'users' }: AdminSetting
               <Building2 size={14} className={activeTab === 'branding' ? 'text-white' : 'text-crm-teal'} />
               <span>Company Branding & GST</span>
             </button>
+
+            <button
+              onClick={() => handleTabChange('mail')}
+              className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+                activeTab === 'mail'
+                  ? 'bg-crm-blue text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/5'
+              }`}
+            >
+              <Mail size={14} className={activeTab === 'mail' ? 'text-white' : 'text-indigo-400'} />
+              <span>Mail Accounts & SMTP</span>
+            </button>
           </div>
 
           {/* Right: Theme Switcher & Exit to CRM */}
@@ -120,7 +138,9 @@ export default function AdminSettingsPage({ initialTab = 'users' }: AdminSetting
           PAGE CONTENT — RENDERS ACTIVE MODULE
           ═══════════════════════════════════════════════════════════════════════ */}
       <main className="flex-1 p-4 lg:p-6 max-w-[1800px] w-full mx-auto overflow-y-auto">
-        {activeTab === 'users' ? <UsersPage /> : <BrandingSettingsPage />}
+        {activeTab === 'users' && <UsersPage />}
+        {activeTab === 'branding' && <BrandingSettingsPage />}
+        {activeTab === 'mail' && <MailAccountsPage />}
       </main>
     </div>
   );

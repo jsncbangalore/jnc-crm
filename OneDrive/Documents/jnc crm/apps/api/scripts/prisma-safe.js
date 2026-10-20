@@ -75,6 +75,7 @@ const isTestAction = [
   'test-data-visibility',
   'test-customer-list-scope',
   'test-auth-security',
+  'test-mail-security',
 ].includes(action);
 
 if (isTestAction) {
@@ -196,6 +197,7 @@ const knownActions = {
   'prod:bootstrap': { type: 'ts-node', file: 'scripts/prod-bootstrap.ts' },
   'dry-run-fresh': { type: 'ts-node', file: 'scripts/dry-run-fresh.ts' },
   'test-auth-security': { type: 'ts-node', file: 'scripts/test-auth-security.ts' },
+  'test-mail-security': { type: 'ts-node', file: 'scripts/test-mail-tls-security.ts' },
 };
 
 function resolveBin(pkgSubpath) {

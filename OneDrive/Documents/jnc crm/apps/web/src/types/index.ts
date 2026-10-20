@@ -535,3 +535,40 @@ export interface ProjectStockPosition {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface MailAccount {
+  id: string;
+  tenantId: string;
+  name: string;
+  email: string;
+  senderName?: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  encryption: 'starttls' | 'ssl';
+  isSecure?: boolean;
+  purpose: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DomainHealthResult {
+  domain: string;
+  spf: {
+    status: 'found' | 'missing' | 'invalid';
+    record?: string;
+    fix: string;
+  };
+  dkim: {
+    status: 'found' | 'missing' | 'invalid';
+    selector?: string;
+    record?: string;
+    fix: string;
+  };
+  dmarc: {
+    status: 'found' | 'missing' | 'invalid';
+    record?: string;
+    fix: string;
+  };
+}

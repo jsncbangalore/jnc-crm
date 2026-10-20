@@ -31,6 +31,7 @@
     "dry-run:fresh": "node scripts/prisma-safe.js dry-run-fresh",
     "test:auth-suite": "node ../../node_modules/ts-node/dist/bin.js scripts/test-login-and-webhooks.ts",
     "test:auth-security": "node scripts/prisma-safe.js test-auth-security",
+    "test:mail-security": "node scripts/prisma-safe.js test-mail-security",
     "bundle:api": "node ../../scripts/bundle-api.js"
   },
   "dependencies": {
