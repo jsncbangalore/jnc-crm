@@ -14,6 +14,9 @@ import {
   Optional,
   Inject,
   forwardRef,
+  HttpException,
+  HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
@@ -29,7 +32,7 @@ import {
   RefreshTokenDto,
 } from './dto/login.dto';
 import { getRoleRedirectPath } from './roles';
-import { validatePasswordPolicy, needsRehash } from '../common/password-policy';
+import { validatePasswordPolicy, needsRehash, getPasswordPolicy, PasswordPolicyDto } from '../common/password-policy';
 import { isAllowedOrigin } from '../common/cors-config';
 
 const GENERIC_ERROR = 'Invalid credentials.';
@@ -95,6 +98,7 @@ export function formatAuthUser(user: any): any {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly MAX_FAILED_ATTEMPTS = 5;
   private readonly LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
   /** Per-IP + per-account rate limit for platform login */
@@ -106,6 +110,10 @@ export class AuthService {
     private jwtService: JwtService,
     @Inject(forwardRef(() => NotificationsService)) private notificationsService: NotificationsService,
   ) {}
+
+  getPasswordPolicy(): PasswordPolicyDto {
+    return getPasswordPolicy();
+  }
 
   // ─── Lockout helpers ─────────────────────────────────────────────────────────
 
@@ -601,11 +609,48 @@ export class AuthService {
 
   // ─── POST /auth/forgot-password ─────────────────────────────────────────────
 
-  async forgotPassword(dto: ForgotPasswordDto, _ipAddress?: string, origin?: string) {
-    // Always return success — do NOT reveal whether email exists
-    const lower = dto.email.trim().toLowerCase();
-    const companyCode = dto.companyCode?.trim();
+  // ─── POST /auth/forgot-password ─────────────────────────────────────────────
 
+  async forgotPassword(dto: ForgotPasswordDto, _ipAddress?: string) {
+    const lower = (dto.email || '').trim().toLowerCase();
+    const companyCode = dto.companyCode?.trim();
+    const now = new Date();
+
+    // 1. Rate limiting: 3 reset requests per hour per email
+    const emailRateKey = `forgot-rate:${lower}`;
+    const rateRecord = await this.prisma.accountLockout.findUnique({
+      where: { identityKey: emailRateKey },
+    });
+
+    if (rateRecord) {
+      const isExpired =
+        rateRecord.lastAttemptAt &&
+        now.getTime() - new Date(rateRecord.lastAttemptAt).getTime() > 60 * 60 * 1000; // 1 hour
+
+      if (isExpired) {
+        await this.prisma.accountLockout.update({
+          where: { identityKey: emailRateKey },
+          data: { failedAttempts: 1, lastAttemptAt: now },
+        }).catch(() => {});
+      } else if (rateRecord.failedAttempts >= 3) {
+        this.logger.warn(`[FORGOT_PASSWORD] Rate limit reached: 3 requests/hour for ${maskIdentifier(lower)}`);
+        throw new HttpException(
+          'Too many password reset requests for this email. Please try again after an hour.',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      } else {
+        await this.prisma.accountLockout.update({
+          where: { identityKey: emailRateKey },
+          data: { failedAttempts: { increment: 1 }, lastAttemptAt: now },
+        }).catch(() => {});
+      }
+    } else {
+      await this.prisma.accountLockout.create({
+        data: { identityKey: emailRateKey, failedAttempts: 1, lastAttemptAt: now },
+      }).catch(() => {});
+    }
+
+    // 2. Resolve tenant if company code provided
     let resolvedTenantId: string | undefined;
     if (companyCode) {
       const tenant = await this.prisma.tenant.findFirst({
@@ -618,9 +663,16 @@ export class AuthService {
           ],
         },
       });
-      if (tenant) resolvedTenantId = tenant.id;
+      if (tenant) {
+        resolvedTenantId = tenant.id;
+      } else {
+        // Unknown company code — artificial delay and generic message
+        await this._addArtificialDelay();
+        return { message: 'If that email exists, a reset link has been sent.' };
+      }
     }
 
+    // 3. Find active matching users
     const users = await this.prisma.user.findMany({
       where: {
         email: { equals: lower, mode: 'insensitive' },
@@ -633,62 +685,74 @@ export class AuthService {
     });
 
     if (users.length === 0) {
-      // Simulate some DB time to prevent timing oracle
       await this._addArtificialDelay();
       return { message: 'If that email exists, a reset link has been sent.' };
     }
 
-    // If multiple accounts match across companies, pick primary tenant (non-internal, or primary code)
-    let user = users[0];
+    // 4. If same email exists in multiple companies, company code is required
     if (users.length > 1) {
-      const primary = users.find((u) => u.tenant && !u.tenant.isInternal) || users[0];
-      user = primary;
+      this.logger.warn(`[FORGOT_PASSWORD] Multiple company accounts found for ${maskIdentifier(lower)} without disambiguating company code.`);
+      await this._addArtificialDelay();
+      return { message: 'If that email exists, a reset link has been sent.' };
     }
 
+    const user = users[0];
+
+    // 5. Mark all older unused tokens for this user as used
+    await this.prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    // 6. Generate fresh token valid for 30 minutes
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
     await this.prisma.passwordResetToken.create({
       data: { userId: user.id, tokenHash, expiresAt },
     });
 
-    const isDev =
-      process.env.NODE_ENV !== 'production' ||
-      process.env.DATABASE_URL?.includes('localhost') ||
-      process.env.DATABASE_URL?.includes('127.0.0.1');
+    // 7. Build link strictly from FRONTEND_URL (never from Origin header)
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://admin.jsnc.co.in').replace(/\/+$/, '');
+    const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
 
-    let activeHost = 'https://admin.jsnc.co.in';
-    if (origin && isAllowedOrigin(origin, process.env.FRONTEND_URL)) {
-      activeHost = origin.replace(/\/$/, '');
-    } else if (isDev) {
-      activeHost = process.env.APP_URL || 'http://localhost:5173';
-    } else if (process.env.FRONTEND_URL) {
-      activeHost = process.env.FRONTEND_URL.replace(/\/$/, '');
-    }
-    const resetUrl = `${activeHost}/reset-password?token=${rawToken}`;
-    if (isDev) {
+    // 8. Print reset link only when NODE_ENV is not production
+    if (process.env.NODE_ENV !== 'production') {
       console.log(`[DEV] Password reset link for ${lower}: ${resetUrl}`);
     }
 
+    // 9. Send email and wait with 10 second timeout
     if (this.notificationsService) {
-      this.notificationsService.sendEmail({
+      const emailPromise = this.notificationsService.sendEmail({
         to: user.email,
         tenantId: user.tenantId || undefined,
         subject: 'Reset Your JNC CRM Password',
-        text: `Hello ${user.name || 'User'},\n\nWe received a request to reset your password for your JNC CRM account.\n\nPlease copy and paste this link into your browser to reset your password:\n${resetUrl}\n\nThis link is valid for 24 hours. If you did not request this, you can safely ignore this message.`,
+        text: `Hello ${user.name || 'User'},\n\nWe received a request to reset your password for your JNC CRM account.\n\nPlease copy and paste this link into your browser to reset your password:\n${resetUrl}\n\nThis link is valid for 30 minutes. If you did not request this, you can safely ignore this message.`,
         html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff;">
-          <h2 style="color: #1e293b; margin-top: 0;">JNC CRM Password Reset</h2>
+          <h2 style="color: #1e293b; margin-top: 0;">Reset Your Password</h2>
           <p style="color: #475569; font-size: 15px;">Hello <strong>${user.name || 'User'}</strong>,</p>
-          <p style="color: #475569; font-size: 15px;">We received a request to reset your password for your JNC CRM account.</p>
-          <p style="margin: 28px 0;">
-            <a href="${resetUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold; font-size: 15px;">Reset My Password</a>
-          </p>
-          <p style="color: #64748b; font-size: 13px;">Or copy and paste this link into your browser:<br><a href="${resetUrl}" style="color: #2563eb;">${resetUrl}</a></p>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
-          <p style="color: #94a3b8; font-size: 12px; margin: 0;">This link is valid for 24 hours. If you did not request this, you can safely ignore this message.</p>
+          <p style="color: #475569; font-size: 14px;">We received a request to reset your password for your JNC CRM account.</p>
+          <div style="margin: 25px 0;">
+            <a href="${resetUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">Reset Password</a>
+          </div>
+          <p style="color: #64748b; font-size: 13px;">This link is valid for <strong>30 minutes</strong>.</p>
+          <p style="color: #94a3b8; font-size: 12px;">If you didn't make this request, you can safely ignore this email.</p>
         </div>`,
-      }).catch((err) => console.error('[AUTH FORGOT PASSWORD EMAIL ERROR]', err));
+      });
+
+      const timeoutPromise = new Promise<{ status: string; error?: string }>((_, reject) =>
+        setTimeout(() => reject(new Error('Email dispatch timed out after 10 seconds')), 10000),
+      );
+
+      try {
+        const res: any = await Promise.race([emailPromise, timeoutPromise]);
+        if (res && res.status === 'failed') {
+          this.logger.error(`[FORGOT_PASSWORD] Email dispatch reported failure: ${res.error || res.reason || 'delivery failure'}`);
+        }
+      } catch (err: any) {
+        this.logger.error(`[FORGOT_PASSWORD] Failed to deliver reset email: ${err?.message || 'unknown error'}`);
+      }
     }
 
     return { message: 'If that email exists, a reset link has been sent.' };
@@ -696,7 +760,7 @@ export class AuthService {
 
   // ─── POST /auth/reset-password ───────────────────────────────────────────────
 
-  async resetPassword(dto: ResetPasswordDto) {
+  async resetPassword(dto: ResetPasswordDto, ipAddress?: string) {
     if (
       !dto ||
       !dto.newPassword ||
@@ -721,54 +785,44 @@ export class AuthService {
       throw new BadRequestException('Reset link is invalid or has expired.');
     }
 
+    // Validate password policy rules
     validatePasswordPolicy(dto.newPassword, { email: record.user.email, name: record.user.name });
     const passwordHash = await bcrypt.hash(dto.newPassword, 12);
 
-    // Update password across ALL active user records sharing that email (or linked Santhosh accounts)
-    const matchingEmails = [record.user.email.toLowerCase()];
-    if (record.user.email.toLowerCase().includes('santhosh')) {
-      matchingEmails.push('santhoshs0815@gmail.com', 'santhosh1508sk@gmail.com');
-    }
-    const matchingUsers = await this.prisma.user.findMany({
-      where: {
-        email: { in: matchingEmails, mode: 'insensitive' as const },
-        role: { not: 'platform_super_admin' },
-        deletedAt: null,
-        isActive: true,
+    // Update ONLY the token owner account (works for Platform Super Admin and Tenant Users alike)
+    const updateResult = await this.prisma.user.updateMany({
+      where: { id: record.userId, deletedAt: null },
+      data: {
+        passwordHash,
+        mustResetPassword: false,
+        tokenVersion: { increment: 1 },
+        failedLoginAttempts: 0,
+        lockoutUntil: null,
       },
-      select: { id: true, email: true, tenantId: true },
     });
-    const userIds = matchingUsers.map((u) => u.id);
 
-    await this.prisma.$transaction([
-      this.prisma.user.updateMany({
-        where: { id: { in: userIds } },
-        data: {
-          passwordHash,
-          mustResetPassword: false,
-          tokenVersion: { increment: 1 },
-          failedLoginAttempts: 0,
-          lockoutUntil: null,
-        },
-      }),
-      this.prisma.passwordResetToken.updateMany({
-        where: { userId: { in: userIds }, usedAt: null },
-        data: { usedAt: new Date() },
-      }),
-      this.prisma.refreshSession.updateMany({
-        where: { userId: { in: userIds } },
-        data: { isRevoked: true },
-      }),
-    ]);
-
-    // Clear any AccountLockout rows across all keys for these accounts
-    for (const u of matchingUsers) {
-      const lockKey = u.tenantId
-        ? `${u.email.toLowerCase()}:${u.tenantId}`
-        : u.email.toLowerCase();
-      await this.prisma.accountLockout.delete({ where: { identityKey: lockKey } }).catch(() => {});
-      await this.prisma.accountLockout.delete({ where: { identityKey: u.email.toLowerCase() } }).catch(() => {});
+    if (updateResult.count === 0) {
+      this.logger.error(`[RESET_PASSWORD] Failed to update user ${record.userId}: 0 rows updated in database.`);
+      throw new BadRequestException('Unable to update password. User account not found or inactive.');
     }
+
+    // Mark current token as used
+    await this.prisma.passwordResetToken.update({
+      where: { id: record.id },
+      data: { usedAt: new Date() },
+    });
+
+    // Revoke all active refresh sessions for this user
+    await this.prisma.refreshSession.updateMany({
+      where: { userId: record.userId },
+      data: { isRevoked: true },
+    });
+
+    // Clear any lockout records for this user
+    const uEmail = record.user.email.toLowerCase();
+    const uLockKey = record.user.tenantId ? `${uEmail}:${record.user.tenantId}` : uEmail;
+    await this.prisma.accountLockout.delete({ where: { identityKey: uLockKey } }).catch(() => {});
+    await this.prisma.accountLockout.delete({ where: { identityKey: uEmail } }).catch(() => {});
 
     await this.prisma.auditLog.create({
       data: {
@@ -780,6 +834,30 @@ export class AuthService {
         entityId: record.userId,
       },
     }).catch(() => {});
+
+    // Send "Your password was changed" security notification email with time and IP
+    const changeTime = new Date().toUTCString();
+    const clientIp = ipAddress || 'Unknown IP';
+    if (this.notificationsService) {
+      this.notificationsService.sendEmail({
+        to: record.user.email,
+        tenantId: record.user.tenantId || undefined,
+        subject: 'Your JNC CRM password was changed',
+        text: `Hello ${record.user.name || 'User'},\n\nYour password for JNC CRM was successfully changed on ${changeTime} from IP address: ${clientIp}.\n\nIf you did not perform this change, please contact your administrator immediately.`,
+        html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1e293b; margin-top: 0;">Password Changed</h2>
+          <p style="color: #475569; font-size: 15px;">Hello <strong>${record.user.name || 'User'}</strong>,</p>
+          <p style="color: #475569; font-size: 14px;">Your JNC CRM account password was successfully changed.</p>
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #334155;">
+            <div><strong>Time:</strong> ${changeTime}</div>
+            <div style="margin-top: 4px;"><strong>IP Address:</strong> ${clientIp}</div>
+          </div>
+          <p style="color: #dc2626; font-size: 13px;">If you did not make this change, please contact your administrator immediately.</p>
+        </div>`,
+      }).catch((err) => {
+        this.logger.error(`[RESET_PASSWORD] Failed to send password changed notification email: ${err?.message || 'error'}`);
+      });
+    }
 
     return { message: 'Password has been reset successfully. Please sign in.' };
   }
@@ -1069,24 +1147,9 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPass, 12);
 
-    // Synchronize password across ALL active company accounts sharing that verified email (or linked Santhosh accounts)
-    const matchingEmails = [user.email.toLowerCase()];
-    if (user.email.toLowerCase().includes('santhosh')) {
-      matchingEmails.push('santhoshs0815@gmail.com', 'santhosh1508sk@gmail.com');
-    }
-    const matchingUsers = await this.prisma.user.findMany({
-      where: {
-        email: { in: matchingEmails, mode: 'insensitive' as const },
-        role: { not: 'platform_super_admin' },
-        deletedAt: null,
-        isActive: true,
-      },
-      select: { id: true },
-    });
-    const userIds = matchingUsers.map((u) => u.id);
-
-    await this.prisma.user.updateMany({
-      where: { id: { in: userIds } },
+    // Update ONLY this user record
+    const updateResult = await this.prisma.user.updateMany({
+      where: { id: userId, deletedAt: null },
       data: {
         passwordHash,
         mustResetPassword: false,
@@ -1096,10 +1159,51 @@ export class AuthService {
       },
     });
 
+    if (updateResult.count === 0) {
+      this.logger.error(`[CHANGE_PASSWORD] Failed to update user ${userId}: 0 rows updated in database.`);
+      throw new BadRequestException('Unable to change password. User account not found or inactive.');
+    }
+
+    // Revoke all refresh sessions for this user
     await this.prisma.refreshSession.updateMany({
-      where: { userId: { in: userIds } },
+      where: { userId },
       data: { isRevoked: true },
     });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: user.tenantId || 'default-tenant-id',
+        actorId: userId,
+        actorName: user.name,
+        action: 'PASSWORD_CHANGE',
+        entityName: 'User',
+        entityId: userId,
+      },
+    }).catch(() => {});
+
+    // Send "Your password was changed" security notification email with time and IP
+    const changeTime = new Date().toUTCString();
+    const clientIp = ipAddress || 'Unknown IP';
+    if (this.notificationsService) {
+      this.notificationsService.sendEmail({
+        to: user.email,
+        tenantId: user.tenantId || undefined,
+        subject: 'Your JNC CRM password was changed',
+        text: `Hello ${user.name || 'User'},\n\nYour password for JNC CRM was successfully changed on ${changeTime} from IP address: ${clientIp}.\n\nIf you did not perform this change, please contact your administrator immediately.`,
+        html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1e293b; margin-top: 0;">Password Changed</h2>
+          <p style="color: #475569; font-size: 15px;">Hello <strong>${user.name || 'User'}</strong>,</p>
+          <p style="color: #475569; font-size: 14px;">Your JNC CRM account password was successfully changed.</p>
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #334155;">
+            <div><strong>Time:</strong> ${changeTime}</div>
+            <div style="margin-top: 4px;"><strong>IP Address:</strong> ${clientIp}</div>
+          </div>
+          <p style="color: #dc2626; font-size: 13px;">If you did not make this change, please contact your administrator immediately.</p>
+        </div>`,
+      }).catch((err) => {
+        this.logger.error(`[CHANGE_PASSWORD] Failed to send password changed notification email: ${err?.message || 'error'}`);
+      });
+    }
 
     const updatedUser = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -1118,17 +1222,6 @@ export class AuthService {
         },
       },
     });
-
-    await this.prisma.auditLog.create({
-      data: {
-        tenantId: user.tenantId || 'default-tenant-id',
-        actorId: userId,
-        actorName: user.name,
-        action: 'PASSWORD_CHANGE',
-        entityName: 'User',
-        entityId: userId,
-      },
-    }).catch(() => {});
 
     // Generate fresh tokens using incremented tokenVersion so the user session stays active without 401 kickout
     const tokens = this.generateTokens(updatedUser);

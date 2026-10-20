@@ -9,19 +9,60 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useSearchParams } from 'react-router-dom';
 import { authApi } from '../services/api';
-import { RefreshCw, AlertCircle, CheckCircle2, ArrowLeft, Mail, ShieldAlert, Clock, Inbox } from 'lucide-react';
+import { RefreshCw, AlertCircle, CheckCircle2, ArrowLeft, Mail, ShieldAlert, Clock, Inbox, Building2, Shield } from 'lucide-react';
 import AuthLayout from '../components/layout/AuthLayout';
 
 export default function ForgotPasswordPage() {
-  const [searchParams] = useSearchParams();
-  const portalParam = searchParams.get('portal');
-  const isPlatform = portalParam === 'platform';
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialPortal = searchParams.get('portal') === 'platform' ? 'platform' : 'company';
 
+  const [activeTab, setActiveTab] = useState<'company' | 'platform'>(initialPortal);
   const [email, setEmail] = useState('');
+  const [companyCode, setCompanyCode] = useState('');
+  const [senderEmail, setSenderEmail] = useState<string>('jayaraj@jsnc.co.in');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+
+  // Load public sender from GET /auth/password-policy
+  useEffect(() => {
+    let isMounted = true;
+    authApi
+      .getPasswordPolicy()
+      .then((res) => {
+        if (isMounted && res.data?.senderEmail) {
+          setSenderEmail(res.data.senderEmail);
+        }
+      })
+      .catch(() => {
+        // Fallback default remains set
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Sync tab with URL search parameter if changed
+  useEffect(() => {
+    const portal = searchParams.get('portal');
+    if (portal === 'platform' && activeTab !== 'platform') {
+      setActiveTab('platform');
+    } else if (portal !== 'platform' && activeTab === 'platform' && !portal) {
+      setActiveTab('company');
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tab: 'company' | 'platform') => {
+    setActiveTab(tab);
+    setError('');
+    setSent(false);
+    if (tab === 'platform') {
+      setSearchParams({ portal: 'platform' });
+    } else {
+      setSearchParams({});
+    }
+  };
 
   // Cooldown countdown effect
   useEffect(() => {
@@ -39,10 +80,10 @@ export default function ForgotPasswordPage() {
     return `${masked}@${domain}`;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!email.trim()) {
-      setError('Please enter your email address.');
+      setError('Please enter your registered email address.');
       return;
     }
 
@@ -50,19 +91,20 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      await authApi.forgotPassword(email.trim());
+      const codeToSend = activeTab === 'company' ? (companyCode.trim() || undefined) : undefined;
+      await authApi.forgotPassword(email.trim(), codeToSend);
       setSent(true);
-      setCooldown(60); // 60s cooldown before resend
+      setCooldown(60); // 60s countdown before resend
     } catch (err: any) {
       if (err.response?.status === 429) {
-        setError('Too many password reset attempts. Please wait a few minutes before trying again.');
+        setError('Too many password reset attempts. Please wait an hour before requesting again.');
       } else if (
         !err?.response ||
         err.code === 'ERR_NETWORK' ||
         err.code === 'ECONNABORTED' ||
         err.message?.includes('Network Error')
       ) {
-        setError('Cannot reach the server. Check your internet connection and try again.');
+        setError('Cannot reach the server. Check your connection and try again.');
       } else {
         const rawMsg = err.response?.data?.message;
         const msg = Array.isArray(rawMsg) ? rawMsg.join(', ') : rawMsg || 'Unable to send reset link. Please try again.';
@@ -75,11 +117,8 @@ export default function ForgotPasswordPage() {
 
   const handleResend = async () => {
     if (cooldown > 0 || loading) return;
-    await handleSubmit({ preventDefault: () => {} } as any);
+    await handleSubmit();
   };
-
-  const backLink = isPlatform ? '/platform/login' : '/login';
-  const backLabel = isPlatform ? 'Back to Platform Administration' : 'Back to Company Sign In';
 
   return (
     <AuthLayout>
@@ -92,25 +131,51 @@ export default function ForgotPasswordPage() {
         {/* Navigation Breadcrumb */}
         <div className="mb-5 flex items-center justify-between">
           <Link
-            to={backLink}
+            to={activeTab === 'platform' ? '/platform/login' : '/login'}
             className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#2563EB] hover:underline transition-colors"
           >
-            <ArrowLeft size={14} /> {backLabel}
+            <ArrowLeft size={14} />{' '}
+            {activeTab === 'platform' ? 'Back to Platform Login' : 'Back to Company Sign In'}
           </Link>
-          <span className="text-[11px] font-semibold tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-            {isPlatform ? 'Platform Super-Admin' : 'Company CRM'}
-          </span>
+        </div>
+
+        {/* Portal Tabs */}
+        <div className="mb-6 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => handleTabChange('company')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'company'
+                ? 'bg-white dark:bg-[#1E293B] text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Building2 size={14} />
+            <span>Company CRM</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleTabChange('platform')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'platform'
+                ? 'bg-white dark:bg-[#1E293B] text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Shield size={14} />
+            <span>Platform admin</span>
+          </button>
         </div>
 
         {/* Page Title */}
-        <div className="mb-6">
+        <div className="mb-5">
           <h2 className="text-[26px] sm:text-[28px] font-semibold text-slate-900 dark:text-white leading-tight">
-            Reset Your Password
+            Reset Password
           </h2>
-          <p className="text-[14px] text-slate-500 dark:text-slate-400 mt-1.5">
-            {isPlatform
-              ? 'Enter your Platform Super-Admin email to receive a secure recovery link.'
-              : 'Enter the email registered with your company workspace to receive a reset link.'}
+          <p className="text-[14px] text-slate-500 dark:text-slate-400 mt-1">
+            {activeTab === 'platform'
+              ? 'Enter your Platform Super-Admin email to receive a recovery link.'
+              : 'Enter the email address registered with your company account.'}
           </p>
         </div>
 
@@ -120,34 +185,34 @@ export default function ForgotPasswordPage() {
               key="sent"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              className="space-y-5"
+              className="space-y-4"
             >
-              {/* Success Badge */}
-              <div className="p-5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 text-center space-y-3">
+              {/* Generic Success Badge */}
+              <div className="p-5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 text-center space-y-2.5">
                 <div className="w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto shadow-sm">
                   <CheckCircle2 size={26} />
                 </div>
                 <div>
                   <h3 className="text-[16px] font-bold text-emerald-900 dark:text-emerald-200">
-                    Recovery Link Dispatched
+                    Check your inbox
                   </h3>
-                  <p className="text-[13px] text-emerald-800 dark:text-emerald-300 mt-1">
-                    If an active account exists for <strong>{maskEmail(email)}</strong>, a secure password reset link has been dispatched.
+                  <p className="text-[13px] text-emerald-800 dark:text-emerald-300 mt-1 leading-relaxed">
+                    If an account exists for <strong>{maskEmail(email)}</strong>, a password reset link has been dispatched.
+                  </p>
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
+                    The recovery link is valid for <strong>30 minutes</strong>.
                   </p>
                 </div>
               </div>
 
-              {/* Crucial Spam & Sender Guidance */}
-              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-900 dark:text-amber-200 text-xs space-y-2">
+              {/* Dynamic Sender Note & Spam Folder Hint */}
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-900 dark:text-amber-200 text-xs space-y-1.5">
                 <div className="flex items-center gap-2 font-bold text-amber-800 dark:text-amber-300">
                   <ShieldAlert size={16} className="shrink-0 text-amber-600 dark:text-amber-400" />
-                  <span>Important: Check Spam & Promotions Folders</span>
+                  <span>Important: Check Spam & Junk Folders</span>
                 </div>
-                <p className="leading-relaxed text-slate-700 dark:text-slate-300">
-                  Emails are sent from <strong>jayaraj@jsnc.co.in</strong> (JNC CRM). Automated system messages are frequently routed into the <strong>Spam</strong> or <strong>Junk</strong> folder by Gmail and Outlook.
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  The recovery link expires in <strong>24 hours</strong>.
+                <p className="leading-relaxed text-slate-700 dark:text-slate-300 text-[12px]">
+                  Password reset emails are delivered from <strong>{senderEmail}</strong>. If you do not see the email in your inbox within 1–2 minutes, please inspect your <strong>Spam</strong> or <strong>Junk</strong> folder.
                 </p>
               </div>
 
@@ -172,21 +237,29 @@ export default function ForgotPasswordPage() {
                   )}
                 </button>
 
-                <Link
-                  to={backLink}
-                  className="w-full h-11 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-[14px] font-semibold shadow-xs transition-all flex items-center justify-center gap-2"
-                >
-                  <span>{backLabel}</span>
-                </Link>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <Link
+                    to="/login"
+                    className="h-10 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold flex items-center justify-center transition-colors"
+                  >
+                    Company Login
+                  </Link>
+                  <Link
+                    to="/platform/login"
+                    className="h-10 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold flex items-center justify-center transition-colors"
+                  >
+                    Platform Login
+                  </Link>
+                </div>
               </div>
             </motion.div>
           ) : (
-            <motion.form key="form" onSubmit={handleSubmit} className="space-y-5" noValidate autoComplete="off">
-              {/* Sender Transparency Info */}
-              <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/40 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2.5">
+            <motion.form key="form" onSubmit={handleSubmit} className="space-y-4" noValidate autoComplete="off">
+              {/* Dynamic Sender Note */}
+              <div className="p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/40 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2.5">
                 <Mail size={16} className="shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
                 <div className="leading-relaxed text-[12px]">
-                  Password reset emails are delivered from <strong>jayaraj@jsnc.co.in</strong>. Make sure to check your <strong>Inbox</strong> and <strong>Spam</strong> folder.
+                  Password reset emails are delivered from <strong>{senderEmail}</strong>. Please check your <strong>Inbox</strong> and <strong>Spam</strong> folder.
                 </div>
               </div>
 
@@ -218,6 +291,33 @@ export default function ForgotPasswordPage() {
                 </div>
               </div>
 
+              {/* Optional Company Code (Only on Company CRM Tab) */}
+              {activeTab === 'company' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label
+                      htmlFor="forgot-company-code"
+                      className="block text-[14px] font-medium text-slate-700 dark:text-slate-300"
+                    >
+                      Company Code <span className="text-xs text-slate-400 font-normal">(Optional)</span>
+                    </label>
+                  </div>
+                  <input
+                    id="forgot-company-code"
+                    name="jnc-company"
+                    type="text"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    className="w-full h-11 px-3.5 text-[15px] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all uppercase"
+                    placeholder="e.g. JSNC (only needed if in multiple companies)"
+                    value={companyCode}
+                    onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
+                  />
+                </div>
+              )}
+
               {/* Error Alert */}
               {error && (
                 <div
@@ -247,17 +347,15 @@ export default function ForgotPasswordPage() {
                 )}
               </button>
 
-              {/* Portal Switcher Footer */}
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1.5">
-                <p>
-                  Need to switch portals?{' '}
-                  <Link
-                    to={isPlatform ? '/forgot-password' : '/forgot-password?portal=platform'}
-                    className="font-semibold text-[#2563EB] hover:underline"
-                  >
-                    {isPlatform ? 'Reset Company CRM Password' : 'Reset Platform Admin Password'}
-                  </Link>
-                </p>
+              {/* Back links to both portals */}
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 text-center text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center gap-3">
+                <Link to="/login" className="font-medium text-[#2563EB] hover:underline">
+                  Company Login (/login)
+                </Link>
+                <span>&bull;</span>
+                <Link to="/platform/login" className="font-medium text-[#2563EB] hover:underline">
+                  Platform Admin (/platform/login)
+                </Link>
               </div>
             </motion.form>
           )}

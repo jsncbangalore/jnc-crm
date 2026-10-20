@@ -533,9 +533,10 @@ export const authApi = {
     requestWithColdStartRetry(() =>
       api.post('/platform-auth/login', { email, password, keepSignedIn }, { timeout: 60000 })
     ),
-  forgotPassword: (email: string) =>
+  getPasswordPolicy: () => api.get('/auth/password-policy'),
+  forgotPassword: (email: string, companyCode?: string) =>
     requestWithColdStartRetry(() =>
-      api.post('/auth/forgot-password', { email }, { timeout: 60000 })
+      api.post('/auth/forgot-password', { email, companyCode }, { timeout: 60000 })
     ),
   resetPassword: (token: string, newPassword: string) =>
     api.post('/auth/reset-password', { token, newPassword }),

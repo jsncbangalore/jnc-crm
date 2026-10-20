@@ -106,20 +106,26 @@ export class AuthController {
     return result;
   }
 
+  /** Returns current password policy rules and public sender address */
+  @Get('password-policy')
+  getPasswordPolicy() {
+    return this.authService.getPasswordPolicy();
+  }
+
   /** Forgot password — sends reset link if email exists (no reveal) — rate limit: 15 / 15 min */
   @Throttle({ default: { limit: 15, ttl: 900000 } })
   @Post('forgot-password')
   async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
     const ip = req.ip || req.socket?.remoteAddress;
-    const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : undefined);
-    return this.authService.forgotPassword(dto, ip, origin);
+    return this.authService.forgotPassword(dto, ip);
   }
 
   /** Reset password with token from email link — rate limit: 5 / 15 min */
   @Throttle({ default: { limit: 5, ttl: 900000 } })
   @Post('reset-password')
-  async resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto);
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    const ip = req.ip || req.socket?.remoteAddress;
+    return this.authService.resetPassword(dto, ip);
   }
 
   /** Refresh token rotation with CSRF protection */

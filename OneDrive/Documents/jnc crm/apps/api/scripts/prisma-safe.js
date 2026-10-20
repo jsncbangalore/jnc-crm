@@ -74,6 +74,7 @@ const isTestAction = [
   'test-login-system',
   'test-data-visibility',
   'test-customer-list-scope',
+  'test-auth-security',
 ].includes(action);
 
 if (isTestAction) {
@@ -194,6 +195,7 @@ const knownActions = {
   'test-customer-list-scope': { type: 'ts-node', file: 'scripts/test-customer-list-scope.ts' },
   'prod:bootstrap': { type: 'ts-node', file: 'scripts/prod-bootstrap.ts' },
   'dry-run-fresh': { type: 'ts-node', file: 'scripts/dry-run-fresh.ts' },
+  'test-auth-security': { type: 'ts-node', file: 'scripts/test-auth-security.ts' },
 };
 
 function resolveBin(pkgSubpath) {

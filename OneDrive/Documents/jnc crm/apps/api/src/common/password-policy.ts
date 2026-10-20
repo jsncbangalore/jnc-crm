@@ -23,6 +23,31 @@ export interface PasswordValidationContext {
   name?: string;
 }
 
+export interface PasswordPolicyRule {
+  id: string;
+  label: string;
+}
+
+export interface PasswordPolicyDto {
+  minLength: number;
+  maxLength: number;
+  rules: PasswordPolicyRule[];
+  senderEmail: string;
+}
+
+export function getPasswordPolicy(): PasswordPolicyDto {
+  return {
+    minLength: 12,
+    maxLength: 200,
+    rules: [
+      { id: 'minLength', label: 'Minimum 12 characters' },
+      { id: 'notCommon', label: 'Cannot be a commonly guessed password' },
+      { id: 'noPersonalInfo', label: 'Cannot contain parts of your name or email' },
+    ],
+    senderEmail: process.env.EMAIL_FROM || process.env.PRIMARY_EMAIL_FROM || 'jayaraj@jsnc.co.in',
+  };
+}
+
 export function validatePasswordPolicy(password: string, context?: PasswordValidationContext): void {
   if (!password || password.length < 12) {
     throw new BadRequestException('Password must be at least 12 characters in length.');

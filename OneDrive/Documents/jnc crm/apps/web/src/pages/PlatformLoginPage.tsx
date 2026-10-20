@@ -150,20 +150,20 @@ export default function PlatformLoginPage() {
                   <div className="font-semibold">{error}</div>
                 </div>
 
-                {/* Helpful redirection for tenant admins and employees */}
+                {/* Company CRM Redirection Card */}
                 <div className="pt-2 border-t border-red-200 dark:border-red-900/60 text-slate-700 dark:text-slate-300">
-                  <p className="font-semibold text-xs text-slate-900 dark:text-slate-100 mb-1">
-                    Are you a Company Admin or Team Member?
+                  <p className="font-semibold text-sm text-slate-900 dark:text-slate-100 mb-1">
+                    Are you signing in to a company CRM?
                   </p>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed mb-2.5">
-                    This portal is strictly for <strong>Platform Super-Admins</strong> (jayaraj@jsnc.co.in). Company administrators and staff must sign in via the <strong>Company CRM Portal</strong>.
+                  <p className="text-[12px] text-slate-600 dark:text-slate-400 leading-relaxed mb-3">
+                    Company users must use the company login.
                   </p>
                   <button
                     type="button"
                     onClick={() => navigate('/login')}
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-semibold text-xs shadow-xs transition-all cursor-pointer"
+                    className="w-full h-10 inline-flex items-center justify-center gap-1.5 px-4 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-semibold text-[13px] shadow-sm transition-all cursor-pointer"
                   >
-                    <span>Sign in to Company CRM (/login) &rarr;</span>
+                    <span>Go to Company Login (/login) &rarr;</span>
                   </button>
                 </div>
               </motion.div>
