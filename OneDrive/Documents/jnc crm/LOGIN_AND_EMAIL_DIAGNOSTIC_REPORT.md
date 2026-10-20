@@ -9,7 +9,7 @@
 ## 1. Executive Summary & Root Cause Analysis
 
 ### The Problem
-When attempting to log in on this device, entering email `santhosh1508sk@gmail.com` and password `homework@2003` resulted in the error:
+When attempting to log in on this device, entering email `santhosh1508sk@gmail.com` and your password resulted in the error:
 > **`Invalid credentials.`**
 
 However, the exact same credentials worked on another device.
