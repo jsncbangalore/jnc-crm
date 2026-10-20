@@ -103,7 +103,7 @@ export default function PlatformLoginPage() {
                 Password
               </label>
               <Link
-                to="/forgot-password"
+                to="/forgot-password?portal=platform"
                 className="text-[13px] font-medium text-[#2563EB] hover:underline transition-colors"
               >
                 Forgot password?
@@ -133,7 +133,7 @@ export default function PlatformLoginPage() {
             </div>
           </div>
 
-          {/* Error */}
+          {/* Error & Portal Detection */}
           <AnimatePresence>
             {error && (
               <motion.div
@@ -143,20 +143,28 @@ export default function PlatformLoginPage() {
                 exit={{ opacity: 0 }}
                 role="alert"
                 aria-live="assertive"
-                className="p-3.5 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[13px] font-medium flex items-start gap-2.5"
+                className="p-3.5 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[13px] font-medium space-y-2.5"
               >
-                <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <div>{error}</div>
-                  {(error.includes('Company Portal') || error.includes('/login')) && (
-                    <button
-                      type="button"
-                      onClick={() => navigate('/login')}
-                      className="mt-2.5 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-semibold text-xs shadow-sm transition-all"
-                    >
-                      <span>Open Company Login (/login) &rarr;</span>
-                    </button>
-                  )}
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle size={18} className="shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+                  <div className="font-semibold">{error}</div>
+                </div>
+
+                {/* Helpful redirection for tenant admins and employees */}
+                <div className="pt-2 border-t border-red-200 dark:border-red-900/60 text-slate-700 dark:text-slate-300">
+                  <p className="font-semibold text-xs text-slate-900 dark:text-slate-100 mb-1">
+                    Are you a Company Admin or Team Member?
+                  </p>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed mb-2.5">
+                    This portal is strictly for <strong>Platform Super-Admins</strong> (jayaraj@jsnc.co.in). Company administrators and staff must sign in via the <strong>Company CRM Portal</strong>.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/login')}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-semibold text-xs shadow-xs transition-all cursor-pointer"
+                  >
+                    <span>Sign in to Company CRM (/login) &rarr;</span>
+                  </button>
                 </div>
               </motion.div>
             )}

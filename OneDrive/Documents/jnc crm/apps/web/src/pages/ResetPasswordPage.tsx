@@ -127,11 +127,21 @@ export default function ResetPasswordPage() {
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
-                {newPassword.length > 0 && newPassword.length < 12 && (
-                  <p className="text-[12px] text-amber-600 dark:text-amber-400 mt-1">
-                    {12 - newPassword.length} more characters needed
-                  </p>
-                )}
+                {/* Password strength & policy hints */}
+                <div className="mt-2 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] space-y-1">
+                  <div className="flex items-center gap-1.5 font-medium text-slate-600 dark:text-slate-400">
+                    <span className={newPassword.length >= 12 ? 'text-emerald-500 font-bold' : 'text-slate-400'}>
+                      {newPassword.length >= 12 ? '✓' : '○'}
+                    </span>
+                    <span>At least 12 characters ({newPassword.length}/12)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 font-medium text-slate-600 dark:text-slate-400">
+                    <span className={/[A-Za-z]/.test(newPassword) && /\d/.test(newPassword) ? 'text-emerald-500 font-bold' : 'text-slate-400'}>
+                      {/[A-Za-z]/.test(newPassword) && /\d/.test(newPassword) ? '✓' : '○'}
+                    </span>
+                    <span>Contains letters and numbers</span>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -153,6 +163,11 @@ export default function ResetPasswordPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
+                {confirmPassword.length > 0 && (
+                  <p className={`text-[12px] font-medium mt-1 ${newPassword === confirmPassword ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                    {newPassword === confirmPassword ? '✓ Passwords match' : '✕ Passwords do not match'}
+                  </p>
+                )}
               </div>
 
               {error && (
