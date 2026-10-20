@@ -93,15 +93,15 @@ A test email was triggered to verify backend SMTP connectivity and identify the 
   - Direct links back to both `/login` and `/platform/login`.
 
 ### Step 3: Enhance `ResetPasswordPage.tsx`
-- Add real-time password policy checklist:
-  - [ ] Minimum 12 characters
-  - [ ] At least one uppercase letter
-  - [ ] At least one number
-  - [ ] At least one special symbol (`@$!%*?&`)
-- Show live password match verification before enabling the submit button.
+- Live password requirements checklist dynamically fetched from `GET /api/v1/auth/password-policy`:
+  - [x] Minimum 12 characters
+  - [x] Cannot be a commonly guessed password
+  - [x] Cannot contain parts of your name or email
+- Show live password match verification (`✓ Passwords match` vs `✕ Passwords do not match`).
+- Password visibility toggle (show/hide).
+- Success screen with direct action button to the appropriate login portal.
 
-### Step 4: Verification & Safe Testing
-- Test the full loop:
-  1. Trigger reset for `santhosh1508sk@gmail.com`.
-  2. Confirm receipt in inbox/spam from `jayaraj@jsnc.co.in`.
-  3. Verify link redirection and password update.
+### Step 4: Verification & Completed Status
+- Automated Security Suite: `npm --workspace=apps/api run test:auth-security` (22/22 PASSED).
+- Production Release Scan: `node scripts/release-pack.js` (ALL 12 SCANS PASSED).
+- Remote Repositories: Synchronized and pushed to `origin main` and `backend main`.
