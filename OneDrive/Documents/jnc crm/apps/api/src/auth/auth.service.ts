@@ -30,10 +30,16 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   RefreshTokenDto,
+  ForgotPasswordRequestDto,
+  ForgotPasswordVerifyDto,
+  ForgotPasswordResetDto,
+  RequestEmailChangeDto,
+  VerifyEmailChangeDto,
 } from './dto/login.dto';
 import { getRoleRedirectPath } from './roles';
 import { validatePasswordPolicy, needsRehash, getPasswordPolicy, PasswordPolicyDto } from '../common/password-policy';
 import { isAllowedOrigin } from '../common/cors-config';
+import { parseDeviceLabel } from '../common/device.util';
 
 const GENERIC_ERROR = 'Invalid credentials.';
 const DUMMY_HASH = '$2a$12$a8/MI7VqcmnIurecXxpSd.NGA0wvPwFlYxMl6qs4VAKG.iQ/Z9SAu';
@@ -73,8 +79,12 @@ export function formatAuthUser(user: any): any {
     name: user.name,
     email: user.email,
     employeeCode: user.employeeCode,
+    phone: user.phone ?? null,
+    photoUrl: user.photoUrl ?? null,
     role: user.role,
     mustResetPassword: Boolean(user.mustResetPassword),
+    lastPasswordChangeAt: user.lastPasswordChangeAt ?? null,
+    createdAt: user.createdAt ?? null,
     tenant: user.tenant
       ? {
           code: user.tenant.code,
@@ -607,137 +617,130 @@ export class AuthService {
     return this._buildLoginResponse(user, ipAddress, dto.password, Boolean(dto.keepSignedIn), userAgent, 'platform');
   }
 
-  // ─── POST /auth/forgot-password ─────────────────────────────────────────────
+  // ─── POST /auth/forgot-password/request (OTP Flow) ─────────────────────────
 
-  // ─── POST /auth/forgot-password ─────────────────────────────────────────────
-
-  async forgotPassword(dto: ForgotPasswordDto, _ipAddress?: string) {
-    const lower = (dto.email || '').trim().toLowerCase();
-    const companyCode = dto.companyCode?.trim();
+  async forgotPasswordRequest(
+    dto: ForgotPasswordRequestDto,
+    clientIp?: string,
+    userAgent?: string,
+  ) {
+    const lower = (dto?.email || '').trim().toLowerCase();
     const now = new Date();
 
-    // 1. Rate limiting: 3 reset requests per hour per email
-    const emailRateKey = `forgot-rate:${lower}`;
-    const rateRecord = await this.prisma.accountLockout.findUnique({
-      where: { identityKey: emailRateKey },
+    // 1. Resend cooldown: 60 seconds per email
+    const existingChallenge = await this.prisma.otpChallenge.findFirst({
+      where: {
+        emailNormalized: lower,
+        purpose: 'password_reset',
+        resendAfter: { gt: now },
+        usedAt: null,
+      },
     });
 
-    if (rateRecord) {
-      const isExpired =
-        rateRecord.lastAttemptAt &&
-        now.getTime() - new Date(rateRecord.lastAttemptAt).getTime() > 60 * 60 * 1000; // 1 hour
-
-      if (isExpired) {
-        await this.prisma.accountLockout.update({
-          where: { identityKey: emailRateKey },
-          data: { failedAttempts: 1, lastAttemptAt: now },
-        }).catch(() => {});
-      } else if (rateRecord.failedAttempts >= 3) {
-        this.logger.warn(`[FORGOT_PASSWORD] Rate limit reached: 3 requests/hour for ${maskIdentifier(lower)}`);
-        throw new HttpException(
-          'Too many password reset requests for this email. Please try again after an hour.',
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      } else {
-        await this.prisma.accountLockout.update({
-          where: { identityKey: emailRateKey },
-          data: { failedAttempts: { increment: 1 }, lastAttemptAt: now },
-        }).catch(() => {});
-      }
-    } else {
-      await this.prisma.accountLockout.create({
-        data: { identityKey: emailRateKey, failedAttempts: 1, lastAttemptAt: now },
-      }).catch(() => {});
+    if (existingChallenge) {
+      await this._addArtificialDelay();
+      const remainingSecs = Math.max(
+        1,
+        Math.ceil((new Date(existingChallenge.resendAfter).getTime() - now.getTime()) / 1000),
+      );
+      return {
+        message: 'If this account exists, we sent a code.',
+        resendAfterSeconds: remainingSecs,
+      };
     }
 
-    // 2. Resolve tenant if company code provided
-    let resolvedTenantId: string | undefined;
-    if (companyCode) {
-      const tenant = await this.prisma.tenant.findFirst({
-        where: {
-          deletedAt: null,
-          OR: [
-            { code: { equals: companyCode.toUpperCase(), mode: 'insensitive' } },
-            { slug: { equals: companyCode.toLowerCase(), mode: 'insensitive' } },
-            { id: { equals: companyCode } },
-          ],
-        },
-      });
-      if (tenant) {
-        resolvedTenantId = tenant.id;
-      } else {
-        // Unknown company code — artificial delay and generic message
-        await this._addArtificialDelay();
-        return { message: 'If that email exists, a reset link has been sent.' };
-      }
+    // 2. Hourly rate limit: maximum 3 codes per hour per email
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const countLastHour = await this.prisma.otpChallenge.count({
+      where: {
+        emailNormalized: lower,
+        purpose: 'password_reset',
+        createdAt: { gte: oneHourAgo },
+      },
+    });
+
+    if (countLastHour >= 3) {
+      this.logger.warn(`[OTP_CHALLENGE] 3 codes/hour limit reached for ${maskIdentifier(lower)}`);
+      await this._addArtificialDelay();
+      return {
+        message: 'If this account exists, we sent a code.',
+        resendAfterSeconds: 60,
+      };
     }
 
-    // 3. Find active matching users
+    // 3. Check if active account(s) exist for this email (Company users and Platform Owner)
     const users = await this.prisma.user.findMany({
       where: {
         email: { equals: lower, mode: 'insensitive' },
-        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
         deletedAt: null,
         isActive: true,
       },
       include: { tenant: true },
-      orderBy: [{ createdAt: 'desc' }],
     });
 
     if (users.length === 0) {
+      // Artificial delay to prevent timing-based user enumeration
       await this._addArtificialDelay();
-      return { message: 'If that email exists, a reset link has been sent.' };
+      return {
+        message: 'If this account exists, we sent a code.',
+        resendAfterSeconds: 60,
+      };
     }
 
-    // 4. If same email exists in multiple companies, company code is required
-    if (users.length > 1) {
-      this.logger.warn(`[FORGOT_PASSWORD] Multiple company accounts found for ${maskIdentifier(lower)} without disambiguating company code.`);
-      await this._addArtificialDelay();
-      return { message: 'If that email exists, a reset link has been sent.' };
-    }
+    // 4. Generate cryptographically secure 6-digit verification code
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const challengeId = crypto.randomUUID();
+    const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'jnc-otp-secret-key-2026';
+    const codeHash = crypto
+      .createHmac('sha256', otpSecret + challengeId)
+      .update(code)
+      .digest('hex');
 
-    const user = users[0];
-
-    // 5. Mark all older unused tokens for this user as used
-    await this.prisma.passwordResetToken.updateMany({
-      where: { userId: user.id, usedAt: null },
-      data: { usedAt: new Date() },
+    // 5. Invalidate older open challenges for this email
+    await this.prisma.otpChallenge.updateMany({
+      where: {
+        emailNormalized: lower,
+        purpose: 'password_reset',
+        usedAt: null,
+      },
+      data: { usedAt: now },
     });
 
-    // 6. Generate fresh token valid for 30 minutes
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
-
-    await this.prisma.passwordResetToken.create({
-      data: { userId: user.id, tokenHash, expiresAt },
+    // 6. Create active challenge with 10-minute validity and 60s resend lockout
+    await this.prisma.otpChallenge.create({
+      data: {
+        id: challengeId,
+        emailNormalized: lower,
+        purpose: 'password_reset',
+        codeHash,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+        resendAfter: new Date(Date.now() + 60 * 1000),     // 60 seconds
+        requestIp: maskIp(clientIp || '127.0.0.1'),
+        requestUserAgent: userAgent ? userAgent.substring(0, 500) : 'unknown',
+      },
     });
 
-    // 7. Build link strictly from FRONTEND_URL (never from Origin header)
-    const frontendUrl = (process.env.FRONTEND_URL || 'https://admin.jsnc.co.in').replace(/\/+$/, '');
-    const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
-
-    // 8. Print reset link only when NODE_ENV is not production
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[DEV] Password reset link for ${lower}: ${resetUrl}`);
-    }
-
-    // 9. Send email and wait with 10 second timeout
+    // 7. Dispatch verification email (10-second timeout, logs only failure reason, never code)
     if (this.notificationsService) {
+      const requestTime = new Date().toUTCString();
+      const browserLabel = parseDeviceLabel(userAgent);
+
       const emailPromise = this.notificationsService.sendEmail({
-        to: user.email,
-        tenantId: user.tenantId || undefined,
-        subject: 'Reset Your JNC CRM Password',
-        text: `Hello ${user.name || 'User'},\n\nWe received a request to reset your password for your JNC CRM account.\n\nPlease copy and paste this link into your browser to reset your password:\n${resetUrl}\n\nThis link is valid for 30 minutes. If you did not request this, you can safely ignore this message.`,
-        html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff;">
-          <h2 style="color: #1e293b; margin-top: 0;">Reset Your Password</h2>
-          <p style="color: #475569; font-size: 15px;">Hello <strong>${user.name || 'User'}</strong>,</p>
-          <p style="color: #475569; font-size: 14px;">We received a request to reset your password for your JNC CRM account.</p>
-          <div style="margin: 25px 0;">
-            <a href="${resetUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">Reset Password</a>
+        to: lower,
+        subject: `${code} is your JNC CRM verification code`,
+        text: `Hello,\n\nYour JNC CRM verification code is: ${code}\n\nThis code expires in 10 minutes. For your security, never share this code with anyone.\n\nRequest details:\n- Time: ${requestTime}\n- Browser: ${browserLabel}\n- IP: ${clientIp || 'Unknown'}\n\nIf you did not request this verification code, you can safely ignore this email.`,
+        html: `<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+          <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">Password Reset Code</h2>
+          <p style="color: #475569; font-size: 14px;">Use the 6-digit verification code below to reset your JNC CRM password:</p>
+          <div style="background-color: #f1f5f9; border-radius: 10px; padding: 18px; text-align: center; margin: 24px 0;">
+            <span style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #2563eb; font-family: monospace;">${code}</span>
           </div>
-          <p style="color: #64748b; font-size: 13px;">This link is valid for <strong>30 minutes</strong>.</p>
-          <p style="color: #94a3b8; font-size: 12px;">If you didn't make this request, you can safely ignore this email.</p>
+          <p style="color: #475569; font-size: 13px;">This code expires in <strong>10 minutes</strong>. For your security, <strong>never share this code with anyone</strong>.</p>
+          <div style="border-top: 1px solid #e2e8f0; margin-top: 24px; padding-top: 16px; font-size: 12px; color: #64748b;">
+            <div><strong>Request Time:</strong> ${requestTime}</div>
+            <div style="margin-top: 4px;"><strong>Browser:</strong> ${browserLabel}</div>
+            <div style="margin-top: 4px;"><strong>IP Address:</strong> ${clientIp || 'Unknown'}</div>
+          </div>
         </div>`,
       });
 
@@ -748,118 +751,255 @@ export class AuthService {
       try {
         const res: any = await Promise.race([emailPromise, timeoutPromise]);
         if (res && res.status === 'failed') {
-          this.logger.error(`[FORGOT_PASSWORD] Email dispatch reported failure: ${res.error || res.reason || 'delivery failure'}`);
+          this.logger.error(`[OTP_CHALLENGE] Email dispatch failure: ${res.error || res.reason || 'delivery failure'}`);
         }
       } catch (err: any) {
-        this.logger.error(`[FORGOT_PASSWORD] Failed to deliver reset email: ${err?.message || 'unknown error'}`);
+        this.logger.error(`[OTP_CHALLENGE] Email dispatch failed: ${err?.message || 'timeout/network error'}`);
       }
     }
 
-    return { message: 'If that email exists, a reset link has been sent.' };
+    await this._addArtificialDelay();
+    return {
+      message: 'If this account exists, we sent a code.',
+      resendAfterSeconds: 60,
+    };
   }
 
-  // ─── POST /auth/reset-password ───────────────────────────────────────────────
+  // ─── POST /auth/forgot-password/verify ──────────────────────────────────────
 
-  async resetPassword(dto: ResetPasswordDto, ipAddress?: string) {
-    if (
-      !dto ||
-      !dto.newPassword ||
-      typeof dto.newPassword !== 'string' ||
-      dto.newPassword.trim().length === 0 ||
-      dto.newPassword.length > 200
-    ) {
-      throw new BadRequestException('newPassword must be a non-empty string, not whitespace-only, and max 200 characters');
-    }
-    const tokenHash = crypto.createHash('sha256').update(dto.token).digest('hex');
-
-    const record = await this.prisma.passwordResetToken.findUnique({
-      where: { tokenHash },
-      include: { user: true },
+  async forgotPasswordVerify(dto: ForgotPasswordVerifyDto) {
+    const lower = (dto?.email || '').trim().toLowerCase();
+    const challenge = await this.prisma.otpChallenge.findFirst({
+      where: {
+        emailNormalized: lower,
+        purpose: 'password_reset',
+        usedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
     });
 
-    if (!record || record.usedAt || new Date(record.expiresAt) < new Date()) {
-      throw new BadRequestException('Reset link is invalid or has expired.');
+    if (!challenge || challenge.attempts >= 5 || new Date(challenge.expiresAt) < new Date()) {
+      throw new BadRequestException('Code is incorrect or expired.');
     }
 
-    if (!record.user || !record.user.isActive || record.user.deletedAt) {
-      throw new BadRequestException('Reset link is invalid or has expired.');
+    const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'jnc-otp-secret-key-2026';
+    const expectedHash = crypto
+      .createHmac('sha256', otpSecret + challenge.id)
+      .update(dto.code ? dto.code.trim() : '')
+      .digest('hex');
+
+    const a = Buffer.from(challenge.codeHash, 'hex');
+    const b = Buffer.from(expectedHash, 'hex');
+    const isMatch = a.length === b.length && crypto.timingSafeEqual(a, b);
+
+    if (!isMatch) {
+      const newAttempts = challenge.attempts + 1;
+      await this.prisma.otpChallenge.update({
+        where: { id: challenge.id },
+        data: {
+          attempts: newAttempts,
+          usedAt: newAttempts >= 5 ? new Date() : null, // Kill challenge after 5 failed attempts
+        },
+      }).catch(() => {});
+      throw new BadRequestException('Code is incorrect or expired.');
     }
 
-    // Validate password policy rules
-    validatePasswordPolicy(dto.newPassword, { email: record.user.email, name: record.user.name });
+    // Mark challenge as used (single-use)
+    await this.prisma.otpChallenge.update({
+      where: { id: challenge.id },
+      data: { usedAt: new Date() },
+    });
+
+    // Find accounts for this email (Company users + Platform Super Admin)
+    const users = await this.prisma.user.findMany({
+      where: {
+        email: { equals: lower, mode: 'insensitive' },
+        deletedAt: null,
+        isActive: true,
+      },
+      include: {
+        tenant: {
+          select: { id: true, name: true, code: true },
+        },
+      },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+
+    if (users.length === 0) {
+      throw new BadRequestException('Code is incorrect or expired.');
+    }
+
+    const accounts = users.map((u) => ({
+      accountId: u.id,
+      label:
+        u.role === 'platform_super_admin' && !u.tenantId
+          ? 'Platform administration'
+          : u.tenant?.name || 'Company CRM',
+    }));
+
+    // Issue signed 10-minute reset ticket bound to email
+    const resetTicket = this.jwtService.sign(
+      {
+        sub: challenge.id,
+        email: lower,
+        purpose: 'password_reset_ticket',
+        accountIds: accounts.map((a) => a.accountId),
+      },
+      {
+        secret: process.env.JWT_SECRET,
+        expiresIn: '10m',
+        algorithm: 'HS256',
+        issuer: 'jnc-crm-api',
+        audience: 'jnc-crm-client',
+      },
+    );
+
+    return { resetTicket, accounts };
+  }
+
+  // ─── POST /auth/forgot-password/reset ───────────────────────────────────────
+
+  async forgotPasswordReset(dto: ForgotPasswordResetDto, clientIp?: string) {
+    if (!dto || !dto.resetTicket) {
+      throw new BadRequestException('Reset session is invalid or has expired.');
+    }
+
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(dto.resetTicket, {
+        secret: process.env.JWT_SECRET,
+        algorithms: ['HS256'],
+        issuer: 'jnc-crm-api',
+        audience: 'jnc-crm-client',
+      });
+    } catch {
+      throw new BadRequestException(
+        'Reset session is invalid or has expired. Please request a new verification code.',
+      );
+    }
+
+    if (payload.purpose !== 'password_reset_ticket' || !payload.email) {
+      throw new BadRequestException('Invalid reset ticket.');
+    }
+
+    const ticketEmail = payload.email.toLowerCase();
+
+    if (!dto.accountIds || !Array.isArray(dto.accountIds) || dto.accountIds.length === 0) {
+      throw new BadRequestException('At least one account must be selected for password reset.');
+    }
+
+    // Verify all selected accounts belong strictly to the ticket's email
+    const users = await this.prisma.user.findMany({
+      where: {
+        id: { in: dto.accountIds },
+        deletedAt: null,
+        isActive: true,
+      },
+      include: { tenant: true },
+    });
+
+    if (users.length === 0 || users.length !== dto.accountIds.length) {
+      throw new BadRequestException('One or more selected accounts could not be found or are inactive.');
+    }
+
+    for (const u of users) {
+      if (u.email.toLowerCase() !== ticketEmail) {
+        throw new ForbiddenException('Account does not belong to the verified email address.');
+      }
+    }
+
+    // Validate password policy
+    validatePasswordPolicy(dto.newPassword, { email: ticketEmail });
     const passwordHash = await bcrypt.hash(dto.newPassword, 12);
 
-    // Update ONLY the token owner account (works for Platform Super Admin and Tenant Users alike)
+    // Update the chosen accounts (works for Platform Super Admin and Tenant Users alike)
     const updateResult = await this.prisma.user.updateMany({
-      where: { id: record.userId, deletedAt: null },
+      where: {
+        id: { in: dto.accountIds },
+        deletedAt: null,
+        isActive: true,
+      },
       data: {
         passwordHash,
         mustResetPassword: false,
         tokenVersion: { increment: 1 },
         failedLoginAttempts: 0,
         lockoutUntil: null,
+        lastPasswordChangeAt: new Date(),
       },
     });
 
     if (updateResult.count === 0) {
-      this.logger.error(`[RESET_PASSWORD] Failed to update user ${record.userId}: 0 rows updated in database.`);
+      this.logger.error(`[RESET_PASSWORD] Failed to update user accounts: 0 rows modified.`);
       throw new BadRequestException('Unable to update password. User account not found or inactive.');
     }
 
-    // Mark current token as used
-    await this.prisma.passwordResetToken.update({
-      where: { id: record.id },
-      data: { usedAt: new Date() },
-    });
-
-    // Revoke all active refresh sessions for this user
+    // Revoke all refresh sessions for updated users
     await this.prisma.refreshSession.updateMany({
-      where: { userId: record.userId },
+      where: { userId: { in: dto.accountIds } },
       data: { isRevoked: true },
     });
 
-    // Clear any lockout records for this user
-    const uEmail = record.user.email.toLowerCase();
-    const uLockKey = record.user.tenantId ? `${uEmail}:${record.user.tenantId}` : uEmail;
-    await this.prisma.accountLockout.delete({ where: { identityKey: uLockKey } }).catch(() => {});
-    await this.prisma.accountLockout.delete({ where: { identityKey: uEmail } }).catch(() => {});
+    // Clear lockouts
+    for (const u of users) {
+      const uLockKey = u.tenantId ? `${ticketEmail}:${u.tenantId}` : ticketEmail;
+      await this.prisma.accountLockout.delete({ where: { identityKey: uLockKey } }).catch(() => {});
+      await this.prisma.accountLockout.delete({ where: { identityKey: ticketEmail } }).catch(() => {});
+    }
 
-    await this.prisma.auditLog.create({
-      data: {
-        tenantId: record.user.tenantId || 'default-tenant-id',
-        actorId: record.userId,
-        actorName: record.user.name,
-        action: 'PASSWORD_RESET',
-        entityName: 'User',
-        entityId: record.userId,
-      },
-    }).catch(() => {});
+    // Cancel all open challenges for this email
+    await this.prisma.otpChallenge.updateMany({
+      where: { emailNormalized: ticketEmail, purpose: 'password_reset', usedAt: null },
+      data: { usedAt: new Date() },
+    });
 
-    // Send "Your password was changed" security notification email with time and IP
+    // Audit logs
+    for (const u of users) {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: u.tenantId || 'default-tenant-id',
+          actorId: u.id,
+          actorName: u.name,
+          action: 'PASSWORD_RESET_OTP',
+          entityName: 'User',
+          entityId: u.id,
+          ipAddress: maskIp(clientIp || '127.0.0.1'),
+        },
+      }).catch(() => {});
+    }
+
+    // Send "Your password was changed" notification email
     const changeTime = new Date().toUTCString();
-    const clientIp = ipAddress || 'Unknown IP';
+    const clientIpMasked = clientIp || 'Unknown IP';
     if (this.notificationsService) {
       this.notificationsService.sendEmail({
-        to: record.user.email,
-        tenantId: record.user.tenantId || undefined,
+        to: ticketEmail,
         subject: 'Your JNC CRM password was changed',
-        text: `Hello ${record.user.name || 'User'},\n\nYour password for JNC CRM was successfully changed on ${changeTime} from IP address: ${clientIp}.\n\nIf you did not perform this change, please contact your administrator immediately.`,
-        html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-          <h2 style="color: #1e293b; margin-top: 0;">Password Changed</h2>
-          <p style="color: #475569; font-size: 15px;">Hello <strong>${record.user.name || 'User'}</strong>,</p>
-          <p style="color: #475569; font-size: 14px;">Your JNC CRM account password was successfully changed.</p>
-          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #334155;">
-            <div><strong>Time:</strong> ${changeTime}</div>
-            <div style="margin-top: 4px;"><strong>IP Address:</strong> ${clientIp}</div>
-          </div>
+        text: `Hello,\n\nYour JNC CRM password was successfully changed on ${changeTime} from IP address: ${clientIpMasked}.\n\nIf you did not make this change, please contact your administrator immediately.`,
+        html: `<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+          <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">Password Changed</h2>
+          <p style="color: #475569; font-size: 14px;">Your JNC CRM password was successfully changed on <strong>${changeTime}</strong> from IP address: <strong>${clientIpMasked}</strong>.</p>
           <p style="color: #dc2626; font-size: 13px;">If you did not make this change, please contact your administrator immediately.</p>
         </div>`,
       }).catch((err) => {
-        this.logger.error(`[RESET_PASSWORD] Failed to send password changed notification email: ${err?.message || 'error'}`);
+        this.logger.error(`[RESET_PASSWORD] Failed to dispatch password change notification: ${err?.message || 'error'}`);
       });
     }
 
-    return { message: 'Password has been reset successfully. Please sign in.' };
+    return { success: true, message: 'Password has been reset successfully. Please sign in.' };
+  }
+
+  // Backward compatible wrapper
+  async forgotPassword(dto: ForgotPasswordDto, clientIp?: string, userAgent?: string) {
+    return this.forgotPasswordRequest({ email: dto.email }, clientIp, userAgent);
+  }
+
+  // Legacy link-based endpoint returns HTTP 410 Gone
+  async resetPassword(_dto: ResetPasswordDto, _ipAddress?: string) {
+    throw new HttpException(
+      'Email reset links have been upgraded to 6-digit verification codes. Please request a new verification code.',
+      HttpStatus.GONE,
+    );
   }
 
   // ─── POST /auth/refresh & POST /platform-auth/refresh ───────────────────────
@@ -868,6 +1008,7 @@ export class AuthService {
     rawRefreshToken: string,
     ipAddress: string | undefined,
     allowedType: 'staff' | 'platform',
+    userAgent?: string,
   ) {
     if (!rawRefreshToken) {
       throw new UnauthorizedException('Refresh token is required');
@@ -1074,6 +1215,7 @@ export class AuthService {
         : 12 * 60 * 60 * 1000;
     const newExpiresAt = new Date(Date.now() + sessionDurationMs);
 
+    const deviceLabel = parseDeviceLabel(userAgent || (session as any).userAgent);
     await this.prisma.refreshSession.create({
       data: {
         userId: user.id,
@@ -1081,6 +1223,10 @@ export class AuthService {
         familyId: session.familyId,
         expiresAt: newExpiresAt,
         isRevoked: false,
+        userAgent: (userAgent || (session as any).userAgent || '').substring(0, 500) || null,
+        ipAddress: maskIp(ipAddress || (session as any).ipAddress || '127.0.0.1'),
+        lastUsedAt: new Date(),
+        deviceLabel,
       },
     });
 
@@ -1092,17 +1238,24 @@ export class AuthService {
     };
   }
 
-  async refreshToken(rawRefreshToken: string, ipAddress?: string) {
-    return this._performRefresh(rawRefreshToken, ipAddress, 'staff');
+  async refreshToken(rawRefreshToken: string, ipAddress?: string, userAgent?: string) {
+    return this._performRefresh(rawRefreshToken, ipAddress, 'staff', userAgent);
   }
 
-  async refreshPlatformToken(rawRefreshToken: string, ipAddress?: string) {
-    return this._performRefresh(rawRefreshToken, ipAddress, 'platform');
+  async refreshPlatformToken(rawRefreshToken: string, ipAddress?: string, userAgent?: string) {
+    return this._performRefresh(rawRefreshToken, ipAddress, 'platform', userAgent);
   }
 
   // ─── Change password (authenticated) ────────────────────────────────────────
 
-  async changePassword(userId: string, currentPass: string, newPass: string, ipAddress?: string) {
+  async changePassword(
+    userId: string,
+    currentPass: string,
+    newPass: string,
+    ipAddress?: string,
+    userAgent?: string,
+    logoutOthers: boolean = true,
+  ) {
     if (
       !currentPass ||
       typeof currentPass !== 'string' ||
@@ -1156,6 +1309,7 @@ export class AuthService {
         tokenVersion: { increment: 1 },
         failedLoginAttempts: 0,
         lockoutUntil: null,
+        lastPasswordChangeAt: new Date(),
       },
     });
 
@@ -1164,11 +1318,13 @@ export class AuthService {
       throw new BadRequestException('Unable to change password. User account not found or inactive.');
     }
 
-    // Revoke all refresh sessions for this user
-    await this.prisma.refreshSession.updateMany({
-      where: { userId },
-      data: { isRevoked: true },
-    });
+    // Revoke previous refresh sessions if requested
+    if (logoutOthers) {
+      await this.prisma.refreshSession.updateMany({
+        where: { userId },
+        data: { isRevoked: true },
+      });
+    }
 
     await this.prisma.auditLog.create({
       data: {
@@ -1178,6 +1334,7 @@ export class AuthService {
         action: 'PASSWORD_CHANGE',
         entityName: 'User',
         entityId: userId,
+        ipAddress: maskIp(ipAddress || '127.0.0.1'),
       },
     }).catch(() => {});
 
@@ -1229,6 +1386,8 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     if (this.prisma.refreshSession) {
+      const deviceLabel = parseDeviceLabel(userAgent);
+      const maskedIp = maskIp(ipAddress || '127.0.0.1');
       await this.prisma.refreshSession.create({
         data: {
           userId: updatedUser.id,
@@ -1236,6 +1395,10 @@ export class AuthService {
           familyId: tokens.familyId,
           expiresAt,
           isRevoked: false,
+          userAgent: userAgent ? userAgent.substring(0, 500) : null,
+          ipAddress: maskedIp,
+          lastUsedAt: new Date(),
+          deviceLabel,
         },
       }).catch(() => {});
     }
@@ -1297,12 +1460,14 @@ export class AuthService {
     return { success: true, message: 'Signed out of all devices successfully' };
   }
 
-  // ─── Update profile ──────────────────────────────────────────────────────────
-
-  async updateProfile(userId: string, data: { name?: string; phone?: string }) {
+  async updateProfile(userId: string, data: { name?: string; phone?: string; photoUrl?: string }) {
     return this.prisma.user.update({
       where: { id: userId },
-      data: { name: data.name?.trim(), phone: data.phone?.trim() },
+      data: {
+        name: data.name !== undefined ? data.name?.trim() : undefined,
+        phone: data.phone !== undefined ? data.phone?.trim() : undefined,
+        photoUrl: data.photoUrl !== undefined ? data.photoUrl?.trim() : undefined,
+      },
       select: {
         id: true,
         tenantId: true,
@@ -1310,16 +1475,282 @@ export class AuthService {
         name: true,
         email: true,
         phone: true,
+        photoUrl: true,
         role: true,
         teamId: true,
         teamRef: { select: { id: true, name: true, allowedPages: true } },
         warehouseId: true,
         isActive: true,
         lastLoginAt: true,
+        lastPasswordChangeAt: true,
         createdAt: true,
         tenant: { select: { id: true, code: true, name: true, slug: true, status: true, logoUrl: true, currency: true } },
       },
     });
+  }
+
+  // ─── Active Devices & Session Management ────────────────────────────────────
+
+  async getUserSessions(userId: string, currentRefreshToken?: string) {
+    const currentTokenHash = currentRefreshToken
+      ? crypto.createHash('sha256').update(currentRefreshToken).digest('hex')
+      : null;
+
+    const sessions = await this.prisma.refreshSession.findMany({
+      where: {
+        userId,
+        isRevoked: false,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 50,
+    });
+
+    return sessions.map((s: any) => ({
+      id: s.id,
+      deviceLabel: s.deviceLabel || parseDeviceLabel(s.userAgent) || 'Web Browser',
+      ipAddress: s.ipAddress || 'Unknown IP',
+      userAgent: s.userAgent || 'Unknown',
+      lastActive: s.lastUsedAt || s.updatedAt || s.createdAt,
+      createdAt: s.createdAt,
+      isCurrent: Boolean(currentTokenHash && s.tokenHash === currentTokenHash),
+    }));
+  }
+
+  async revokeSession(userId: string, sessionId: string, clientIp?: string) {
+    const session = await this.prisma.refreshSession.findFirst({
+      where: { id: sessionId, userId },
+    });
+    if (!session) {
+      throw new NotFoundException('Session not found or already revoked');
+    }
+    await this.prisma.refreshSession.update({
+      where: { id: sessionId },
+      data: { isRevoked: true },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: 'default-tenant-id',
+        actorId: userId,
+        action: 'REVOKE_SESSION',
+        entityName: 'RefreshSession',
+        entityId: sessionId,
+        ipAddress: maskIp(clientIp || '127.0.0.1'),
+      },
+    }).catch(() => {});
+    return { success: true, message: 'Device session signed out successfully' };
+  }
+
+  async revokeOtherSessions(userId: string, currentRefreshToken?: string, clientIp?: string) {
+    const currentTokenHash = currentRefreshToken
+      ? crypto.createHash('sha256').update(currentRefreshToken).digest('hex')
+      : null;
+
+    const whereClause: any = { userId, isRevoked: false };
+    if (currentTokenHash) {
+      whereClause.tokenHash = { not: currentTokenHash };
+    }
+
+    await this.prisma.refreshSession.updateMany({
+      where: whereClause,
+      data: { isRevoked: true },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: 'default-tenant-id',
+        actorId: userId,
+        action: 'REVOKE_OTHER_SESSIONS',
+        entityName: 'User',
+        entityId: userId,
+        ipAddress: maskIp(clientIp || '127.0.0.1'),
+      },
+    }).catch(() => {});
+    return { success: true, message: 'All other device sessions have been signed out' };
+  }
+
+  // ─── Sign-In Activity for My Account ───────────────────────────────────────
+
+  async getUserSignInActivity(userId: string, limit: number = 25) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, employeeCode: true, name: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const logs = await this.prisma.auditLog.findMany({
+      where: {
+        OR: [{ actorId: userId }, { entityId: userId }],
+        action: { in: ['LOGIN_SUCCESS', 'LOGIN_FAILED', 'LOGIN', 'PLATFORM_LOGIN'] },
+      },
+      orderBy: { timestamp: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        action: true,
+        afterState: true,
+        ipAddress: true,
+        timestamp: true,
+      },
+    });
+
+    return logs.map((log: any) => {
+      let details: any = {};
+      if (log.afterState) {
+        try {
+          details = JSON.parse(log.afterState);
+        } catch {
+          details = {};
+        }
+      }
+      const isSuccess = log.action === 'LOGIN_SUCCESS' || log.action === 'LOGIN' || log.action === 'PLATFORM_LOGIN';
+      return {
+        id: log.id,
+        status: isSuccess ? 'SUCCESS' : 'FAILED',
+        timestamp: log.timestamp,
+        ipAddress: details.ipMasked || maskIp(log.ipAddress || '127.0.0.1'),
+        deviceLabel: parseDeviceLabel(details.userAgent),
+        userAgent: details.userAgent || 'unknown',
+        portal: details.portal || 'company',
+      };
+    });
+  }
+
+  // ─── Email Change with OTP Flow ─────────────────────────────────────────────
+
+  async requestEmailChange(userId: string, newEmail: string, clientIp?: string, userAgent?: string) {
+    const lower = (newEmail || '').trim().toLowerCase();
+    if (!lower || !lower.includes('@')) {
+      throw new BadRequestException('A valid email address is required');
+    }
+
+    const existingUser = await this.prisma.user.findFirst({
+      where: { email: { equals: lower, mode: 'insensitive' }, deletedAt: null },
+    });
+    if (existingUser) {
+      throw new BadRequestException('This email is already in use by another account');
+    }
+
+    const now = new Date();
+    const existingChallenge = await this.prisma.otpChallenge.findFirst({
+      where: {
+        emailNormalized: lower,
+        purpose: 'email_change',
+        resendAfter: { gt: now },
+        usedAt: null,
+      },
+    });
+
+    if (existingChallenge) {
+      const remainingSecs = Math.max(
+        1,
+        Math.ceil((new Date(existingChallenge.resendAfter).getTime() - now.getTime()) / 1000),
+      );
+      return { message: 'Verification code sent.', resendAfterSeconds: remainingSecs };
+    }
+
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const challengeId = crypto.randomUUID();
+    const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'jnc-otp-secret-key-2026';
+    const codeHash = crypto.createHmac('sha256', otpSecret + challengeId).update(code).digest('hex');
+
+    await this.prisma.otpChallenge.updateMany({
+      where: { emailNormalized: lower, purpose: 'email_change', usedAt: null },
+      data: { usedAt: now },
+    });
+
+    await this.prisma.otpChallenge.create({
+      data: {
+        id: challengeId,
+        emailNormalized: lower,
+        purpose: 'email_change',
+        codeHash,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        resendAfter: new Date(Date.now() + 60 * 1000),
+        requestIp: maskIp(clientIp || '127.0.0.1'),
+        requestUserAgent: userAgent ? userAgent.substring(0, 500) : 'unknown',
+      },
+    });
+
+    if (this.notificationsService) {
+      this.notificationsService.sendEmail({
+        to: lower,
+        subject: `${code} is your JNC CRM email confirmation code`,
+        text: `Your confirmation code to change your email is: ${code}\nThis code expires in 10 minutes.`,
+        html: `<div style="font-family: Arial, sans-serif; max-width: 500px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h3 style="margin-top:0;">Confirm Your Email Change</h3>
+          <p>Use the 6-digit verification code below to confirm this email address:</p>
+          <div style="font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #2563eb; padding: 12px; background: #eff6ff; border-radius: 6px; text-align: center; margin: 16px 0;">
+            ${code}
+          </div>
+          <p style="color: #64748b; font-size: 13px;">This code expires in 10 minutes. If you did not request this, you can ignore this email.</p>
+        </div>`,
+      }).catch((err: any) => {
+        this.logger.error(`[EMAIL_CHANGE] Failed to send OTP: ${err?.message || 'error'}`);
+      });
+    }
+
+    return { message: 'Verification code sent to your new email.', resendAfterSeconds: 60 };
+  }
+
+  async verifyEmailChange(userId: string, newEmail: string, code: string) {
+    const lower = (newEmail || '').trim().toLowerCase();
+    const challenge = await this.prisma.otpChallenge.findFirst({
+      where: {
+        emailNormalized: lower,
+        purpose: 'email_change',
+        usedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!challenge || challenge.attempts >= 5 || new Date(challenge.expiresAt) < new Date()) {
+      throw new BadRequestException('Code is incorrect or expired.');
+    }
+
+    const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'jnc-otp-secret-key-2026';
+    const expectedHash = crypto
+      .createHmac('sha256', otpSecret + challenge.id)
+      .update(code ? code.trim() : '')
+      .digest('hex');
+
+    const a = Buffer.from(challenge.codeHash, 'hex');
+    const b = Buffer.from(expectedHash, 'hex');
+    const isMatch = a.length === b.length && crypto.timingSafeEqual(a, b);
+
+    if (!isMatch) {
+      const newAttempts = challenge.attempts + 1;
+      await this.prisma.otpChallenge.update({
+        where: { id: challenge.id },
+        data: {
+          attempts: newAttempts,
+          usedAt: newAttempts >= 5 ? new Date() : null,
+        },
+      }).catch(() => {});
+      throw new BadRequestException('Code is incorrect or expired.');
+    }
+
+    await this.prisma.otpChallenge.update({
+      where: { id: challenge.id },
+      data: { usedAt: new Date() },
+    });
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { email: lower, tokenVersion: { increment: 1 } },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: user.tenantId || 'default-tenant-id',
+        actorId: userId,
+        action: 'EMAIL_CHANGED',
+        entityName: 'User',
+        entityId: userId,
+      },
+    }).catch(() => {});
+
+    return { success: true, message: 'Email address updated successfully' };
   }
 
   // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -1456,6 +1887,8 @@ export class AuthService {
     );
 
     if (this.prisma.refreshSession) {
+      const deviceLabel = parseDeviceLabel(userAgent);
+      const maskedIp = maskIp(ipAddress || '127.0.0.1');
       await this.prisma.refreshSession.create({
         data: {
           userId: resolvedUser.id,
@@ -1463,6 +1896,10 @@ export class AuthService {
           familyId: tokens.familyId,
           expiresAt,
           isRevoked: false,
+          userAgent: userAgent ? userAgent.substring(0, 500) : null,
+          ipAddress: maskedIp,
+          lastUsedAt: new Date(),
+          deviceLabel,
         },
       }).catch(() => {});
     }

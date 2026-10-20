@@ -5,7 +5,7 @@ import {
   Users, UserPlus, Search, RefreshCw, KeyRound, ShieldAlert,
   CheckCircle2, X, Lock, Mail, Phone, Building2, MapPin, Copy,
   Check, UserCheck, UserX, Edit3, Shield, AlertTriangle, Trash2, Clock,
-  Upload, Download, FileSpreadsheet, Sliders, FileText
+  Upload, Download, FileSpreadsheet, Sliders, FileText, Unlock, LogOut
 } from 'lucide-react';
 import api, { usersApi, authApi } from '../services/api';
 import { User, Role } from '../types';
@@ -387,6 +387,109 @@ export default function UsersPage() {
             isOpen: true,
             title: 'Action Failed',
             message: 'Failed to reset credentials: ' + (err?.response?.data?.message || err.message),
+            variant: 'error',
+          });
+        } finally {
+          setActionLoadingId(null);
+        }
+      },
+    });
+  };
+
+  // Handle Send Reset Code (OTP Flow)
+  const handleSendResetCode = (targetUser: User) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Send Password Reset Code?',
+      message: `A single-use 6-digit verification code will be dispatched directly to ${targetUser.email}. Administrators never see verification codes.`,
+      confirmText: 'Send Reset Code',
+      variant: 'primary',
+      iconType: 'key',
+      onConfirm: async () => {
+        setActionLoadingId(targetUser.id);
+        setConfirmDialog(null);
+        try {
+          const { data } = await usersApi.sendResetCode(targetUser.id);
+          setAlertDialog({
+            isOpen: true,
+            title: 'Reset Code Sent',
+            message: data?.message || `A verification code was dispatched to ${targetUser.email}.`,
+            variant: 'success',
+          });
+        } catch (err: any) {
+          setAlertDialog({
+            isOpen: true,
+            title: 'Failed to Send Code',
+            message: err?.response?.data?.message || err.message,
+            variant: 'error',
+          });
+        } finally {
+          setActionLoadingId(null);
+        }
+      },
+    });
+  };
+
+  // Handle Sign Out User Everywhere (Revoke All Sessions)
+  const handleRevokeUserSessions = (targetUser: User) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Sign Out User Everywhere?',
+      message: `This will terminate all active browser and device sessions for ${targetUser.name} (${targetUser.employeeCode}). They will need to log in again.`,
+      confirmText: 'Sign Out Everywhere',
+      variant: 'warning',
+      iconType: 'alert',
+      onConfirm: async () => {
+        setActionLoadingId(targetUser.id);
+        setConfirmDialog(null);
+        try {
+          const { data } = await usersApi.revokeSessions(targetUser.id);
+          setAlertDialog({
+            isOpen: true,
+            title: 'Sessions Terminated',
+            message: data?.message || 'User sessions terminated successfully.',
+            variant: 'success',
+          });
+        } catch (err: any) {
+          setAlertDialog({
+            isOpen: true,
+            title: 'Failed to Terminate Sessions',
+            message: err?.response?.data?.message || err.message,
+            variant: 'error',
+          });
+        } finally {
+          setActionLoadingId(null);
+        }
+      },
+    });
+  };
+
+  // Handle Unlock Account
+  const handleUnlockUser = (targetUser: User) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Unlock Account?',
+      message: `Clear failed login counters and remove any temporary account lockout for ${targetUser.name} (${targetUser.employeeCode}).`,
+      confirmText: 'Unlock Account',
+      variant: 'primary',
+      iconType: 'key',
+      onConfirm: async () => {
+        setActionLoadingId(targetUser.id);
+        setConfirmDialog(null);
+        try {
+          const { data } = await usersApi.unlock(targetUser.id);
+          setAlertDialog({
+            isOpen: true,
+            title: 'Account Unlocked',
+            message: data?.message || 'Account unlocked successfully.',
+            variant: 'success',
+          });
+          await fetchUsers();
+        } catch (err: any) {
+          setAlertDialog({
+            isOpen: true,
+            title: 'Failed to Unlock Account',
+            message: err?.response?.data?.message || err.message,
             variant: 'error',
           });
         } finally {
@@ -931,6 +1034,40 @@ export default function UsersPage() {
                       {/* Actions */}
                       <td className="text-right">
                         <div className="inline-flex items-center gap-1">
+                          {/* Send OTP Reset Code Action */}
+                          <button
+                            onClick={() => handleSendResetCode(u)}
+                            disabled={actionLoadingId === u.id || !canActOnUser}
+                            className="p-1.5 rounded hover:bg-blue-500/10 dark:hover:bg-blue-500/20 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Send OTP Password Reset Code (to user's email)"
+                          >
+                            <Mail size={14} className={actionLoadingId === u.id ? 'animate-spin' : ''} />
+                          </button>
+
+                          {/* Sign Out User Everywhere */}
+                          {!isCurrentUser && (
+                            <button
+                              onClick={() => handleRevokeUserSessions(u)}
+                              disabled={actionLoadingId === u.id || !canActOnUser}
+                              className="p-1.5 rounded hover:bg-orange-500/10 dark:hover:bg-orange-500/20 text-slate-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              title="Sign Out User From All Active Devices"
+                            >
+                              <LogOut size={14} />
+                            </button>
+                          )}
+
+                          {/* Unlock Account Action */}
+                          {!isCurrentUser && (
+                            <button
+                              onClick={() => handleUnlockUser(u)}
+                              disabled={actionLoadingId === u.id || !canActOnUser}
+                              className="p-1.5 rounded hover:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              title="Unlock Account & Reset Failed Login Attempts"
+                            >
+                              <Unlock size={14} />
+                            </button>
+                          )}
+
                           {/* Reset Credentials Action */}
                           <button
                             onClick={() => handleResetCredentials(u)}

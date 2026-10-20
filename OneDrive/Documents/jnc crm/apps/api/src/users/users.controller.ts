@@ -14,13 +14,14 @@ import {
   Body,
   Param,
   Query,
+  Req,
   Res,
   UseGuards,
   BadRequestException,
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { validateUploadedFile } from '../common/file-validator';
 import { sanitizeRowForImport } from '../common/csv-sanitize.util';
@@ -142,6 +143,30 @@ Kavita Nair,kavita.nair@example.com,+91 99001 12233,employee,Sales Team Beta
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async resetCredentials(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
     return this.usersService.resetCredentials(id, user);
+  }
+
+  @Post(':id/send-reset-code')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
+  async sendResetCode(
+    @CurrentUser() user: ScopedUser,
+    @Param('id') id: string,
+    @Req() req: Request,
+  ) {
+    const ip = req.ip || req.socket?.remoteAddress;
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    return this.usersService.sendResetCode(id, user, ip, userAgent);
+  }
+
+  @Post(':id/revoke-sessions')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
+  async revokeSessions(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
+    return this.usersService.revokeUserSessions(id, user);
+  }
+
+  @Post(':id/unlock')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
+  async unlockUser(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
+    return this.usersService.unlockUser(id, user);
   }
 
   @Patch(':id/toggle-active')

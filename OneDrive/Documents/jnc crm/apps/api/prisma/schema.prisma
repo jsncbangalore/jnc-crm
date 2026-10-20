@@ -138,6 +138,8 @@ model User {
   phone               String?
   isActive            Boolean         @default(true)
   mustResetPassword   Boolean         @default(false)
+  lastPasswordChangeAt DateTime?
+  photoUrl            String?
   lastLoginAt         DateTime?
   failedLoginAttempts Int             @default(0)
   lockoutUntil        DateTime?
@@ -206,6 +208,10 @@ model RefreshSession {
   userId      String
   tokenHash   String   @unique
   familyId    String
+  userAgent   String?
+  ipAddress   String?
+  lastUsedAt  DateTime @default(now())
+  deviceLabel String?
   isRevoked   Boolean  @default(false)
   expiresAt   DateTime
   createdAt   DateTime @default(now())
@@ -215,6 +221,24 @@ model RefreshSession {
 
   @@index([userId])
   @@index([familyId])
+}
+
+model OtpChallenge {
+  id               String    @id @default(uuid())
+  emailNormalized  String
+  purpose          String    @default("password_reset") // password_reset | email_change
+  codeHash         String
+  expiresAt        DateTime
+  attempts         Int       @default(0)
+  maxAttempts      Int       @default(5)
+  resendAfter      DateTime
+  usedAt           DateTime?
+  requestIp        String?
+  requestUserAgent String?
+  createdAt        DateTime  @default(now())
+
+  @@index([emailNormalized])
+  @@index([expiresAt])
 }
 
 // ==========================================

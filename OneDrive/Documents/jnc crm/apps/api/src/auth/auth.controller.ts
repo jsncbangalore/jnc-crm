@@ -9,6 +9,8 @@ import {
   Controller,
   Post,
   Patch,
+  Delete,
+  Param,
   Body,
   Req,
   Res,
@@ -28,6 +30,11 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   RefreshTokenDto,
+  ForgotPasswordRequestDto,
+  ForgotPasswordVerifyDto,
+  ForgotPasswordResetDto,
+  RequestEmailChangeDto,
+  VerifyEmailChangeDto,
   UpdateProfileDto,
   ChangePasswordDto,
 } from './dto/login.dto';
@@ -112,15 +119,43 @@ export class AuthController {
     return this.authService.getPasswordPolicy();
   }
 
-  /** Forgot password — sends reset link if email exists (no reveal) — rate limit: 15 / 15 min */
+  /** Forgot password OTP request — rate limit: 15 / 15 min */
+  @Throttle({ default: { limit: 15, ttl: 900000 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('forgot-password/request')
+  async forgotPasswordRequest(@Body() dto: ForgotPasswordRequestDto, @Req() req: Request) {
+    const ip = req.ip || req.socket?.remoteAddress;
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    return this.authService.forgotPasswordRequest(dto, ip, userAgent);
+  }
+
+  /** Forgot password OTP verify — rate limit: 15 / 15 min */
+  @Throttle({ default: { limit: 15, ttl: 900000 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('forgot-password/verify')
+  async forgotPasswordVerify(@Body() dto: ForgotPasswordVerifyDto) {
+    return this.authService.forgotPasswordVerify(dto);
+  }
+
+  /** Forgot password OTP reset — rate limit: 5 / 15 min */
+  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  @HttpCode(HttpStatus.OK)
+  @Post('forgot-password/reset')
+  async forgotPasswordReset(@Body() dto: ForgotPasswordResetDto, @Req() req: Request) {
+    const ip = req.ip || req.socket?.remoteAddress;
+    return this.authService.forgotPasswordReset(dto, ip);
+  }
+
+  /** Forgot password backward compatible endpoint */
   @Throttle({ default: { limit: 15, ttl: 900000 } })
   @Post('forgot-password')
   async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
     const ip = req.ip || req.socket?.remoteAddress;
-    return this.authService.forgotPassword(dto, ip);
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    return this.authService.forgotPassword(dto, ip, userAgent);
   }
 
-  /** Reset password with token from email link — rate limit: 5 / 15 min */
+  /** Legacy reset password endpoint — returns HTTP 410 Gone */
   @Throttle({ default: { limit: 5, ttl: 900000 } })
   @Post('reset-password')
   async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
@@ -142,7 +177,8 @@ export class AuthController {
     const rawRefreshToken = tokenFromCookie || refreshDto.refreshToken;
 
     const ip = req.ip || req.socket?.remoteAddress;
-    const result = await this.authService.refreshToken(rawRefreshToken, ip);
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    const result = await this.authService.refreshToken(rawRefreshToken, ip, userAgent);
 
     if (result && result.refreshToken) {
       res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(AUTH_COOKIE_PATH, false));
@@ -256,7 +292,15 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const ip = req.ip || req.socket?.remoteAddress;
-    const result: any = await this.authService.changePassword(user.id, body.currentPass, body.newPass, ip);
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    const result: any = await this.authService.changePassword(
+      user.id,
+      body.currentPass,
+      body.newPass,
+      ip,
+      userAgent,
+      body.logoutOthers ?? true,
+    );
 
     if (result && result.refreshToken) {
       res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(AUTH_COOKIE_PATH, false));
@@ -266,5 +310,72 @@ export class AuthController {
     }
 
     return result;
+  }
+
+  // ─── My Account: Active Sessions Management ────────────────────────────────
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('sessions')
+  async getSessions(@CurrentUser() user: any, @Req() req: Request) {
+    const tokenFromCookie = (req as any).cookies?.[REFRESH_COOKIE_NAME];
+    return this.authService.getUserSessions(user.id, tokenFromCookie);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Delete('sessions/:id')
+  async revokeSession(
+    @CurrentUser() user: any,
+    @Param('id') sessionId: string,
+    @Req() req: Request,
+  ) {
+    enforceCsrf(req);
+    const ip = req.ip || req.socket?.remoteAddress;
+    return this.authService.revokeSession(user.id, sessionId, ip);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Delete('sessions')
+  async revokeOtherSessions(
+    @CurrentUser() user: any,
+    @Req() req: Request,
+  ) {
+    enforceCsrf(req);
+    const tokenFromCookie = (req as any).cookies?.[REFRESH_COOKIE_NAME];
+    const ip = req.ip || req.socket?.remoteAddress;
+    return this.authService.revokeOtherSessions(user.id, tokenFromCookie, ip);
+  }
+
+  // ─── My Account: Sign-In Activity ──────────────────────────────────────────
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('activity')
+  async getActivity(@CurrentUser() user: any) {
+    return this.authService.getUserSignInActivity(user.id, 25);
+  }
+
+  // ─── My Account: Email Change OTP ──────────────────────────────────────────
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('profile/email/request-otp')
+  async requestEmailChangeOtp(
+    @CurrentUser() user: any,
+    @Body() body: RequestEmailChangeDto,
+    @Req() req: Request,
+  ) {
+    enforceCsrf(req);
+    const ip = req.ip || req.socket?.remoteAddress;
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    return this.authService.requestEmailChange(user.id, body.newEmail, ip, userAgent);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('profile/email/verify-otp')
+  async verifyEmailChangeOtp(
+    @CurrentUser() user: any,
+    @Body() body: VerifyEmailChangeDto,
+    @Req() req: Request,
+  ) {
+    enforceCsrf(req);
+    return this.authService.verifyEmailChange(user.id, body.newEmail, body.code);
   }
 }

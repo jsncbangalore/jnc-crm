@@ -9,7 +9,7 @@ import {
   Building2, FileText, Shield, Bell, ChevronDown, Settings, ShieldCheck,
   Receipt, Sun, Moon, ClipboardList, Search, Plus, Star, Grid,
   CheckCircle2, ArrowRight, ExternalLink, Sparkles, X, UserPlus,
-  FilePlus, ShoppingBag, Box, UserCheck, HelpCircle, Layers, Bookmark, Sliders
+  FilePlus, ShoppingBag, Box, UserCheck, HelpCircle, Layers, Bookmark, Sliders, User
 } from 'lucide-react';
 import { isPlatformOwner as checkIsPlatformOwner } from '../../utils/roles';
 
@@ -553,6 +553,16 @@ export default function Navbar() {
                       </NavLink>
                     </div>
                   )}
+
+                  {/* My Account */}
+                  <NavLink
+                    to="/account"
+                    onClick={() => setProfileOpen(false)}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors mb-1"
+                  >
+                    <User size={13} className="text-crm-blue" />
+                    <span>My Account</span>
+                  </NavLink>
 
                   {/* Logout Session */}
                   <button

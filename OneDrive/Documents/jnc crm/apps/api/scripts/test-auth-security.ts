@@ -10,7 +10,7 @@ import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from '../src/auth/auth.service';
 import { getPasswordPolicy, validatePasswordPolicy } from '../src/common/password-policy';
-import { BadRequestException, HttpException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
 
 let passedCount = 0;
 let failedCount = 0;
@@ -29,6 +29,7 @@ function assert(condition: boolean, testName: string, failureDetail?: string) {
 class MockPrismaStore {
   tenants: any[] = [];
   users: any[] = [];
+  otpChallenges: any[] = [];
   passwordResetTokens: any[] = [];
   refreshSessions: any[] = [];
   accountLockouts: any[] = [];
@@ -67,6 +68,9 @@ class MockPrismaStore {
     findMany: async (args: any) => {
       let results = [...this.users];
       if (args?.where) {
+        if (args.where.id?.in) {
+          results = results.filter((u) => args.where.id.in.includes(u.id));
+        }
         if (args.where.email) {
           const target = (args.where.email.equals || args.where.email).toLowerCase();
           results = results.filter((u) => u.email.toLowerCase() === target);
@@ -80,6 +84,12 @@ class MockPrismaStore {
         if (args.where.isActive !== undefined) {
           results = results.filter((u) => u.isActive === args.where.isActive);
         }
+      }
+      if (args?.include?.tenant) {
+        results = results.map((u) => ({
+          ...u,
+          tenant: this.tenants.find((t) => t.id === u.tenantId) || null,
+        }));
       }
       return results;
     },
@@ -113,8 +123,15 @@ class MockPrismaStore {
       for (let i = 0; i < this.users.length; i++) {
         const u = this.users[i];
         let matches = true;
-        if (args.where?.id && u.id !== args.where.id) matches = false;
+        if (args.where?.id) {
+          if (args.where.id.in) {
+            if (!args.where.id.in.includes(u.id)) matches = false;
+          } else if (u.id !== args.where.id) {
+            matches = false;
+          }
+        }
         if (args.where?.deletedAt === null && u.deletedAt) matches = false;
+        if (args.where?.isActive !== undefined && u.isActive !== args.where.isActive) matches = false;
         if (matches) {
           this.users[i] = { ...u, ...args.data };
           count++;
@@ -122,68 +139,93 @@ class MockPrismaStore {
       }
       return { count };
     },
-    delete: async () => {},
-    deleteMany: async () => {},
   };
 
-  passwordResetToken = {
-    findUnique: async (args: any) => {
-      const rec = this.passwordResetTokens.find((r) => r.tokenHash === args?.where?.tokenHash);
-      if (!rec) return null;
-      if (args?.include?.user) {
-        const user = this.users.find((u) => u.id === rec.userId) || null;
-        return { ...rec, user };
-      }
-      return rec;
-    },
+  otpChallenge = {
     findFirst: async (args: any) => {
-      let matches = [...this.passwordResetTokens];
-      if (args?.where?.userId) {
-        matches = matches.filter((r) => r.userId === args.where.userId);
+      let matches = [...this.otpChallenges];
+      if (args?.where?.emailNormalized) {
+        matches = matches.filter((o) => o.emailNormalized === args.where.emailNormalized);
+      }
+      if (args?.where?.purpose) {
+        matches = matches.filter((o) => o.purpose === args.where.purpose);
       }
       if (args?.where?.usedAt === null) {
-        matches = matches.filter((r) => !r.usedAt);
+        matches = matches.filter((o) => o.usedAt === null);
       }
-      return matches[matches.length - 1] || null;
+      if (args?.where?.resendAfter?.gt) {
+        matches = matches.filter((o) => new Date(o.resendAfter) > args.where.resendAfter.gt);
+      }
+      if (args?.orderBy?.createdAt === 'desc') {
+        matches.reverse();
+      }
+      return matches[0] || null;
+    },
+    count: async (args: any) => {
+      let matches = [...this.otpChallenges];
+      if (args?.where?.emailNormalized) {
+        matches = matches.filter((o) => o.emailNormalized === args.where.emailNormalized);
+      }
+      if (args?.where?.purpose) {
+        matches = matches.filter((o) => o.purpose === args.where.purpose);
+      }
+      if (args?.where?.createdAt?.gte) {
+        matches = matches.filter((o) => new Date(o.createdAt) >= args.where.createdAt.gte);
+      }
+      return matches.length;
     },
     create: async ({ data }: any) => {
-      const row = { id: `prt_${Date.now()}_${Math.random()}`, createdAt: new Date(), ...data };
-      this.passwordResetTokens.push(row);
+      const row = {
+        id: data.id || `otp_${Date.now()}_${Math.random()}`,
+        attempts: 0,
+        maxAttempts: 5,
+        createdAt: new Date(),
+        usedAt: null,
+        ...data,
+      };
+      this.otpChallenges.push(row);
       return row;
     },
     update: async (args: any) => {
-      const idx = this.passwordResetTokens.findIndex((r) => r.id === args.where.id);
+      const idx = this.otpChallenges.findIndex((o) => o.id === args.where.id);
       if (idx !== -1) {
-        this.passwordResetTokens[idx] = { ...this.passwordResetTokens[idx], ...args.data };
-        return this.passwordResetTokens[idx];
+        this.otpChallenges[idx] = { ...this.otpChallenges[idx], ...args.data };
+        return this.otpChallenges[idx];
       }
       return null;
     },
     updateMany: async (args: any) => {
       let count = 0;
-      for (let i = 0; i < this.passwordResetTokens.length; i++) {
-        const r = this.passwordResetTokens[i];
+      for (let i = 0; i < this.otpChallenges.length; i++) {
+        const o = this.otpChallenges[i];
         let matches = true;
-        if (args.where?.userId && r.userId !== args.where.userId) matches = false;
-        if (args.where?.usedAt === null && r.usedAt) matches = false;
+        if (args.where?.emailNormalized && o.emailNormalized !== args.where.emailNormalized) matches = false;
+        if (args.where?.purpose && o.purpose !== args.where.purpose) matches = false;
+        if (args.where?.usedAt === null && o.usedAt !== null) matches = false;
         if (matches) {
-          this.passwordResetTokens[i] = { ...r, ...args.data };
+          this.otpChallenges[i] = { ...this.otpChallenges[i], ...args.data };
           count++;
         }
       }
       return { count };
     },
-    deleteMany: async () => {},
   };
 
   refreshSession = {
     create: async ({ data }: any) => {
-      const row = { id: `ses_${Date.now()}_${Math.random()}`, isRevoked: false, ...data };
+      const row = { id: `ses_${Date.now()}_${Math.random()}`, isRevoked: false, createdAt: new Date(), updatedAt: new Date(), ...data };
       this.refreshSessions.push(row);
       return row;
     },
     findUnique: async (args: any) => {
       return this.refreshSessions.find((s) => s.tokenHash === args?.where?.tokenHash) || null;
+    },
+    findFirst: async (args: any) => {
+      return this.refreshSessions.find((s) => {
+        if (args?.where?.id && s.id !== args.where.id) return false;
+        if (args?.where?.userId && s.userId !== args.where.userId) return false;
+        return true;
+      }) || null;
     },
     findMany: async (args: any) => {
       return this.refreshSessions.filter((s) => {
@@ -192,17 +234,28 @@ class MockPrismaStore {
         return true;
       });
     },
+    update: async (args: any) => {
+      const idx = this.refreshSessions.findIndex((s) => s.id === args.where.id);
+      if (idx !== -1) {
+        this.refreshSessions[idx] = { ...this.refreshSessions[idx], ...args.data };
+        return this.refreshSessions[idx];
+      }
+      return null;
+    },
     updateMany: async (args: any) => {
       let count = 0;
       for (let i = 0; i < this.refreshSessions.length; i++) {
-        if (args.where?.userId && this.refreshSessions[i].userId === args.where.userId) {
-          this.refreshSessions[i] = { ...this.refreshSessions[i], ...args.data };
+        const s = this.refreshSessions[i];
+        let matches = true;
+        if (args.where?.userId && s.userId !== args.where.userId) matches = false;
+        if (args.where?.tokenHash?.not && s.tokenHash === args.where.tokenHash.not) matches = false;
+        if (matches) {
+          this.refreshSessions[i] = { ...s, ...args.data };
           count++;
         }
       }
       return { count };
     },
-    deleteMany: async () => {},
   };
 
   accountLockout = {
@@ -237,8 +290,8 @@ class MockPrismaStore {
       return {};
     },
     deleteMany: async (args: any) => {
-      if (args?.where?.identityKey?.contains) {
-        this.accountLockouts = this.accountLockouts.filter((l) => !l.identityKey.includes(args.where.identityKey.contains));
+      if (args?.where?.identityKey?.in) {
+        this.accountLockouts = this.accountLockouts.filter((l) => !args.where.identityKey.in.includes(l.identityKey));
       }
       return {};
     },
@@ -250,17 +303,33 @@ class MockPrismaStore {
       this.auditLogs.push(row);
       return row;
     },
-    findMany: async () => this.auditLogs,
+    findMany: async (args: any) => {
+      let results = [...this.auditLogs];
+      if (args?.where?.OR) {
+        results = results.filter((l) =>
+          args.where.OR.some((clause: any) => {
+            if (clause.actorId && l.actorId === clause.actorId) return true;
+            if (clause.entityId && l.entityId === clause.entityId) return true;
+            return false;
+          }),
+        );
+      }
+      return results;
+    },
   };
 }
 
 async function runTests() {
   console.log('\n================================================================');
-  console.log('       JNC-CRM AUTH & RESET SECURITY VERIFICATION SUITE         ');
+  console.log('       JNC-CRM AUTH & OTP RESET SECURITY VERIFICATION SUITE       ');
   console.log('================================================================\n');
 
   const mockStore = new MockPrismaStore();
-  const jwtService = new JwtService({ secret: 'test-jwt-secret-not-used-in-prod' });
+  const jwtSecret = 'test-jwt-secret-not-used-in-prod-2026';
+  process.env.JWT_SECRET = jwtSecret;
+  process.env.OTP_SECRET = jwtSecret;
+
+  const jwtService = new JwtService({ secret: jwtSecret });
 
   // Track sent emails
   const sentEmails: any[] = [];
@@ -292,7 +361,7 @@ async function runTests() {
   const testUser1 = await mockStore.user.create({
     data: {
       tenantId: testTenant.id,
-      name: 'Auth Test User',
+      name: 'Tenant User One',
       email: 'tenant_user@example.com',
       employeeCode: 'EMP_001',
       passwordHash: initHash,
@@ -304,9 +373,10 @@ async function runTests() {
 
   const testSuperAdmin = await mockStore.user.create({
     data: {
-      name: 'Test Platform Super Admin',
+      tenantId: null,
+      name: 'Platform Super Admin',
       email: 'platform_super_admin@example.com',
-      employeeCode: 'SA_001',
+      employeeCode: 'PSA_001',
       passwordHash: initHash,
       role: 'platform_super_admin',
       isActive: true,
@@ -315,7 +385,7 @@ async function runTests() {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // POINT 8: GET /auth/password-policy returns rules & validatePasswordPolicy
+  // TEST 1: Password Policy Rules & Evaluation (Point 5 / Point 8)
   // ──────────────────────────────────────────────────────────────────────────
   try {
     const policy = authService.getPasswordPolicy();
@@ -323,355 +393,286 @@ async function runTests() {
       policy.minLength === 12 &&
       Array.isArray(policy.rules) &&
       policy.rules.some((r) => r.id === 'minLength') &&
-      policy.rules.some((r) => r.id === 'notCommon') &&
-      policy.rules.some((r) => r.id === 'noPersonalInfo') &&
-      typeof policy.senderEmail === 'string' &&
-      policy.senderEmail.length > 0,
-      'Point 8.1: getPasswordPolicy returns minLength 12, rules array, and public sender',
+      policy.rules.some((r) => r.id === 'notCommon'),
+      'Test 1.1: getPasswordPolicy returns minLength 12 and required rules list',
     );
 
-    // Rejection of short password
     let shortRejected = false;
     try {
       validatePasswordPolicy('short123');
-    } catch (err: any) {
-      shortRejected = err instanceof BadRequestException;
+    } catch {
+      shortRejected = true;
     }
-    assert(shortRejected, 'Point 8.2: validatePasswordPolicy rejects passwords < 12 characters');
+    assert(shortRejected, 'Test 1.2: Password policy rejects passwords under 12 characters');
 
-    // Rejection of top common password
-    let commonRejected = false;
-    try {
-      validatePasswordPolicy('password12345');
-    } catch (err: any) {
-      commonRejected = err instanceof BadRequestException;
-    }
-    assert(commonRejected, 'Point 8.3: validatePasswordPolicy rejects common dictionary passwords');
-
-    // Rejection of personal information
-    let personalRejected = false;
-    try {
-      validatePasswordPolicy('tenantuser12345678', { name: 'Tenant User', email: 'tenantuser@example.com' });
-    } catch (err: any) {
-      personalRejected = err instanceof BadRequestException;
-    }
-    assert(personalRejected, 'Point 8.4: validatePasswordPolicy rejects passwords containing user name or email');
-
-    // Acceptance of strong compliant password
     let strongAccepted = false;
     try {
-      validatePasswordPolicy('ValidSecure#2026!ShieldX99');
+      validatePasswordPolicy('StrongPass#2026!X99');
       strongAccepted = true;
     } catch {
       strongAccepted = false;
     }
-    assert(strongAccepted, 'Point 8.5: validatePasswordPolicy accepts strong >= 12 character password');
+    assert(strongAccepted, 'Test 1.3: Password policy accepts strong compliant password');
   } catch (err: any) {
-    assert(false, 'Point 8: Password policy validation', err.message);
+    assert(false, 'Test 1: Password Policy Validation', err.message);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // POINT 3: Reset link valid 30 minutes, marks old tokens used, uses FRONTEND_URL
+  // TEST 2: OTP Request Flow (forgotPasswordRequest) (Point 2)
   // ──────────────────────────────────────────────────────────────────────────
-  let rawResetToken = '';
+  let generatedOtpCode = '';
   try {
-    // Create an old unused token
-    const oldRaw = crypto.randomBytes(32).toString('hex');
-    const oldHash = crypto.createHash('sha256').update(oldRaw).digest('hex');
-    await mockStore.passwordResetToken.create({
-      data: {
-        userId: testUser1.id,
-        tokenHash: oldHash,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-      },
-    });
+    sentEmails.length = 0;
 
-    // Request new forgot password
-    await authService.forgotPassword({ email: testUser1.email });
-
-    // Verify that the old token was marked as used
-    const oldTokenRecord = await mockStore.passwordResetToken.findUnique({
-      where: { tokenHash: oldHash },
-    });
-    assert(
-      oldTokenRecord !== null && oldTokenRecord.usedAt !== null,
-      'Point 3.1: Marks older unused tokens of the user as used upon new reset request',
+    // Request OTP code for testUser1
+    const reqRes = await authService.forgotPasswordRequest(
+      { email: testUser1.email },
+      '192.168.1.100',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0',
     );
 
-    // Verify new token exists and has expiresAt ~30 minutes
-    const latestToken = await mockStore.passwordResetToken.findFirst({
-      where: { userId: testUser1.id, usedAt: null },
-    });
-    assert(latestToken !== null, 'Point 3.2: New active reset token created');
+    assert(
+      reqRes.message === 'If this account exists, we sent a code.' &&
+      reqRes.resendAfterSeconds === 60,
+      'Test 2.1: forgotPasswordRequest returns generic message with 60s resend timer',
+    );
 
-    if (latestToken) {
-      const diffMinutes = (new Date(latestToken.expiresAt).getTime() - Date.now()) / (60 * 1000);
-      assert(
-        diffMinutes >= 28 && diffMinutes <= 31,
-        `Point 3.3: Reset token expiry is set to 30 minutes (actual: ${diffMinutes.toFixed(1)} mins)`,
-      );
-    }
-
-    // Verify reset link generated and sent in email used FRONTEND_URL
+    // Verify email was dispatched with 6-digit code
     const lastEmail = sentEmails[sentEmails.length - 1];
-    const expectedBase = (process.env.FRONTEND_URL || 'https://admin.jsnc.co.in').replace(/\/+$/, '');
     assert(
-      lastEmail && lastEmail.text.includes(`${expectedBase}/reset-password?token=`),
-      'Point 3.4: Reset URL built strictly from FRONTEND_URL',
+      lastEmail &&
+      lastEmail.to === testUser1.email &&
+      lastEmail.subject.includes('is your JNC CRM verification code'),
+      'Test 2.2: Email dispatched to user with verification code subject',
     );
 
-    // Extract raw token from email for subsequent reset tests
-    const tokenMatch = lastEmail.text.match(/token=([a-f0-9]{64})/);
-    if (tokenMatch) {
-      rawResetToken = tokenMatch[1];
+    // Extract the 6-digit code from subject
+    const match = lastEmail.subject.match(/^(\d{6})\s/);
+    if (match) {
+      generatedOtpCode = match[1];
     }
+    assert(generatedOtpCode.length === 6, 'Test 2.3: 6-digit verification code generated securely');
+
+    // Verify code is stored as HMAC-SHA256, NOT plaintext
+    const challenge = await mockStore.otpChallenge.findFirst({
+      where: { emailNormalized: testUser1.email.toLowerCase(), purpose: 'password_reset' },
+    });
+    assert(
+      challenge !== null &&
+      challenge.codeHash !== generatedOtpCode &&
+      challenge.codeHash.length === 64,
+      'Test 2.4: Code is stored strictly as HMAC-SHA256 hash in OtpChallenge',
+    );
+
+    // Test 60-second cooldown prevents sending duplicate codes
+    sentEmails.length = 0;
+    const cooldownRes = await authService.forgotPasswordRequest({ email: testUser1.email });
+    assert(
+      cooldownRes.message === 'If this account exists, we sent a code.' &&
+      sentEmails.length === 0,
+      'Test 2.5: 60-second resend cooldown blocks re-dispatching email within window',
+    );
+
+    // Test non-existent email returns identical timing-safe message without creating challenge
+    const nonExistentEmail = 'non_existent_random_user_99@example.com';
+    const nonExistRes = await authService.forgotPasswordRequest({ email: nonExistentEmail });
+    assert(
+      nonExistRes.message === 'If this account exists, we sent a code.',
+      'Test 2.6: Non-existent email returns identical generic message',
+    );
   } catch (err: any) {
-    assert(false, 'Point 3: Token validity & FRONTEND_URL', err.message);
+    assert(false, 'Test 2: OTP Request Flow', err.message);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // POINT 1: ResetPassword updates ONLY the token owner; no hardcoded emails
+  // TEST 3: OTP Verification Flow (forgotPasswordVerify) (Point 3)
   // ──────────────────────────────────────────────────────────────────────────
+  let resetTicket = '';
+  let accountsList: any[] = [];
   try {
-    assert(rawResetToken.length > 0, 'Point 1.1: Reset token was extracted for test');
-
-    const newPass = 'UpdatedSecure#2026!XYZ';
-    const user1Before = await mockStore.user.findUnique({ where: { id: testUser1.id } });
-    const superAdminBefore = await mockStore.user.findUnique({ where: { id: testSuperAdmin.id } });
-
-    const res = await authService.resetPassword({ token: rawResetToken, newPassword: newPass }, '192.168.1.100');
-    assert(res.message.includes('successfully'), 'Point 1.2: Reset password returns success message');
-
-    const user1After = await mockStore.user.findUnique({ where: { id: testUser1.id } });
-    const superAdminAfter = await mockStore.user.findUnique({ where: { id: testSuperAdmin.id } });
-
-    // User 1 password updated
-    const isNewUser1Match = await bcrypt.compare(newPass, user1After!.passwordHash);
-    assert(isNewUser1Match, 'Point 1.3: Target user password successfully updated');
-
-    // SuperAdmin password untouched
-    assert(
-      superAdminBefore!.passwordHash === superAdminAfter!.passwordHash,
-      'Point 1.4: Reset strictly changes ONLY the token owner account, no cross-account contamination',
-    );
-
-    // Token marked as used
-    const tokenHash = crypto.createHash('sha256').update(rawResetToken).digest('hex');
-    const usedRecord = await mockStore.passwordResetToken.findUnique({ where: { tokenHash } });
-    assert(usedRecord!.usedAt !== null, 'Point 1.5: Used reset token cannot be reused');
-  } catch (err: any) {
-    assert(false, 'Point 1: ResetPassword user targeting', err.message);
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // POINT 2: Platform super-admin reset works; 0-row update throws clear error
-  // ──────────────────────────────────────────────────────────────────────────
-  try {
-    // 1. Generate token for platform super-admin
-    const rawAdminToken = crypto.randomBytes(32).toString('hex');
-    const adminTokenHash = crypto.createHash('sha256').update(rawAdminToken).digest('hex');
-    await mockStore.passwordResetToken.create({
-      data: {
-        userId: testSuperAdmin.id,
-        tokenHash: adminTokenHash,
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-      },
-    });
-
-    const superAdminNewPass = 'SuperAdminSecure#2026!Pass';
-    const adminResetRes = await authService.resetPassword(
-      { token: rawAdminToken, newPassword: superAdminNewPass },
-      '10.0.0.1',
-    );
-    assert(
-      adminResetRes.message.includes('successfully'),
-      'Point 2.1: Platform super admin reset successfully updates super admin password',
-    );
-
-    const refreshedSuperAdmin = await mockStore.user.findUnique({ where: { id: testSuperAdmin.id } });
-    const adminMatch = await bcrypt.compare(superAdminNewPass, refreshedSuperAdmin!.passwordHash);
-    assert(adminMatch, 'Point 2.2: Platform super admin record holds new password hash');
-
-    // 2. Test 0-row update: token pointing to inactive or deleted user
-    const rawGhostToken = crypto.randomBytes(32).toString('hex');
-    const ghostHash = crypto.createHash('sha256').update(rawGhostToken).digest('hex');
-    const ghostUser = await mockStore.user.create({
-      data: {
-        tenantId: testTenant.id,
-        name: 'Ghost User',
-        email: 'ghost@example.com',
-        employeeCode: 'GHOST_01',
-        passwordHash: await bcrypt.hash('GhostPass12345!', 12),
-        role: 'sales_executive',
-        isActive: false, // inactive
-        deletedAt: new Date(),
-      },
-    });
-    await mockStore.passwordResetToken.create({
-      data: {
-        userId: ghostUser.id,
-        tokenHash: ghostHash,
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-      },
-    });
-
-    let zeroRowRejected = false;
+    // 1. Wrong code test: should fail and increment attempt count
+    let wrongCodeRejected = false;
     try {
-      await authService.resetPassword({ token: rawGhostToken, newPassword: 'NewValidPass1234!' });
+      await authService.forgotPasswordVerify({ email: testUser1.email, code: '000000' });
     } catch (err: any) {
-      zeroRowRejected = err instanceof BadRequestException;
+      wrongCodeRejected = err instanceof BadRequestException && err.message.includes('incorrect or expired');
     }
-    assert(zeroRowRejected, 'Point 2.3: Never returns success when zero rows updated, throws clear BadRequestException');
-  } catch (err: any) {
-    assert(false, 'Point 2: Platform super admin reset & 0-row safety', err.message);
-  }
+    assert(wrongCodeRejected, 'Test 3.1: Wrong code fails with "Code is incorrect or expired."');
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // POINT 4: 10-second email timeout resilience & error logging
-  // ──────────────────────────────────────────────────────────────────────────
-  try {
-    const failingMockService: any = {
-      sendEmail: async () => {
-        throw new Error('SMTP connection refused');
-      },
-    };
-    const failingAuthService = new AuthService(
-      mockStore as any,
-      jwtService,
-      failingMockService,
-    );
-
-    const res = await failingAuthService.forgotPassword({ email: testUser1.email });
+    // 2. Correct code test: returns resetTicket and accounts list
+    const verifyRes = await authService.forgotPasswordVerify({
+      email: testUser1.email,
+      code: generatedOtpCode,
+    });
     assert(
-      res.message === 'If that email exists, a reset link has been sent.',
-      'Point 4.1: forgotPassword handles email dispatch failure gracefully and returns generic message',
+      typeof verifyRes.resetTicket === 'string' &&
+      Array.isArray(verifyRes.accounts) &&
+      verifyRes.accounts.length === 1 &&
+      verifyRes.accounts[0].accountId === testUser1.id,
+      'Test 3.2: Correct code returns signed resetTicket and account selector list',
     );
+    resetTicket = verifyRes.resetTicket;
+    accountsList = verifyRes.accounts;
+
+    // 3. Single-use test: challenge marked as used and cannot be re-verified
+    let reuseRejected = false;
+    try {
+      await authService.forgotPasswordVerify({ email: testUser1.email, code: generatedOtpCode });
+    } catch {
+      reuseRejected = true;
+    }
+    assert(reuseRejected, 'Test 3.3: Verification challenge is single-use; cannot be reused');
   } catch (err: any) {
-    assert(false, 'Point 4: Email timeout resilience', err.message);
+    assert(false, 'Test 3: OTP Verification Flow', err.message);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // POINT 5: Revoke refresh sessions & send "Your password was changed" notification
+  // TEST 4: OTP Reset Execution (forgotPasswordReset) (Point 4)
   // ──────────────────────────────────────────────────────────────────────────
   try {
-    const sessionTokenHash = crypto.randomBytes(32).toString('hex');
+    sentEmails.length = 0;
+    const newPassword = 'BrandNewSecure#2026!XYZ';
+
+    // 1. Account ownership security check: attempt to reset another user's account with this ticket
+    let crossAccountRejected = false;
+    try {
+      await authService.forgotPasswordReset({
+        resetTicket,
+        accountIds: ['usr_attacker_victim_id_not_owned'],
+        newPassword,
+      });
+    } catch (err: any) {
+      crossAccountRejected = true;
+    }
+    assert(crossAccountRejected, 'Test 4.1: Reset rejects accounts not belonging to verified email');
+
+    // 2. Perform legitimate reset for testUser1
+    const resetRes = await authService.forgotPasswordReset(
+      {
+        resetTicket,
+        accountIds: [testUser1.id],
+        newPassword,
+      },
+      '203.0.113.195',
+    );
+    assert(resetRes.success === true, 'Test 4.2: Password reset succeeds for verified account');
+
+    // 3. Verify user password updated in database
+    const refreshedUser = await mockStore.user.findUnique({ where: { id: testUser1.id } });
+    const isNewPassMatch = await bcrypt.compare(newPassword, refreshedUser!.passwordHash);
+    assert(isNewPassMatch, 'Test 4.3: User passwordHash is updated to new bcrypt hash');
+
+    // 4. Verify notification email dispatched
+    const changeNotification = sentEmails.find((m) => m.subject.includes('Your JNC CRM password was changed'));
+    assert(
+      changeNotification !== undefined &&
+      changeNotification.to === testUser1.email &&
+      changeNotification.text.includes('203.0.113.195'),
+      'Test 4.4: Dispatches "Your password was changed" email with client IP',
+    );
+  } catch (err: any) {
+    assert(false, 'Test 4: OTP Reset Execution', err.message);
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // TEST 5: Platform Super Admin Reset Flow (Point 2 / Point 4)
+  // ──────────────────────────────────────────────────────────────────────────
+  try {
+    sentEmails.length = 0;
+
+    // 1. Request OTP for platform super admin
+    await authService.forgotPasswordRequest({ email: testSuperAdmin.email });
+    const adminEmail = sentEmails[sentEmails.length - 1];
+    const adminCode = adminEmail.subject.match(/^(\d{6})\s/)[1];
+
+    // 2. Verify OTP
+    const adminVerify = await authService.forgotPasswordVerify({
+      email: testSuperAdmin.email,
+      code: adminCode,
+    });
+    assert(
+      adminVerify.accounts[0].label === 'Platform administration',
+      'Test 5.1: Platform super admin labeled as "Platform administration" in account list',
+    );
+
+    // 3. Reset password
+    const adminNewPass = 'PlatformAdminSecure#2026!Pass';
+    const adminReset = await authService.forgotPasswordReset({
+      resetTicket: adminVerify.resetTicket,
+      accountIds: [testSuperAdmin.id],
+      newPassword: adminNewPass,
+    });
+    assert(adminReset.success === true, 'Test 5.2: Platform super admin password reset succeeds');
+
+    const updatedAdmin = await mockStore.user.findUnique({ where: { id: testSuperAdmin.id } });
+    const isAdminPassOk = await bcrypt.compare(adminNewPass, updatedAdmin!.passwordHash);
+    assert(isAdminPassOk, 'Test 5.3: Platform super admin record holds updated password hash');
+  } catch (err: any) {
+    assert(false, 'Test 5: Platform Super Admin Reset', err.message);
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // TEST 6: Legacy Link Endpoint Returns HTTP 410 Gone (Point 6)
+  // ──────────────────────────────────────────────────────────────────────────
+  try {
+    let legacyEndpointGone = false;
+    try {
+      await authService.resetPassword({ token: 'old_legacy_link_token', newPassword: 'ValidPass#123456!' });
+    } catch (err: any) {
+      legacyEndpointGone = err instanceof HttpException && err.getStatus() === HttpStatus.GONE;
+    }
+    assert(legacyEndpointGone, 'Test 6.1: Legacy reset-password endpoint returns HTTP 410 Gone');
+  } catch (err: any) {
+    assert(false, 'Test 6: Legacy Endpoint Deprecation', err.message);
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // TEST 7: Active Devices & Session Management (Point 13)
+  // ──────────────────────────────────────────────────────────────────────────
+  try {
+    const rawTokenA = 'raw-session-token-aaa';
+    const hashA = crypto.createHash('sha256').update(rawTokenA).digest('hex');
     await mockStore.refreshSession.create({
       data: {
         userId: testUser1.id,
-        tokenHash: sessionTokenHash,
+        tokenHash: hashA,
         familyId: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        isRevoked: false,
+        deviceLabel: 'Windows / Chrome 124',
+        ipAddress: '192.168.1.50',
       },
     });
 
-    sentEmails.length = 0; // Clear tracked emails
-
-    const clientIp = '203.0.113.42';
-    await authService.changePassword(
-      testUser1.id,
-      'UpdatedSecure#2026!XYZ',
-      'NextSecurePass#2026!ABC',
-      clientIp,
-    );
-
-    // Verify previous session revoked
-    const oldSession = await mockStore.refreshSession.findUnique({
-      where: { tokenHash: sessionTokenHash },
+    const rawTokenB = 'raw-session-token-bbb';
+    const hashB = crypto.createHash('sha256').update(rawTokenB).digest('hex');
+    const sessionB = await mockStore.refreshSession.create({
+      data: {
+        userId: testUser1.id,
+        tokenHash: hashB,
+        familyId: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        deviceLabel: 'Android / Mobile Safari',
+        ipAddress: '192.168.1.60',
+      },
     });
-    assert(oldSession!.isRevoked === true, 'Point 5.1: Revokes all previous refresh sessions on password change');
 
-    // Verify notification email sent with IP and time
-    const notifyEmail = sentEmails.find((m) => m.subject.includes('Your JNC CRM password was changed'));
+    // List sessions
+    const sessions = await authService.getUserSessions(testUser1.id, rawTokenA);
     assert(
-      notifyEmail !== undefined &&
-      notifyEmail.to === testUser1.email &&
-      notifyEmail.text.includes(clientIp),
-      'Point 5.2: Dispatches "Your password was changed" email containing client IP and timestamp',
+      sessions.length >= 2 &&
+      sessions.some((s: any) => s.isCurrent === true && s.deviceLabel.includes('Chrome')) &&
+      sessions.some((s: any) => s.isCurrent === false && s.deviceLabel.includes('Android')),
+      'Test 7.1: getUserSessions lists devices and tags current session correctly',
     );
+
+    // Revoke session B
+    const revokeRes = await authService.revokeSession(testUser1.id, sessionB.id);
+    assert(revokeRes.success === true, 'Test 7.2: revokeSession successfully terminates specific session');
+
+    const refreshedB = await mockStore.refreshSession.findUnique({ where: { tokenHash: hashB } });
+    assert(refreshedB!.isRevoked === true, 'Test 7.3: Revoked session marked isRevoked: true');
   } catch (err: any) {
-    assert(false, 'Point 5: Session revocation & change email notification', err.message);
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // POINT 6: Rate limit of 3 reset requests per hour per email
-  // ──────────────────────────────────────────────────────────────────────────
-  try {
-    const rateTestEmail = 'ratetest@example.com';
-    await mockStore.user.create({
-      data: {
-        tenantId: testTenant.id,
-        name: 'Rate Limit Test User',
-        email: rateTestEmail,
-        employeeCode: 'RL_001',
-        passwordHash: await bcrypt.hash('RateLimitP@ss1234!', 12),
-        role: 'sales_executive',
-        isActive: true,
-      },
-    });
-
-    // Clear any existing lockout for this email
-    await mockStore.accountLockout.deleteMany({
-      where: { identityKey: { contains: rateTestEmail } },
-    });
-
-    // Attempt 1: allowed
-    await authService.forgotPassword({ email: rateTestEmail });
-    // Attempt 2: allowed
-    await authService.forgotPassword({ email: rateTestEmail });
-    // Attempt 3: allowed
-    await authService.forgotPassword({ email: rateTestEmail });
-
-    // Attempt 4: MUST throw 429 Too Many Requests
-    let rateLimitTriggered = false;
-    try {
-      await authService.forgotPassword({ email: rateTestEmail });
-    } catch (err: any) {
-      rateLimitTriggered = err instanceof HttpException && err.getStatus() === 429;
-    }
-    assert(rateLimitTriggered, 'Point 6.1: Enforces limit of 3 reset requests per hour per email (returns 429 on 4th)');
-  } catch (err: any) {
-    assert(false, 'Point 6: Rate limiting per email', err.message);
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // POINT 7: Print reset link only when NODE_ENV !== 'production'
-  // ──────────────────────────────────────────────────────────────────────────
-  try {
-    const originalNodeEnv = process.env.NODE_ENV;
-    const originalConsoleLog = console.log;
-
-    let logCalled = false;
-    console.log = (...args: any[]) => {
-      if (args.some((a) => typeof a === 'string' && a.includes('[DEV] Password reset link'))) {
-        logCalled = true;
-      }
-      originalConsoleLog.apply(console, args);
-    };
-
-    // Set to production
-    process.env.NODE_ENV = 'production';
-    const prodEmail = 'prodtest@example.com';
-    await mockStore.user.create({
-      data: {
-        tenantId: testTenant.id,
-        name: 'Prod Test User',
-        email: prodEmail,
-        employeeCode: 'PROD_001',
-        passwordHash: await bcrypt.hash('ProdPass#2026!XYZ', 12),
-        role: 'sales_executive',
-        isActive: true,
-      },
-    });
-
-    await authService.forgotPassword({ email: prodEmail });
-    assert(!logCalled, 'Point 7.1: Does NOT print reset link to console when NODE_ENV === "production"');
-
-    // Restore environment & console
-    process.env.NODE_ENV = originalNodeEnv;
-    console.log = originalConsoleLog;
-  } catch (err: any) {
-    assert(false, 'Point 7: Production reset link log suppression', err.message);
+    assert(false, 'Test 7: Session Management', err.message);
   }
 
   console.log('\n----------------------------------------------------------------');

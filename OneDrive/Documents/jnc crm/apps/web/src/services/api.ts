@@ -534,14 +534,30 @@ export const authApi = {
       api.post('/platform-auth/login', { email, password, keepSignedIn }, { timeout: 60000 })
     ),
   getPasswordPolicy: () => api.get('/auth/password-policy'),
+  forgotPasswordRequest: (email: string) =>
+    requestWithColdStartRetry(() =>
+      api.post('/auth/forgot-password/request', { email }, { timeout: 60000 })
+    ),
+  forgotPasswordVerify: (email: string, code: string) =>
+    api.post('/auth/forgot-password/verify', { email, code }),
+  forgotPasswordReset: (resetTicket: string, accountIds: string[], newPassword: string) =>
+    api.post('/auth/forgot-password/reset', { resetTicket, accountIds, newPassword }),
   forgotPassword: (email: string, companyCode?: string) =>
     requestWithColdStartRetry(() =>
-      api.post('/auth/forgot-password', { email, companyCode }, { timeout: 60000 })
+      api.post('/auth/forgot-password/request', { email, companyCode }, { timeout: 60000 })
     ),
   resetPassword: (token: string, newPassword: string) =>
     api.post('/auth/reset-password', { token, newPassword }),
   me: () => api.get('/auth/me'),
   getRecentSignIns: () => api.get('/auth/recent-signins'),
+  getSessions: () => api.get('/auth/sessions'),
+  revokeSession: (id: string) => api.delete(`/auth/sessions/${id}`),
+  revokeOtherSessions: () => api.delete('/auth/sessions'),
+  getActivity: () => api.get('/auth/activity'),
+  requestEmailChangeOtp: (newEmail: string) =>
+    api.post('/auth/profile/email/request-otp', { newEmail }),
+  verifyEmailChangeOtp: (newEmail: string, code: string) =>
+    api.post('/auth/profile/email/verify-otp', { newEmail, code }),
   refresh: () => performStaffRefresh(),
   logout: () => {
     setStoredRefreshToken(null, false);
@@ -552,10 +568,10 @@ export const authApi = {
     setStoredRefreshToken(null, true);
     return api.post('/auth/logout-all', {});
   },
-  updateProfile: (data: { name?: string; phone?: string }) =>
+  updateProfile: (data: { name?: string; phone?: string; photoUrl?: string }) =>
     api.patch('/auth/profile', data),
-  changePassword: (currentPass: string, newPass: string) =>
-    api.post('/auth/change-password', { currentPass, newPass }),
+  changePassword: (currentPass: string, newPass: string, logoutOthers?: boolean) =>
+    api.post('/auth/change-password', { currentPass, newPass, logoutOthers: logoutOthers ?? true }),
 };
 
 // ─── Platform Auth ───────────────────────────────────────────────────────────
@@ -850,6 +866,9 @@ export const usersApi = {
   create: (data: any) => api.post('/users', data),
   update: (id: string, data: any) => api.patch(`/users/${id}`, data),
   resetCredentials: (id: string) => api.post(`/users/${id}/reset-credentials`),
+  sendResetCode: (id: string) => api.post(`/users/${id}/send-reset-code`),
+  revokeSessions: (id: string) => api.post(`/users/${id}/revoke-sessions`),
+  unlock: (id: string) => api.post(`/users/${id}/unlock`),
   forceResetAllPasswords: () => api.post('/users/force-reset-all'),
   toggleActive: (id: string, isActive: boolean) =>
     api.patch(`/users/${id}/toggle-active`, { isActive }),

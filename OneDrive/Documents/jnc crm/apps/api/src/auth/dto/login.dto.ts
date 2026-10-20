@@ -137,6 +137,39 @@ export class RefreshTokenDto {
   refreshToken?: string;
 }
 
+export class ForgotPasswordRequestDto {
+  @IsNotEmpty()
+  @IsString()
+  email: string;
+}
+
+export class ForgotPasswordVerifyDto {
+  @IsNotEmpty()
+  @IsString()
+  email: string;
+
+  @IsNotEmpty()
+  @IsString()
+  code: string;
+}
+
+export class ForgotPasswordResetDto {
+  @IsNotEmpty()
+  @IsString()
+  resetTicket: string;
+
+  @IsDefined()
+  accountIds: string[];
+
+  @IsDefined({ message: 'newPassword is required' })
+  @IsString({ message: 'newPassword must be a string' })
+  @MinLength(12, { message: 'Password must be at least 12 characters long' })
+  @MaxLength(200, { message: 'newPassword must not exceed 200 characters' })
+  @Matches(/^(?!\s*$).+/, { message: 'newPassword must not be empty or whitespace only' })
+  @IsValidPassword()
+  newPassword: string;
+}
+
 export class UpdateProfileDto {
   @IsOptional()
   @IsString()
@@ -145,6 +178,26 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
+}
+
+export class RequestEmailChangeDto {
+  @IsNotEmpty()
+  @IsString()
+  newEmail: string;
+}
+
+export class VerifyEmailChangeDto {
+  @IsNotEmpty()
+  @IsString()
+  newEmail: string;
+
+  @IsNotEmpty()
+  @IsString()
+  code: string;
 }
 
 export class ChangePasswordDto {
@@ -162,4 +215,8 @@ export class ChangePasswordDto {
   @Matches(/^(?!\s*$).+/, { message: 'newPass must not be empty or whitespace only' })
   @IsValidPassword()
   newPass: string;
+
+  @IsOptional()
+  @IsBoolean()
+  logoutOthers?: boolean;
 }

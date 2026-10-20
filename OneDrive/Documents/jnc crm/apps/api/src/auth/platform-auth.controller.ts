@@ -81,7 +81,8 @@ export class PlatformAuthController {
     const rawRefreshToken = tokenFromCookie || refreshDto.refreshToken;
 
     const ip = req.ip || req.socket?.remoteAddress;
-    const result = await this.authService.refreshPlatformToken(rawRefreshToken, ip);
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    const result = await this.authService.refreshPlatformToken(rawRefreshToken, ip, userAgent);
 
     if (result && result.refreshToken) {
       res.cookie(PLATFORM_REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(PLATFORM_AUTH_COOKIE_PATH, false));

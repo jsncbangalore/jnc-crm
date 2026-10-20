@@ -68,6 +68,7 @@ export interface User {
   name: string;
   email: string;
   phone?: string;
+  photoUrl?: string;
   role: Role;
   teamId?: string;
   team?: string;
@@ -76,6 +77,7 @@ export interface User {
   isActive: boolean;
   mustResetPassword?: boolean;
   lastLoginAt?: string;
+  lastPasswordChangeAt?: string;
   createdById?: string;
   createdBy?: { id: string; name: string; employeeCode: string };
   createdAt?: string;

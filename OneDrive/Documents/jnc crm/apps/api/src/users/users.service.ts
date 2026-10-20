@@ -1047,4 +1047,146 @@ export class UsersService {
       message: `Successfully imported ${createdUsers.length} users. Temporary credentials generated.`,
     };
   }
+
+  // ─── Admin User Actions: Reset Code, Session Revocation & Unlock ────────────
+
+  async sendResetCode(id: string, admin: ScopedUser, clientIp?: string, userAgent?: string) {
+    const isPlatform = isPlatformOwner(admin);
+    const where: any = isPlatform
+      ? { id, deletedAt: null }
+      : { id, tenantId: requireTenantId(admin), deletedAt: null };
+
+    const user = await this.prisma.user.findFirst({ where });
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.email) throw new BadRequestException('User does not have an email address configured.');
+
+    const lower = user.email.trim().toLowerCase();
+    const now = new Date();
+
+    // Invalidate prior unused password_reset OTPs
+    await this.prisma.otpChallenge.updateMany({
+      where: { emailNormalized: lower, purpose: 'password_reset', usedAt: null },
+      data: { usedAt: now },
+    });
+
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const challengeId = crypto.randomUUID();
+    const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'jnc-otp-secret-key-2026';
+    const codeHash = crypto.createHmac('sha256', otpSecret + challengeId).update(code).digest('hex');
+
+    await this.prisma.otpChallenge.create({
+      data: {
+        id: challengeId,
+        emailNormalized: lower,
+        purpose: 'password_reset',
+        codeHash,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        resendAfter: new Date(Date.now() + 60 * 1000),
+        requestIp: clientIp || '127.0.0.1',
+        requestUserAgent: userAgent ? userAgent.substring(0, 500) : 'admin_console',
+      },
+    });
+
+    if (this.notificationsService) {
+      const branding = await this.notificationsService.getBranding(user.tenantId || undefined);
+      this.notificationsService.sendEmail({
+        tenantId: user.tenantId || undefined,
+        to: lower,
+        subject: `${code} is your JNC CRM verification code`,
+        text: `Hello ${user.name || 'User'},\n\nAn administrator has initiated a password reset for your account.\nYour verification code is: ${code}\nThis code expires in 10 minutes. Never share this code with anyone.`,
+        html: `<div style="font-family: Arial, sans-serif; max-width: 520px; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
+          <h2 style="color: #0f172a; margin-top: 0;">Password Reset Code</h2>
+          <p style="color: #475569;">An administrator initiated a password reset for your account in ${branding.companyDisplayName}. Use the verification code below:</p>
+          <div style="background-color: #f1f5f9; border-radius: 10px; padding: 18px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #2563eb; font-family: monospace;">${code}</span>
+          </div>
+          <p style="color: #475569; font-size: 13px;">This code expires in <strong>10 minutes</strong>. For your security, <strong>never share this code with anyone</strong>.</p>
+        </div>`,
+      }).catch(() => {});
+    }
+
+    await this.auditService.log({
+      tenantId: user.tenantId || requireTenantId(admin),
+      actorId: admin.id,
+      actorName: admin.employeeCode || admin.id,
+      action: 'ADMIN_SEND_RESET_CODE',
+      entityName: 'User',
+      entityId: user.id,
+      afterState: { targetUserId: user.id },
+    });
+
+    return {
+      success: true,
+      message: `Password reset verification code dispatched to ${user.email.replace(/(.{2})(.*)(@.*)/, '$1***$3')}.`,
+    };
+  }
+
+  async revokeUserSessions(id: string, admin: ScopedUser) {
+    const isPlatform = isPlatformOwner(admin);
+    const where: any = isPlatform
+      ? { id, deletedAt: null }
+      : { id, tenantId: requireTenantId(admin), deletedAt: null };
+
+    const user = await this.prisma.user.findFirst({ where });
+    if (!user) throw new NotFoundException('User not found');
+
+    await this.prisma.user.update({
+      where: { id },
+      data: { tokenVersion: { increment: 1 } },
+    });
+
+    await this.prisma.refreshSession.updateMany({
+      where: { userId: id },
+      data: { isRevoked: true },
+    });
+
+    await this.auditService.log({
+      tenantId: user.tenantId || requireTenantId(admin),
+      actorId: admin.id,
+      actorName: admin.employeeCode || admin.id,
+      action: 'ADMIN_SIGN_OUT_USER',
+      entityName: 'User',
+      entityId: user.id,
+    });
+
+    return { success: true, message: 'All active sessions for this user have been terminated.' };
+  }
+
+  async unlockUser(id: string, admin: ScopedUser) {
+    const isPlatform = isPlatformOwner(admin);
+    const where: any = isPlatform
+      ? { id, deletedAt: null }
+      : { id, tenantId: requireTenantId(admin), deletedAt: null };
+
+    const user = await this.prisma.user.findFirst({ where });
+    if (!user) throw new NotFoundException('User not found');
+
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        failedLoginAttempts: 0,
+        lockoutUntil: null,
+      },
+    });
+
+    const lockKeys: string[] = [user.email.toLowerCase(), user.employeeCode];
+    if (user.tenantId) {
+      lockKeys.push(`${user.email.toLowerCase()}:${user.tenantId}`);
+      lockKeys.push(`${user.employeeCode}:${user.tenantId}`);
+    }
+    await this.prisma.accountLockout.deleteMany({
+      where: { identityKey: { in: lockKeys } },
+    }).catch(() => {});
+
+    await this.auditService.log({
+      tenantId: user.tenantId || requireTenantId(admin),
+      actorId: admin.id,
+      actorName: admin.employeeCode || admin.id,
+      action: 'ADMIN_UNLOCK_USER',
+      entityName: 'User',
+      entityId: user.id,
+    });
+
+    return { success: true, message: 'User account has been unlocked.' };
+  }
 }
