@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { canStore } from '../../utils/cookieConsent';
 import {
   Play, Save, RotateCcw, Plus, Trash2, ArrowRight, CheckCircle2,
   Clock, Mail, MessageSquare, Phone, GitBranch, ShieldCheck,
@@ -64,8 +65,8 @@ const DEFAULT_SEQUENCE: FlowSequence = {
         type: 'SEND_EMAIL',
         label: 'Send Official Proposal',
         config: {
-          subject: 'Thank you for your inquiry - JNC Commercial Proposal',
-          message: 'Thank you for reaching out to JS Network Communication. We have reviewed your requirement and attached our commercial quotation.',
+          subject: 'Thank you for your inquiry - Commercial Proposal',
+          message: 'Thank you for reaching out to us. We have reviewed your requirement and attached our commercial quotation.',
         },
         position: { x: 330, y: 180 },
       },
@@ -127,8 +128,10 @@ const NODE_HEIGHT = 80;
 export default function FlowStudioCanvas() {
   const [sequence, setSequence] = useState<FlowSequence>(() => {
     try {
-      const saved = localStorage.getItem('jnc_crmflow_sequence');
-      if (saved) return JSON.parse(saved);
+      if (canStore('preferences')) {
+        const saved = localStorage.getItem('crm_flow_sequence');
+        if (saved) return JSON.parse(saved);
+      }
     } catch {
       // fallback
     }
@@ -213,7 +216,9 @@ export default function FlowStudioCanvas() {
     };
     setSequence(updated);
     try {
-      localStorage.setItem('jnc_crmflow_sequence', JSON.stringify(updated));
+      if (canStore('preferences')) {
+        localStorage.setItem('crm_flow_sequence', JSON.stringify(updated));
+      }
       setIsDirty(false);
       showToast(statusOverride === 'ACTIVE' ? 'Flow sequence activated & deployed!' : 'Flow sequence saved successfully');
     } catch {
@@ -231,7 +236,11 @@ export default function FlowStudioCanvas() {
     setSelectedNodeId('start');
     setConnectFromId(null);
     setIsDirty(false);
-    localStorage.setItem('jnc_crmflow_sequence', JSON.stringify(DEFAULT_SEQUENCE));
+    if (canStore('preferences')) {
+      try {
+        localStorage.setItem('crm_flow_sequence', JSON.stringify(DEFAULT_SEQUENCE));
+      } catch {}
+    }
     showToast('Flow reset to default template');
   };
 
@@ -495,7 +504,9 @@ export default function FlowStudioCanvas() {
         },
       };
       try {
-        localStorage.setItem('jnc_crmflow_sequence', JSON.stringify(updated));
+        if (canStore('preferences')) {
+          localStorage.setItem('crm_flow_sequence', JSON.stringify(updated));
+        }
       } catch {}
       return updated;
     });

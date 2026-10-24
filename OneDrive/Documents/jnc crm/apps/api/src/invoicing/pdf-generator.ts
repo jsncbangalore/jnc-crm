@@ -8,7 +8,7 @@
 const PDFDocument = require('pdfkit');
 import * as fs from 'fs';
 import * as path from 'path';
-import { JSNC_COMPANY_PROFILE, numberToIndianWords } from './invoice-config';
+import { numberToIndianWords } from './invoice-config';
 import { BRAND_CONFIG } from '../common/brand';
 
 export interface PdfDocumentOptions {
@@ -71,24 +71,24 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
       }
 
       // Resolve Dynamic Tenant Profile & Signatory Settings
-      const profile = options?.companyProfile || invoice.companyProfile || JSNC_COMPANY_PROFILE;
+      const profile = options?.companyProfile || invoice.companyProfile || {};
       const companyName = options?.signatorySettings?.companyName || invoice?.signatorySettings?.companyName || profile.companyName || BRAND_CONFIG.displayName;
-      const companyAddress = profile.address || 'No, 18/19, 2nd Floor, Coconut Avenue, 3rd cross, 8th Phase JP Nagar, Bangalore 76.';
-      const companyCity = profile.city || 'Bengaluru';
-      const companyState = profile.state || 'Karnataka';
-      const companyPincode = profile.pincode || '560076';
-      const companyGstin = profile.gstin || '29ABCDE1234F1Z5';
-      const companyEmail = profile.email || 'accounts@example.com';
-      const companyPhone = profile.phone || '+91 9876543210';
+      const companyAddress = profile.address || '';
+      const companyCity = profile.city || '';
+      const companyState = profile.state || '';
+      const companyPincode = profile.pincode || '';
+      const companyGstin = profile.gstin || '';
+      const companyEmail = profile.email || '';
+      const companyPhone = profile.phone || '';
 
-      const bankName = profile.bankName || 'Sample Bank';
-      const bankAccountNo = profile.bankAccountNumber || '00001234567890';
-      const bankIfsc = profile.bankIfsc || 'HDFC0000001';
-      const bankBranch = profile.bankBranch || 'Main Branch';
+      const bankName = profile.bankName || '';
+      const bankAccountNo = profile.bankAccountNumber || '';
+      const bankIfsc = profile.bankIfsc || '';
+      const bankBranch = profile.bankBranch || '';
       const bankHolder = profile.bankAccountHolder || companyName;
 
       const signatoryName = options?.signatorySettings?.signatoryName || profile.signatoryName || 'Authorized Signatory';
-      const signatoryDesignation = options?.signatorySettings?.signatoryDesignation || profile.signatoryDesignation || 'Proprietor';
+      const signatoryDesignation = options?.signatorySettings?.signatoryDesignation || profile.signatoryDesignation || 'Authorized Representative';
 
       const docType = options?.templateType || invoice.docType || 'tax_invoice';
       const isPO = docType === 'purchase_order';
@@ -120,25 +120,24 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         return `${day}/${month}/${year}`;
       };
 
-      // Resolve official Logo (Always prioritize official JNC Brand Logo)
+      // Resolve dynamic Tenant Logo or Product Logo
       let resolvedLogo: any = null;
-      const possibleLogoPaths = [
-        path.join(process.cwd(), 'apps/web/public/jnc-logo.jpg'),
-        path.join(process.cwd(), 'public/jnc-logo.jpg'),
-        path.join(process.cwd(), '../web/public/jnc-logo.jpg'),
-        path.join(process.cwd(), '../../apps/web/public/jnc-logo.jpg'),
-      ];
-      for (const p of possibleLogoPaths) {
-        if (fs.existsSync(p)) {
-          resolvedLogo = p;
-          break;
-        }
-      }
-
-      // If official JNC logo file was not on disk, check custom tenant path (non-base64)
-      if (!resolvedLogo && profile.logoUrl && !profile.logoUrl.startsWith('data:')) {
-        if (fs.existsSync(profile.logoUrl)) {
-          resolvedLogo = profile.logoUrl;
+      const candidateLogo = profile.logoUrl || process.env.PRODUCT_LOGO_URL;
+      if (candidateLogo) {
+        if (typeof candidateLogo === 'string' && candidateLogo.startsWith('data:image/')) {
+          try {
+            const b64 = candidateLogo.split(',')[1];
+            if (b64) resolvedLogo = Buffer.from(b64, 'base64');
+          } catch (e) {}
+        } else if (typeof candidateLogo === 'string') {
+          if (fs.existsSync(candidateLogo)) {
+            resolvedLogo = candidateLogo;
+          } else {
+            const relativePath = path.resolve(process.cwd(), candidateLogo);
+            if (fs.existsSync(relativePath)) {
+              resolvedLogo = relativePath;
+            }
+          }
         }
       }
 
@@ -227,7 +226,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           .font('Helvetica-Bold')
           .fontSize(7.5)
           .text(`Date :-  ${formatDateDMY(invoice.invoiceDate)}`, midX + 6, currentY + 10, { width: pageWidth / 2 - 12, align: 'right' })
-          .text(`PO-No :-  ${invoice.invoiceNumber || 'JNC_PO_02/26-27'}`, midX + 6, currentY + 24, { width: pageWidth / 2 - 12, align: 'right' });
+          .text(`PO-No :-  ${invoice.invoiceNumber || 'PO-0001'}`, midX + 6, currentY + 24, { width: pageWidth / 2 - 12, align: 'right' });
 
         currentY += vendorBoxH;
         doc.moveTo(startX, currentY).lineTo(rightX, currentY).stroke('#000000');
@@ -568,10 +567,10 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         doc
           .font('Helvetica-Bold')
           .fontSize(7)
-          .text(`LUT/Bond No : ${invoice.lutBondNo || profile.lutBondNo || 'AD290525013648T'}`, midX + 5, currentY + metaRowH * 3 + 3)
+          .text(`LUT/Bond No : ${invoice.lutBondNo || profile.lutBondNo || ''}`, midX + 5, currentY + metaRowH * 3 + 3)
           .font('Helvetica')
           .fontSize(6.5)
-          .text(isSez ? (invoice.lutValidity || profile.lutValidity || 'From : 10/05/2025 To: 09/05/2026') : '', midX + 5, currentY + metaRowH * 3 + 13);
+          .text(isSez ? (invoice.lutValidity || profile.lutValidity || '') : '', midX + 5, currentY + metaRowH * 3 + 13);
       }
 
       currentY += headerBoxHeight;

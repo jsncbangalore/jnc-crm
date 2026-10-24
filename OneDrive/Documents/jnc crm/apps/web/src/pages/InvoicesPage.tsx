@@ -14,6 +14,7 @@ import CreateDocumentModal from '../components/invoices/CreateDocumentModal';
 import InvoiceSettingsModal from '../components/invoices/InvoiceSettingsModal';
 import { useAuth } from '../contexts/AuthContext';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
+import { canStore } from '../utils/cookieConsent';
 
 export default function InvoicesPage() {
   const { user } = useAuth();
@@ -26,15 +27,22 @@ export default function InvoicesPage() {
   const [docTypeFilter, setDocTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // KPI display toggle (persisted)
+  // KPI display toggle (persisted if consented)
   const [showKpis, setShowKpis] = useState<boolean>(() => {
-    return localStorage.getItem('jnc_show_invoices_kpis') !== 'false';
+    if (canStore('preferences')) {
+      return localStorage.getItem('crm_show_invoices_kpis') !== 'false';
+    }
+    return true;
   });
 
   const toggleKpis = () => {
     setShowKpis((prev) => {
       const next = !prev;
-      localStorage.setItem('jnc_show_invoices_kpis', String(next));
+      if (canStore('preferences')) {
+        try {
+          localStorage.setItem('crm_show_invoices_kpis', String(next));
+        } catch {}
+      }
       return next;
     });
   };

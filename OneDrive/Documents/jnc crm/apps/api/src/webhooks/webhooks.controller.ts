@@ -35,6 +35,7 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
+import { Public, PageAccess } from '../auth/page-access.decorator';
 
 function timingSafeTokenMatch(provided?: string, expected?: string): boolean {
   if (!provided || !expected) return false;
@@ -72,6 +73,7 @@ export class WebhooksController {
    * Regenerate tenant webhook key (tenant_admin or admin only). Plain key displayed once.
    */
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('lead_setup')
   @Roles('tenant_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   @Post('regenerate-key')
@@ -84,6 +86,7 @@ export class WebhooksController {
    * Get tenant webhook configuration and live ingestion statistics
    */
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('lead_setup')
   @Roles('tenant_admin', 'admin', 'platform_super_admin')
   @Get('config')
   async getWebhookConfig(@CurrentUser() user: ScopedUser) {
@@ -98,6 +101,7 @@ export class WebhooksController {
    */
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   @Post('indiamart/:key')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async handleIndiaMartPushWithKey(
     @Param('key') key: string,
@@ -156,7 +160,6 @@ export class WebhooksController {
     const acceptableTokens = [
       process.env.WHATSAPP_VERIFY_TOKEN,
       process.env.META_VERIFY_TOKEN,
-      'jnc_meta_verify_secret_2026',
     ].filter((t): t is string => Boolean(t && t.trim().length > 0));
 
     if (mode === 'subscribe') {
@@ -180,6 +183,7 @@ export class WebhooksController {
    * Meta Lead Ads & WhatsApp Webhook Keyed Handshake
    */
   @Get('meta/:key')
+  @Public()
   async verifyMetaWebhookWithKey(
     @Param('key') key: string,
     @Query('hub.mode') mode: string,
@@ -191,6 +195,7 @@ export class WebhooksController {
   }
 
   @Get('whatsapp/:key')
+  @Public()
   async verifyWhatsAppWebhookWithKey(
     @Param('key') key: string,
     @Query('hub.mode') mode: string,
@@ -252,6 +257,7 @@ export class WebhooksController {
    */
   @Throttle({ default: { limit: 120, ttl: 60000 } })
   @Post('meta/:key')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async handleMetaInboundWithKey(
     @Param('key') key: string,
@@ -267,6 +273,7 @@ export class WebhooksController {
    */
   @Throttle({ default: { limit: 120, ttl: 60000 } })
   @Post('whatsapp/:key')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async handleWhatsAppInboundWithKey(
     @Param('key') key: string,
@@ -282,6 +289,7 @@ export class WebhooksController {
    */
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   @Get('inquiry-info')
+  @Public()
   async getPublicInquiryInfo(@Query('key') queryKey?: string) {
     if (!queryKey) {
       throw new NotFoundException('This form is not available');
@@ -290,11 +298,13 @@ export class WebhooksController {
   }
 
   @Get('inquiry-info/:key')
+  @Public()
   async getPublicInquiryInfoByKey(@Param('key') key: string) {
     return this.webhooksService.getInquiryInfo(key);
   }
 
   @Post('website/:key')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async handleWebsiteContactFormWithKey(
     @Param('key') key: string,
@@ -323,6 +333,7 @@ export class WebhooksController {
    */
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   @Post(':provider/:key')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async handleGenericWebhook(
     @Param('provider') provider: string,
@@ -352,6 +363,7 @@ export class WebhooksController {
    * Generic provider verification handshake endpoint: GET /webhooks/:provider/:key
    */
   @Get(':provider/:key')
+  @Public()
   async handleGenericWebhookGet(
     @Param('provider') provider: string,
     @Param('key') key: string,

@@ -15,7 +15,7 @@ import { PrismaClient } from '@prisma/client';
 
 const TEST_PORT = 3335;
 const BASE_URL = `http://127.0.0.1:${TEST_PORT}/api/v1`;
-const TEST_EMAIL = 'tenantadmin@jsnc.co.in';
+const TEST_EMAIL = process.env.TEST_EMAIL || 'tenantadmin@example.com';
 const TEST_PASSWORD = 'TestPassword#2026!SecureKey';
 
 let totalTests = 0;
@@ -64,11 +64,11 @@ function makeRequest(
 
 async function main() {
   console.log('========================================================================');
-  console.log('JNC-CRM TEST SUITE: LOGIN RESPONSE, COOKIES & KEYED WEBHOOKS');
+  console.log('CRM TEST SUITE: LOGIN RESPONSE, COOKIES & KEYED WEBHOOKS');
   console.log('========================================================================\n');
 
   const prisma = new PrismaClient({
-    datasources: { db: { url: 'postgresql://postgres:postgres@localhost:5432/jnc_crm_dev' } },
+    datasources: { db: { url: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/crm_dev' } },
   });
 
   // Ensure test user has known password and active status
@@ -168,7 +168,7 @@ async function main() {
       const payload = JSON.stringify({
         identifier: TEST_EMAIL,
         password: TEST_PASSWORD,
-        companyCode: internalTenant?.code || 'JNC',
+        companyCode: internalTenant?.code || 'DEFAULT',
       });
 
       const res = await makeRequest(
@@ -234,7 +234,7 @@ async function main() {
       const cookieStr = Array.isArray(rawCookies) ? rawCookies.join('; ') : rawCookies || '';
       refreshCookie = cookieStr;
 
-      assert(cookieStr.includes('jnc_refresh_token='), `Set-Cookie header sets 'jnc_refresh_token'`);
+      assert(cookieStr.includes('crm_refresh_token='), `Set-Cookie header sets 'crm_refresh_token'`);
       assert(cookieStr.toLowerCase().includes('httponly'), `Cookie has 'HttpOnly' flag`);
       assert(cookieStr.toLowerCase().includes('samesite=strict'), `Cookie has 'SameSite=Strict' flag`);
       assert(cookieStr.includes('Path=/api/v1/auth'), `Cookie has path restricted to '/api/v1/auth'`);
@@ -255,7 +255,7 @@ async function main() {
       const payload = JSON.stringify({
         identifier: TEST_EMAIL,
         password: TEST_PASSWORD,
-        companyCode: internalTenant?.code || 'JNC',
+        companyCode: internalTenant?.code || 'DEFAULT',
       });
 
       const prodRes = await makeRequest(
@@ -286,7 +286,7 @@ async function main() {
     // ─── TEST GROUP 4: SILENT REFRESH TOKEN ROTATION ────────────────────────
     console.log('\n--- TEST GROUP 4: Silent Token Refresh Endpoint ---');
     {
-      const cookieVal = refreshCookie.split(';')[0]; // "jnc_refresh_token=..."
+      const cookieVal = refreshCookie.split(';')[0]; // "crm_refresh_token=..."
       const res = await makeRequest({
         hostname: '127.0.0.1',
         port: TEST_PORT,
@@ -306,7 +306,7 @@ async function main() {
 
       const newCookies = res.headers['set-cookie'];
       const newCookieStr = Array.isArray(newCookies) ? newCookies.join('; ') : newCookies || '';
-      assert(newCookieStr.includes('jnc_refresh_token='), `/auth/refresh issues rotated refresh token via Set-Cookie`);
+      assert(newCookieStr.includes('crm_refresh_token='), `/auth/refresh issues rotated refresh token via Set-Cookie`);
     }
 
     // ─── TEST GROUP 5: WEBHOOK KEYS & SCOPING ────────────────────────────────
@@ -438,7 +438,7 @@ async function main() {
       const logoutCookies = resLogout.headers['set-cookie'];
       const logoutCookieStr = Array.isArray(logoutCookies) ? logoutCookies.join('; ') : logoutCookies || '';
       assert(
-        logoutCookieStr.includes('jnc_refresh_token=;') &&
+        logoutCookieStr.includes('crm_refresh_token=;') &&
           (logoutCookieStr.includes('1970') || logoutCookieStr.includes('Max-Age=0')),
         `Logout response clears refresh cookie from browser`,
       );
@@ -481,7 +481,7 @@ async function main() {
       // 3. Post to unkeyed legacy route /webhooks/indiamart with the SAME phone number
       const legacyPayload = JSON.stringify({
         QUERY_ID: 'LEGACY-QUERY-' + Date.now(),
-        SENDER_NAME: 'JNC Inbound Customer',
+        SENDER_NAME: 'Inbound Customer',
         SENDER_MOBILE: sharedPhone,
         PRODUCT_NAME: 'Talkback System Unit',
       });
@@ -502,9 +502,9 @@ async function main() {
       );
 
       assert(resLegacy.statusCode === 200, `Legacy /webhooks/indiamart returns 200 OK (Actual: ${resLegacy.statusCode})`);
-      assert(resLegacy.body.status === 'SUCCESS', `Legacy webhook succeeds for JNC without cross-tenant collision`);
+      assert(resLegacy.body.status === 'SUCCESS', `Legacy webhook succeeds for default tenant without cross-tenant collision`);
 
-      // 4. Verify created lead is strictly owned by JNC tenant
+      // 4. Verify created lead is strictly owned by default internal tenant
       if (resLegacy.body.leadId) {
         const createdLead = await prisma.lead.findUnique({
           where: { id: resLegacy.body.leadId },
@@ -512,7 +512,7 @@ async function main() {
         });
         assert(
           createdLead?.tenantId === internalTenant?.id,
-          `Legacy route creates lead strictly pinned to JNC tenant (${createdLead?.tenantId})`,
+          `Legacy route creates lead strictly pinned to default internal tenant (${createdLead?.tenantId})`,
         );
         assert(createdLead?.customerPhone === sharedPhone, `Lead recorded with customer phone ${sharedPhone}`);
       }

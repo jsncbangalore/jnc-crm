@@ -1,0 +1,14 @@
+{
+  "name": "@crm/shared-validation",
+  "version": "1.0.0",
+  "description": "Shared validation rules and normalization for CRM frontend and backend",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "node ../../node_modules/typescript/bin/tsc"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

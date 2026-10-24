@@ -1,5 +1,5 @@
 -- ============================================================================
--- JNC-CRM SUPABASE DATA API LOCKDOWN SCRIPT
+-- CRM SUPABASE DATA API LOCKDOWN SCRIPT
 -- Target: Fresh Supabase Project (PostgreSQL 14+)
 -- Purpose: Enable Row Level Security (RLS) across ALL public tables to block
 --          unauthorized PostgREST / anon-key access while preserving backend

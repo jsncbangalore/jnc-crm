@@ -69,7 +69,7 @@ try {
 }
 
 // Mask sensitive values
-authWebhookOutput = authWebhookOutput.replace(/jnc_refresh_token=ey[A-Za-z0-9_.-]+/g, 'jnc_refresh_token=<MASKED>');
+authWebhookOutput = authWebhookOutput.replace(/crm_refresh_token=ey[A-Za-z0-9_.-]+/g, 'crm_refresh_token=<MASKED>');
 authWebhookOutput = authWebhookOutput.replace(/accessToken \([A-Za-z0-9_.-]+\)/g, 'accessToken (<MASKED>)');
 authWebhookOutput = authWebhookOutput.replace(/whk_[a-f0-9]{12,}/g, 'whk_<MASKED>');
 authWebhookOutput = authWebhookOutput.replace(/whsec_[a-f0-9]{12,}/g, 'whsec_<MASKED>');
@@ -130,10 +130,10 @@ const postcheckSql = fs.readFileSync(path.join(rootDir, 'deploy', 'postcheck.sql
 
 const report = `================================================================================
 REHEARSAL INVALID
-JNC-CRM PRODUCTION DEPLOYMENT & VERIFICATION REPORT (2026-10-04d)
+CRM PRODUCTION DEPLOYMENT & VERIFICATION REPORT (2026-10-04d)
 ================================================================================
 Generated: 2026-10-04
-Target Repository: C:\\dev\\jnc-crm
+Target Repository: C:\\dev\\crm
 Execution Mode: STRICTLY LOCAL (Zero Live Supabase Connections / Zero Git Pushes)
 Rehearsal Status: REHEARSAL INVALID (Baseline file did not match live database structure)
 Rehearsal Execution: NOT RUN (Awaiting genuine export placed by operator)
@@ -147,7 +147,7 @@ Status: REHEARSAL INVALID (File was NOT a clean export and has been renamed to l
 POWERSHELL AUDIT COMMANDS & OUTPUT:
 
 A. Head Check (12 lines):
-PS C:\\dev\\jnc-crm\\evidence> Get-Content .\\live-schema.sql -TotalCount 12
+PS C:\\dev\\crm\\evidence> Get-Content .\\live-schema.sql -TotalCount 12
 --------------------------------------------------------------------------------
 ${head12}
 --------------------------------------------------------------------------------
@@ -155,7 +155,7 @@ Note: A genuine pg_dump starts with "-- PostgreSQL database dump" and "SET state
 The inspected file instead started with custom comments and immediate CREATE TABLE statements.
 
 B. Tail Check (15 lines):
-PS C:\\dev\\jnc-crm\\evidence> Get-Content .\\live-schema.sql -Tail 15
+PS C:\\dev\\crm\\evidence> Get-Content .\\live-schema.sql -Tail 15
 --------------------------------------------------------------------------------
 ${tail15}
 --------------------------------------------------------------------------------
@@ -163,11 +163,11 @@ Note: A genuine pg_dump ends with foreign keys and constraint definitions.
 The inspected file instead ended with "ALTER TABLE ... DROP COLUMN IF EXISTS" and "COMMIT;".
 
 C. Forbidden Patterns Measurement:
-PS C:\\dev\\jnc-crm\\evidence> Select-String -Path .\\live-schema.sql -Pattern "DROP COLUMN|DROP TABLE|INSERT INTO|BEGIN;|COMMIT;" | Measure-Object
+PS C:\\dev\\crm\\evidence> Select-String -Path .\\live-schema.sql -Pattern "DROP COLUMN|DROP TABLE|INSERT INTO|BEGIN;|COMMIT;" | Measure-Object
 Count: ${patternMatchesCount} (Expected for clean dump: 0)
 
 D. Grep for tokenVersion and isInternal:
-PS C:\\dev\\jnc-crm\\evidence> Select-String -Path .\\live-schema.sql -Pattern "tokenVersion|isInternal"
+PS C:\\dev\\crm\\evidence> Select-String -Path .\\live-schema.sql -Pattern "tokenVersion|isInternal"
 --------------------------------------------------------------------------------
 ${grepOutput}
 --------------------------------------------------------------------------------
@@ -203,19 +203,19 @@ ACTION TAKEN:
 
 A. CONTACT ORPHAN GUESSING REMOVED (deploy/2026-10-prod-upgrade.sql):
 - Problem: Guessing orphan contacts risked cross-tenant data contamination.
-- Fix: Removed fallback updates assigning orphan contacts to JNC or the oldest tenant.
+- Fix: Removed fallback updates assigning orphan contacts to primary tenant or the oldest tenant.
   Orphan contacts remain strictly unassigned (tenantId IS NULL).
 - Read-only Audit Notice: Concludes with a PL/pgSQL block that emits a RAISE NOTICE
   reporting the count of orphan contacts requiring administrative review.
 
-B. IDEMPOTENT JNC INTERNAL TENANT FLAG:
-- Problem: JNC appeared in the rehearsal platform tenant list.
+B. IDEMPOTENT INTERNAL TENANT FLAG:
+- Problem: Internal tenant appeared in the rehearsal platform tenant list.
   Explanation: The platform tenant endpoint filters { isInternal: false, deletedAt: null }.
-  Because the artificial rehearsal baseline had Tenant.isInternal = false, JNC was treated as an external client.
+  Because the artificial rehearsal baseline had Tenant.isInternal = false, the internal tenant was treated as an external client.
 - Fix: Upgrade SQL now idempotently updates:
     UPDATE "Tenant"
     SET "isInternal" = CASE 
-      WHEN "code" IN ('JNC', 'JNC-ORG-001') OR "id" = 'default-tenant-id' THEN true 
+      WHEN "code" IN ('INTERNAL', 'ORG-001') OR "id" = 'default-tenant-id' THEN true 
       ELSE false 
     END;
 
@@ -230,7 +230,7 @@ C. ROLLBACK SAFETY & COLUMN PRESERVATION (deploy/rollback.sql):
   UPDATE "Contact" c SET "tenantId" = (SELECT id FROM "Tenant" WHERE "isInternal" = true LIMIT 1) WHERE c."tenantId" IS NULL;
   UPDATE "Contact" c SET "tenantId" = (SELECT id FROM "Tenant" ORDER BY "createdAt" ASC LIMIT 1) WHERE c."tenantId" IS NULL;
 + ADDED:
-  UPDATE "Tenant" SET "isInternal" = CASE WHEN "code" IN ('JNC', 'JNC-ORG-001') OR "id" = 'default-tenant-id' THEN true ELSE false END;
+  UPDATE "Tenant" SET "isInternal" = CASE WHEN "code" IN ('INTERNAL', 'ORG-001') OR "id" = 'default-tenant-id' THEN true ELSE false END;
   DO $$ DECLARE orphan_count INT; BEGIN SELECT COUNT(*) INTO orphan_count FROM "Contact" WHERE "tenantId" IS NULL;
   IF orphan_count > 0 THEN RAISE NOTICE 'ATTENTION: % orphan Contact row(s) lack a valid company/tenantId...', orphan_count;
   ELSE RAISE NOTICE 'SUCCESS: Zero orphan Contact rows detected...'; END IF; END $$;

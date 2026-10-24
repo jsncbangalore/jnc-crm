@@ -5,23 +5,34 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { IsNotEmpty, IsString, IsOptional, IsNumber, IsEmail, IsIn, IsArray } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsNumber, IsIn, IsArray, IsBoolean, MaxLength, Min, Max } from 'class-validator';
+import { SanitizeText, TrimString, IsValidName, IsValidPhone, IsValidEmail } from '../../common/validation.transformers';
 
 export class CreateLeadDto {
+  @SanitizeText()
   @IsNotEmpty()
   @IsString()
+  @MaxLength(100)
+  @IsValidName()
   customerName: string;
 
+  @TrimString()
   @IsNotEmpty()
   @IsString()
+  @MaxLength(20)
+  @IsValidPhone()
   customerPhone: string;
 
+  @SanitizeText()
   @IsOptional()
-  @IsEmail()
+  @MaxLength(254)
+  @IsValidEmail()
   customerEmail?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   city?: string;
 
   @IsOptional()
@@ -29,28 +40,46 @@ export class CreateLeadDto {
   @IsIn(['indiamart', 'web', 'whatsapp', 'manual'])
   source?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   productCategory?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   productName?: string;
 
   @IsOptional()
   @IsNumber()
+  @Min(0.0001)
+  @Max(100000)
   quantity?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100000000)
   estimatedValue?: number;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   queryMessage?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(50)
+  urgency?: string;
+
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
   companyName?: string;
 
   @IsOptional()
@@ -60,6 +89,14 @@ export class CreateLeadDto {
   @IsOptional()
   @IsString()
   rawPayload?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  forceSave?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  allowDuplicate?: boolean;
 }
 
 export class UpdateLeadStatusDto {

@@ -9,6 +9,12 @@ dist/
 backups/
 # SQLite dev DB
 *.db
+*.db-journal
+*.db.enc
+*.sqlite
+*.sqlite3
+dev.db
+prisma/*.db
 # Sensitive text files
 Super Admin.txt
 # Git folder (already ignored)

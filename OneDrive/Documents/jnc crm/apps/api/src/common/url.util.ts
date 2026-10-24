@@ -11,24 +11,21 @@ export function getFrontendUrl(overrideUrl?: string): string {
   if (overrideUrl && overrideUrl.trim()) {
     return overrideUrl.trim().replace(/\/+$/, '');
   }
+  const envUrl = process.env.FRONTEND_URL || process.env.APP_URL;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+
   const isDev =
     process.env.NODE_ENV !== 'production' ||
     process.env.DATABASE_URL?.includes('localhost') ||
     process.env.DATABASE_URL?.includes('127.0.0.1');
 
   if (isDev) {
-    const envUrl = process.env.APP_URL || process.env.FRONTEND_URL;
-    if (envUrl && envUrl.includes('localhost')) {
-      return envUrl.trim().replace(/\/+$/, '');
-    }
     return 'http://localhost:5173';
   }
 
-  const envUrl = process.env.FRONTEND_URL || process.env.APP_URL;
-  if (envUrl && envUrl.trim()) {
-    return envUrl.trim().replace(/\/+$/, '');
-  }
-  return 'https://admin.jsnc.co.in';
+  throw new Error('FRONTEND_URL environment variable is required in production');
 }
 
 export function getDatabaseProjectRef(): string {

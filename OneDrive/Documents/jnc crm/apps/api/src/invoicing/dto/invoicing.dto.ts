@@ -5,6 +5,7 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
+import { Type } from 'class-transformer';
 import {
   IsString,
   IsNotEmpty,
@@ -12,8 +13,69 @@ import {
   IsNumber,
   IsArray,
   Min,
+  Max,
+  MaxLength,
   IsBoolean,
+  ValidateNested,
+  ArrayMaxSize,
 } from 'class-validator';
+import {
+  SanitizeText,
+  TrimString,
+  IsValidName,
+  IsValidPhone,
+  IsValidEmail,
+  IsValidGstin,
+  IsValidProductName,
+  IsValidUnitRate,
+  IsValidGstRate,
+} from '../../common/validation.transformers';
+
+export class InvoiceLineItemDto {
+  @IsString()
+  @IsOptional()
+  skuId?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  @IsValidProductName()
+  description: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  hsnCode?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  unit?: string;
+
+  @IsNumber()
+  @Min(0.0001)
+  @Max(100000)
+  quantity: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100000000)
+  @IsValidUnitRate()
+  unitPrice: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  discount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @IsValidGstRate()
+  taxRate?: number;
+}
 
 export class CreateDirectInvoiceDto {
   @IsString()
@@ -138,11 +200,17 @@ export class CreateDirectInvoiceDto {
 
   @IsArray()
   @IsOptional()
-  lines?: any[];
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => InvoiceLineItemDto)
+  lines?: InvoiceLineItemDto[];
 
   @IsArray()
   @IsOptional()
-  items?: any[];
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => InvoiceLineItemDto)
+  items?: InvoiceLineItemDto[];
 
   @IsNumber()
   @IsOptional()

@@ -8,9 +8,9 @@ import { leadsApi, getApiBaseUrl, getPublicWebhookBaseUrl } from '../../services
 
 export default function IndiaMartTab({ onLeadIngested }: { onLeadIngested?: () => void }) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('jnc_im_api_key') || 'm98x974420c27301==');
-  const [mobileNumber, setMobileNumber] = useState(() => localStorage.getItem('jnc_im_mobile') || '9845012345');
-  const [syncInterval, setSyncInterval] = useState(() => localStorage.getItem('jnc_im_interval') || '30');
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('crm_im_api_key') || '');
+  const [mobileNumber, setMobileNumber] = useState(() => localStorage.getItem('crm_im_mobile') || '');
+  const [syncInterval, setSyncInterval] = useState(() => localStorage.getItem('crm_im_interval') || '30');
   const [autoSync, setAutoSync] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -22,7 +22,7 @@ export default function IndiaMartTab({ onLeadIngested }: { onLeadIngested?: () =
   });
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const tenantKey = localStorage.getItem('jnc_tenant_webhook_key') || 'whk_tenant_key';
+  const tenantKey = localStorage.getItem('crm_tenant_webhook_key') || 'whk_tenant_key';
   const publicBase = getPublicWebhookBaseUrl();
   const webhookUrl = `${publicBase}/api/v1/webhooks/indiamart/${tenantKey}`;
   const webhookToken = '618ae5d802bb4a4509f50b886bc66b13fb4c8ba57a7580cae17aa141b930c627';
@@ -35,9 +35,9 @@ export default function IndiaMartTab({ onLeadIngested }: { onLeadIngested?: () =
 
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('jnc_im_api_key', apiKey);
-    localStorage.setItem('jnc_im_mobile', mobileNumber);
-    localStorage.setItem('jnc_im_interval', syncInterval);
+    localStorage.setItem('crm_im_api_key', apiKey);
+    localStorage.setItem('crm_im_mobile', mobileNumber);
+    localStorage.setItem('crm_im_interval', syncInterval);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
   };
@@ -47,12 +47,12 @@ export default function IndiaMartTab({ onLeadIngested }: { onLeadIngested?: () =
     try {
       const randomSuffix = Math.floor(1000 + Math.random() * 9000);
       await leadsApi.create({
-        customerName: `IndiaMART Inquirer #${randomSuffix}`,
-        customerPhone: `98450${randomSuffix}`,
-        customerEmail: `indiamart.lead${randomSuffix}@company.in`,
-        companyName: `Apex Industrial Systems #${randomSuffix}`,
-        city: 'Bengaluru',
-        productCategory: 'Commercial PA System',
+        customerName: `Inquirer #${randomSuffix}`,
+        customerPhone: '',
+        customerEmail: '',
+        companyName: `Company #${randomSuffix}`,
+        city: '',
+        productCategory: 'General Equipment',
         estimatedValue: 65000,
         urgency: 'urgent',
         source: 'indiamart',
@@ -283,7 +283,7 @@ export default function IndiaMartTab({ onLeadIngested }: { onLeadIngested?: () =
                   type="text"
                   value={mobileNumber}
                   onChange={(e) => setMobileNumber(e.target.value)}
-                  placeholder="e.g. 9845012345"
+                  placeholder="Phone Number"
                   className="w-full text-xs font-mono rounded-xl border border-slate-200/90 dark:border-[#22293A] bg-slate-50 dark:bg-[#0B0D13] pl-9 pr-3.5 py-2.5 text-slate-800 dark:text-slate-200 outline-none focus:border-crm-blue focus:ring-2 focus:ring-crm-blue/15 transition-all"
                 />
               </div>

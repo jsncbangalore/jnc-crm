@@ -9,6 +9,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -59,15 +60,9 @@ export class UsersController {
   @Get('template-csv')
   @Roles('tenant_admin', 'admin', 'platform_super_admin')
   downloadTemplate(@Res() res: Response) {
-    const csvContent = `Full Name,Email Address,Phone Number,Role,Team Name
-Rajesh Sharma,rajesh.sharma@example.com,+91 98450 12345,employee,Sales Team Alpha
-Pooja Patel,pooja.patel@example.com,+91 98200 55443,sub_admin,Operations
-Anand Verma,anand.verma@example.com,+91 98111 22334,store_manager,Warehouse North
-Siddharth Rao,siddharth.rao@example.com,+91 98765 43210,project_manager,Projects Hub
-Kavita Nair,kavita.nair@example.com,+91 99001 12233,employee,Sales Team Beta
-`;
+    const csvContent = `Full Name,Email Address,Phone Number,Role,Team Name\n`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="jnc_users_import_template.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="users_import_template.csv"');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-store');
     return res.send(csvContent);
@@ -116,6 +111,41 @@ Kavita Nair,kavita.nair@example.com,+91 99001 12233,employee,Sales Team Beta
     return this.usersService.commitImportUsers(sanitized, user);
   }
 
+  // ─── Company Access Templates ─────────────────────────────────────────────
+
+  @Get('access-templates')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin')
+  async getAccessTemplates(@CurrentUser() user: ScopedUser) {
+    return this.usersService.getAccessTemplates(user);
+  }
+
+  @Post('access-templates')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin')
+  async createAccessTemplate(
+    @CurrentUser() user: ScopedUser,
+    @Body() body: { name: string; description?: string; pages: string[] },
+  ) {
+    return this.usersService.createAccessTemplate(body, user);
+  }
+
+  @Put('access-templates/:templateId')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin')
+  async updateAccessTemplate(
+    @CurrentUser() user: ScopedUser,
+    @Param('templateId') templateId: string,
+    @Body() body: { name?: string; description?: string; pages?: string[] },
+  ) {
+    return this.usersService.updateAccessTemplate(templateId, body, user);
+  }
+
+  @Delete('access-templates/:templateId')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin')
+  async deleteAccessTemplate(
+    @CurrentUser() user: ScopedUser,
+    @Param('templateId') templateId: string,
+  ) {
+    return this.usersService.deleteAccessTemplate(templateId, user);
+  }
 
   @Get(':id')
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
@@ -163,6 +193,17 @@ Kavita Nair,kavita.nair@example.com,+91 99001 12233,employee,Sales Team Beta
     return this.usersService.revokeUserSessions(id, user);
   }
 
+  @Post(':id/reset-2fa')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
+  async resetTwoFactor(
+    @CurrentUser() user: ScopedUser,
+    @Param('id') id: string,
+    @Req() req: Request,
+  ) {
+    const ip = req.ip || req.socket?.remoteAddress;
+    return this.usersService.resetTwoFactor(id, user, ip);
+  }
+
   @Post(':id/unlock')
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async unlockUser(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
@@ -182,5 +223,32 @@ Kavita Nair,kavita.nair@example.com,+91 99001 12233,employee,Sales Team Beta
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async deleteUser(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
     return this.usersService.deleteUser(id, user);
+  }
+
+  // ─── Per-User Page Access Management ──────────────────────────────────────
+
+  @Get(':id/access')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin')
+  async getUserAccess(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
+    return this.usersService.getUserAccess(id, user);
+  }
+
+  @Put(':id/access')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin')
+  async updateUserAccess(
+    @CurrentUser() user: ScopedUser,
+    @Param('id') id: string,
+    @Body() body: { pages: string[] },
+  ) {
+    return this.usersService.updateUserAccess(id, body?.pages || [], user);
+  }
+
+  @Delete(':id/access')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin')
+  async clearUserCustomAccess(
+    @CurrentUser() user: ScopedUser,
+    @Param('id') id: string,
+  ) {
+    return this.usersService.clearUserCustomAccess(id, user);
   }
 }

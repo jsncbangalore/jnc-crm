@@ -8,20 +8,29 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator';
-import { PAGE_ACCESS_KEY } from './page-access.decorator';
+import { PAGE_ACCESS_KEY, IS_PUBLIC_KEY, AUTH_ONLY_KEY } from './page-access.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { getEffectivePagesForUser } from './effective-page-access';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector, private prisma: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
+      return true;
+    }
+
     const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
 
-    const requiredPage = this.reflector.getAllAndOverride<string>(PAGE_ACCESS_KEY, [
+    const requiredPage = this.reflector.getAllAndOverride<string | string[]>(PAGE_ACCESS_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
@@ -92,33 +101,28 @@ export class RolesGuard implements CanActivate {
       }
     }
 
-    // Check Page Access (Team Restrictions)
+    // Check Page Access (Dynamic Per-User & Per-Team Page Access from database, no stale cache)
     if (requiredPage) {
-      // Fetch user's team from database to ensure fresh permission state
-      const dbUser = await this.prisma.user.findUnique({
-        where: { id: user.sub || user.id },
-        include: { teamRef: true }
+      const effectivePages = await getEffectivePagesForUser(this.prisma, {
+        id: user.sub || user.id,
+        role: user.role,
+        tenantId: user.tenantId,
       });
 
-      if (!dbUser) return false;
+      const requiredKeys = Array.isArray(requiredPage) ? requiredPage : [requiredPage];
+      const hasAccess = requiredKeys.some((k) => effectivePages.includes(k));
 
-      // If user has a team assigned, verify the page is in the team's allowed list
-      if (dbUser.teamId && dbUser.teamRef && dbUser.role !== 'tenant_admin' && dbUser.role !== 'platform_super_admin') {
-        try {
-          const allowedPages = JSON.parse(dbUser.teamRef.allowedPages || '[]');
-          if (!allowedPages.includes(requiredPage)) {
-            throw new ForbiddenException(`Access restricted: Your team does not have access to the '${requiredPage}' module.`);
-          }
-        } catch (e) {
-          if (e instanceof ForbiddenException) throw e;
-          // Parse error, fail closed
-          throw new ForbiddenException(`Access restricted: Invalid team permissions format.`);
-        }
+      if (!hasAccess) {
+        const rejectedKey = requiredKeys[0];
+        throw new ForbiddenException({
+          message: 'You do not have access to this page',
+          pageKey: rejectedKey,
+        });
       }
-      // If dbUser.teamId is null, it means no team restriction -> full access per their role
     }
 
     return true;
   }
 }
+
 

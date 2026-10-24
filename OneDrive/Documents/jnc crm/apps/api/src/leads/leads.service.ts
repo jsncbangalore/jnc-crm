@@ -5,7 +5,7 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { CreateLeadDto, UpdateLeadStatusDto, CreateLeadActivityDto } from './dto/create-lead.dto';
@@ -14,6 +14,8 @@ import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
 import { parsePagination } from '../common/pagination.util';
 import { sanitizeHtml, stripAllHtml } from '../common/html-sanitize.util';
+import { getEffectivePagesForUser } from '../auth/effective-page-access';
+import { isPlatformOwner } from '../auth/roles';
 
 
 @Injectable()
@@ -82,10 +84,20 @@ export class LeadsService {
       include: { assignedTo: true },
     });
 
-    if (existingLead) {
-      throw new BadRequestException(
-        `Duplicate lead detected: A record with phone ${dto.customerPhone} already exists (${existingLead.leadNumber} - ${existingLead.customerName}). Duplicate lead creation is not allowed.`
-      );
+    if (existingLead && !dto.forceSave && !dto.allowDuplicate) {
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        code: 'DUPLICATE_WARNING',
+        message: `A lead with this phone or email already exists: ${existingLead.customerName} (${existingLead.leadNumber || existingLead.id}). Open it or save anyway.`,
+        existingLead: {
+          id: existingLead.id,
+          leadNumber: existingLead.leadNumber,
+          customerName: existingLead.customerName,
+          customerPhone: existingLead.customerPhone,
+          customerEmail: existingLead.customerEmail,
+        },
+      });
     }
 
     let assignedToId = dto.assignedToId;
@@ -377,6 +389,12 @@ export class LeadsService {
 
     if (!lead) {
       throw new NotFoundException('Lead not found');
+    }
+
+    const effectivePages = await getEffectivePagesForUser(this.prisma, user);
+    const hasQuotations = isPlatformOwner(user) || user.role === 'tenant_admin' || effectivePages.includes('quotations');
+    if (!hasQuotations) {
+      (lead as any).quotations = [];
     }
 
     return lead;

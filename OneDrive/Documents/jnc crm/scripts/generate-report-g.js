@@ -17,7 +17,7 @@ console.log('Generating evidence/report-2026-10-04g.txt ...');
 const sections = [];
 
 sections.push('================================================================================');
-sections.push('JNC-CRM GO-LIVE VERIFICATION EVIDENCE REPORT: 2026-10-04g');
+sections.push('CRM GO-LIVE VERIFICATION EVIDENCE REPORT: 2026-10-04g');
 sections.push('Scope: Database Project Ref Guard, Standalone Deploy Bundle, Entrypoint & Runbook');
 sections.push(`Generated: ${new Date().toISOString()}`);
 sections.push('Environment: Windows 11 / Node.js v24 / PowerShell (Strictly Local Execution)');

@@ -1,20 +1,26 @@
-import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateIf } from 'class-validator';
+import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateIf, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ALL_ROLES, UserRole } from '../../auth/roles';
+import { SanitizeText, TrimString, IsValidName, IsValidEmail, IsValidPhone } from '../../common/validation.transformers';
 
 export class CreateUserDto {
+  @SanitizeText()
   @IsString()
   @IsNotEmpty({ message: 'Name is required' })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @MaxLength(100)
+  @IsValidName()
   name: string;
 
-  @IsEmail({}, { message: 'Invalid email address' })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
+  @TrimString()
+  @MaxLength(254)
+  @IsValidEmail()
   email: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @MaxLength(20)
+  @IsValidPhone()
   phone?: string;
 
   @IsIn(ALL_ROLES as readonly string[], { message: 'Role must be a valid system role' })

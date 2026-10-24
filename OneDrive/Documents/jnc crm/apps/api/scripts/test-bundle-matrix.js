@@ -26,17 +26,17 @@ function getBaseSystemEnv() {
 const requiredAppVars = {
   NODE_ENV: 'production',
   PORT: '3456',
-  DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/jnc_crm_dev?schema=public',
-  JWT_SECRET: 'jnc-crm-super-secure-secret-key-2026',
-  JWT_REFRESH_SECRET: 'jnc-crm-super-secure-refresh-key-2026',
-  ENCRYPTION_KEY: 'Xh5+HgGukquuYy3uOTKQEP6LzdsXjHhxnAvrtZa+sjY=',
-  FRONTEND_URL: 'https://admin.jsnc.co.in',
-  ALLOWED_ORIGINS: 'https://admin.jsnc.co.in,http://localhost:5173',
-  SMTP_HOST: 'smtp.gmail.com',
-  SMTP_PORT: '465',
-  SMTP_USER: 'jsnccrm@gmail.com',
-  SMTP_PASS: 'zpmszxbcivvvqdur',
-  EMAIL_FROM: 'jsnccrm@gmail.com',
+  DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/crm_dev?schema=public',
+  JWT_SECRET: process.env.JWT_SECRET || 'crm-super-secure-secret-key-2026',
+  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'crm-super-secure-refresh-key-2026',
+  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || 'Xh5+HgGukquuYy3uOTKQEP6LzdsXjHhxnAvrtZa+sjY=',
+  FRONTEND_URL: process.env.FRONTEND_URL || 'https://admin.example.com',
+  ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || 'https://admin.example.com,http://localhost:5173',
+  SMTP_HOST: process.env.SMTP_HOST || 'smtp.example.com',
+  SMTP_PORT: process.env.SMTP_PORT || '465',
+  SMTP_USER: process.env.SMTP_USER || 'mailer@example.com',
+  SMTP_PASS: process.env.SMTP_PASS || 'mock_app_password_1234',
+  EMAIL_FROM: process.env.EMAIL_FROM || 'mailer@example.com',
 };
 
 function makeRequest(url) {

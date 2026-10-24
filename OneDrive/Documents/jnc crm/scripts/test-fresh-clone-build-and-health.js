@@ -11,7 +11,7 @@ const http = require('http');
 const { execSync, spawn } = require('child_process');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const CLONE_DIR = 'C:\\dev\\temp-jnc-clone-test';
+const CLONE_DIR = 'C:\\dev\\temp-crm-clone-test';
 
 console.log('=== TESTING FRESH CLONE BUILD & START COMMANDS ===\n');
 
@@ -35,7 +35,7 @@ try {
     cwd: CLONE_DIR,
     stdio: 'inherit',
   });
-  console.log('✅ Fresh clone build succeeded cleanly.');
+  console.log('[PASS] Fresh clone build succeeded cleanly.');
 
   console.log('\n[Step 3/4] Starting API using startCommand (node apps/api/dist/main.js)...');
   const dummy32ByteKey = Buffer.from('12345678901234567890123456789012').toString('base64');
@@ -48,18 +48,18 @@ try {
     ...process.env,
     NODE_ENV: 'production',
     PORT: String(testPort),
-    FRONTEND_URL: 'https://admin.jsnc.co.in',
-    ALLOWED_ORIGINS: 'https://admin.jsnc.co.in',
+    FRONTEND_URL: 'https://admin.example.com',
+    ALLOWED_ORIGINS: 'https://admin.example.com',
     MAIL_PROVIDER: 'brevo',
     BREVO_API_KEY: 'dummy_brevo_key_1234567890',
-    SMTP_HOST: 'smtp.brevo.com',
+    SMTP_HOST: 'smtp.example.com',
     SMTP_PORT: '587',
-    SMTP_USER: 'jsnccrm@gmail.com',
+    SMTP_USER: 'test@example.com',
     SMTP_PASS: 'dummy_smtp_pass_1234567890',
-    EMAIL_FROM: 'jsnccrm@gmail.com',
-    PRIMARY_EMAIL_FROM: 'jsnccrm@gmail.com',
+    EMAIL_FROM: 'test@example.com',
+    PRIMARY_EMAIL_FROM: 'test@example.com',
     JWT_SECRET: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-    JWT_REFRESH_SECRET: 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
+    JWT_REFRESH_SECRET: 'fedcba0123456789fedcba0123456789fedcba0123456789fedcba0123456789',
     ENCRYPTION_KEY: dummy32ByteKey,
     DATABASE_URL: dbUrl,
     DIRECT_URL: directUrl,
@@ -110,11 +110,11 @@ try {
           serverProcess.kill('SIGTERM');
 
           if (res.statusCode === 200 && data.includes('"status":"ok"')) {
-            console.log('\n✅ HEALTH CHECK PASSED SUCCESSFULLY!');
+            console.log('\n[PASS] HEALTH CHECK PASSED SUCCESSFULLY!');
             cleanupClone();
             process.exit(0);
           } else {
-            console.error('\n❌ HEALTH CHECK FAILED!');
+            console.error('\n[ERROR] HEALTH CHECK FAILED!');
             cleanupClone();
             process.exit(1);
           }

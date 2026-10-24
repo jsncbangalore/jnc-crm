@@ -106,11 +106,13 @@ export class InventoryController {
   }
 
   @Get('skus')
+  @PageAccess('inventory', 'quotations', 'orders', 'invoices')
   getSkus(@CurrentUser() user: ScopedUser, @Query('search') search?: string) {
     return this.inventoryService.getSkus(user, search);
   }
 
   @Get('skus/:id')
+  @PageAccess('inventory', 'quotations', 'orders', 'invoices')
   getSku(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.getSkuById(id, user);
   }
@@ -295,30 +297,7 @@ export class InventoryController {
 
   @Get('template-csv')
   downloadTemplate(@Res() res: Response) {
-    const csvContent = `SKU Code,Name,Category,HSN Code,Package Type,Unit Price,Cost Price,Reorder Point,Reorder Qty,Quantity,Supplier Name,Bin
-PA-AMP-240W,240W Commercial PA Mixer Amplifier 100V,PA System,85184000,Unit,14500.00,9800.00,5,20,12,Ahuja / Bosch Sound India,BLR-A-01-B01
-PA-SPK-CLG-6W,6W Fast-Clamp Ceiling Speaker 100V,PA System,85182100,Unit,850.00,480.00,25,100,80,Ahuja / Bosch Sound India,BLR-A-01-B02
-PA-SPK-HRN-30W,30W Reflex Horn Weatherproof Speaker,PA System,85182900,Unit,2200.00,1400.00,10,50,35,Ahuja / Bosch Sound India,BLR-A-01-B03
-TB-MST-10Z,10-Zone Master Intercom Control Station,Talk Back System,85176290,Unit,18500.00,12000.00,3,10,8,JSNC In-House Integration,BLR-A-02-A01
-TB-SUB-FLUSH,Flush Mount Heavy-Duty Sub-station Intercom,Talk Back System,85176290,Unit,1850.00,1100.00,15,50,42,JSNC In-House Integration,BLR-A-02-A02
-ATB-CTRL-2LP,2-Loop Addressable Talk Back Master Controller,Addressable Talk Back,85176290,Unit,34000.00,23500.00,2,5,4,JSNC Systems R&D,BLR-A-02-B01
-ATB-ZMD-01,Addressable Zone Interface Module,Addressable Talk Back,85176290,Unit,2400.00,1550.00,20,50,45,JSNC Systems R&D,BLR-A-02-B02
-FAS-PNL-16Z,16-Zone Microprocessor Fire Alarm Control Panel,Fire Alarm System,85311010,Unit,22500.00,15000.00,3,10,6,Honeywell / GST Fire India,BLR-B-01-A01
-FAS-DET-SMK-OPT,Optical Smoke Detector with Standard Base,Fire Alarm System,85311090,Unit,950.00,550.00,50,200,140,Honeywell / GST Fire India,BLR-B-01-A02
-FAS-MCP-RED,Resettable Manual Call Point with LED Indicator,Fire Alarm System,85319000,Unit,650.00,380.00,30,100,65,Honeywell / GST Fire India,BLR-B-01-A03
-FAS-SND-HTR,Dual-Tone Electronic Fire Alarm Hooter with Strobe,Fire Alarm System,85318000,Unit,1200.00,720.00,20,80,50,Honeywell / GST Fire India,BLR-B-01-A04
-NCS-PANEL-32,32-Bed Digital Nurse Call Station Display,Nurse Call System,85176990,Unit,28000.00,19000.00,2,5,5,JSNC Medical Systems,BLR-B-02-A01
-NCS-CALL-BED,Bedside Emergency Call Button with Cord,Nurse Call System,85319000,Unit,1150.00,680.00,25,100,75,JSNC Medical Systems,BLR-B-02-A02
-PBX-IP-16EXT,IP-PBX Hybrid 16 Extension VoIP Gateway,EPABX / IPABX,85176210,Unit,19500.00,13200.00,4,15,10,Matrix Comsec / Grandstream,BLR-C-01-A01
-PBX-PHONE-SIP,HD Executive SIP IP Phone with Color Screen,EPABX / IPABX,85171810,Unit,4200.00,2750.00,10,30,22,Matrix Comsec / Grandstream,BLR-C-01-A02
-PAS-BTN-HOLDUP,Dual-Action Bank Under-Desk Panic Switch,Panic Alarm System,85319000,Unit,450.00,220.00,25,100,60,JSNC Security Controls,BLR-C-02-A01
-CCTV-CAM-4MP-DOM,4MP IR Turret Dome IP Camera 30m PoE,CCTV Surveillance,85258900,Unit,3200.00,2100.00,15,50,38,Hikvision / Dahua India,BLR-D-01-A01
-CCTV-NVR-16CH-4K,16-Channel 4K Ultra HD NVR with 16-PoE,CCTV Surveillance,85285900,Unit,16500.00,11000.00,3,10,7,Hikvision / Dahua India,BLR-D-01-A02
-ACS-BIO-FP-FACE,Biometric Facial Recognition & Fingerprint Terminal,Access Control,85437099,Unit,12500.00,8200.00,5,20,14,ZKTeco / eSSL Security,BLR-E-01-A01
-ACS-LOCK-EM-600,Electromagnetic Lock 600 lbs with ZL Bracket,Access Control,83014090,Set,2800.00,1750.00,10,40,26,ZKTeco / eSSL Security,BLR-E-01-A02
-NET-SW-24POE-GIG,24-Port Gigabit Managed PoE+ Network Switch 370W,Network Infrastructure,85176290,Unit,18500.00,12500.00,4,15,9,D-Link / Cisco Systems,BLR-F-01-A01
-NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastructure,85444999,Drum,8800.00,6200.00,5,20,18,Schneider / D-Link India,BLR-F-01-A02
-`;
+    const csvContent = `SKU Code,Name,Category,HSN Code,Package Type,Unit Price,Cost Price,Reorder Point,Reorder Qty,Quantity,Supplier Name,Bin\n`;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="inventory_import_template.csv"');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -448,13 +427,7 @@ NET-CAB-CAT6-305,Cat6 UTP 4-Pair Solid Bare Copper 305m Drum,Network Infrastruct
 
   @Get('project-stock/template-csv')
   downloadProjectStockTemplate(@Res() res: Response) {
-    const csvContent = `Project,Reference,Quantity,Item Code,Part Value,Package,Unit,BOM Qty / Unit,Batch Qty,Planned Requirement,Opening Stock,Inflow,Outflow,Present Stock,Shortage,Status,Notes
-Sample Project A - PA System,AMP-RACK-01,10,PA-AMP-240W,240W 100V RMS,2U 19-inch Rack,Nos,2,10,20,30,0,8,22,0,Sufficient,Main concourse & platform distribution amplifiers
-Sample Project A - PA System,SPK-CLG-01,10,PA-SPK-CLG-6W,6W 100V Fast Clamp,Ceiling Flush Mount,Nos,24,10,240,180,100,60,220,20,Shortage,Underground ticketing concourse speakers
-Sample Project B - Surveillance & Access Control,CCTV-CAM-EXT,4,CCTV-CAM-4MP-DOM,4MP IR 30m PoE H.265+,Vandal Dome IP67,Nos,16,4,64,45,25,10,60,4,Shortage,Corridor and perimeter optical surveillance
-Sample Project B - Surveillance & Access Control,ACS-FACE-01,4,ACS-BIO-FP-FACE,Face + FP + RFID TCP/IP,Wall Mount Touch,Nos,6,4,24,12,0,0,12,12,Critical Shortage,Turnstile & server room access
-Sample Project C - Nurse Call System,NCS-STN-ICU,2,NCS-PANEL-32,32-Bed Digital LCD Station,Nurse Station Console,Nos,2,2,4,5,0,1,4,0,Sufficient,Ward central monitoring console
-`;
+    const csvContent = `Project,Reference,Quantity,Item Code,Part Value,Package,Unit,BOM Qty / Unit,Batch Qty,Planned Requirement,Opening Stock,Inflow,Outflow,Present Stock,Shortage,Status,Notes\n`;
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="project_stock_position_template.csv"');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -485,6 +458,7 @@ Sample Project C - Nurse Call System,NCS-STN-ICU,2,NCS-PANEL-32,32-Bed Digital L
   // ─── Purchase Document Upload ────────────────────────────────────────────────
 
   @Post('purchase-documents/upload')
+  @PageAccess('purchase_bills')
   @Roles('tenant_admin', 'admin', 'sub_admin')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -520,6 +494,7 @@ Sample Project C - Nurse Call System,NCS-STN-ICU,2,NCS-PANEL-32,32-Bed Digital L
   }
 
   @Post('purchase-documents/extract')
+  @PageAccess('purchase_bills')
   @Roles('tenant_admin', 'admin', 'sub_admin')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -547,6 +522,7 @@ Sample Project C - Nurse Call System,NCS-STN-ICU,2,NCS-PANEL-32,32-Bed Digital L
 
 
   @Get('purchase-documents/:filename')
+  @PageAccess('purchase_bills')
   async streamPurchaseDoc(
     @Param('filename') filename: string,
     @CurrentUser() user: ScopedUser,
@@ -557,6 +533,7 @@ Sample Project C - Nurse Call System,NCS-STN-ICU,2,NCS-PANEL-32,32-Bed Digital L
   }
 
   @Get('purchase-documents/:tenantId/:filename')
+  @PageAccess('purchase_bills')
   async streamPurchaseDocWithTenant(
     @Param('tenantId') targetTenantId: string,
     @Param('filename') filename: string,
@@ -567,6 +544,7 @@ Sample Project C - Nurse Call System,NCS-STN-ICU,2,NCS-PANEL-32,32-Bed Digital L
   }
 
   @Get('uploads/purchase-docs/:filename')
+  @PageAccess('purchase_bills')
   async streamLegacyPurchaseDoc(
     @Param('filename') filename: string,
     @CurrentUser() user: ScopedUser,
@@ -636,28 +614,33 @@ Sample Project C - Nurse Call System,NCS-STN-ICU,2,NCS-PANEL-32,32-Bed Digital L
   // ─── Purchase Bills & Soft Copies Repository ─────────────────────────────────
 
   @Get('purchase-bills')
+  @PageAccess('purchase_bills')
   async getPurchaseBills(@CurrentUser() user: ScopedUser, @Query() query: any) {
     return this.inventoryService.getPurchaseBills(user, query);
   }
 
   @Get('purchase-bills/:id')
+  @PageAccess('purchase_bills')
   async getPurchaseBill(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.getPurchaseBill(id, user);
   }
 
   @Post('purchase-bills')
+  @PageAccess('purchase_bills')
   @Roles('tenant_admin', 'admin', 'sub_admin')
   async createPurchaseBill(@Body() body: CreatePurchaseBillDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.createPurchaseBill(body, user);
   }
 
   @Delete('purchase-bills/:id')
+  @PageAccess('purchase_bills')
   @Roles('tenant_admin', 'admin')
   async deletePurchaseBill(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.deletePurchaseBill(id, user);
   }
 
   @Post('purchase-bills/scan-ocr')
+  @PageAccess('purchase_bills')
   async scanBillOcr(@Body() body: ScanBillOcrDto) {
     return this.inventoryService.scanBillOcr(body);
   }

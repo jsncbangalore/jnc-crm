@@ -11,16 +11,138 @@ import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 import { parsePagination } from '../common/pagination.util';
 
-export interface CreateSupplierDto {
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsBoolean, Min, Max, MaxLength } from 'class-validator';
+import {
+  SanitizeText,
+  TrimString,
+  IsValidName,
+  IsValidPhone,
+  IsValidEmail,
+  IsValidGstin,
+} from '../common/validation.transformers';
+
+export class CreateSupplierDto {
+  @SanitizeText()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  @IsValidName()
   name: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
   contactPerson?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(254)
+  @IsValidEmail()
   email?: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  @IsValidPhone()
   phone?: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(15)
+  @IsValidGstin()
   gstin?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
   address?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
   city?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  @Max(365)
   leadTimeDays?: number;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
   notes?: string;
+}
+
+export class UpdateSupplierDto {
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  @IsValidName()
+  name?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  contactPerson?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(254)
+  @IsValidEmail()
+  email?: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  @IsValidPhone()
+  phone?: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(15)
+  @IsValidGstin()
+  gstin?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  address?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  city?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  @Max(365)
+  leadTimeDays?: number;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 @Injectable()

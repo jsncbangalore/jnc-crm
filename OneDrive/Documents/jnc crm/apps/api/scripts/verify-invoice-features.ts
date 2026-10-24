@@ -12,7 +12,7 @@ import { assertNotProductionDb } from './safety-check';
 assertNotProductionDb('verify-invoice-features');
 
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'jnc-crm-jwt-secret-key-2026';
+const JWT_SECRET = process.env.JWT_SECRET || 'crm-jwt-secret-key-2026';
 
 function createToken(user: { id: string; email: string; employeeCode: string; role: string }) {
   return jwt.sign(
@@ -41,8 +41,8 @@ async function runLiveVerification() {
   const adminToken = createToken(adminUser);
   const employeeToken = createToken(employeeUser);
 
-  console.log(`✓ Admin User: ${adminUser.name} (${adminUser.employeeCode}, ${adminUser.role})`);
-  console.log(`✓ Sales Employee: ${employeeUser.name} (${employeeUser.employeeCode}, ${employeeUser.role})\n`);
+  console.log(`[OK] Admin User: ${adminUser.name} (${adminUser.employeeCode}, ${adminUser.role})`);
+  console.log(`[OK] Sales Employee: ${employeeUser.name} (${employeeUser.employeeCode}, ${employeeUser.role})\n`);
 
   // ---------------------------------------------------------------------------
   // TEST 1: Create Real Company with billingEmail, Order & Invoice -> Default Email
@@ -52,21 +52,21 @@ async function runLiveVerification() {
   console.log('------------------------------------------------------------------------');
 
   const testCompanyName = `TechCorp Automation Solutions Ltd ${Date.now()}`;
-  const testBillingEmail = `ap-billing-${Date.now()}@techcorp-solutions.in`;
+  const testBillingEmail = `ap-billing-${Date.now()}@example.com`;
 
   // Create Company with billingEmail
   const company = await prisma.company.create({
     data: {
       name: testCompanyName,
       gstin: '29AABCT1334E1Z8',
-      city: 'Bengaluru',
+      city: 'Metro City',
       state: 'Karnataka',
       billingEmail: testBillingEmail,
       contacts: {
         create: {
           name: 'Vikram Joshi (Procurement Lead)',
-          email: 'vikram.joshi@techcorp-solutions.in',
-          phone: '+91 9845099881',
+          email: 'vikram.joshi@example.com',
+          phone: '',
           designation: 'Procurement Manager',
           isPrimary: true,
         },
@@ -75,7 +75,7 @@ async function runLiveVerification() {
     include: { contacts: true },
   });
 
-  console.log(`✓ Created Company: "${company.name}" (ID: ${company.id})`);
+  console.log(`[OK] Created Company: "${company.name}" (ID: ${company.id})`);
   console.log(`  - Company.billingEmail (Accounts Payable): "${company.billingEmail}"`);
   console.log(`  - Primary Contact Email: "${company.contacts[0].email}"`);
 
@@ -96,7 +96,7 @@ async function runLiveVerification() {
 
   // Create Order
   const orderCount = await prisma.order.count();
-  const orderNumber = `JNC-ORD-${String(orderCount + 1).padStart(5, '0')}`;
+  const orderNumber = `ORD-${String(orderCount + 1).padStart(5, '0')}`;
   const order = await prisma.order.create({
     data: {
       orderNumber,
@@ -106,7 +106,7 @@ async function runLiveVerification() {
       customerName: company.contacts[0].name,
       customerPhone: company.contacts[0].phone,
       customerEmail: company.contacts[0].email,
-      shippingAddress: 'Plot 104, KIADB Tech Park, Electronic City, Bengaluru',
+      shippingAddress: 'Plot 104, Tech Park, Industrial Corridor',
       subtotal: 35000,
       taxAmount: 6300,
       totalAmount: 41300,
@@ -122,7 +122,7 @@ async function runLiveVerification() {
     },
   });
 
-  console.log(`✓ Created Order: ${order.orderNumber} for ₹${order.totalAmount}`);
+  console.log(`[OK] Created Order: ${order.orderNumber} for ₹${order.totalAmount}`);
 
   // Generate Invoice via API
   const genRes = await fetch(`http://127.0.0.1:3333/api/v1/invoices/order/${order.id}/generate`, {
@@ -135,7 +135,7 @@ async function runLiveVerification() {
   });
 
   const invoice = await genRes.json();
-  console.log(`✓ Generated Invoice: ${invoice.invoiceNumber} (ID: ${invoice.id})`);
+  console.log(`[OK] Generated Invoice: ${invoice.invoiceNumber} (ID: ${invoice.id})`);
   console.log(`  - Default Billing Email resolved: "${invoice.defaultBillingEmail}"`);
 
   // Send Email with NO OVERRIDE -> Must route to Company.billingEmail
@@ -149,7 +149,7 @@ async function runLiveVerification() {
   });
 
   const emailData1 = await emailRes1.json();
-  console.log(`✓ Email Send Result (No Override):`);
+  console.log(`[OK] Email Send Result (No Override):`);
   console.log(`  - Status: ${emailRes1.status}`);
   console.log(`  - Target Recipient Returned: "${emailData1.recipient}"`);
   console.log(`  - Message: "${emailData1.message}"`);
@@ -168,9 +168,9 @@ async function runLiveVerification() {
     throw new Error(`FAIL: No MessageLog record found for recipient ${testBillingEmail}`);
   }
 
-  console.log(`\n📋 ACTUAL DB MessageLog RECORD #1:`);
+  console.log(`\n[LOG] ACTUAL DB MessageLog RECORD #1:`);
   console.log(JSON.stringify(messageLog1, null, 2));
-  console.log('✅ TEST 1 PASSED: Invoice email routed automatically to Company.billingEmail and recorded in MessageLog.\n');
+  console.log('[PASS] TEST 1 PASSED: Invoice email routed automatically to Company.billingEmail and recorded in MessageLog.\n');
 
   // ---------------------------------------------------------------------------
   // TEST 2: Email Invoice with Explicit Recipient Override
@@ -193,7 +193,7 @@ async function runLiveVerification() {
   });
 
   const emailData2 = await emailRes2.json();
-  console.log(`✓ Email Send Result (With Override):`);
+  console.log(`[OK] Email Send Result (With Override):`);
   console.log(`  - Status: ${emailRes2.status}`);
   console.log(`  - Target Recipient Returned: "${emailData2.recipient}"`);
   console.log(`  - Message: "${emailData2.message}"`);
@@ -212,9 +212,9 @@ async function runLiveVerification() {
     throw new Error(`FAIL: No MessageLog record found for override recipient ${overrideRecipient}`);
   }
 
-  console.log(`\n📋 ACTUAL DB MessageLog RECORD #2 (Override):`);
+  console.log(`\n[LOG] ACTUAL DB MessageLog RECORD #2 (Override):`);
   console.log(JSON.stringify(messageLog2, null, 2));
-  console.log('✅ TEST 2 PASSED: Override recipient respected and verified in MessageLog.\n');
+  console.log('[PASS] TEST 2 PASSED: Override recipient respected and verified in MessageLog.\n');
 
   // ---------------------------------------------------------------------------
   // TEST 3: Signatory & Stamp Configuration & PDF Layout Structure
@@ -244,7 +244,7 @@ async function runLiveVerification() {
   });
 
   const updatedSig = await updateSigRes.json();
-  console.log('✓ Updated Invoice Signatory Settings in DB:');
+  console.log('[OK] Updated Invoice Signatory Settings in DB:');
   console.log(`  - Signatory Name: "${updatedSig.signatoryName}"`);
   console.log(`  - Designation: "${updatedSig.signatoryDesignation}"`);
   console.log(`  - Signature Image Stored: ${updatedSig.signatureImage?.slice(0, 30)}...`);
@@ -256,7 +256,7 @@ async function runLiveVerification() {
   });
   const invDetails = await getInvRes.json();
 
-  console.log(`\n✓ Verified Invoice Output contains Signatory Settings:`);
+  console.log(`\n[OK] Verified Invoice Output contains Signatory Settings:`);
   console.log(`  - Name: "${invDetails.signatorySettings?.signatoryName}"`);
   console.log(`  - Designation: "${invDetails.signatorySettings?.signatoryDesignation}"`);
   console.log(`  - Has Signature Image: ${!!invDetails.signatorySettings?.signatureImage}`);
@@ -264,7 +264,7 @@ async function runLiveVerification() {
 
   // Test Graceful Fallback (Empty/Null signature & stamp)
   const emptySigPayload = {
-    signatoryName: 'Santhosh Kumar',
+    signatoryName: 'Authorized Signatory',
     signatoryDesignation: 'Authorized Signatory',
     signatureImage: null,
     stampImage: null,
@@ -284,7 +284,7 @@ async function runLiveVerification() {
   });
   const invFallbackDetails = await getInvFallbackRes.json();
 
-  console.log(`\n✓ Graceful Fallback Verified (No signature/stamp uploaded):`);
+  console.log(`\n[OK] Graceful Fallback Verified (No signature/stamp uploaded):`);
   console.log(`  - Signature Image: ${invFallbackDetails.signatorySettings?.signatureImage}`);
   console.log(`  - Stamp Image: ${invFallbackDetails.signatorySettings?.stampImage}`);
   console.log(`  - Status: Invoice generates cleanly with blank signature line without error.`);
@@ -299,7 +299,7 @@ async function runLiveVerification() {
     body: JSON.stringify(signatoryPayload),
   });
 
-  console.log('✅ TEST 3 PASSED: Signatory & Stamp persistence and fallback verified.\n');
+  console.log('[PASS] TEST 3 PASSED: Signatory & Stamp persistence and fallback verified.\n');
 
   // ---------------------------------------------------------------------------
   // TEST 4: RBAC Enforcement for Signatory Settings
@@ -318,7 +318,7 @@ async function runLiveVerification() {
     body: JSON.stringify({ signatoryName: 'Malicious Employee Name' }),
   });
 
-  console.log(`✓ Non-Admin (Employee) Update Request: HTTP ${employeeSigRes.status}`);
+  console.log(`[OK] Non-Admin (Employee) Update Request: HTTP ${employeeSigRes.status}`);
   const employeeErr = await employeeSigRes.json();
   console.log(`  - Response Message: "${employeeErr.message}"`);
 
@@ -326,10 +326,10 @@ async function runLiveVerification() {
     throw new Error(`FAIL: Expected 403 Forbidden for employee, but got ${employeeSigRes.status}`);
   }
 
-  console.log('✅ TEST 4 PASSED: Non-admin users are strictly blocked with 403 Forbidden.\n');
+  console.log('[PASS] TEST 4 PASSED: Non-admin users are strictly blocked with 403 Forbidden.\n');
 
   console.log('========================================================================');
-  console.log('   🎉 ALL 4 INVOICE MODULE FEATURES & VERIFICATIONS PASSED CLEANLY!    ');
+  console.log('   [SUCCESS] ALL 4 INVOICE MODULE FEATURES & VERIFICATIONS PASSED CLEANLY!    ');
   console.log('========================================================================');
 }
 

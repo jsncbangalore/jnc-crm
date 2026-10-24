@@ -28,7 +28,7 @@ const distSrcMainExists = fs.existsSync(path.join(apiDir, 'dist', 'src', 'main.j
 const startServerJsContent = fs.readFileSync(path.join(apiDir, 'start_server.js'), 'utf8');
 
 // 2. Run dry-run:fresh and capture raw output
-console.log('Running dry run on jnc_crm_fresh...');
+console.log('Running dry run on crm_fresh...');
 let dryRunOutput = '';
 try {
   dryRunOutput = execSync('npm run dry-run:fresh', {
@@ -40,7 +40,7 @@ try {
 }
 
 // Mask sensitive credentials
-dryRunOutput = dryRunOutput.replace(/jnc_refresh_token=ey[A-Za-z0-9_.-]+/g, 'jnc_refresh_token=<MASKED>');
+dryRunOutput = dryRunOutput.replace(/crm_refresh_token=ey[A-Za-z0-9_.-]+/g, 'crm_refresh_token=<MASKED>');
 dryRunOutput = dryRunOutput.replace(/accessToken": "[A-Za-z0-9_.-]+"/g, 'accessToken": "<MASKED>"');
 dryRunOutput = dryRunOutput.replace(/whsec_[a-f0-9]{24,}/g, 'whsec_<MASKED>');
 dryRunOutput = dryRunOutput.replace(/Password:\s+[A-Za-z0-9!@#$%^&*]{16,}/g, 'Password:    <MASKED>');
@@ -108,22 +108,22 @@ try {
   testAuthOutput = (e.stdout || '') + '\n' + (e.stderr || '');
 }
 
-testAuthOutput = testAuthOutput.replace(/jnc_refresh_token=ey[A-Za-z0-9_.-]+/g, 'jnc_refresh_token=<MASKED>');
+testAuthOutput = testAuthOutput.replace(/crm_refresh_token=ey[A-Za-z0-9_.-]+/g, 'crm_refresh_token=<MASKED>');
 testAuthOutput = testAuthOutput.replace(/accessToken \([A-Za-z0-9_.-]+\)/g, 'accessToken (<MASKED>)');
 testAuthOutput = testAuthOutput.replace(/whk_[a-f0-9]{12,}/g, 'whk_<MASKED>');
 testAuthOutput = testAuthOutput.replace(/whsec_[a-f0-9]{12,}/g, 'whsec_<MASKED>');
 
 const report = `================================================================================
-JNC-CRM PRODUCTION GO-LIVE & VERIFICATION REPORT (2026-10-04f)
+CRM PRODUCTION GO-LIVE & VERIFICATION REPORT (2026-10-04f)
 ================================================================================
 Generated: 2026-10-04
-Target Repository: C:\\dev\\jnc-crm
+Target Repository: C:\\dev\\crm
 Execution Mode: STRICTLY LOCAL (Zero Live Supabase Connections / Zero Git Pushes)
 Hosting Target: Hostinger Cloud / Shared Hosting ("Node.js Web App" Feature)
-Go-Live Strategy: CLEAN RE-INITIALIZATION (Fresh Supabase Project "jnc-crm-live")
+Go-Live Strategy: CLEAN RE-INITIALIZATION (Fresh Supabase Project "crm-live")
 Old Live Project Status: UNTOUCHED (Preserved as immutable fallback backup)
 Dry Run Status (Fresh Baseline): 10/10 STEPS PASSED (Full end-to-end dry run verified)
-Post-Bootstrap Verification: 5/5 CHECKS PASSED (postcheck-live.sql verified on jnc_crm_fresh)
+Post-Bootstrap Verification: 5/5 CHECKS PASSED (postcheck-live.sql verified on crm_fresh)
 Supabase PostgREST Lockdown: VERIFIED (supabase-lockdown.sql enabled RLS across all tables)
 
 ================================================================================
@@ -174,7 +174,7 @@ ${lockdownSql}
 ${postcheckLiveSql}
 
 ================================================================================
-5. RAW DRY RUN OUTPUT ON FRESH LOCAL DATABASE (jnc_crm_fresh)
+5. RAW DRY RUN OUTPUT ON FRESH LOCAL DATABASE (crm_fresh)
 ================================================================================
 Execution: "npm run dry-run:fresh"
 Includes schema push, supabase-lockdown.sql, prod:bootstrap, postcheck-live.sql,
@@ -204,14 +204,14 @@ ${testAuthOutput.trim()}
 2. Hostinger Startup File: apps/api/start_server.js VERIFIED (conditional .env loading + ./dist/main.js)
 3. One-Time PC Database Setup: Runbook documented for ephemeral PowerShell window without SSH
 4. Production Bootstrap Script (prod:bootstrap): VERIFIED & GUARDED
-5. Fresh Database Dry Run (jnc_crm_fresh): ALL 10 STEPS PASSED
+5. Fresh Database Dry Run (crm_fresh): ALL 10 STEPS PASSED
 6. Supabase PostgREST Lockdown (supabase-lockdown.sql): VERIFIED (RLS enabled across all tables)
 7. Read-Only Live Post-Check (postcheck-live.sql): 5/5 CHECKS PASSED
 8. Second-Run Refusal Guard: VERIFIED (Strict refusal when tenant exists)
 9. Old Live Host Rejection Guard (env:check): VERIFIED (Fails unless ALLOW_OLD_LIVE=yes)
 10. Forced Password Reset Flow: VERIFIED (mustResetPassword toggles true -> false)
 11. Platform Admin Login Flow: VERIFIED (/auth/platform-login returns 200)
-12. Web App SPA .htaccess & CSP: Configured with connect-src https://api.jsnc.co.in
+12. Web App SPA .htaccess & CSP: Configured with connect-src 'self' and environment origins
 13. Zip-Based Hostinger Rollback Runbook: Full code + env restoration procedure documented
 
 ================================================================================

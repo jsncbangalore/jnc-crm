@@ -32,7 +32,10 @@ function stripClientTenantKeys(payload: any) {
   }
 }
 
+import { Public } from '../auth/page-access.decorator';
+
 @Controller('public-inquiry')
+@Public()
 export class PublicInquiryController {
   constructor(
     private readonly webhooksService: WebhooksService,

@@ -26,6 +26,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { PageAccess } from '../auth/page-access.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import {
   ResetTenantAdminPasswordDto,
@@ -33,6 +34,7 @@ import {
   TogglePlatformAdminActiveDto,
 } from './dto/platform-admin.dto';
 import { AuthService } from '../auth/auth.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 function extractStepUpToken(req: any, body?: any): string | undefined {
   return (
@@ -44,6 +46,7 @@ function extractStepUpToken(req: any, body?: any): string | undefined {
 @Controller('platform/tenants')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('platform_super_admin')
+@PageAccess('platform_companies')
 export class PlatformController {
   constructor(
     private readonly platformService: PlatformService,
@@ -141,6 +144,7 @@ export class PlatformController {
 @Controller('platform/admins')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('platform_super_admin')
+@PageAccess('platform_admins')
 export class PlatformAdminsController {
   constructor(
     private readonly platformService: PlatformService,
@@ -196,37 +200,16 @@ export class PlatformAdminsController {
   }
 }
 
-const mailTestRateMap = new Map<string, number[]>();
-
-export function checkMailTestRateLimit(key: string): boolean {
-  const now = Date.now();
-  const windowMs = 60 * 60 * 1000; // 1 hour
-  const timestamps = mailTestRateMap.get(key) || [];
-  const validTimestamps = timestamps.filter((t) => now - t < windowMs);
-  if (validTimestamps.length >= 5) {
-    return false;
-  }
-  validTimestamps.push(now);
-  mailTestRateMap.set(key, validTimestamps);
-  return true;
-}
-
-export function resetMailTestRateLimit(key?: string) {
-  if (key) {
-    mailTestRateMap.delete(key);
-  } else {
-    mailTestRateMap.clear();
-  }
-}
-
 @Controller('platform')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('platform_super_admin')
+@PageAccess('platform_companies')
 export class PlatformMailTestController {
   constructor(
     private readonly notificationsService: NotificationsService,
     private readonly platformService: PlatformService,
     private readonly authService: AuthService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get('recent-signins')
@@ -251,10 +234,39 @@ export class PlatformMailTestController {
     if (!userEmail) {
       throw new BadRequestException('Signed-in user email is required to send test email');
     }
-    const key = user?.id || req?.ip || 'anonymous';
-    if (!checkMailTestRateLimit(key)) {
-      throw new HttpException('Rate limit exceeded: maximum 5 test emails per hour', HttpStatus.TOO_MANY_REQUESTS);
+
+    // Database-backed rate limiting: 5 tests per hour
+    const identityKey = `platform_mail_test:${user?.id || req?.ip || 'anonymous'}`;
+    const now = new Date();
+    const windowMs = 60 * 60 * 1000; // 1 hour
+    const maxTests = 5;
+
+    const record = await this.prisma.accountLockout.findUnique({
+      where: { identityKey },
+    });
+
+    if (record) {
+      const elapsed = now.getTime() - new Date(record.lastAttemptAt).getTime();
+      if (elapsed > windowMs) {
+        await this.prisma.accountLockout.update({
+          where: { identityKey },
+          data: { failedAttempts: 1, lastAttemptAt: now, lockedUntil: null },
+        });
+      } else {
+        if (record.failedAttempts >= maxTests) {
+          throw new HttpException('Rate limit exceeded: maximum 5 test emails per hour', HttpStatus.TOO_MANY_REQUESTS);
+        }
+        await this.prisma.accountLockout.update({
+          where: { identityKey },
+          data: { failedAttempts: { increment: 1 }, lastAttemptAt: now },
+        });
+      }
+    } else {
+      await this.prisma.accountLockout.create({
+        data: { identityKey, failedAttempts: 1, lastAttemptAt: now },
+      });
     }
+
     const reqId = req?.headers?.['x-request-id'] || req?.id;
     return this.notificationsService.sendTestMail(userEmail, reqId);
   }

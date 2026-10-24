@@ -1,61 +1,50 @@
+/* --- C2PA CONTENT CREDENTIALS & PROVENANCE NOTICE ---
+ * c2pa.action: 'c2pa.created'
+ * c2pa.ai_training: 'disallowed'
+ * c2pa.do_not_train: true
+ * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
+ * ----------------------------------------------------- */
+
 const nodemailer = require('nodemailer');
 const { assertNotProductionDb } = require('./safety-check');
 const { PrismaClient } = require('@prisma/client');
 
-const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/jnc_crm_dev?schema=public';
+const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/crm_dev?schema=public';
 process.env.DATABASE_URL = dbUrl;
 assertNotProductionDb('send-user-credentials');
 
 const prisma = new PrismaClient();
 
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  host: process.env.SMTP_HOST || 'smtp.example.com',
   port: Number(process.env.SMTP_PORT) || 465,
   secure: true,
   auth: {
     user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || ''
+    pass: process.env.SMTP_PASS || '',
   },
-  tls: { rejectUnauthorized: false }
 });
+
+const defaultPortalUrl = process.env.FRONTEND_URL || 'https://admin.example.com/login';
+const defaultAppName = process.env.PRODUCT_NAME || 'CRM';
+const supportContact = process.env.SUPPORT_EMAIL || 'support@example.com';
 
 const users = [
   {
-    name: 'JNC Owner',
-    role: 'Super Admin (Boss)',
-    employeeCode: 'JNC-SA-001',
-    email: 'owner@jncnetwork.com',
-    tempPassword: 'Jnc#Boss5798!'
-  },
-  {
-    name: 'Santhosh Kumar',
+    name: 'Sample Admin',
     role: 'Admin',
-    employeeCode: 'JNC-ADM-001',
-    email: 'santhosh1508sk@gmail.com',
-    tempPassword: 'Jnc#Adm2564!'
+    employeeCode: 'ADM-001',
+    email: process.env.TEST_DISPATCH_EMAIL || 'admin@example.com',
+    tempPassword: 'SampleTempPass#2026',
   },
-  {
-    name: 'Sanketh',
-    role: 'Employee (Sales)',
-    employeeCode: 'JNC-EMP-001',
-    email: 'sankethk259@gmail.com',
-    tempPassword: 'Jnc#Emp6708!'
-  },
-  {
-    name: 'Punith',
-    role: 'Employee (Sales)',
-    employeeCode: 'JNC-EMP-002',
-    email: 'punithnikkam@gmail.com',
-    tempPassword: 'Jnc#Emp7406!'
-  }
 ];
 
 function buildHtml(u) {
   return `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
       <div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); padding: 24px; text-align: center;">
-        <h2 style="color: #38BDF8; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.5px;">JS Network Communication</h2>
-        <p style="color: #94A3B8; margin: 6px 0 0 0; font-size: 13px;">Enterprise CRM &amp; Inventory Portal &mdash; Security Credential Update</p>
+        <h2 style="color: #38BDF8; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.5px;">${defaultAppName}</h2>
+        <p style="color: #94A3B8; margin: 6px 0 0 0; font-size: 13px;">Enterprise Management Portal &mdash; Security Credential Update</p>
       </div>
 
       <div style="padding: 28px 24px;">
@@ -70,7 +59,7 @@ function buildHtml(u) {
 
         <p style="color: #1E293B; font-size: 14px; margin-top: 0;">Dear <strong>${u.name}</strong>,</p>
         <p style="color: #475569; font-size: 13px; line-height: 1.6;">
-          Your updated login credentials for the <strong>JSNC-CRM Portal</strong> are detailed below:
+          Your updated login credentials for the <strong>${defaultAppName} Portal</strong> are detailed below:
         </p>
 
         <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px 20px; margin: 20px 0;">
@@ -89,13 +78,13 @@ function buildHtml(u) {
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #64748B;"><strong>Portal URL:</strong></td>
-              <td style="padding: 8px 0;"><a href="https://admin.jsnc.co.in/login" style="color: #2563EB; font-weight: 600; text-decoration: underline;">https://admin.jsnc.co.in/login</a></td>
+              <td style="padding: 8px 0;"><a href="${defaultPortalUrl}" style="color: #2563EB; font-weight: 600; text-decoration: underline;">${defaultPortalUrl}</a></td>
             </tr>
           </table>
         </div>
 
         <div style="text-align: center; margin: 24px 0;">
-          <a href="https://admin.jsnc.co.in/login" style="background: #2563EB; color: #ffffff; padding: 12px 28px; text-decoration: none; font-size: 13px; font-weight: bold; border-radius: 6px; display: inline-block;">
+          <a href="${defaultPortalUrl}" style="background: #2563EB; color: #ffffff; padding: 12px 28px; text-decoration: none; font-size: 13px; font-weight: bold; border-radius: 6px; display: inline-block;">
             Log In &amp; Change Password
           </a>
         </div>
@@ -106,8 +95,8 @@ function buildHtml(u) {
       </div>
 
       <div style="background: #F1F5F9; padding: 16px 24px; border-top: 1px solid #E2E8F0; text-align: center; color: #64748B; font-size: 11px;">
-        <p style="margin: 0; font-weight: 600;">JS Network Communication &mdash; Enterprise Management Portal</p>
-        <p style="margin: 4px 0 0 0;">Support Hotline: +91 9663421455 | Email: jayaraj@jsnc.co.in</p>
+        <p style="margin: 0; font-weight: 600;">${defaultAppName} &mdash; Enterprise Management Portal</p>
+        <p style="margin: 4px 0 0 0;">Support: ${supportContact}</p>
       </div>
     </div>
   `;
@@ -120,16 +109,16 @@ async function run() {
 
   for (const u of users) {
     try {
-      const subject = `JSNC-CRM Account Credentials [${u.employeeCode}] - Temporary Password & Forced Reset`;
+      const subject = `${defaultAppName} Account Credentials [${u.employeeCode}] - Temporary Password & Forced Reset`;
       const html = buildHtml(u);
-      const text = `Hello ${u.name},\n\nYour updated JSNC-CRM credentials are:\nUser ID: ${u.employeeCode}\nTemporary Password: ${u.tempPassword}\nPortal URL: https://admin.jsnc.co.in/login\n\nPlease log in and set your new password immediately.\n\nJS Network Communication`;
+      const text = `Hello ${u.name},\n\nYour updated ${defaultAppName} credentials are:\nUser ID: ${u.employeeCode}\nTemporary Password: ${u.tempPassword}\nPortal URL: ${defaultPortalUrl}\n\nPlease log in and set your new password immediately.`;
 
       const info = await transporter.sendMail({
-        from: `"JS Network Communication" <${process.env.SMTP_USER}>`,
+        from: `"${defaultAppName}" <${process.env.SMTP_USER}>`,
         to: u.email,
         subject,
         html,
-        text
+        text,
       });
 
       console.log(`[SENT] ${u.name} <${u.email}> | MessageId: ${info.messageId}`);
@@ -143,7 +132,7 @@ async function run() {
           body: `[Credentials Dispatched to ${u.name} (${u.employeeCode}) - MessageId: ${info.messageId}]`,
           status: 'sent',
           relatedEntityType: 'user',
-        }
+        },
       });
     } catch (err) {
       console.error(`[ERROR] Failed to send to ${u.email}:`, err.message);
@@ -154,7 +143,7 @@ async function run() {
   process.exit(0);
 }
 
-run().catch(err => {
+run().catch((err) => {
   console.error('Fatal error during dispatch:', err);
   process.exit(1);
 });

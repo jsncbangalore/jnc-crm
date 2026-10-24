@@ -13,7 +13,7 @@ import { assertNotProductionDb } from './safety-check';
 function generateSecurePassword(): string {
   // Generate a cryptographically secure random password with upper, lower, digit, special char
   const randomBytes = crypto.randomBytes(12).toString('base64url');
-  return `Jnc!${randomBytes}9#`;
+  return `Dev!${randomBytes}9#`;
 }
 
 async function main() {
@@ -26,22 +26,25 @@ async function main() {
     console.log('[DEV DATABASE SETUP] Initializing development database environment...');
     console.log('========================================================================\n');
 
-    // 1. Create or update JNC Tenant
-    const jncTenant = await prisma.tenant.upsert({
-      where: { code: 'JNC' },
+    const defaultCode = (process.env.DEFAULT_TENANT_CODE || 'DEMO').toUpperCase();
+    const defaultName = process.env.PRODUCT_NAME || 'Demo Workspace';
+
+    // 1. Create or update Default Tenant
+    const defaultTenant = await prisma.tenant.upsert({
+      where: { code: defaultCode },
       update: {
-        name: 'JNC Corp',
+        name: defaultName,
         isInternal: true,
         status: 'active',
       },
       create: {
-        code: 'JNC',
-        name: 'JNC Corp',
+        code: defaultCode,
+        name: defaultName,
         isInternal: true,
         status: 'active',
       },
     });
-    console.log(`[OK] Internal Tenant verified: [${jncTenant.code}] ${jncTenant.name} (ID: ${jncTenant.id})`);
+    console.log(`[OK] Internal Tenant verified: [${defaultTenant.code}] ${defaultTenant.name} (ID: ${defaultTenant.id})`);
 
     // 2. Generate random one-time passwords
     const tenantAdminPassword = generateSecurePassword();
@@ -50,33 +53,33 @@ async function main() {
     const tenantAdminHash = await bcrypt.hash(tenantAdminPassword, 10);
     const superAdminHash = await bcrypt.hash(superAdminPassword, 10);
 
-    // 3. Upsert JNC Tenant Admin
-    const tenantAdminEmail = 'tenantadmin@jsnc.co.in';
+    // 3. Upsert Tenant Admin
+    const tenantAdminEmail = (process.env.DEV_TENANT_ADMIN_EMAIL || 'tenantadmin@example.com').toLowerCase();
     const tenantAdmin = await prisma.user.upsert({
       where: { email: tenantAdminEmail },
       update: {
-        name: 'JNC Tenant Admin',
+        name: 'Workspace Admin',
         role: 'tenant_admin',
-        tenantId: jncTenant.id,
-        employeeCode: 'EMP-JNC-001',
+        tenantId: defaultTenant.id,
+        employeeCode: `EMP-${defaultCode}-001`,
         passwordHash: tenantAdminHash,
         isActive: true,
         deletedAt: null,
       },
       create: {
         email: tenantAdminEmail,
-        name: 'JNC Tenant Admin',
+        name: 'Workspace Admin',
         role: 'tenant_admin',
-        tenantId: jncTenant.id,
-        employeeCode: 'EMP-JNC-001',
+        tenantId: defaultTenant.id,
+        employeeCode: `EMP-${defaultCode}-001`,
         passwordHash: tenantAdminHash,
         isActive: true,
       },
     });
-    console.log(`[OK] Tenant Admin verified: ${tenantAdmin.email} (Tenant: ${jncTenant.code})`);
+    console.log(`[OK] Tenant Admin verified: ${tenantAdmin.email} (Tenant: ${defaultTenant.code})`);
 
     // 4. Upsert Platform Super Admin
-    const superAdminEmail = 'superadmin@jsnc.co.in';
+    const superAdminEmail = (process.env.DEV_SUPERADMIN_EMAIL || 'superadmin@example.com').toLowerCase();
     const superAdmin = await prisma.user.upsert({
       where: { email: superAdminEmail },
       update: {
@@ -104,11 +107,11 @@ async function main() {
     console.log('\n========================================================================');
     console.log('CRITICAL: DEVELOPMENT CREDENTIALS GENERATED (PRINTED ONCE - SAVE THESE NOW)');
     console.log('========================================================================');
-    console.log('1. JNC Tenant Admin:');
+    console.log('1. Workspace Admin:');
     console.log(`   Email:    ${tenantAdminEmail}`);
     console.log(`   Password: ${tenantAdminPassword}`);
     console.log(`   Role:     tenant_admin`);
-    console.log(`   Tenant:   JNC (isInternal: true)`);
+    console.log(`   Tenant:   ${defaultCode} (isInternal: true)`);
     console.log('------------------------------------------------------------------------');
     console.log('2. Platform Super Admin:');
     console.log(`   Email:    ${superAdminEmail}`);

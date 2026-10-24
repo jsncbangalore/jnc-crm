@@ -48,15 +48,15 @@ async function runMailTest() {
 
   const provider = (process.env.MAIL_PROVIDER || 'smtp').trim().toLowerCase();
   // Strictly derive From address from EMAIL_FROM
-  const fromEmail = (process.env.EMAIL_FROM || '').trim() || 'noreply@jsnc.co.in';
-  const senderName = 'JNC CRM CLI Test';
+  const fromEmail = (process.env.EMAIL_FROM || '').trim() || 'noreply@example.com';
+  const senderName = process.env.PRODUCT_NAME || 'CRM CLI Test';
   const fromHeader = `"${senderName}" <${fromEmail}>`;
   const host = process.env.SMTP_HOST || 'smtpout.secureserver.net';
   const port = Number(process.env.SMTP_PORT) || 587;
   const timestamp = new Date().toISOString();
 
   console.log(`========================================================================`);
-  console.log(`JNC CRM OUTGOING MAIL TEST`);
+  console.log(`CRM OUTGOING MAIL TEST`);
   console.log(`Timestamp        : ${timestamp}`);
   console.log(`Mail Provider    : ${provider.toUpperCase()}`);
   console.log(`Sender Name      : ${senderName}`);
@@ -89,7 +89,7 @@ async function runMailTest() {
         body: JSON.stringify({
           sender: { name: senderName, email: fromEmail },
           to: [{ email: toAddress }],
-          subject: '[JNC CRM] CLI Mail Test (Brevo)',
+          subject: '[CRM] CLI Mail Test (Brevo)',
           htmlContent: `<p>CLI Mail Test via Brevo at ${timestamp}</p>`,
         }),
       });
@@ -130,7 +130,7 @@ async function runMailTest() {
         body: JSON.stringify({
           from: fromHeader,
           to: [toAddress],
-          subject: '[JNC CRM] CLI Mail Test (Resend)',
+          subject: '[CRM] CLI Mail Test (Resend)',
           html: `<p>CLI Mail Test via Resend at ${timestamp}</p>`,
         }),
       });
@@ -171,14 +171,17 @@ async function runMailTest() {
         host,
         port,
         secure: port === 465,
+        requireTLS: port !== 465,
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 10000,
         auth: { user, pass },
-        tls: { rejectUnauthorized: false },
       });
 
       const info = await transporter.sendMail({
         from: fromHeader,
         to: toAddress,
-        subject: '[JNC CRM] CLI Mail Test (SMTP)',
+        subject: '[CRM] CLI Mail Test (SMTP)',
         html: `<p>CLI Mail Test via SMTP at ${timestamp}</p>`,
       });
 

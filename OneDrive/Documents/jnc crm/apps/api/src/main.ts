@@ -48,6 +48,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { json, urlencoded } from 'express';
+import * as cors from 'cors';
 import helmet from 'helmet';
 import * as cookieParser from 'cookie-parser';
 import { corsOriginCallback, getCorsOriginsCount, getAllowedCorsHosts } from './common/cors-config';
@@ -58,6 +59,8 @@ import { SanitizeResponseInterceptor } from './common/sanitize-response.intercep
 import { CacheControlInterceptor } from './common/cache-control.interceptor';
 import { StripTenantPayloadInterceptor } from './common/strip-tenant-payload.interceptor';
 import { parseTrustProxy } from './common/trust-proxy.util';
+import { handlePublicCors, isPublicInquiryRoute } from './common/public-cors';
+import { PrismaService } from './prisma/prisma.service';
 
 async function bootstrap() {
   const nodeEnv = process.env.NODE_ENV || 'development';
@@ -66,8 +69,8 @@ async function bootstrap() {
   const corsHosts = getAllowedCorsHosts();
   const dbProjectRef = getDatabaseProjectRef();
 
-  const emailFrom = process.env.EMAIL_FROM || process.env.PRIMARY_EMAIL_FROM || 'noreply@jsnc.co.in';
-  const fromDomain = emailFrom.includes('@') ? emailFrom.split('@')[1] : 'unknown';
+  const emailFrom = process.env.EMAIL_FROM || process.env.PRIMARY_EMAIL_FROM || '';
+  const fromDomain = emailFrom.includes('@') ? emailFrom.split('@')[1] : 'not-configured';
 
   console.log(
     `Startup Config | NODE_ENV: ${nodeEnv} | Mail Provider: ${mailProvider} | From Domain: ${fromDomain} | CORS Origins Count: ${corsOriginsCount} | Allowed CORS Hosts: [${corsHosts.join(', ')}] | DB Project Ref: ${dbProjectRef}`
@@ -164,7 +167,7 @@ async function bootstrap() {
     next();
   });
 
-  // 6. Body Size Limits: 1MB globally; 50MB only for spreadsheet import routes (leads and inventory)
+  // 6. Body Size Limits: 64kb for public forms, 1MB globally, 50MB only for spreadsheet imports
   const defaultJsonParser = json({
     limit: '1mb',
     verify: (req: any, _res, buf) => {
@@ -172,6 +175,15 @@ async function bootstrap() {
     },
   });
   const defaultUrlencodedParser = urlencoded({ extended: true, limit: '1mb' });
+
+  const publicJsonParser = json({
+    limit: '64kb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    },
+  });
+  const publicUrlencodedParser = urlencoded({ extended: true, limit: '64kb' });
+
   const importJsonParser = json({
     limit: '50mb',
     verify: (req: any, _res, buf) => {
@@ -181,15 +193,21 @@ async function bootstrap() {
   const importUrlencodedParser = urlencoded({ extended: true, limit: '50mb' });
 
   app.use((req: any, res: any, next: any) => {
+    const url = req.originalUrl || req.url || '';
     const isImportRoute =
-      req.originalUrl &&
-      (req.originalUrl.includes('/leads/import') ||
-        req.originalUrl.includes('/inventory/import'));
+      url.includes('/leads/import') ||
+      url.includes('/inventory/import');
+    const isPublicRoute = isPublicInquiryRoute(url);
 
     if (isImportRoute) {
       importJsonParser(req, res, (err: any) => {
         if (err) return next(err);
         importUrlencodedParser(req, res, next);
+      });
+    } else if (isPublicRoute) {
+      publicJsonParser(req, res, (err: any) => {
+        if (err) return next(err);
+        publicUrlencodedParser(req, res, next);
       });
     } else {
       defaultJsonParser(req, res, (err: any) => {
@@ -219,8 +237,9 @@ async function bootstrap() {
     new StripTenantPayloadInterceptor(),
   );
 
-  // 10. CORS Configuration
-  app.enableCors({
+  // 10. CORS Configuration: Dedicated handling for public endpoints vs authenticated app
+  const prismaService = app.get(PrismaService);
+  const mainCorsMiddleware = cors({
     origin: corsOriginCallback,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Range'],
@@ -228,9 +247,17 @@ async function bootstrap() {
     credentials: true,
   });
 
+  app.use(async (req: any, res: any, next: any) => {
+    const url = req.originalUrl || req.url || '';
+    if (isPublicInquiryRoute(url)) {
+      return handlePublicCors(req, res, next, prismaService);
+    }
+    return mainCorsMiddleware(req, res, next);
+  });
+
   const port = process.env.PORT || 3333;
   await app.listen(port);
-  console.log(`JNC-CRM API running at http://localhost:${port}/api/v1`);
+  console.log(`CRM API running at http://localhost:${port}/api/v1`);
 }
 
 bootstrap();

@@ -14,7 +14,7 @@ import { assertNotProductionDb } from './safety-check';
 function generateRandomSecurePassword(): string {
   // Generate random bytes and assemble a password meeting policy (>= 12 chars, symbols, upper, lower, digits)
   const randomSuffix = crypto.randomBytes(12).toString('base64url');
-  return `Jnc#Admin${randomSuffix}9!`;
+  return `Admin#Pwd${randomSuffix}9!`;
 }
 
 async function main() {
@@ -23,25 +23,27 @@ async function main() {
   const prisma = new PrismaClient();
 
   try {
-    const targetEmail = (process.env.OWNER_EMAIL || 'tenantadmin@jsnc.co.in').trim().toLowerCase();
+    const targetEmail = (process.env.OWNER_EMAIL || 'tenantadmin@example.com').trim().toLowerCase();
+    const primaryCode = (process.env.PRIMARY_TENANT_CODE || 'PRIMARY').trim().toUpperCase();
+    const primaryName = (process.env.PRIMARY_TENANT_NAME || 'Primary Organization').trim();
 
-    // 1. Find or create internal JNC tenant
+    // 1. Find or create internal tenant
     let internalTenant = await prisma.tenant.findFirst({
       where: { isInternal: true, deletedAt: null },
     });
 
     if (!internalTenant) {
       internalTenant = await prisma.tenant.findUnique({
-        where: { code: 'JNC' },
+        where: { code: primaryCode },
       });
     }
 
     if (!internalTenant) {
       internalTenant = await prisma.tenant.create({
         data: {
-          code: 'JNC',
-          slug: 'jnc',
-          name: 'JNC Network & Power Solutions',
+          code: primaryCode,
+          slug: primaryCode.toLowerCase(),
+          name: primaryName,
           isInternal: true,
           status: 'active',
           isOnboarded: true,
@@ -93,7 +95,7 @@ async function main() {
 
     if (envPassword && envPassword.trim().length > 0) {
       const emailForPolicy = owner?.email || targetEmail;
-      const nameForPolicy = owner?.name || 'JNC Tenant Admin';
+      const nameForPolicy = owner?.name || 'Tenant Admin';
       try {
         validatePasswordPolicy(envPassword, {
           email: emailForPolicy,
@@ -119,9 +121,9 @@ async function main() {
         data: {
           tenantId: internalTenant.id,
           email: targetEmail,
-          name: 'JNC Tenant Admin',
+          name: 'Tenant Admin',
           role: 'tenant_admin',
-          employeeCode: 'EMP-JNC-001',
+          employeeCode: 'EMP-ADM-001',
           passwordHash,
           isActive: true,
           mustResetPassword: false,
@@ -163,7 +165,7 @@ async function main() {
 
     // 6. Print once to console
     console.log('\n========================================================================');
-    console.log('JNC OWNER ACCOUNT CREDENTIALS (LOCAL ONLY)');
+    console.log('TENANT OWNER ACCOUNT CREDENTIALS (LOCAL ONLY)');
     console.log('========================================================================');
     console.log(`Company Code:   ${internalTenant.code}`);
     console.log(`Email:          ${owner.email}`);

@@ -5,7 +5,7 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Param, Query, UseGuards } from '@nestjs/common';
 import { PageAccess } from '../auth/page-access.decorator';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
@@ -20,12 +20,17 @@ export class DashboardController {
   constructor(private dashboardService: DashboardService) {}
 
   @Get('kpis')
-  getKpis(@CurrentUser() user: ScopedUser) {
-    return this.dashboardService.getKpis(user);
+  getKpis(@CurrentUser() user: ScopedUser, @Query('range') range?: string) {
+    return this.dashboardService.getKpis(user, range);
   }
 
   @Get('conversion')
   getConversion(@CurrentUser() user: ScopedUser) {
     return this.dashboardService.getLeadConversionStats(user);
+  }
+
+  @Patch('activities/:id/complete')
+  completeActivity(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
+    return this.dashboardService.completeActivity(id, user);
   }
 }

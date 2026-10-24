@@ -148,12 +148,9 @@ export class PlatformService {
    */
   async createTenant(dto: CreateTenantDto) {
     const cleanCode = dto.code.trim().toUpperCase();
-    if (cleanCode === 'JNC' || cleanCode === 'JNC-ORG-001') {
-      throw new BadRequestException(`Cannot provision tenant with reserved internal code '${cleanCode}'`);
-    }
     const cleanSlug = (dto.slug || cleanCode.toLowerCase()).trim().replace(/[^a-z0-9-]/gi, '-');
 
-    // 1. Check uniqueness and reject internal codes
+    // 1. Check uniqueness
     const existing = await this.prisma.tenant.findFirst({
       where: {
         OR: [{ code: cleanCode }, { slug: cleanSlug }],
@@ -161,9 +158,6 @@ export class PlatformService {
     });
 
     if (existing) {
-      if (existing.isInternal) {
-        throw new BadRequestException(`Cannot use code '${cleanCode}' reserved for platform owner company`);
-      }
       throw new ConflictException(`Company with code '${cleanCode}' or slug '${cleanSlug}' already exists`);
     }
 
@@ -187,7 +181,14 @@ export class PlatformService {
       tempPassword = generatedPass;
     }
     const passwordHash = await bcrypt.hash(tempPassword, 12);
-    const adminEmployeeCode = cleanCode.startsWith('JNC-') ? `${cleanCode}-SA-001` : `JNC-${cleanCode}-SA-001`;
+    const adminEmployeeCode = `${cleanCode}-SA-001`;
+
+    const cleanAdminPhone = dto.adminPhone && dto.adminPhone.trim() ? dto.adminPhone.trim() : null;
+    const formattedAdminPhone = cleanAdminPhone
+      ? (cleanAdminPhone.replace(/\D/g, '').length >= 10
+          ? `+91 ${cleanAdminPhone.replace(/\D/g, '').slice(-10)}`
+          : cleanAdminPhone)
+      : null;
 
     // 2. Transactional creation of Tenant + Company Admin
     const result = await this.prisma.$transaction(async (tx) => {
@@ -199,7 +200,7 @@ export class PlatformService {
           status: 'active',
           planTier: dto.planTier || 'standard',
           maxUsers: dto.maxUsers || 10,
-          phone: dto.adminPhone || null,
+          phone: formattedAdminPhone,
           email: adminEmail,
           address: dto.address || null,
           city: dto.city || null,
@@ -215,7 +216,7 @@ export class PlatformService {
           employeeCode: adminEmployeeCode,
           name: dto.adminName.trim(),
           email: adminEmail,
-          phone: dto.adminPhone || null,
+          phone: formattedAdminPhone,
           passwordHash,
           role: 'tenant_admin',
           isActive: true,
@@ -229,7 +230,7 @@ export class PlatformService {
           tenantId: tenant.id,
           code: `${cleanCode}-WH-MAIN`,
           name: `${dto.name} Main Warehouse`,
-          city: dto.city || 'Bengaluru',
+          city: dto.city || '',
           isActive: true,
         },
       });
@@ -244,8 +245,9 @@ export class PlatformService {
       reason: null,
       provider: this.notificationsService.getMailProvider(),
     };
-    const baseFrontendUrl = (process.env.FRONTEND_URL || dto?.appUrl || process.env.APP_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
-    const loginUrl = `${baseFrontendUrl}/login`;
+    const prodName = process.env.PRODUCT_NAME || 'CRM';
+    const baseFrontendUrl = (process.env.FRONTEND_URL || dto?.appUrl || process.env.APP_URL || '').replace(/\/$/, '');
+    const loginUrl = `${baseFrontendUrl}/login?company=${encodeURIComponent(result.tenant.code)}&identifier=${encodeURIComponent(result.adminUser.email)}`;
 
     if (dto.sendEmail !== false) {
 
@@ -276,7 +278,7 @@ export class PlatformService {
 <body>
   <div class="card">
     <div class="header">
-      <h1>Welcome to JNC CRM Platform</h1>
+      <h1>Welcome to ${prodName} Platform</h1>
       <p>Company Workspace Provisioned for ${result.tenant.name}</p>
     </div>
     <div class="body">
@@ -315,10 +317,11 @@ export class PlatformService {
       <div class="btn-container">
         <a href="${loginUrl}" class="btn">Login to Your CRM Workspace</a>
       </div>
+      <p style="font-size: 12px; color: #64748b; margin-top: 14px; text-align: center;">Direct link: <a href="${loginUrl}" style="color: #2563eb; word-break: break-all;">${loginUrl}</a></p>
     </div>
     <div class="footer">
       <p style="margin: 0 0 4px;">For security, please change your temporary password upon your first sign in.</p>
-      <p style="margin: 0;">JNC CRM Multi-Tenant Cloud Platform</p>
+      <p style="margin: 0;">${prodName} Multi-Tenant Cloud Platform</p>
     </div>
   </div>
 </body>
@@ -328,11 +331,11 @@ export class PlatformService {
       try {
         const mailRes = await this.notificationsService.sendEmail({
           to: result.adminUser.email,
-          subject: `[JNC CRM] Welcome! Your CRM Workspace Access Credentials for ${result.tenant.name}`,
+          subject: `[${prodName}] Welcome! Your CRM Workspace Access Credentials for ${result.tenant.name}`,
           html: emailHtml,
           text: `Hello ${result.adminUser.name},\n\nYour company's CRM workspace has been provisioned:\n\nCompany: ${result.tenant.name} (${result.tenant.code})\nUser ID: ${result.adminUser.employeeCode}\nEmail: ${result.adminUser.email}\nTemporary Password: ${tempPassword}\nLogin URL: ${loginUrl}\n\nPlease change your temporary password upon first login.`,
           tenantId: result.tenant.id,
-          purpose: 'tenant_provisioning',
+          purpose: 'welcome_credentials',
           throwOnError: false,
         });
         mailInfo = {
@@ -424,13 +427,40 @@ export class PlatformService {
         tenant.users[0];
 
       if (adminUser) {
-        await this.prisma.user.update({
-          where: { id: adminUser.id },
-          data: {
-            ...(email ? { email: email.trim().toLowerCase() } : {}),
-            ...(phone ? { phone: phone.trim() } : {}),
-          },
-        });
+        const targetEmail = email ? email.trim().toLowerCase() : undefined;
+        const targetPhone = phone ? phone.trim() : undefined;
+
+        // Only update email if it actually changed
+        const emailChanged = targetEmail && targetEmail !== adminUser.email.toLowerCase();
+        if (emailChanged) {
+          const emailInUse = tenant.users.some(
+            (u) => u.id !== adminUser.id && u.email.toLowerCase() === targetEmail,
+          );
+          if (emailInUse) {
+            throw new BadRequestException(
+              `Email "${targetEmail}" is already assigned to another user in this company.`,
+            );
+          }
+        }
+
+        const phoneChanged = targetPhone && targetPhone !== adminUser.phone;
+
+        if (emailChanged || phoneChanged) {
+          try {
+            await this.prisma.user.update({
+              where: { id: adminUser.id },
+              data: {
+                ...(emailChanged ? { email: targetEmail } : {}),
+                ...(phoneChanged ? { phone: targetPhone } : {}),
+              },
+            });
+          } catch (err: any) {
+            if (err?.code === 'P2002') {
+              throw new BadRequestException('The specified email is already in use by another user.');
+            }
+            throw err;
+          }
+        }
       }
     }
 
@@ -649,11 +679,19 @@ export class PlatformService {
       ? Boolean(dto.mustResetPassword)
       : (dto?.newPassword ? false : true);
 
-    // Update password, email, increment tokenVersion (invalidates old tokens), reset failed attempts and unlock account in database
+    let formattedPhoneToSet: string | undefined = undefined;
+    if (dto?.adminPhone !== undefined && dto.adminPhone !== null) {
+      const cleanPhone = dto.adminPhone.trim();
+      const digits = cleanPhone.replace(/\D/g, '');
+      formattedPhoneToSet = digits.length >= 10 ? `+91 ${digits.slice(-10)}` : cleanPhone;
+    }
+
+    // Update password, email, phone, increment tokenVersion (invalidates old tokens), reset failed attempts and unlock account in database
     await this.prisma.user.update({
       where: { id: adminUser.id },
       data: {
         email: targetEmail,
+        ...(formattedPhoneToSet !== undefined ? { phone: formattedPhoneToSet } : {}),
         passwordHash,
         mustResetPassword: mustReset,
         isActive: true,
@@ -662,6 +700,13 @@ export class PlatformService {
         tokenVersion: { increment: 1 },
       },
     });
+
+    if (formattedPhoneToSet !== undefined) {
+      await this.prisma.tenant.update({
+        where: { id: tenant.id },
+        data: { phone: formattedPhoneToSet },
+      }).catch(() => {});
+    }
 
     // Clear all lockout records across all identity key variants
     try {
@@ -702,8 +747,9 @@ export class PlatformService {
       reason: null,
       provider: this.notificationsService.getMailProvider(),
     };
-    const baseFrontendUrl = (process.env.FRONTEND_URL || dto?.appUrl || process.env.APP_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
-    const loginUrl = `${baseFrontendUrl}/login`;
+    const prodName = process.env.PRODUCT_NAME || 'CRM';
+    const baseFrontendUrl = (process.env.FRONTEND_URL || dto?.appUrl || process.env.APP_URL || '').replace(/\/$/, '');
+    const loginUrl = `${baseFrontendUrl}/login?company=${encodeURIComponent(tenant.code)}&identifier=${encodeURIComponent(adminUser.email)}`;
 
     if (dto?.sendEmail !== false) {
 
@@ -769,10 +815,11 @@ export class PlatformService {
       <div class="btn-container">
         <a href="${loginUrl}" class="btn">Login to Company CRM</a>
       </div>
+      <p style="font-size: 12px; color: #64748b; margin-top: 14px; text-align: center;">Direct link: <a href="${loginUrl}" style="color: #2563eb; word-break: break-all;">${loginUrl}</a></p>
     </div>
     <div class="footer">
       <p style="margin: 0 0 4px;">For security, please change your password after logging in.</p>
-      <p style="margin: 0;">JNC CRM Multi-Tenant Cloud Platform</p>
+      <p style="margin: 0;">${prodName} Multi-Tenant Cloud Platform</p>
     </div>
   </div>
 </body>
@@ -782,11 +829,11 @@ export class PlatformService {
       try {
         const mailRes = await this.notificationsService.sendEmail({
           to: adminUser.email,
-          subject: `[JNC CRM] Super Admin Access Credentials for ${tenant.name}`,
+          subject: `[${prodName}] Super Admin Access Credentials for ${tenant.name}`,
           html: emailHtml,
           text: `Hello ${adminUser.name},\n\nYour Super Admin credentials for ${tenant.name} have been updated:\n\nCompany: ${tenant.name} (${tenant.code})\nUser ID: ${adminUser.employeeCode}\nEmail: ${adminUser.email}\nPassword: ${passwordToSet}\nLogin URL: ${loginUrl}\n\nPlease change your password after logging in.`,
           tenantId: tenant.id,
-          purpose: 'password_reset',
+          purpose: 'password_reset_code',
           throwOnError: false,
         });
         mailInfo = {
@@ -944,18 +991,19 @@ export class PlatformService {
       reason: null,
       provider: this.notificationsService.getMailProvider(),
     };
-    const frontendUrl = (process.env.FRONTEND_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
+    const prodName = process.env.PRODUCT_NAME || 'CRM';
+    const frontendUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
     const loginUrl = `${frontendUrl}/platform/login`;
 
     try {
       const mailRes = await this.notificationsService.sendEmail({
         to: cleanEmail,
-        subject: `[JNC CRM Platform] Welcome - Platform Super Admin Account Created`,
+        subject: `[${prodName} Platform] Welcome - Platform Super Admin Account Created`,
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
             <h2 style="color: #0f172a; margin-top: 0;">Platform Administrator Account Created</h2>
             <p>Hello <strong>${newUser.name}</strong>,</p>
-            <p>Your Platform Super Admin account for JNC CRM has been created.</p>
+            <p>Your Platform Super Admin account for ${prodName} has been created.</p>
             <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: monospace; font-size: 14px;">
               <p style="margin: 4px 0;"><strong>Platform Login Portal:</strong> ${loginUrl}</p>
               <p style="margin: 4px 0;"><strong>User ID / Code:</strong> ${employeeCode}</p>
@@ -968,8 +1016,8 @@ export class PlatformService {
             <p style="font-size: 12px; color: #64748b;">Note: Super admins must log in at the Platform Portal above. Please change your password upon first login.</p>
           </div>
         `,
-        text: `Hello ${newUser.name},\n\nYour Platform Super Admin account for JNC CRM has been created.\n\nLogin Portal: ${loginUrl}\nUser ID: ${employeeCode}\nEmail: ${cleanEmail}\nTemporary Password: ${tempPassword}\n\nPlease change your password after logging in.`,
-        purpose: 'admin_invite',
+        text: `Hello ${newUser.name},\n\nYour Platform Super Admin account for ${prodName} has been created.\n\nLogin Portal: ${loginUrl}\nUser ID: ${employeeCode}\nEmail: ${cleanEmail}\nTemporary Password: ${tempPassword}\n\nPlease change your password after logging in.`,
+        purpose: 'welcome_credentials',
         throwOnError: false,
       });
       mailInfo = {
@@ -1128,18 +1176,19 @@ export class PlatformService {
       reason: null,
       provider: this.notificationsService.getMailProvider(),
     };
-    const frontendUrl = (process.env.FRONTEND_URL || 'https://admin.jsnc.co.in').replace(/\/$/, '');
+    const prodName = process.env.PRODUCT_NAME || 'CRM';
+    const frontendUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
     const loginUrl = `${frontendUrl}/platform/login`;
 
     try {
       const mailRes = await this.notificationsService.sendEmail({
         to: target.email,
-        subject: `[JNC CRM Platform] Your Platform Super Admin Password Has Been Reset`,
+        subject: `[${prodName} Platform] Your Platform Super Admin Password Has Been Reset`,
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
             <h2 style="color: #0f172a; margin-top: 0;">Platform Administrator Password Reset</h2>
             <p>Hello <strong>${target.name}</strong>,</p>
-            <p>Your Platform Super Admin password for JNC CRM has been reset.</p>
+            <p>Your Platform Super Admin password for ${prodName} has been reset.</p>
             <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: monospace; font-size: 14px;">
               <p style="margin: 4px 0;"><strong>Platform Login Portal:</strong> ${loginUrl}</p>
               <p style="margin: 4px 0;"><strong>User ID / Code:</strong> ${target.employeeCode}</p>
@@ -1152,8 +1201,8 @@ export class PlatformService {
             <p style="font-size: 12px; color: #64748b;">Please change your password upon logging in.</p>
           </div>
         `,
-        text: `Hello ${target.name},\n\nYour Platform Super Admin password for JNC CRM has been reset.\n\nLogin Portal: ${loginUrl}\nUser ID: ${target.employeeCode}\nEmail: ${target.email}\nTemporary Password: ${tempPassword}\n\nPlease change your password after logging in.`,
-        purpose: 'password_reset',
+        text: `Hello ${target.name},\n\nYour Platform Super Admin password for ${prodName} has been reset.\n\nLogin Portal: ${loginUrl}\nUser ID: ${target.employeeCode}\nEmail: ${target.email}\nTemporary Password: ${tempPassword}\n\nPlease change your password after logging in.`,
+        purpose: 'password_reset_code',
         throwOnError: false,
       });
       mailInfo = {

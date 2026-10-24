@@ -49,9 +49,13 @@ export class ErrorBoundary extends Component<Props, State> {
               <button
                 onClick={() => {
                   try {
-                    const theme = localStorage.getItem('jnc_theme');
+                    const consent = localStorage.getItem('crm_cookie_consent');
+                    const theme = localStorage.getItem('crm_theme');
                     localStorage.clear();
-                    if (theme) localStorage.setItem('jnc_theme', theme);
+                    if (consent) localStorage.setItem('crm_cookie_consent', consent);
+                    if (theme && consent && consent.includes('"preferences":true')) {
+                      localStorage.setItem('crm_theme', theme);
+                    }
                     sessionStorage.clear();
                   } catch {
                     // ignore

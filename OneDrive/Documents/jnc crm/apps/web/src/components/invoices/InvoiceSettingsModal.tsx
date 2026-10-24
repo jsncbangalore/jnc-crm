@@ -39,7 +39,7 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
       const { data } = await invoicesApi.getSignatorySettings();
       if (data) {
         setSettings({
-          companyName: data.companyName || BRAND_CONFIG.displayName || 'JNC Network & Power Solutions',
+          companyName: data.companyName || BRAND_CONFIG.displayName || 'CRM',
           signatoryName: data.signatoryName || '',
           signatoryDesignation: data.signatoryDesignation || '',
           signatureImage: data.signatureImage || null,
@@ -149,7 +149,7 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
               </label>
               <input
                 className="input text-xs font-semibold"
-                placeholder="e.g. JNC Network & Power Solutions"
+                placeholder="e.g. Acme Technologies Ltd"
                 value={settings.companyName || ''}
                 onChange={(e) => setSettings({ ...settings, companyName: e.target.value })}
               />
@@ -282,7 +282,7 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
               <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex justify-end">
                 <div className="text-right w-64 space-y-1">
                   <p className="text-xs font-bold text-gray-800">
-                    For {settings.companyName || BRAND_CONFIG.displayName || 'JNC Network & Power Solutions'}
+                    For {settings.companyName || BRAND_CONFIG.displayName || 'CRM'}
                   </p>
                   
                   {/* Signature & Stamp overlapping area */}

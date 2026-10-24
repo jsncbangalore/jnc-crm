@@ -56,16 +56,18 @@ export default function Sidebar() {
   const visibleNavItems = isPlatform
     ? platformMasterNavItems
     : clientOrgNavItems.filter((item) => {
-        if (item.roles && !item.roles.includes(user?.role || '')) return false;
-        if (user?.role !== 'tenant_admin' && user?.role !== 'platform_super_admin') {
-          if (user?.teamId && user?.teamRef) {
-            const allowedPages = typeof user.teamRef.allowedPages === 'string'
-              ? JSON.parse(user.teamRef.allowedPages || '[]')
-              : user.teamRef.allowedPages || [];
-            if (item.pageKey && !allowedPages.includes(item.pageKey)) return false;
-          }
+        if (!item.pageKey) return true;
+        if (user?.role === 'tenant_admin') return true;
+        if (Array.isArray(user?.effectivePages)) {
+          return user.effectivePages.includes(item.pageKey);
         }
-        return true;
+        if (user?.teamId && user?.teamRef) {
+          const allowedPages = typeof user.teamRef.allowedPages === 'string'
+            ? JSON.parse(user.teamRef.allowedPages || '[]')
+            : user.teamRef.allowedPages || [];
+          return allowedPages.includes(item.pageKey);
+        }
+        return false;
       });
 
   const handleLogout = () => {
@@ -78,16 +80,22 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="h-16 flex items-center px-5 border-b border-slate-200 dark:border-[#2A3042]">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center p-0.5 border border-slate-200 shadow-sm overflow-hidden shrink-0">
+          <div className="h-9 w-9 rounded-lg bg-[#1E2A78] flex items-center justify-center border border-slate-200/50 dark:border-slate-700/50 shadow-sm overflow-hidden shrink-0">
             <img
-              src="/jnc-logo.jpg"
-              alt="JS Network Communication"
-              className="max-h-full max-w-full object-contain"
+              src="/logo-icon.png"
+              alt="App Icon"
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (target.src !== window.location.origin + '/logo-icon.svg') {
+                  target.src = '/logo-icon.svg';
+                }
+              }}
             />
           </div>
           <div className="overflow-hidden">
             <div className="text-sm font-black text-slate-950 dark:text-white leading-tight truncate">
-              {branding.companyDisplayName}
+              {user?.tenant?.name || branding.companyDisplayName}
             </div>
             {isPlatform ? (
               <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider block">

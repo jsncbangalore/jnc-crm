@@ -29,12 +29,12 @@ async function runTests() {
       }),
     };
     const controller = new PlatformMailTestController(mockNotificationsService);
-    const superAdminUser = { id: 'admin-1', email: 'superadmin@jsnc.co.in', role: 'platform_super_admin' };
+    const superAdminUser = { id: 'admin-1', email: 'admin@example.com', role: 'platform_super_admin' };
     const req = { ip: '127.0.0.1', headers: { 'x-request-id': 'req-999' } };
 
     const res = await controller.sendMailTest(superAdminUser, req);
-    if (res.recipient === 'superadmin@jsnc.co.in' && res.status === 'sent') {
-      console.log('PASS 1: Only signed-in user email (superadmin@jsnc.co.in) is allowed as recipient.');
+    if (res.recipient === 'admin@example.com' && res.status === 'sent') {
+      console.log('PASS 1: Only signed-in user email (admin@example.com) is allowed as recipient.');
       passed++;
     } else {
       console.error('FAIL 1: Unexpected response', res);
@@ -52,7 +52,7 @@ async function runTests() {
       sendTestMail: async () => ({ provider: 'brevo', status: 'sent' }),
     };
     const controller = new PlatformMailTestController(mockNotificationsService);
-    const superAdminUser = { id: 'admin-rate-1', email: 'superadmin@jsnc.co.in', role: 'platform_super_admin' };
+    const superAdminUser = { id: 'admin-rate-1', email: 'admin@example.com', role: 'platform_super_admin' };
     const req = { ip: '127.0.0.1' };
 
     for (let i = 0; i < 5; i++) {
@@ -89,7 +89,7 @@ async function runTests() {
       getClass: () => PlatformMailTestController,
       switchToHttp: () => ({
         getRequest: () => ({
-          user: { id: 'tenant-user-1', role: 'tenant_admin', email: 'tenantadmin@client.com' },
+          user: { id: 'tenant-user-1', role: 'tenant_admin', email: 'tenantadmin@example.com' },
         }),
       }),
     };

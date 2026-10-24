@@ -9,21 +9,26 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { execSync, spawn } = require('child_process');
-const { Client } = require('C:/Users/JNC R&D/.gemini/antigravity/brain/35af9003-1b6b-4a84-aff8-4a7e38775824/scratch/pg-runner/node_modules/pg');
+let Client;
+try {
+  Client = require('pg').Client;
+} catch {
+  Client = class MockClient {};
+}
 
 const rootDir = path.resolve(__dirname, '..');
 const apiDir = path.join(rootDir, 'apps', 'api');
 
-const FRESH_DB_URL = 'postgresql://postgres:postgres@localhost:5432/jnc_crm_fresh?schema=public';
+const FRESH_DB_URL = process.env.FRESH_DB_URL || 'postgresql://postgres:postgres@localhost:5432/crm_fresh?schema=public';
 const PORT = 3336;
 
 async function runStep() {
   console.log('========================================================================');
-  console.log('STARTING DRY RUN ON FRESH LOCAL DATABASE (jnc_crm_fresh)');
+  console.log('STARTING DRY RUN ON FRESH LOCAL DATABASE (crm_fresh)');
   console.log('========================================================================\n');
 
-  // STEP 1: Re-create jnc_crm_fresh
-  console.log('--- [Step 1] Preparing empty local database jnc_crm_fresh ---');
+  // STEP 1: Re-create crm_fresh
+  console.log('--- [Step 1] Preparing empty local database crm_fresh ---');
   const pgClient = new Client({
     host: '127.0.0.1',
     port: 5432,
@@ -35,14 +40,14 @@ async function runStep() {
   await pgClient.query(`
     SELECT pg_terminate_backend(pid)
     FROM pg_stat_activity
-    WHERE datname = 'jnc_crm_fresh' AND pid <> pg_backend_pid();
+    WHERE datname = 'crm_fresh' AND pid <> pg_backend_pid();
   `);
-  await pgClient.query('DROP DATABASE IF EXISTS jnc_crm_fresh;');
-  await pgClient.query('CREATE DATABASE jnc_crm_fresh;');
+  await pgClient.query('DROP DATABASE IF EXISTS crm_fresh;');
+  await pgClient.query('CREATE DATABASE crm_fresh;');
   await pgClient.end();
-  console.log('[OK] Empty database jnc_crm_fresh created.\n');
+  console.log('[OK] Empty database crm_fresh created.\n');
 
-  // STEP 2: Prisma db push to jnc_crm_fresh
+  // STEP 2: Prisma db push to crm_fresh
   console.log('--- [Step 2] Applying schema via prisma db push ---');
   const pushOutput = execSync('npx prisma db push --skip-generate', {
     cwd: apiDir,
@@ -51,16 +56,16 @@ async function runStep() {
   });
   console.log(pushOutput);
 
-  // STEP 3: Run npm run prod:bootstrap against jnc_crm_fresh
-  console.log('--- [Step 3] Running prod:bootstrap against jnc_crm_fresh ---');
+  // STEP 3: Run npm run prod:bootstrap against crm_fresh
+  console.log('--- [Step 3] Running prod:bootstrap against crm_fresh ---');
   const bootstrapEnv = {
     ...process.env,
     DATABASE_URL: FRESH_DB_URL,
     NODE_ENV: 'production',
     CONFIRM_PRODUCTION: 'yes',
     ALLOWED_DB_HOSTS: 'localhost,127.0.0.1',
-    OWNER_EMAIL: 'owner@jsnc.co.in',
-    PLATFORM_ADMIN_EMAIL: 'platform@jsnc.co.in',
+    OWNER_EMAIL: process.env.OWNER_EMAIL || 'owner@example.com',
+    PLATFORM_ADMIN_EMAIL: process.env.PLATFORM_ADMIN_EMAIL || 'platform@example.com',
   };
 
   let bootstrapRaw = '';
@@ -185,7 +190,7 @@ async function runStep() {
 
     const loginJson = await loginRes.json();
     const setCookie = loginRes.headers.get('set-cookie') || '';
-    const cookieMasked = setCookie.replace(/jnc_refresh_token=ey[A-Za-z0-9_.-]+/g, 'jnc_refresh_token=<MASKED>');
+    const cookieMasked = setCookie.replace(/crm_refresh_token=ey[A-Za-z0-9_.-]+/g, 'crm_refresh_token=<MASKED>');
 
     console.log(`HTTP Status: ${loginRes.status}`);
     console.log(`Set-Cookie:  ${cookieMasked}`);

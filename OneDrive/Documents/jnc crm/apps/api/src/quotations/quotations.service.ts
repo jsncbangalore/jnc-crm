@@ -15,7 +15,66 @@ import { parsePagination } from '../common/pagination.util';
 import { sanitizeHtml } from '../common/html-sanitize.util';
 
 
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsArray,
+  IsNumber,
+  Min,
+  Max,
+  MaxLength,
+  ValidateNested,
+  ArrayMinSize,
+  ArrayMaxSize,
+} from 'class-validator';
+import {
+  SanitizeText,
+  TrimString,
+  IsValidName,
+  IsValidPhone,
+  IsValidEmail,
+  IsValidProductName,
+  IsValidUnitRate,
+  IsValidGstRate,
+} from '../common/validation.transformers';
+import { roundCurrency } from '@crm/shared-validation';
+
+export class QuotationLineItemDto {
+  @IsString()
+  @IsOptional()
+  skuId?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  @IsValidProductName()
+  name: string;
+
+  @IsNumber()
+  @Min(0.0001)
+  @Max(100000)
+  quantity: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100000000)
+  @IsValidUnitRate()
+  unitPrice: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  discount?: number;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  notes?: string;
+}
 
 export class CreateQuotationDto {
   @IsString()
@@ -26,44 +85,66 @@ export class CreateQuotationDto {
   @IsOptional()
   contactId?: string;
 
+  @SanitizeText()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
+  @IsValidName()
   customerName: string;
 
+  @TrimString()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(20)
+  @IsValidPhone()
   customerPhone: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(254)
+  @IsValidEmail()
   customerEmail?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   companyName?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(300)
   shippingAddress?: string;
 
   @IsString()
   @IsOptional()
   validUntil?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(1000)
   notes?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(1000)
   terms?: string;
 
   @IsNumber()
   @IsOptional()
+  @IsValidGstRate()
   taxRate?: number;
 
   @IsArray()
-  lines: any[];
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => QuotationLineItemDto)
+  lines: QuotationLineItemDto[];
 }
 
 export class UpdateQuotationStatusDto {
@@ -153,7 +234,9 @@ export class QuotationsService {
     }
 
     const count = await this.prisma.quotation.count({ where: { tenantId } });
-    const quoteNumber = `JNC-QT-${String(count + 1).padStart(5, '0')}`;
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { code: true } });
+    const tenantPrefix = (tenant?.code || 'QT').toUpperCase();
+    const quoteNumber = `${tenantPrefix}-QT-${String(count + 1).padStart(5, '0')}`;
 
     const resolvedLines: any[] = [];
     let subtotal = 0;
@@ -163,8 +246,8 @@ export class QuotationsService {
       const qty = Number(l.quantity) || 1;
       const price = Number(l.unitPrice) || 0;
       const discount = Number(l.discount) || 0;
-      const total = Math.max(0, qty * price - discount);
-      subtotal += total;
+      const total = roundCurrency(Math.max(0, qty * price - discount));
+      subtotal = roundCurrency(subtotal + total);
 
       resolvedLines.push({
         skuId: sku.id,
@@ -177,8 +260,8 @@ export class QuotationsService {
     }
 
     const taxRate = dto.taxRate !== undefined ? Number(dto.taxRate) : 18.0;
-    const taxAmount = (subtotal * taxRate) / 100;
-    const totalAmount = subtotal + taxAmount;
+    const taxAmount = roundCurrency((subtotal * taxRate) / 100);
+    const totalAmount = roundCurrency(subtotal + taxAmount);
 
     const validUntil = dto.validUntil ? new Date(dto.validUntil) : new Date(Date.now() + 30 * 86_400_000); // 30 days validity
 

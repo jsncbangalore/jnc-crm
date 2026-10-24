@@ -12,7 +12,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
-import { SuppliersService, CreateSupplierDto } from './suppliers.service';
+import { SuppliersService, CreateSupplierDto, UpdateSupplierDto } from './suppliers.service';
 
 @Controller('suppliers')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -27,6 +27,7 @@ export class SuppliersController {
   }
 
   @Get()
+  @PageAccess('suppliers', 'purchase_bills')
   findAll(
     @CurrentUser() user: ScopedUser,
     @Query('search') search?: string,
@@ -39,6 +40,7 @@ export class SuppliersController {
   }
 
   @Get(':id')
+  @PageAccess('suppliers', 'purchase_bills')
   findOne(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.suppliersService.findOne(id, user);
   }
@@ -47,7 +49,7 @@ export class SuppliersController {
   @Roles('tenant_admin', 'admin', 'sub_admin')
   update(
     @Param('id') id: string,
-    @Body() dto: Partial<CreateSupplierDto>,
+    @Body() dto: UpdateSupplierDto,
     @CurrentUser() user: ScopedUser,
   ) {
     return this.suppliersService.update(id, dto, user);

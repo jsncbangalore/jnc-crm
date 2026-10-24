@@ -54,13 +54,15 @@ export default function AdminSettingsPage({ initialTab = 'users' }: AdminSetting
           
           {/* Left: Company Branding */}
           <div className="flex items-center gap-2.5 shrink-0">
-            <div className="h-8 px-2 py-1 rounded-lg bg-white flex items-center justify-center shadow-xs border border-slate-200 dark:border-transparent shrink-0">
-              <img
-                src="/jnc-logo.jpg"
-                alt="JS Network Communication"
-                className="h-5 w-auto object-contain"
-              />
-            </div>
+            {branding.companyLogoUrl ? (
+              <div className="h-8 px-2 py-1 rounded-lg bg-white flex items-center justify-center shadow-xs border border-slate-200 dark:border-transparent shrink-0">
+                <img
+                  src={branding.companyLogoUrl}
+                  alt={branding.companyDisplayName}
+                  className="h-5 w-auto object-contain"
+                />
+              </div>
+            ) : null}
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white tracking-tight truncate max-w-[240px]">

@@ -47,6 +47,7 @@ export interface Tenant {
   lutBondNo?: string;
   lutValidity?: string;
   invoicePrefix?: string;
+  requireTwoFactor?: boolean;
   createdAt?: string;
   updatedAt?: string;
   _count?: {
@@ -73,11 +74,22 @@ export interface User {
   teamId?: string;
   team?: string;
   teamRef?: { id: string; name: string; allowedPages?: string };
+  effectivePages?: string[];
   warehouseId?: string;
   isActive: boolean;
   mustResetPassword?: boolean;
   lastLoginAt?: string;
   lastPasswordChangeAt?: string;
+  twoFactor?: {
+    method: 'totp' | 'email';
+    enabledAt: string;
+    hasBackupCodes: boolean;
+  } | null;
+  twoFactorGracePeriod?: {
+    active: boolean;
+    daysRemaining: number;
+    deadline: string;
+  } | null;
   createdById?: string;
   createdBy?: { id: string; name: string; employeeCode: string };
   createdAt?: string;
@@ -255,6 +267,8 @@ export interface BrandingSettings {
   companyDisplayName: string;
   companyPhone: string;
   companyLogoUrl: string | null;
+  privacyEmail?: string;
+  supportEmail?: string;
 }
 
 export type DocumentType = 'tax_invoice' | 'sez_invoice' | 'proforma_invoice' | 'delivery_challan' | 'credit_note' | 'purchase_order';
@@ -263,6 +277,7 @@ export interface CompanyInvoiceProfile {
   companyName: string;
   tradingName: string;
   logoUrl?: string;
+  address?: string;
   addressLine1: string;
   addressLine2: string;
   city: string;
@@ -359,6 +374,8 @@ export interface InvoiceLine {
 }
 
 export interface DashboardKpis {
+  period?: string;
+  periodLabel?: string;
   isPlatformOwner?: boolean;
   platformMetrics?: {
     totalCompanies: number;
@@ -373,35 +390,89 @@ export interface DashboardKpis {
     gstin: string | null;
     city: string | null;
   } | null;
-  leadsToday: {
-    total: number;
-    breakdown: {
-      indiamart: number;
-      web: number;
-      whatsapp: number;
-      manual: number;
-    };
+  kpis?: {
+    leads?: {
+      count: number;
+      changePct: number;
+      dailyAverage: string;
+      trend: number[];
+    } | null;
+    quotations?: {
+      openCount: number;
+      openValue: number;
+      expiringThisWeek: number;
+    } | null;
+    orders?: {
+      inProgressCount: number;
+    } | null;
+    invoices?: {
+      unpaidAmount: number;
+      overdueCount: number;
+    } | null;
+    revenue?: {
+      thisMonth: number;
+    } | null;
+    inventory?: {
+      lowStockCount: number;
+    } | null;
   };
-  pendingFollowUps: number;
-  ordersInTransit: number;
-  lowStockSkus: number;
-  activeSuppliers: number;
-  leadsByStatus: Record<string, number>;
-  leadTrend: Array<{
-    date: string;
-    indiamart: number;
-    web: number;
-    whatsapp: number;
-    manual: number;
-    total: number;
+  needsAttention?: Array<{
+    id: string;
+    type: 'setup' | 'low_stock' | 'expiring_quote' | 'overdue_invoice' | 'unassigned_lead';
+    text: string;
+    actionLabel: string;
+    actionLink: string;
   }>;
-  recentOrders: Array<{
+  leadsChart?: {
+    total: number;
+    dailyAverage: string;
+    sources: string[];
+    days: Array<{
+      date: string;
+      total: number;
+      [source: string]: number | string;
+    }>;
+  } | null;
+  pipeline?: {
+    total: number;
+    winRate: number;
+    periodLabel: string;
+    stages: Array<{
+      stage: string;
+      label: string;
+      count: number;
+      percent: number;
+      color: string;
+    }>;
+  } | null;
+  recentOrders?: Array<{
     id: string;
     orderNumber: string;
     customerName: string;
     totalAmount: number;
     status: OrderStatus;
     confirmedAt: string;
+  }> | null;
+  followUpsDue?: Array<{
+    id: string;
+    title: string;
+    customerName: string;
+    scheduledAt: string;
+    isOverdue: boolean;
+  }> | null;
+  leadsToday?: {
+    total: number;
+    breakdown?: Record<string, number>;
+  };
+  pendingFollowUps?: number;
+  ordersInTransit?: number;
+  lowStockSkus?: number;
+  activeSuppliers?: number;
+  leadsByStatus?: Record<string, number>;
+  leadTrend?: Array<{
+    date: string;
+    total: number;
+    [source: string]: number | string;
   }>;
 }
 
@@ -561,7 +632,7 @@ export interface DomainHealthResult {
     fix: string;
   };
   dkim: {
-    status: 'found' | 'missing' | 'invalid';
+    status: 'found' | 'not_found_common' | 'missing' | 'invalid';
     selector?: string;
     record?: string;
     fix: string;

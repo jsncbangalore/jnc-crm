@@ -17,6 +17,7 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { ActivitiesService } from './activities.service';
+import { PageAccess } from '../auth/page-access.decorator';
 import { CreateProjectDto, UpdateProjectDto, AssignMembersDto, UploadLogDto } from './dto/project.dto';
 import { validateUploadedFile } from '../common/file-validator';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -24,6 +25,7 @@ import * as XLSX from 'xlsx';
 
 @Controller('activities')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
+@PageAccess('daily_activities')
 @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer', 'employee')
 export class ActivitiesController {
   constructor(private readonly activitiesService: ActivitiesService) {}

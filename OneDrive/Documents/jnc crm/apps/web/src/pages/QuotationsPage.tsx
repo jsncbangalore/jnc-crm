@@ -3,16 +3,26 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, Plus, Search, RefreshCw, X, Check, Printer, ShoppingCart,
   DollarSign, Building2, Phone, Mail, MapPin, Calendar, Clock, Download,
-  ArrowRight, CheckCircle2, ChevronRight, Tag
+  ArrowRight, CheckCircle2, ChevronRight, ChevronDown, Tag
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { quotationsApi, inventoryApi } from '../services/api';
 import { Sku } from '../types';
+
+export const QUOTATION_STATUSES = [
+  { value: 'draft', label: 'Draft', color: 'bg-slate-100 text-slate-800 dark:bg-slate-700/40 dark:text-slate-300 border-slate-300 dark:border-slate-600/40' },
+  { value: 'sent', label: 'Sent', color: 'bg-blue-100 text-blue-800 dark:bg-crm-blue/20 dark:text-crm-blue-light border-blue-300 dark:border-crm-blue/30' },
+  { value: 'approved', label: 'Approved', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400 border-emerald-300 dark:border-emerald-500/30' },
+  { value: 'rejected', label: 'Rejected', color: 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-400 border-rose-300 dark:border-rose-500/30' },
+  { value: 'expired', label: 'Expired', color: 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 border-amber-300 dark:border-amber-500/30' },
+];
 import { useAuth } from '../contexts/AuthContext';
+import { useBranding } from '../contexts/BrandingContext';
 import { BRAND_CONFIG } from '../config/brand';
 import { format } from 'date-fns';
 import { executeDirectPrint } from '../utils/directPrint';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
+import CreateQuotationModal from '../components/quotations/CreateQuotationModal';
 
 interface QuotationLineItem {
   skuId: string;
@@ -25,6 +35,7 @@ interface QuotationLineItem {
 
 export default function QuotationsPage() {
   const { user } = useAuth();
+  const { branding } = useBranding();
   const [searchParams] = useSearchParams();
 
   const [quotations, setQuotations] = useState<any[]>([]);
@@ -86,6 +97,42 @@ export default function QuotationsPage() {
       setQuotations([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+
+  const handleStatusChange = async (quoteId: string, newStatus: string) => {
+    const prevQuote = quotations.find((q) => q.id === quoteId);
+    if (!prevQuote || prevQuote.status === newStatus) return;
+
+    // Optimistic UI update
+    setQuotations((prev) =>
+      prev.map((q) => (q.id === quoteId ? { ...q, status: newStatus } : q))
+    );
+    setUpdatingStatusId(quoteId);
+
+    try {
+      await quotationsApi.updateStatus(quoteId, newStatus);
+      setInAppPopup({
+        show: true,
+        type: 'success',
+        title: 'Status Updated',
+        message: `Quotation ${prevQuote.quoteNumber} status has been updated to ${newStatus.toUpperCase()}.`,
+      });
+    } catch (err: any) {
+      // Revert on error
+      setQuotations((prev) =>
+        prev.map((q) => (q.id === quoteId ? { ...q, status: prevQuote.status } : q))
+      );
+      setInAppPopup({
+        show: true,
+        type: 'error',
+        title: 'Failed to Update Status',
+        message: err?.response?.data?.message || err.message || 'Status could not be updated.',
+      });
+    } finally {
+      setUpdatingStatusId(null);
     }
   };
 
@@ -263,11 +310,14 @@ export default function QuotationsPage() {
         <div class="header" style="display: flex; justify-content: space-between; border-bottom: 2px solid #2E5EFF; padding-bottom: 12px; margin-bottom: 16px;">
           <div>
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-              <img src="/jnc-logo.jpg" alt="JNC Logo" style="max-height: 32px !important; max-width: 140px !important; width: auto !important; height: auto !important; object-fit: contain !important;" />
-              <h1 style="font-size: 18px; font-weight: 900; color: #2E5EFF; margin: 0;">${BRAND_CONFIG.displayName.toUpperCase()}</h1>
+              ${(q.tenant?.logoUrl || branding?.companyLogoUrl || BRAND_CONFIG.logoUrl) ? `
+                <img src="${q.tenant?.logoUrl || branding?.companyLogoUrl || BRAND_CONFIG.logoUrl}" alt="Logo" style="max-height: 32px !important; max-width: 140px !important; width: auto !important; height: auto !important; object-fit: contain !important;" />
+              ` : ''}
+              <h1 style="font-size: 18px; font-weight: 900; color: #2E5EFF; margin: 0;">${(q.tenant?.name || branding?.companyDisplayName || BRAND_CONFIG.displayName).toUpperCase()}</h1>
             </div>
-            <div style="font-size: 11px; color: #555;">Complete Security, PA & Power Automation Systems</div>
-            <div style="font-size: 11px; color: #555;">Email: info@jsnc.co.in | Web: www.jsnc.co.in</div>
+            ${(q.tenant?.email || q.tenant?.website) ? `
+              <div style="font-size: 11px; color: #555;">${q.tenant?.email ? `Email: ${q.tenant.email}` : ''}${q.tenant?.email && q.tenant?.website ? ' | ' : ''}${q.tenant?.website ? `Web: ${q.tenant.website}` : ''}</div>
+            ` : ''}
           </div>
           <div style="text-align: right;">
             <h2 style="margin: 0; font-size: 16px; color: #333;">PRICE QUOTATION</h2>
@@ -287,7 +337,7 @@ export default function QuotationsPage() {
           <div style="text-align: right;">
             <div><strong>Status:</strong> ${q.status.toUpperCase()}</div>
             <div><strong>Valid Until:</strong> ${format(new Date(q.validUntil), 'dd/MM/yyyy')}</div>
-            <div><strong>Prepared By:</strong> ${q.createdBy?.name || 'JNC Technical Team'}</div>
+            <div><strong>Prepared By:</strong> ${q.createdBy?.name || 'Sales Team'}</div>
           </div>
         </div>
 
@@ -396,7 +446,7 @@ export default function QuotationsPage() {
           </div>
 
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-1 rounded-xl border border-slate-200 dark:border-[#2A3042]">
-            {['all', 'draft', 'sent', 'approved'].map((st) => (
+            {['all', 'draft', 'sent', 'approved', 'rejected'].map((st) => (
               <button
                 key={st}
                 onClick={() => setStatusFilter(st)}
@@ -508,15 +558,40 @@ export default function QuotationsPage() {
                   ₹{(q.totalAmount || 0).toLocaleString('en-IN')}
                 </td>
                 <td className="whitespace-nowrap">
-                  <span className={`capitalize inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold whitespace-nowrap ${
-                    q.status === 'approved'
-                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30'
-                      : q.status === 'sent'
-                      ? 'bg-blue-100 text-blue-800 dark:bg-crm-blue/15 dark:text-crm-blue-light border border-blue-300 dark:border-crm-blue/30'
-                      : 'bg-slate-100 text-slate-800 dark:bg-slate-700/30 dark:text-slate-300 border border-slate-300 dark:border-slate-600/30'
-                  }`}>
-                    {q.status}
-                  </span>
+                  {(() => {
+                    const currentStatus = (q.status || 'draft').toLowerCase();
+                    const statusObj = QUOTATION_STATUSES.find((s) => s.value === currentStatus) || QUOTATION_STATUSES[0];
+                    const isUpdating = updatingStatusId === q.id;
+
+                    return (
+                      <div className="relative inline-flex items-center">
+                        <select
+                          value={currentStatus}
+                          disabled={isUpdating}
+                          onChange={(e) => handleStatusChange(q.id, e.target.value)}
+                          className={`appearance-none cursor-pointer pl-2.5 pr-6 py-1 rounded-full text-[11px] font-bold border transition-all outline-none focus:ring-2 focus:ring-crm-blue/30 disabled:opacity-60 shadow-sm ${statusObj.color}`}
+                          title="Click to edit and choose quotation status"
+                        >
+                          {QUOTATION_STATUSES.map((st) => (
+                            <option
+                              key={st.value}
+                              value={st.value}
+                              className="bg-white dark:bg-[#181B26] text-slate-900 dark:text-white font-semibold py-1"
+                            >
+                              {st.label}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute right-2 pointer-events-none flex items-center">
+                          {isUpdating ? (
+                            <RefreshCw size={10} className="animate-spin text-current opacity-80" />
+                          ) : (
+                            <ChevronDown size={11} className="opacity-70" />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td className="text-xs text-slate-800 dark:text-slate-400 font-bold">
                   {q.createdBy?.name || '—'}
@@ -548,241 +623,15 @@ export default function QuotationsPage() {
         </table>
       </div>
 
-      {/* ─── MODAL: Create Quotation ───────────────────────────────────────── */}
-      <AnimatePresence>
-        {showCreateModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden my-auto max-h-[90vh] flex flex-col"
-            >
-              <div className="p-5 border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230] flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-crm-amber/20 text-crm-amber flex items-center justify-center">
-                    <FileText size={20} />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-bold text-slate-950 dark:text-white">Create New Quotation</h2>
-                    <p className="text-xs text-slate-400">Generate GST-compliant price estimate for client</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowCreateModal(false)}
-                  className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white flex items-center justify-center"
-                >
-                  <X size={16} />
-                </button>
-              </div>
+      {/* ─── MODAL: Create Quotation (Shared component) ───────────────────── */}
+      <CreateQuotationModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={() => {
+          fetchQuotations();
+        }}
+      />
 
-              <form onSubmit={handleCreateSubmit} className="p-6 overflow-y-auto space-y-4 flex-1" autoComplete="off" data-lpignore="true">
-                {/* Client Info Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="label">Customer Name *</label>
-                    <input
-                      name="quote_cust_name"
-                      autoComplete="off"
-                      className="input text-xs"
-                      placeholder="Enter customer name"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Mobile Number *</label>
-                    <input
-                      name="quote_cust_phone"
-                      autoComplete="off"
-                      className="input text-xs font-mono"
-                      placeholder="Enter phone number"
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Company / Organization</label>
-                    <input
-                      name="quote_cust_company"
-                      autoComplete="off"
-                      className="input text-xs"
-                      placeholder="Enter company name"
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="label">Email Address</label>
-                    <input
-                      type="email"
-                      className="input text-xs"
-                      placeholder="contact@company.com"
-                      value={customerEmail}
-                      onChange={(e) => setCustomerEmail(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Delivery Location / City</label>
-                    <input
-                      className="input text-xs"
-                      placeholder="Enter city or location"
-                      value={shippingAddress}
-                      onChange={(e) => setShippingAddress(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">GST Rate (%)</label>
-                    <select
-                      className="input text-xs font-bold"
-                      value={taxRate}
-                      onChange={(e) => setTaxRate(parseFloat(e.target.value) || 18.0)}
-                    >
-                      <option value="18">18% GST (Standard)</option>
-                      <option value="12">12% GST</option>
-                      <option value="28">28% GST</option>
-                      <option value="5">5% GST</option>
-                      <option value="0">0% (Exempt)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Line Items Builder */}
-                <div className="pt-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-bold text-slate-300">Quotation Line Items</label>
-                    <button
-                      type="button"
-                      onClick={handleAddLine}
-                      className="btn-ghost text-xs text-crm-amber hover:bg-crm-amber/10 gap-1"
-                    >
-                      <Plus size={13} /> Add Product Row
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {lines.map((line, idx) => (
-                      <div key={idx} className="flex items-center gap-2 bg-slate-100 dark:bg-[#141722] p-2.5 rounded-xl border border-slate-200 dark:border-[#2A3042]">
-                        <div className="flex-1 relative">
-                          <input
-                            list={`sku-list-${idx}`}
-                            className="input text-xs font-medium"
-                            placeholder="Type product name or select from catalog..."
-                            value={line.name}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              handleLineChange(idx, 'name', val);
-                              const matched = skus.find((s) => `${s.skuCode} - ${s.name}` === val || s.name === val || s.skuCode === val);
-                              if (matched) {
-                                handleSelectSku(idx, matched);
-                              }
-                            }}
-                            required
-                          />
-                          <datalist id={`sku-list-${idx}`}>
-                            {skus.map((s) => (
-                              <option key={s.id} value={`${s.skuCode} - ${s.name}`}>
-                                ₹{s.unitPrice}
-                              </option>
-                            ))}
-                          </datalist>
-                        </div>
-
-                        <div className="w-20">
-                          <input
-                            type="number"
-                            min="1"
-                            className="input text-xs text-center font-bold"
-                            placeholder="Qty"
-                            value={line.quantity}
-                            onChange={(e) => handleLineChange(idx, 'quantity', parseInt(e.target.value) || 1)}
-                            required
-                          />
-                        </div>
-
-                        <div className="w-28">
-                          <input
-                            type="number"
-                            min="0"
-                            className="input text-xs text-right font-mono"
-                            placeholder="Price"
-                            value={line.unitPrice}
-                            onChange={(e) => handleLineChange(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
-                            required
-                          />
-                        </div>
-
-                        <div className="w-28 text-right font-mono font-bold text-xs text-crm-amber">
-                          ₹{Math.max(0, (line.quantity * line.unitPrice) - (line.discount || 0)).toLocaleString('en-IN')}
-                        </div>
-
-                        {lines.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLine(idx)}
-                            className="p-1 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400"
-                          >
-                            <X size={14} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Summary & Terms */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-200 dark:border-[#2A3042]">
-                  <div>
-                    <label className="label">Terms & Conditions</label>
-                    <textarea
-                      className="input text-xs w-full min-h-[70px] resize-none"
-                      value={terms}
-                      onChange={(e) => setTerms(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042] space-y-1.5 text-xs font-mono">
-                    <div className="flex justify-between text-slate-400">
-                      <span>Subtotal:</span>
-                      <span>₹{calcSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-400">
-                      <span>GST ({taxRate}%):</span>
-                      <span>₹{calcTax().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex justify-between text-sm font-black text-crm-amber border-t border-slate-200 dark:border-[#2A3042] pt-1">
-                      <span>Total Quote Amount:</span>
-                      <span>₹{calcTotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-[#2A3042]">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="btn-ghost text-xs"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="btn bg-crm-amber hover:bg-crm-amber-hover text-black font-bold text-xs px-6 shadow-glow-amber"
-                  >
-                    {submitting ? 'Generating Quote...' : 'Generate Quotation'}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* ─── IN-APP NOTIFICATION & CONFIRMATION MODAL ───────────────────────── */}
       <AnimatePresence>

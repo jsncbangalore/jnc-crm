@@ -12,10 +12,10 @@ let Client;
 try {
   Client = require('pg').Client;
 } catch {
-  Client = require('C:/Users/JNC R&D/.gemini/antigravity/brain/35af9003-1b6b-4a84-aff8-4a7e38775824/scratch/pg-runner/node_modules/pg').Client;
+  Client = class MockClient {};
 }
 
-const secretsPath = 'C:\\dev\\jnc-secrets\\live.env';
+const secretsPath = process.env.SECRETS_FILE || path.resolve(__dirname, "../.env");
 const secrets = {};
 
 if (fs.existsSync(secretsPath)) {
@@ -77,6 +77,30 @@ const host = parsedUrl.hostname;
 const port = parsedUrl.port || '5432';
 const dbName = parsedUrl.pathname.replace(/^\//, '') || 'postgres';
 
+function getPgSslConfig(urlStr) {
+  let sslmode = 'require';
+  try {
+    const parsed = new URL(urlStr);
+    const mode = parsed.searchParams.get('sslmode');
+    if (mode) sslmode = mode.toLowerCase();
+  } catch {}
+
+  if (sslmode === 'disable') {
+    return false;
+  }
+
+  const sslConfig = {
+    rejectUnauthorized: true,
+  };
+
+  const caPath = process.env.PG_CA_FILE || process.env.NODE_EXTRA_CA_CERTS;
+  if (caPath && fs.existsSync(caPath)) {
+    sslConfig.ca = fs.readFileSync(caPath, 'utf8');
+  }
+
+  return sslConfig;
+}
+
 if (!directUrl.includes('sslmode=')) {
   directUrl += (directUrl.includes('?') ? '&' : '?') + 'sslmode=require';
 }
@@ -85,7 +109,7 @@ async function runPreflight() {
   const cleanUrl = directUrl.replace(/[\?\&]sslmode=[^&]+/g, '');
   const client = new Client({
     connectionString: cleanUrl,
-    ssl: { rejectUnauthorized: false },
+    ssl: getPgSslConfig(directUrl),
   });
 
   try {
@@ -106,7 +130,7 @@ async function runPreflight() {
     const maskedHost = host.replace(/^[a-zA-Z0-9_-]+/, (m) => m.substring(0, 4) + '***' + m.substring(m.length - 4));
 
     console.log('========================================================================');
-    console.log('JNC-CRM DATABASE PREFLIGHT CHECK (LIVE SUPABASE)');
+    console.log('CRM DATABASE PREFLIGHT CHECK (LIVE SUPABASE)');
     console.log('========================================================================');
     console.log(`Host:             ${maskedHost}`);
     console.log(`Port:             ${port}`);

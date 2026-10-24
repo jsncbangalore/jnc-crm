@@ -11,7 +11,7 @@ const { execSync } = require('child_process');
 
 function generateReportX() {
   const rootDir = path.resolve(__dirname, '..');
-  const targetDir = 'C:\\dev\\jnc-crm\\evidence';
+  const targetDir = path.join(rootDir, 'evidence');
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
@@ -19,9 +19,9 @@ function generateReportX() {
   const now = new Date().toISOString();
 
   let content = `================================================================================
-JNC-CRM GOVERNANCE, SECURITY & REHEARSAL VERIFICATION REPORT X
+CRM GOVERNANCE, SECURITY & REHEARSAL VERIFICATION REPORT X
 GENERATED AT: ${now}
-WORKING DIRECTORY: C:\\dev\\jnc-crm
+WORKING DIRECTORY: ${rootDir}
 ================================================================================
 
 `;
@@ -32,8 +32,8 @@ SECTION 1: FOLDER GUARD REFUSAL VERIFICATION
 --------------------------------------------------------------------------------
 `;
   try {
-    const refusalOutput = execSync('node "C:\\dev\\jnc-crm\\scripts\\live-reset-account.js" --role owner --rehearse', {
-      cwd: 'c:\\Users\\JNC R&D\\OneDrive\\Documents\\jnc crm',
+    const refusalOutput = execSync('node scripts/live-reset-account.js --role owner --rehearse', {
+      cwd: rootDir,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -49,7 +49,7 @@ SUMMARY (not a command output)
 --------------------------------------------------------------------------------
 SUMMARY (not a command output):
 In report-2026-10-08w.txt, the output for live-reset-account rehearsal printed values
-such as 'admin@jsnc.co.in', 'EMP001', 'JNC-ORG-001', and IDs like 'usr-owner-0000-...'.
+such as 'admin@example.com', 'EMP001', 'ORG-001', and IDs like 'usr-owner-0000-...'.
 These values came from a MOCK FALLBACK in the script that triggered because the live
 database connection to aws-0-ap-south-1.pooler.supabase.com was unreachable / unauthenticated.
 The mock values did NOT reflect real records in the database.
@@ -114,7 +114,7 @@ SECTION 5: STAGING ENVIRONMENT COMMANDS & PROJECT REF REFUSAL TESTS
   // Test B: Live command with Staging DB URL
   content += `--- TEST B: Live command executed with Staging DB URL ---\n`;
   try {
-    const testB = execSync('cmd.exe /c "set TEST_DB_URL=postgresql://postgres.staging-jnc-ref-001:pass@aws-0-ap-south-1.pooler.supabase.com:6543/postgres && node scripts/staging-cmd.js migrate live"', {
+    const testB = execSync('cmd.exe /c "set TEST_DB_URL=postgresql://postgres.staging-ref-001:pass@aws-0-ap-south-1.pooler.supabase.com:6543/postgres && node scripts/staging-cmd.js migrate live"', {
       cwd: rootDir,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],

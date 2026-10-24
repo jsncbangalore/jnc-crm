@@ -367,7 +367,7 @@ export default function PlatformAdminsPage() {
                   <input
                     type="email"
                     className="input text-xs font-mono"
-                    placeholder="admin@jsnc.co.in"
+                    placeholder="admin@example.com"
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                     required
@@ -379,7 +379,7 @@ export default function PlatformAdminsPage() {
                   <input
                     type="text"
                     className="input text-xs"
-                    placeholder="+91 9845012345"
+                    placeholder="Phone Number"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   />

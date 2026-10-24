@@ -49,7 +49,7 @@ try {
       encoding: 'utf8',
       env: {
         ...process.env,
-        VERIFY_EMAIL: 'tenantadmin@jsnc.co.in',
+        VERIFY_EMAIL: 'tenantadmin@example.com',
         VERIFY_PASSWORD: 'K7#xV9$mP2!qL5*w',
       },
     }
@@ -64,11 +64,11 @@ const gitStatus = execSync('git status --short', { cwd: REPO_ROOT, encoding: 'ut
 
 // 5. Build full text report
 const reportContent = `================================================================================
-JNC-CRM POST-DEPLOYMENT INTEGRITY & SECURITY REPORT (SESSION 2026-10-04L)
+CRM POST-DEPLOYMENT INTEGRITY & SECURITY REPORT (SESSION 2026-10-04L)
 ================================================================================
 Generated At: 2026-10-05T12:20:00+05:30
-Repository:   C:\\dev\\jnc-crm
-Target Database: Local Development DB (jnc_crm_dev on 127.0.0.1:5432)
+Repository:   C:\\dev\\crm
+Target Database: Local Development DB (crm_dev on 127.0.0.1:5432)
 Operating Principles:
  - Strictly LOCAL operations (no remote database touch, no remote push)
  - Single entry / localized modifications
@@ -96,7 +96,7 @@ TABLE OF CONTENTS
    4.2 Full Raw Output of verify:live with Login Check & Rate Limit Note
    4.3 Mobile Data vs. Wi-Fi Shared Throttling Diagnostic Procedure
 5. PRODUCTION RELEASE PACKAGING & WEB BUNDLE PROOF
-   5.1 Clean Build & Release Scan Results (jnc-api-bundle.zip & jnc-web-dist.zip)
+   5.1 Clean Build & Release Scan Results (api-bundle.zip & crm-web-dist.zip)
    5.2 Raw Playwright Proof of Web Bundle from Zip (test 3b)
 6. LOCAL GIT REPOSITORY STATE & COMMIT STATUS
 ================================================================================
@@ -119,7 +119,7 @@ application that originates from or interacts with the API:
 | Scanned Bill Documents  | PurchaseBillsHub (View Scan)              | GET /api/v1/inventory/purchase-documents/:filename      | fetchPrivateFileBlobUrl() -> createObjectURL() | Private (401 unauth), CORP: cross-origin, Cache: no-store   |
 | Digital Soft Copy Invoices| DigitalSoftCopyModal (Original Doc View)| GET /api/v1/inventory/purchase-documents/:filename      | fetchPrivateFileBlobUrl() -> createObjectURL() | Private (401 unauth), CORP: cross-origin, Cache: no-store   |
 | Scanned OCR Uploads     | SmartBillScannerModal                     | In-memory File reader preview / multipart POST upload   | data:image/png;base64,... or blob:             | Client-side in-memory preview during OCR scanning           |
-| Static App Brand Marks  | Invoices, Fallback Logos                  | /jnc-logo.jpg, /favicon.svg, /assets/*                  | Static web bundle files                        | Public static assets bundled with the frontend dist         |
+| Static App Brand Marks  | Invoices, Fallback Logos                  | /logo.svg, /favicon.svg, /assets/*                      | Static web bundle files                        | Public static assets bundled with the frontend dist         |
 
 1.2 SECURITY POLICY RULES: PUBLIC BRANDING VS. PRIVATE PROTECTED FILES
 --------------------------------------------------------------------------------
@@ -132,7 +132,7 @@ A. Public Branding Images (Logo, Stamp):
      * Cache-Control: public, max-age=86400, stale-while-revalidate=604800
    - Contain zero private or sensitive information.
    - Can be safely referenced directly inside <img src="..."> tags across origins
-     (e.g. https://admin.jsnc.co.in embedding https://api.jsnc.co.in/api/v1/settings/branding/logo).
+     (e.g. https://admin.example.com embedding https://api.example.com/api/v1/settings/branding/logo).
 
 B. Private Protected Files (Purchase Documents, Bills, Attachments):
    - Served from authenticated routes:
@@ -152,8 +152,8 @@ B. Private Protected Files (Purchase Documents, Bills, Attachments):
 1.3 HELMET CORP CONFIGURATION & PUBLIC ROUTE OVERRIDES
 --------------------------------------------------------------------------------
 Helmet was previously set to Cross-Origin-Resource-Policy: same-origin by default,
-which caused web browsers on admin.jsnc.co.in to refuse to render any images served
-by api.jsnc.co.in.
+which caused web browsers on admin.example.com to refuse to render any images served
+by api.example.com.
 
 Changes Made in apps/api/src/main.ts:
 \`\`\`typescript
@@ -211,7 +211,7 @@ generator client {
 
 2.2 STANDALONE BUNDLE EXTRACTION & QUERY ENGINE INVENTORY
 --------------------------------------------------------------------------------
-Extracted deploy-release/jnc-api-bundle.zip into clean directory and executed:
+Extracted deploy-release/api-bundle.zip into clean directory and executed:
   npm install --omit=dev
 
 All 6 targets were compiled and downloaded into the standalone bundle:
@@ -245,7 +245,7 @@ Recovery procedure:
    binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x", "rhel-openssl-3.0.x", "rhel-openssl-1.0.x", "linux-musl-openssl-3.0.x", "<named-target>"]
 3. Re-run local release packager:
    npm run release:pack
-4. Upload updated deploy-release/jnc-api-bundle.zip to Hostinger, click "NPM Install", and restart.
+4. Upload updated deploy-release/api-bundle.zip to Hostinger, click "NPM Install", and restart.
 
 
 ========================================================================
@@ -262,7 +262,7 @@ with Docker:
   npm run bundle:test-linux
 
 The test script:
-1. Unpacks deploy-release/jnc-api-bundle.zip into a temporary workspace.
+1. Unpacks deploy-release/api-bundle.zip into a temporary workspace.
 2. Mounts it inside a clean Linux container (node:20-alpine or node:20-bookworm).
 3. Executes npm install --omit=dev.
 4. Verifies query engine resolution.
@@ -271,17 +271,17 @@ The test script:
 3.2 STEP-BY-STEP HOSTINGER STAGING CHECK RUNBOOK
 --------------------------------------------------------------------------------
 Documented in deploy/GO-LIVE.md under Section 5:
-1. Create staging subdomain staging-api.jsnc.co.in in Hostinger hPanel.
-2. In hPanel -> Node.js Web Applications, create an application for staging-api.jsnc.co.in:
+1. Create staging subdomain staging-api.example.com in Hostinger hPanel.
+2. In hPanel -> Node.js Web Applications, create an application for staging-api.example.com:
    - Node.js 20.x LTS
    - Startup file: start_server.js
-3. In File Manager, extract deploy-release/jnc-api-bundle.zip into staging root.
+3. In File Manager, extract deploy-release/api-bundle.zip into staging root.
 4. Set staging environment variables (DATABASE_URL, JWT_SECRET, PORT=3000, etc.).
 5. Click "Install NPM Packages" (or run npm install --omit=dev).
 6. Verify Health & Security:
-   - curl -i https://staging-api.jsnc.co.in/api/v1/auth/me -> Returns 401 Unauthorized with security headers.
-   - curl -i https://staging-api.jsnc.co.in/api/v1/settings/branding -> Returns 200 OK with company branding JSON.
-7. Once verified, deploy to the primary api.jsnc.co.in with complete zero-downtime confidence.
+   - curl -i https://staging-api.example.com/api/v1/auth/me -> Returns 401 Unauthorized with security headers.
+   - curl -i https://staging-api.example.com/api/v1/settings/branding -> Returns 200 OK with company branding JSON.
+7. Once verified, deploy to the primary api.example.com with complete zero-downtime confidence.
 
 
 ========================================================================
@@ -296,14 +296,14 @@ The verify-live.js utility was enhanced with two flags:
    - Executes live POST /auth/login with Origin header.
    - Validates response: HTTP 200, accessToken received (masked as <MASKED>).
    - Validates CORS response: Access-Control-Allow-Origin equals webOrigin, Access-Control-Allow-Credentials: true.
-   - Validates Session Cookie attributes on jnc_refresh_token:
+   - Validates Session Cookie attributes on crm_refresh_token:
      * HttpOnly: present
      * Secure: present (or omitted with notice in --allow-insecure mode)
      * SameSite=Strict: present
      * Path=/api/v1/auth: present
    - Validates Rate-Limit headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset.
    - Executes live POST /auth/logout probe with authorization header and cookie to revoke token and clear session on server.
-   - Secret Masking: NEVER prints passwords or tokens. Emails are masked (te***@jsnc.co.in).
+   - Secret Masking: NEVER prints passwords or tokens. Emails are masked (te***@example.com).
 
 2. --rate-limit-note:
    - Prints remaining rate limit counter.
@@ -312,7 +312,7 @@ The verify-live.js utility was enhanced with two flags:
 4.2 FULL RAW OUTPUT OF verify:live WITH LOGIN CHECK & RATE LIMIT NOTE
 --------------------------------------------------------------------------------
 Command:
-  $env:VERIFY_EMAIL = 'tenantadmin@jsnc.co.in'
+  $env:VERIFY_EMAIL = 'tenantadmin@example.com'
   $env:VERIFY_PASSWORD = '<MASKED>'
   node scripts/verify-live.js --web http://localhost:5173 --api http://localhost:3333 --allow-insecure --login-check --rate-limit-note
 
@@ -344,8 +344,8 @@ ${verifyLiveOutput.trim()}
 Command: npm run release:pack
 
 Output Summary:
- - deploy-release/jnc-api-bundle.zip (Standalone API bundle, dist + prisma + assets + package.json + start_server.js)
- - deploy-release/jnc-web-dist.zip (Production Web dist + production .htaccess)
+ - deploy-release/api-bundle.zip (Standalone API bundle, dist + prisma + assets + package.json + start_server.js)
+ - deploy-release/crm-web-dist.zip (Production Web dist + production .htaccess)
  - Security Scan Assertions:
    * .env file absence in archives                                 : PASS
    * Zero *.map files in archives                                  : PASS
@@ -362,8 +362,8 @@ Output Summary:
 5.2 RAW PLAYWRIGHT PROOF OF WEB BUNDLE FROM ZIP (TEST 3b)
 --------------------------------------------------------------------------------
 Command: node scripts/test-prove-web-bundle.js
-Verifies: Clean extraction of jnc-web-dist.zip, static serving, Chromium Playwright execution,
-zero CSP console violations, theme script hash execution, and strict API routing to https://api.jsnc.co.in/api/v1.
+Verifies: Clean extraction of crm-web-dist.zip, static serving, Chromium Playwright execution,
+zero CSP console violations, theme script hash execution, and strict API routing to https://api.example.com/api/v1.
 
 RAW EXECUTION OUTPUT:
 ${proveWebOutput.trim()}

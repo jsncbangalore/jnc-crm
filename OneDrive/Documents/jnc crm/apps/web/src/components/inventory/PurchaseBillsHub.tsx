@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { canStore } from '../../utils/cookieConsent';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText,
@@ -51,15 +52,22 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  // KPI display toggle (persisted)
+  // KPI display toggle (persisted if consented)
   const [showBillsKpis, setShowBillsKpis] = useState<boolean>(() => {
-    return localStorage.getItem('jnc_show_bills_kpis') !== 'false';
+    if (canStore('preferences')) {
+      return localStorage.getItem('crm_show_bills_kpis') !== 'false';
+    }
+    return true;
   });
 
   const toggleBillsKpis = () => {
     setShowBillsKpis((prev) => {
       const next = !prev;
-      localStorage.setItem('jnc_show_bills_kpis', String(next));
+      if (canStore('preferences')) {
+        try {
+          localStorage.setItem('crm_show_bills_kpis', String(next));
+        } catch {}
+      }
       return next;
     });
   };

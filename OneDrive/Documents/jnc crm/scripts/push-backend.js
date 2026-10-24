@@ -11,8 +11,8 @@ const path = require('path');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const API_DIR = path.join(REPO_ROOT, 'apps/api');
-const TARGET_REPO = path.join(process.env.TEMP, 'jnc_backend_repo');
-const REMOTE_URL = 'https://github.com/jsncbangalore/jnc_crm_backend.git';
+const TARGET_REPO = path.join(process.env.TEMP || '.', 'backend_repo');
+const REMOTE_URL = process.env.BACKEND_GIT_REMOTE || '';
 
 function run(cmd, cwd = TARGET_REPO) {
   console.log(`> (${path.basename(cwd)}) ${cmd}`);
@@ -38,7 +38,7 @@ function copyRecursiveSync(src, dest) {
 
 try {
   console.log('========================================================================');
-  console.log('JNC-CRM STANDALONE BACKEND SYNC & PUSH (node scripts/push-backend.js)');
+  console.log('CRM STANDALONE BACKEND SYNC & PUSH (node scripts/push-backend.js)');
   console.log(`Target Repo: ${TARGET_REPO}`);
   console.log(`Remote: ${REMOTE_URL}`);
   console.log('========================================================================\n');
@@ -86,10 +86,10 @@ try {
   // Generate standalone package.json
   const apiPkg = JSON.parse(fs.readFileSync(path.join(API_DIR, 'package.json'), 'utf8'));
   const standalonePkg = {
-    name: 'jnc-crm-api',
+    name: 'crm-api',
     version: '1.0.0',
     private: true,
-    description: 'JNC CRM API - Standalone Hostinger Web App Deployment Bundle',
+    description: 'CRM API - Standalone Hostinger Web App Deployment Bundle',
     scripts: {
       start: 'node start_server.js',
       postinstall: 'prisma generate',
@@ -123,7 +123,7 @@ try {
     const commitMsg = process.argv[2] || 'feat(webhooks): website form settings, dynamic branding, products catalog, and iframe embed support';
     run(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`);
     run('git push origin main');
-    console.log('\n[SUCCESS] Successfully pushed backend changes to https://github.com/jsncbangalore/jnc_crm_backend.git (branch main)');
+    console.log(`\n[SUCCESS] Successfully pushed backend changes to ${REMOTE_URL} (branch main)`);
   }
 } catch (err) {
   console.error('\n[FATAL ERROR] Backend sync & push failed:', err.message);

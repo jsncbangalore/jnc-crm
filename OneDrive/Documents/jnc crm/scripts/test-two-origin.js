@@ -70,12 +70,12 @@ async function main() {
       let html = fs.readFileSync(filePath, 'utf8');
       // Augment CSP meta tag for two-origin local testing against Origin B (port 3333)
       html = html.replace(
-        "connect-src 'self' https://api.jsnc.co.in;",
-        "connect-src 'self' http://localhost:3333 https://api.jsnc.co.in;"
+        /connect-src\s+([^;]+);/i,
+        "connect-src $1 http://localhost:3333;"
       );
       html = html.replace(
-        "img-src 'self' data: blob: https://api.jsnc.co.in;",
-        "img-src 'self' data: blob: http://localhost:3333 https://api.jsnc.co.in;"
+        /img-src\s+([^;]+);/i,
+        "img-src $1 http://localhost:3333;"
       );
       res.writeHead(200, { 'Content-Type': 'text/html; charset=UTF-8' });
       return res.end(html);
@@ -103,7 +103,7 @@ async function main() {
   const context = await browser.newContext();
   await context.addInitScript(() => {
     try {
-      sessionStorage.setItem('jnc_origin_b', '3333');
+      sessionStorage.setItem('crm_origin_b', '3333');
       window.__ORIGIN_B__ = true;
     } catch {}
   });
@@ -151,7 +151,7 @@ async function main() {
   await page.goto(`http://localhost:${WEB_PORT}/login`, { waitUntil: 'networkidle' });
 
   // Locate company logo
-  const logoSelector = 'img[alt="JS Network Communication"], img[alt*="JNC"]';
+  const logoSelector = 'img[alt], [data-testid="company-logo"]';
   await page.waitForSelector(logoSelector, { timeout: 5000 });
   const logoInfo = await page.$eval(logoSelector, (img) => ({
     src: img.src,
@@ -167,8 +167,8 @@ async function main() {
 
   // Check 3: Staff Login
   console.log(' -> Check C: Performing staff login ...');
-  await page.fill('#identifier', 'tenantadmin@jsnc.co.in');
-  await page.fill('#password', 'K7#xV9$mP2!qL5*w');
+  await page.fill('#identifier', process.env.TEST_USER_EMAIL || 'tenantadmin@example.com');
+  await page.fill('#password', process.env.TEST_USER_PASSWORD || 'SecurePass123!');
   await page.click('button[type="submit"]');
 
   // Wait for login redirect

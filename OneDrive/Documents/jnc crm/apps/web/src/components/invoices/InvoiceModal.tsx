@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Printer, Mail, Ban, CheckCircle2, AlertTriangle, FileText,
   ShieldCheck, Send, Check, Eye, Layers, Truck, FileSpreadsheet, Download,
-  CreditCard, Edit3
+  CreditCard, Edit3, ZoomIn, ZoomOut, Maximize2
 } from 'lucide-react';
 import { Invoice, SignatorySettings, DocumentType, CompanyInvoiceProfile } from '../../types';
 import { invoicesApi } from '../../services/api';
@@ -121,8 +121,15 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   // Payment Recording Modal
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
-  // JNC Direct Printer Connection Modal
+  // Direct Printer Connection Modal
   const [showDirectPrintModal, setShowDirectPrintModal] = useState(false);
+
+  // Zoom State for Preview (Default 0.8 / 80% so full A4 document fits on screen)
+  const [zoom, setZoom] = useState<number>(0.8);
+  const handleZoomIn = () => setZoom((prev) => Math.min(1.5, Number((prev + 0.1).toFixed(2))));
+  const handleZoomOut = () => setZoom((prev) => Math.max(0.5, Number((prev - 0.1).toFixed(2))));
+  const handleResetZoom = () => setZoom(1);
+  const handleFitPage = () => setZoom(0.8);
 
   if (!invoice) return null;
 
@@ -142,7 +149,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   const invoiceLogo =
     rawLogo && typeof rawLogo === 'string' && !rawLogo.startsWith('data:') && rawLogo.trim() !== ''
       ? rawLogo
-      : '/jnc-logo.jpg';
+      : '';
 
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
@@ -259,6 +266,23 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   const advancePercent = invoice.advancePercent || 50;
   const advanceAmount = invoice.advanceAmount || Number(((effectiveTotal * advancePercent) / 100).toFixed(2));
 
+  // Compute exact totals row count for seamless A4 table layout without stray horizontal lines
+  const hasAdvanceAdjusted = !isProforma && !isDC && !isCreditNote && Number(invoice.advanceAdjusted || 0) > 0;
+  let totalsRowCount = 1; // Sub Total row
+  if (isSEZ || isInterState) {
+    totalsRowCount += 1;
+  } else {
+    totalsRowCount += 2; // CGST + SGST
+  }
+  if (isProforma) {
+    totalsRowCount += 2; // Advance + Balance
+  }
+  totalsRowCount += 1; // Round off
+  totalsRowCount += 1; // Total
+  if (hasAdvanceAdjusted) {
+    totalsRowCount += 2; // Less Advance + Net Balance Due
+  }
+
   // Format date helper: DD-MM-YYYY
   const formatDateDMY = (dateStr?: string) => {
     if (!dateStr) return '-';
@@ -284,10 +308,10 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
           initial={{ opacity: 0, scale: 0.95, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 16 }}
-          className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-5xl max-h-[96vh] flex flex-col shadow-2xl overflow-hidden my-auto print:border-none print:shadow-none print:max-h-none print:max-w-none print:w-full print:bg-white print:text-black print:rounded-none print:static print:m-0 print:overflow-visible"
+          className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-5xl h-[94vh] max-h-[94vh] flex flex-col shadow-2xl overflow-hidden my-auto print:border-none print:shadow-none print:max-h-none print:h-auto print:max-w-none print:w-full print:bg-white print:text-black print:rounded-none print:static print:m-0 print:overflow-visible"
         >
           {/* Header Action Bar (Hidden when printing) */}
-          <div className="flex items-center justify-between p-3 sm:p-4 border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230] print:hidden flex-wrap gap-2">
+          <div className="flex items-center justify-between p-3 sm:p-4 border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230] print:hidden flex-wrap gap-2 shrink-0">
             <div className="flex items-center gap-2">
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                 isDC ? 'bg-teal-50 dark:bg-crm-teal/20 text-teal-700 dark:text-crm-teal border border-teal-200 dark:border-transparent' : isProforma ? 'bg-blue-50 dark:bg-crm-blue/20 text-blue-700 dark:text-crm-blue border border-blue-200 dark:border-transparent' : isCreditNote ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-transparent' : isPO ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-transparent' : isSEZ ? 'bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-transparent' : 'bg-amber-50 dark:bg-crm-amber/20 text-amber-700 dark:text-crm-amber border border-amber-200 dark:border-transparent'
@@ -382,7 +406,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
               <button
                 onClick={handlePrint}
                 className="btn bg-white dark:bg-white/10 hover:bg-slate-100 dark:hover:bg-white/20 text-slate-800 dark:text-white border border-slate-300 dark:border-transparent text-xs gap-1.5 py-1.5 font-bold shadow-sm"
-                title="Direct Printer Connection (JNC Hub & Options)"
+                title="Direct Printer Connection"
               >
                 <Printer size={13} className="text-crm-blue" /> Direct Print
               </button>
@@ -466,33 +490,86 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
           {/* ════════════════════════════════════════════════════════════════════════════
               EXACT INVOICE A4 PAPER TEMPLATE (FULL SCREEN ON MONITOR & EXACT 1-PAGE PRINT A4)
              ════════════════════════════════════════════════════════════════════════════ */}
-          <div className="p-3 sm:p-6 overflow-y-auto bg-[#0B0D14] flex-1 print:bg-white print:p-0 print:m-0 print:overflow-visible flex justify-center">
-            {isPO ? (
-              /* ════════════════════════════════════════════════════════════════════════════
-                 EXACT PURCHASE ORDER (PO) A4 PAPER TEMPLATE (MATCHING BUSINESS PDF)
-                 ════════════════════════════════════════════════════════════════════════════ */
-              <div id="printable-tax-invoice" className="w-full max-w-[794px] mx-auto bg-white text-black font-sans text-[11px] leading-[1.3] shadow-2xl border-[1.5px] border-black print:border-black print:shadow-none print:max-w-none print:w-[210mm] p-6 flex flex-col justify-between min-h-[1050px]">
+          <div className="p-3 sm:p-6 overflow-y-auto min-h-0 flex-1 bg-[#0B0D14] flex flex-col items-center print:bg-white print:p-0 print:m-0 print:overflow-visible relative">
+            {/* Floating Zoom & Fit Toolbar */}
+            <div className="sticky top-0 z-20 mb-3 flex items-center gap-1.5 bg-slate-900/90 text-white backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-700/60 shadow-xl print:hidden text-xs">
+              <button
+                onClick={handleZoomOut}
+                disabled={zoom <= 0.5}
+                className="p-1 rounded-full hover:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+                title="Zoom Out (-)"
+              >
+                <ZoomOut size={14} />
+              </button>
+              <span className="font-mono text-[11px] font-bold px-1.5 min-w-[42px] text-center text-slate-200">
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                onClick={handleZoomIn}
+                disabled={zoom >= 1.5}
+                className="p-1 rounded-full hover:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+                title="Zoom In (+)"
+              >
+                <ZoomIn size={14} />
+              </button>
+              <div className="h-3.5 w-px bg-slate-700 mx-1" />
+              <button
+                onClick={handleFitPage}
+                className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-all ${
+                  zoom === 0.8 ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+                title="Fit Entire Page on Screen (80%)"
+              >
+                Fit Page
+              </button>
+              <button
+                onClick={handleResetZoom}
+                className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-all ${
+                  zoom === 1 ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+                title="Original 100% Size"
+              >
+                100%
+              </button>
+            </div>
+
+            {/* Scaled Document Wrapper */}
+            <div
+              style={{
+                transform: `scale(${zoom})`,
+                transformOrigin: 'top center',
+                marginBottom: zoom !== 1 ? `${Math.round((isPO ? 1050 : 1120) * (zoom - 1))}px` : undefined,
+              }}
+              className="transition-transform duration-150 ease-out print:transform-none print:m-0 flex justify-center w-full"
+            >
+              {isPO ? (
+                /* ════════════════════════════════════════════════════════════════════════════
+                   EXACT PURCHASE ORDER (PO) A4 PAPER TEMPLATE (MATCHING BUSINESS PDF)
+                   ════════════════════════════════════════════════════════════════════════════ */
+                <div id="printable-tax-invoice" className="w-full max-w-[794px] mx-auto bg-white text-black font-sans text-[11px] leading-[1.3] shadow-2xl box-border border-2 border-black print:border-black print:shadow-none print:max-w-none print:w-[210mm] p-6 flex flex-col justify-between min-h-[1050px]">
                 <div>
-                  {/* Top Company Header with Official JNC Logo & Details */}
+                  {/* Top Company Header with Logo & Details */}
                   <div className="text-center space-y-1 pb-2 border-b border-black">
-                    <div className="flex justify-center mb-1">
-                      <img
-                        src={invoiceLogo}
-                        alt="Logo"
-                        className="h-10 object-contain"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = '/jnc-logo.jpg';
-                        }}
-                      />
-                    </div>
+                    {invoiceLogo ? (
+                      <div className="flex justify-center mb-1">
+                        <img
+                          src={invoiceLogo}
+                          alt={effectiveCompanyName}
+                          className="h-10 object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    ) : null}
                     <h2 className="text-sm font-bold text-black uppercase tracking-wider">
                       {effectiveCompanyName}
                     </h2>
                     <p className="text-[10px] text-black">
-                      Address :{profile?.addressLine1 || 'No, 18/19, 2nd Floor, Coconut Avenue'}, {profile?.addressLine2 || '3rd cross, 8th Phase JP Nagar'}, {profile?.city || 'Bangalore'} {profile?.pincode || '76'}.
+                      Address :{profile?.addressLine1 || profile?.address || ''} {profile?.addressLine2 || ''} {profile?.city || ''} {profile?.pincode || ''}.
                     </p>
                     <p className="text-[10px] text-black">
-                      Contact No: {profile?.phone || '+91 9876543210'}{profile?.email ? `, E-mail: ${profile.email}` : ''}
+                      Contact No: {profile?.phone || ''}{profile?.email ? `, E-mail: ${profile.email}` : ''}
                     </p>
                   </div>
 
@@ -531,7 +608,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                         <th className="py-1.5 px-2 w-14 border-r border-black font-bold text-black">Unit</th>
                         <th className="py-1.5 px-2 w-14 border-r border-black font-bold text-black">QTY</th>
                         <th className="py-1.5 px-2 w-24 text-right border-r border-black font-bold text-black">UNIT RATE</th>
-                        <th className="py-1.5 px-3 w-28 text-right font-bold text-black">TOTAL</th>
+                        <th className="py-1.5 px-3 w-28 text-right font-bold text-black border-r border-black">TOTAL</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -544,19 +621,19 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                             <td className="py-2 px-2 text-center border-r border-black text-black">{l.unit || 'Mtr'}</td>
                             <td className="py-2 px-2 text-center border-r border-black font-bold text-black">{l.quantity}</td>
                             <td className="py-2 px-2 text-right border-r border-black font-mono text-black">{Number(l.unitPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 })}</td>
-                            <td className="py-2 px-3 text-right font-mono font-bold text-black">{lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                            <td className="py-2 px-3 text-right font-mono font-bold text-black border-r border-black">{lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                           </tr>
                         );
                       })}
 
                       {/* Spacer row */}
-                      <tr style={{ height: Math.max(60, 220 - lines.length * 35) }}>
+                      <tr style={{ height: `${Math.max(40, 120 - lines.length * 20)}px` }} className="print:h-[220px]">
                         <td className="border-r border-black"></td>
                         <td className="border-r border-black"></td>
                         <td className="border-r border-black"></td>
                         <td className="border-r border-black"></td>
                         <td className="border-r border-black"></td>
-                        <td></td>
+                        <td className="border-r border-black"></td>
                       </tr>
 
                       {/* Totals Breakdown */}
@@ -564,7 +641,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                         <td colSpan={5} className="py-1 px-3 text-right border-r border-black text-black">
                           Total Amount (INR)
                         </td>
-                        <td className="py-1 px-3 text-right font-mono font-bold text-black">
+                        <td className="py-1 px-3 text-right font-mono font-bold text-black border-r border-black">
                           {(effectiveSubtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
                       </tr>
@@ -572,7 +649,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                         <td colSpan={5} className="py-1 px-3 text-right border-r border-black text-black">
                           GST @ 18%
                         </td>
-                        <td className="py-1 px-3 text-right font-mono font-bold text-black">
+                        <td className="py-1 px-3 text-right font-mono font-bold text-black border-r border-black">
                           {(invoice.igstAmount || (invoice.cgstAmount + invoice.sgstAmount) || Math.round((effectiveSubtotal * 18) / 100)).toLocaleString('en-IN', { minimumFractionDigits: 0 })}
                         </td>
                       </tr>
@@ -580,7 +657,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                         <td colSpan={5} className="py-1.5 px-3 text-right border-r border-black text-black">
                           Total Amount (INR) Inc GST
                         </td>
-                        <td className="py-1.5 px-3 text-right font-mono font-black text-black">
+                        <td className="py-1.5 px-3 text-right font-mono font-black text-black border-r border-black">
                           {(effectiveTotal || (effectiveSubtotal + Math.round((effectiveSubtotal * 18) / 100))).toLocaleString('en-IN', { minimumFractionDigits: 0 })}
                         </td>
                       </tr>
@@ -591,11 +668,11 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                   <div className="p-3 text-[10px] space-y-1.5">
                     <p className="font-bold underline text-black">Terms and Conditions</p>
                     <div className="space-y-1 text-black">
-                      <p><strong className="font-bold">1. Delivery Address : </strong>{invoice.deliveryAddress || 'Sample Logistics Park, Plot No: 100, Phase II, Bangalore, Karnataka – 560001.'}</p>
-                      <p><strong className="font-bold">2. Delivery schedule : </strong>{invoice.deliverySchedule || 'Lot 1 within 15 days, balance as agreed.'}</p>
+                      <p><strong className="font-bold">1. Delivery Address : </strong>{invoice.deliveryAddress || ''}</p>
+                      <p><strong className="font-bold">2. Delivery schedule : </strong>{invoice.deliverySchedule || 'As agreed'}</p>
                       <p><strong className="font-bold">3. Billing Address : </strong>{invoice.billingAddress || effectiveCompanyName}</p>
                       <p><strong className="font-bold">4. Payment : </strong>{invoice.paymentTerms || 'Advance'}</p>
-                      <p><strong className="font-bold">5. GST : </strong>{profile?.gstin || '29ABCDE1234F1Z5'}</p>
+                      <p><strong className="font-bold">5. GST : </strong>{profile?.gstin || ''}</p>
                     </div>
                   </div>
                 </div>
@@ -603,12 +680,17 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 {/* PO Signatory Footer */}
                 <div className="pt-6 flex justify-between items-end">
                   <div>
-                    <img
-                      src={invoiceLogo}
-                      alt="Logo"
-                      style={{ maxHeight: '30px', maxWidth: '140px', width: 'auto', height: 'auto', objectFit: 'contain' }}
-                      className="h-6 object-contain opacity-80"
-                    />
+                    {invoiceLogo ? (
+                      <img
+                        src={invoiceLogo}
+                        alt={effectiveCompanyName}
+                        style={{ maxHeight: '30px', maxWidth: '140px', width: 'auto', height: 'auto', objectFit: 'contain' }}
+                        className="h-6 object-contain opacity-80"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    ) : null}
                   </div>
                   <div className="text-right space-y-8">
                     <p className="font-bold text-[10.5px] text-black">For {effectiveCompanyName}</p>
@@ -620,7 +702,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
               /* ════════════════════════════════════════════════════════════════════════════
                  EXACT INVOICE / CREDIT NOTE / SEZ / PROFORMA / DC A4 PAPER TEMPLATE
                  ════════════════════════════════════════════════════════════════════════════ */
-              <div id="printable-tax-invoice" className="w-full max-w-[794px] mx-auto bg-white text-black font-sans text-[11px] leading-[1.25] shadow-2xl border-[1.5px] border-black print:border-black print:shadow-none print:max-w-none print:w-[210mm]">
+              <div id="printable-tax-invoice" className="w-full max-w-[794px] mx-auto bg-white text-black font-sans text-[11px] leading-[1.25] shadow-2xl box-border border-2 border-black min-h-[1050px] flex flex-col justify-between print:border-black print:shadow-none print:max-w-none print:w-[210mm] print:min-h-0 print:h-auto">
 
                 {/* Top Title: Invoice / Tax Invoice / Proforma / Delivery Challan / Credit Note */}
                 <div className="relative text-center font-bold text-sm tracking-wide py-1 border-b border-black bg-white text-black">
@@ -641,27 +723,29 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
 
                 {/* Header Box (Two Columns) */}
                 <div className="grid grid-cols-2 border-b border-black divide-x divide-black bg-white text-black">
-                  {/* Left Column: Company Details + Official Brand Logo */}
+                  {/* Left Column: Company Details + Brand Logo */}
                   <div className="p-2 space-y-0.5 text-[10.5px] bg-white text-black">
-                    {/* Official Brand Logo */}
-                    <div className="mb-1 flex items-center">
-                      <img
-                        src={invoiceLogo}
-                        alt="Logo"
-                        style={{ maxHeight: '38px', maxWidth: '150px', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }}
-                        className="h-8 sm:h-9 object-contain"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = '/jnc-logo.jpg';
-                        }}
-                      />
-                    </div>
+                    {/* Brand Logo */}
+                    {invoiceLogo ? (
+                      <div className="mb-1 flex items-center">
+                        <img
+                          src={invoiceLogo}
+                          alt={effectiveCompanyName}
+                          style={{ maxHeight: '38px', maxWidth: '150px', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }}
+                          className="h-8 sm:h-9 object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    ) : null}
                     <p className="font-bold text-xs text-black">{effectiveCompanyName}</p>
-                    <p className="text-black font-medium">{profile?.addressLine1 || 'No, 18/19, 2nd Floor, Coconut Avenue,'}</p>
-                    <p className="text-black font-medium">{profile ? `${profile.addressLine2}, ${profile.city} ${profile.pincode}.` : '3rd cross, 8th Phase JP Nagar, Bangalore 76.'}</p>
-                    <p className="font-bold text-black">GST IN : {profile?.gstin || '29ABCDE1234F1Z5'}.</p>
-                    <p className="text-black font-medium">MSME UDYAM Reg No: {profile?.msmeUdyamNo || 'UDYAM-XX-00-0000000'}.</p>
-                    <p className="text-black font-medium">State Name : {profile?.state || 'Karnataka'}, Code - {profile?.stateCode || '29'}</p>
-                    <p className="text-black font-medium">Email : {profile?.email || 'accounts@example.com'}</p>
+                    <p className="text-black font-medium">{profile?.addressLine1 || profile?.address || ''}</p>
+                    <p className="text-black font-medium">{profile ? `${profile.addressLine2 || ''} ${profile.city || ''} ${profile.pincode || ''}`.trim() : ''}</p>
+                    <p className="font-bold text-black">GST IN : {profile?.gstin || ''}.</p>
+                    <p className="text-black font-medium">MSME UDYAM Reg No: {profile?.msmeUdyamNo || ''}.</p>
+                    <p className="text-black font-medium">State Name : {profile?.state || ''}, Code - {profile?.stateCode || ''}</p>
+                    <p className="text-black font-medium">Email : {profile?.email || ''}</p>
                   </div>
 
                   {/* Right Column: Invoice Metadata Table with Full Continuous Borders */}
@@ -673,7 +757,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                             <span className="font-bold text-black">{isDC ? 'DC No' : isCreditNote ? 'CN No' : 'Invoice No'} : </span>
                             <span className="font-mono font-bold text-black">{invoice.invoiceNumber}</span>
                           </td>
-                          <td className="p-1.5 w-1/2 text-black">
+                          <td className="p-1.5 w-1/2 text-black border-r border-black">
                             <span className="font-bold text-black">Dated: </span>
                             <span className="font-bold text-black">{formatDateDMY(invoice.invoiceDate)}</span>
                           </td>
@@ -684,7 +768,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                             <p className="font-bold text-black">Reference No. & Date.</p>
                             <p className="text-black font-semibold">{invoice.referenceNo || invoice.order?.orderNumber || '-'}</p>
                           </td>
-                          <td className="p-1.5 w-1/2 text-black">
+                          <td className="p-1.5 w-1/2 text-black border-r border-black">
                             <p className="font-bold text-black">Mode/ Terms of</p>
                             <p className="font-bold text-black">Payment: <span className="font-semibold text-black">{invoice.paymentTerms || (isDC ? 'Immediately' : 'Advance')}</span></p>
                           </td>
@@ -695,7 +779,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                             <p className="font-bold text-black">{isDC ? 'PO Order .' : "Buyer's Order No."}</p>
                             <p className="text-black font-semibold">{invoice.buyerOrderNo || invoice.order?.orderNumber || '-'}</p>
                           </td>
-                          <td className="p-1.5 w-1/2 text-black">
+                          <td className="p-1.5 w-1/2 text-black border-r border-black">
                             <p className="font-bold text-black">{isDC ? 'Order-Dated:' : 'PO-Dated:'} <span className="font-semibold text-black">{invoice.poDate ? formatDateDMY(invoice.poDate) : formatDateDMY(invoice.invoiceDate)}</span></p>
                           </td>
                         </tr>
@@ -703,9 +787,9 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                         {/* LUT / Bond Box for SEZ or Credit Note */}
                         {(isSEZ || isCreditNote) && (
                           <tr>
-                            <td colSpan={2} className="p-1.5 bg-gray-50 text-black">
-                              <p className="font-bold text-black">LUT/Bond No : <span className="font-mono font-bold text-black">{invoice.lutBondNo || (isSEZ ? (profile?.lutBondNo || 'AD290525013648T') : '')}</span></p>
-                              {isSEZ && <p className="text-black font-semibold">{invoice.lutValidity || profile?.lutValidity || 'From : 10/05/2025 To: 09/05/2026'}</p>}
+                            <td colSpan={2} className="p-1.5 bg-gray-50 text-black border-r border-black">
+                              <p className="font-bold text-black">LUT/Bond No : <span className="font-mono font-bold text-black">{invoice.lutBondNo || (isSEZ ? (profile?.lutBondNo || '') : '')}</span></p>
+                              {isSEZ && <p className="text-black font-semibold">{invoice.lutValidity || profile?.lutValidity || ''}</p>}
                             </td>
                           </tr>
                         )}
@@ -729,7 +813,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                   </div>
 
                   {/* Delivery Address */}
-                  <div className="p-2 space-y-0.5 text-[10.5px] bg-white text-black">
+                  <div className="p-2 space-y-0.5 text-[10.5px] bg-white text-black border-r border-black">
                     <p className="font-bold text-[11px] text-black">Delivery Address :</p>
                     <p className="font-bold text-xs text-black">{invoice.customerName}</p>
                     <p className="text-black font-medium">{invoice.deliveryAddress || invoice.billingAddress || `${invoice.customerState || 'Karnataka'}, India`}</p>
@@ -749,13 +833,13 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                             <th className="py-2 px-2 w-[6.5%] border-r border-black font-bold text-black">Unit</th>
                             <th className="py-2 px-2 w-[11.5%] text-right border-r border-black font-bold text-black">Unit Rate</th>
                             <th className="py-2 px-2 w-[6.5%] border-r border-black font-bold text-black">Qty</th>
-                            <th className="py-2 px-3 w-[15%] text-right font-bold text-black">Amount</th>
+                            <th className="py-2 px-3 w-[15%] text-right font-bold text-black border-r border-black">Amount</th>
                           </>
                         ) : (
                           <>
                             <th className="py-2 px-2 w-[10%] border-r border-black font-bold text-black">UNIT</th>
                             <th className="py-2 px-2 w-[10%] border-r border-black font-bold text-black">Qty</th>
-                            <th className="py-2 px-3 w-[30%] text-right font-bold text-black">Remarks/Rate</th>
+                            <th className="py-2 px-3 w-[30%] text-right font-bold text-black border-r border-black">Remarks/Rate</th>
                           </>
                         )}
                       </tr>
@@ -783,22 +867,22 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                             <td className="py-2 px-2 text-center border-r border-black font-semibold text-black">
                               {line.quantity || 0}
                             </td>
-                            <td className="py-2 px-3 text-right font-mono font-semibold text-black">
+                            <td className="py-2 px-3 text-right font-mono font-semibold text-black border-r border-black">
                               {isDC ? '-' : lineTaxable.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                             </td>
                           </tr>
                         );
                       })}
 
-                      {/* Generous Spacer row extending the center section */}
-                      <tr style={{ height: Math.max(100, 320 - lines.length * 35) }} className="bg-white">
+                      {/* Spacer row: tuned for authentic A4 sheet proportion */}
+                      <tr style={{ height: `${Math.max(60, 240 - lines.length * 22)}px` }} className="bg-white print:h-[200px]">
                         <td className="border-r border-black"></td>
                         <td className="border-r border-black"></td>
                         {!isDC && <td className="border-r border-black"></td>}
                         <td className="border-r border-black"></td>
                         {!isDC && <td className="border-r border-black"></td>}
                         <td className="border-r border-black"></td>
-                        <td></td>
+                        <td className="border-r border-black"></td>
                       </tr>
 
                       {isDC ? (
@@ -809,7 +893,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                           <td className="py-1.5 px-2 text-center font-mono font-bold border-r border-black text-black">
                             {totalQty}
                           </td>
-                          <td className="py-1.5 px-2 text-center font-mono text-black">
+                          <td className="py-1.5 px-2 text-center font-mono text-black border-r border-black">
                             -
                           </td>
                         </tr>
@@ -817,51 +901,52 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                         <>
                           {/* Subtotal Taxable Row */}
                           <tr className="border-t border-black bg-white">
-                            <td colSpan={5} className="py-1 px-3 text-right font-bold border-r border-black text-black">
+                            <td colSpan={4} rowSpan={totalsRowCount} className="border-r border-black bg-white align-top" />
+                            <td className="py-1 px-3 text-right font-bold border-r border-black text-black">
                               Sub Total
                             </td>
                             <td className="py-1 px-2 text-center font-mono font-semibold border-r border-black text-black">
                               {totalQty}
                             </td>
-                            <td className="py-1 px-2 text-right font-mono font-bold text-black">
+                            <td className="py-1 px-2 text-right font-mono font-bold text-black border-r border-black">
                               {(effectiveSubtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                             </td>
                           </tr>
 
                           {/* Tax Row(s) */}
                           {isSEZ ? (
-                            <tr className="border-t border-black/40 bg-white">
-                              <td colSpan={6} className="py-1 px-3 text-right font-bold border-r border-black italic text-[10px] text-black">
+                            <tr className="bg-white">
+                              <td colSpan={2} className="py-1 px-3 text-right font-bold border-t border-r border-black/40 italic text-[10px] text-black">
                                 Nill - IGST 18% Tax by LUT
                               </td>
-                              <td className="py-1 px-2 text-right font-mono font-bold text-black">
+                              <td className="py-1 px-2 text-right font-mono font-bold border-t border-r border-black/40 text-black">
                                 -
                               </td>
                             </tr>
                           ) : isInterState ? (
-                            <tr className="border-t border-black/40 bg-white">
-                              <td colSpan={6} className="py-1 px-3 text-right font-bold border-r border-black text-black">
+                            <tr className="bg-white">
+                              <td colSpan={2} className="py-1 px-3 text-right font-bold border-t border-r border-black/40 text-black">
                                 IGST 18%
                               </td>
-                              <td className="py-1 px-2 text-right font-mono font-bold text-black">
+                              <td className="py-1 px-2 text-right font-mono font-bold border-t border-r border-black/40 text-black">
                                 {(invoice.igstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                               </td>
                             </tr>
                           ) : (
                             <>
-                              <tr className="border-t border-black/40 bg-white">
-                                <td colSpan={6} className="py-0.5 px-3 text-right font-bold border-r border-black text-black">
+                              <tr className="bg-white">
+                                <td colSpan={2} className="py-0.5 px-3 text-right font-bold border-t border-r border-black/40 text-black">
                                   CGST 9%
                                 </td>
-                                <td className="py-0.5 px-2 text-right font-mono font-bold text-black">
+                                <td className="py-0.5 px-2 text-right font-mono font-bold border-t border-r border-black/40 text-black">
                                   {(invoice.cgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                 </td>
                               </tr>
-                              <tr className="border-t border-black/40 bg-white">
-                                <td colSpan={6} className="py-0.5 px-3 text-right font-bold border-r border-black text-black">
+                              <tr className="bg-white">
+                                <td colSpan={2} className="py-0.5 px-3 text-right font-bold border-t border-r border-black/40 text-black">
                                   SGST 9%
                                 </td>
-                                <td className="py-0.5 px-2 text-right font-mono font-bold text-black">
+                                <td className="py-0.5 px-2 text-right font-mono font-bold border-t border-r border-black/40 text-black">
                                   {(invoice.sgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                 </td>
                               </tr>
@@ -871,19 +956,19 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                           {/* Advance Row for Proforma */}
                           {isProforma && (
                             <>
-                              <tr className="border-t border-black/40 bg-emerald-50">
-                                <td colSpan={6} className="py-1 px-3 text-right font-bold border-r border-black text-emerald-900">
+                              <tr className="bg-emerald-50">
+                                <td colSpan={2} className="py-1 px-3 text-right font-bold border-t border-r border-black/40 text-emerald-900">
                                   Advance {advancePercent}% with PO
                                 </td>
-                                <td className="py-1 px-2 text-right font-mono font-bold text-emerald-900">
+                                <td className="py-1 px-2 text-right font-mono font-bold border-t border-r border-black/40 text-emerald-900">
                                   {advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                 </td>
                               </tr>
-                              <tr className="border-t border-black/40 bg-white">
-                                <td colSpan={6} className="py-0.5 px-3 text-right font-bold border-r border-black text-slate-700 italic text-[10px]">
+                              <tr className="bg-white">
+                                <td colSpan={2} className="py-0.5 px-3 text-right font-bold border-t border-r border-black/40 text-slate-700 italic text-[10px]">
                                   Balance {100 - advancePercent}% on Dispatch / Delivery
                                 </td>
-                                <td className="py-0.5 px-2 text-right font-mono font-semibold text-slate-700">
+                                <td className="py-0.5 px-2 text-right font-mono font-semibold border-t border-r border-black/40 text-slate-700">
                                   {(effectiveTotal - advanceAmount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                 </td>
                               </tr>
@@ -891,45 +976,45 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                           )}
 
                           {/* Round off row */}
-                          <tr className="border-t border-black/40 bg-white">
-                            <td colSpan={6} className="py-0.5 px-3 text-right font-bold border-r border-black text-black">
+                          <tr className="bg-white">
+                            <td colSpan={2} className="py-0.5 px-3 text-right font-bold border-t border-r border-black/40 text-black">
                               Round off
                             </td>
-                            <td className="py-0.5 px-2 text-right font-mono font-bold text-black">
+                            <td className="py-0.5 px-2 text-right font-mono font-bold border-t border-r border-black/40 text-black">
                               {(invoice.roundOff !== undefined && invoice.roundOff !== 0 ? (invoice.roundOff > 0 ? `+${invoice.roundOff.toFixed(2)}` : invoice.roundOff.toFixed(2)) : '-')}
                             </td>
                           </tr>
 
                           {/* Grand Total Row */}
-                          <tr className="border-t border-black font-bold text-xs bg-gray-100 print:bg-transparent">
-                            <td colSpan={5} className="py-1.5 px-3 text-right border-r border-black font-bold text-black">
+                          <tr className="font-bold text-xs bg-gray-100 print:bg-transparent">
+                            <td className="py-1.5 px-3 text-right border-t border-r border-black font-bold text-black">
                               Total
                             </td>
-                            <td className="py-1.5 px-2 text-center font-mono font-bold border-r border-black text-black">
+                            <td className="py-1.5 px-2 text-center font-mono font-bold border-t border-r border-black text-black">
                               {totalQty}
                             </td>
-                            <td className="py-1.5 px-2 text-right font-mono font-black text-xs text-black">
+                            <td className="py-1.5 px-2 text-right font-mono font-black text-xs text-black border-t border-r border-black">
                               {Math.round(effectiveTotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                             </td>
                           </tr>
 
                           {/* Advance Adjusted for Final Tax Invoice */}
-                          {!isProforma && !isDC && !isCreditNote && (invoice.advanceAdjusted && invoice.advanceAdjusted > 0) && (
+                          {hasAdvanceAdjusted && (
                             <>
-                              <tr className="border-t border-black/40 bg-emerald-50/50">
-                                <td colSpan={6} className="py-1 px-3 text-right font-bold border-r border-black text-emerald-900">
+                              <tr className="bg-emerald-50/50">
+                                <td colSpan={2} className="py-1 px-3 text-right font-bold border-t border-r border-black/40 text-emerald-900">
                                   Less: Advance Received {invoice.transactionRef ? `(${invoice.transactionRef})` : ''}
                                 </td>
-                                <td className="py-1 px-2 text-right font-mono font-bold text-emerald-900">
-                                  - {invoice.advanceAdjusted.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                <td className="py-1 px-2 text-right font-mono font-bold border-t border-r border-black/40 text-emerald-900">
+                                  - {(invoice.advanceAdjusted || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                 </td>
                               </tr>
-                              <tr className="border-t border-black font-bold text-xs bg-emerald-100/70 print:bg-transparent">
-                                <td colSpan={6} className="py-1.5 px-3 text-right border-r border-black font-bold text-black">
+                              <tr className="font-bold text-xs bg-emerald-100/70 print:bg-transparent">
+                                <td colSpan={2} className="py-1.5 px-3 text-right border-t border-r border-black font-bold text-black">
                                   Net Balance Payable / Due
                                 </td>
-                                <td className="py-1.5 px-2 text-right font-mono font-black text-xs text-black">
-                                  {(invoice.balanceDue ?? Math.max(0, effectiveTotal - invoice.advanceAdjusted)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                <td className="py-1.5 px-2 text-right font-mono font-black text-xs text-black border-t border-r border-black">
+                                  {(invoice.balanceDue ?? Math.max(0, effectiveTotal - (invoice.advanceAdjusted || 0))).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                 </td>
                               </tr>
                             </>
@@ -957,7 +1042,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                           <th className="py-1 px-1.5 border-r border-black text-right text-black">Taxable Value</th>
                           <th className="py-1 px-1.5 border-r border-black text-black">Rate</th>
                           <th className="py-1 px-1.5 border-r border-black text-right text-black">Integrated Tax Amount</th>
-                          <th className="py-1 px-1.5 text-right text-black">Total Tax Amount</th>
+                          <th className="py-1 px-1.5 text-right text-black border-r border-black">Total Tax Amount</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white">
@@ -966,14 +1051,14 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                           <td className="py-1 px-1.5 border-r border-black text-right font-mono text-black">{(effectiveSubtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
                           <td className="py-1 px-1.5 border-r border-black text-center font-mono text-black">18%</td>
                           <td className="py-1 px-1.5 border-r border-black text-right font-mono text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="py-1 px-1.5 text-right font-mono font-bold text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-1 px-1.5 text-right font-mono font-bold text-black border-r border-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                         </tr>
                         <tr className="font-bold bg-gray-50">
                           <td className="py-1 px-1.5 border-r border-black text-right text-black">Total</td>
                           <td className="py-1 px-1.5 border-r border-black text-right font-mono text-black">{(effectiveSubtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
                           <td className="py-1 px-1.5 border-r border-black"></td>
                           <td className="py-1 px-1.5 border-r border-black text-right font-mono text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="py-1 px-1.5 text-right font-mono font-bold text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-1 px-1.5 text-right font-mono font-bold text-black border-r border-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -981,7 +1066,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 )}
 
                 {/* Bottom Declaration & Bank/Signatory Grid */}
-                <div className="grid grid-cols-2 divide-x divide-black border-b border-black text-[10px] bg-white text-black">
+                <div className="grid grid-cols-2 divide-x divide-black text-[10px] bg-white text-black">
                   {/* Left Box: Declaration */}
                   <div className="p-2 space-y-0.5 bg-white text-black">
                     <p className="font-bold text-[10.5px] text-black">
@@ -1003,9 +1088,9 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                     ) : isSEZ ? (
                       <ol className="list-decimal pl-3 space-y-0.5 text-black leading-tight text-[10px]">
                         <li>We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</li>
-                        <li>Supply made to SEZ unit for authorized operations under LUT No. <strong>{invoice.lutBondNo || profile?.lutBondNo || 'AD290525013648T'}</strong> without payment of IGST.</li>
+                        <li>Supply made to SEZ unit for authorized operations under LUT No. <strong>{invoice.lutBondNo || profile?.lutBondNo || ''}</strong> without payment of IGST.</li>
                         <li>Goods once sold will not be exchanged or taken back.</li>
-                        <li>Payment should be made strictly as per agreed terms. Subject to Bangalore Jurisdiction.</li>
+                        <li>Payment should be made strictly as per agreed terms. Subject to ${profile?.city || 'Local'} Jurisdiction.</li>
                       </ol>
                     ) : isProforma ? (
                       <ol className="list-decimal pl-3 space-y-0.5 text-black leading-tight text-[10px]">
@@ -1034,15 +1119,15 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                   </div>
 
                   {/* Right Box: Bank Details & Authorized Signatory */}
-                  <div className="flex flex-col justify-between bg-white text-black">
+                  <div className="flex flex-col justify-between bg-white text-black border-r border-black">
                     {/* Bank Details or Consignee Acknowledgment */}
                     {!isDC ? (
                       <div className="p-2 border-b border-black space-y-0.5 text-[10px] bg-white text-black">
                         <p className="font-bold text-[10.5px] text-black">Company's Bank Details</p>
                         <p><span className="font-medium">A/C Holder's Name : </span><strong>{profile?.bankDetails?.accountHolderName || effectiveCompanyName}</strong></p>
-                        <p><span className="font-medium">Bank Name : </span><strong>{profile?.bankDetails?.bankName || 'Karnataka Bank'}</strong></p>
-                        <p><span className="font-medium">A/c No : </span><strong className="font-mono">{profile?.bankDetails?.accountNumber || '9222000100091501'}</strong></p>
-                        <p><span className="font-medium">Branch & IFS Code : </span><strong>{profile?.bankDetails?.branch || 'J P Nagar 7th Phase'} & {profile?.bankDetails?.ifscCode || 'KARB0000922'}</strong></p>
+                        <p><span className="font-medium">Bank Name : </span><strong>{profile?.bankDetails?.bankName || ''}</strong></p>
+                        <p><span className="font-medium">A/c No : </span><strong className="font-mono">{profile?.bankDetails?.accountNumber || ''}</strong></p>
+                        <p><span className="font-medium">Branch & IFS Code : </span><strong>{profile?.bankDetails?.branch || ''} {profile?.bankDetails?.ifscCode ? `& ${profile.bankDetails.ifscCode}` : ''}</strong></p>
                       </div>
                     ) : (
                       <div className="p-2 border-b border-black space-y-0.5 bg-gray-50 text-[10px] text-black">
@@ -1089,22 +1174,64 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 </div>
 
                 {/* Bottom Line: Computer Generated Notice */}
-                <div className="text-center text-[9px] py-0.5 text-black font-medium bg-white">
+                <div className="text-center text-[9px] py-0.5 text-black font-medium bg-white border-t border-black">
                   This is a Computer Generated {isDC ? 'Delivery Challan' : isProforma ? 'Proforma Invoice' : isCreditNote ? 'Credit Note' : isSEZ ? 'Tax Invoice (SEZ/LUT)' : 'Tax Invoice'}
                 </div>
 
               </div>
             )}
+            </div>
           </div>
 
           {/* Footer Bar */}
-          <div className="p-3 border-t border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230] flex justify-between items-center print:hidden text-xs text-slate-400">
+          <div className="p-3 border-t border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230] flex justify-between items-center print:hidden text-xs text-slate-400 shrink-0">
             <span className="font-mono">
               {isDC ? 'DC' : 'Invoice'} #{invoice.invoiceNumber} {!isDC && `| Total: ₹${effectiveTotal.toLocaleString('en-IN')}`}
             </span>
-            <button onClick={onClose} className="btn-ghost text-xs px-5">
-              Close
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center bg-slate-200/80 dark:bg-[#141722] rounded-lg p-0.5 border border-slate-300 dark:border-[#2A3042]">
+                <button
+                  onClick={handleZoomOut}
+                  disabled={zoom <= 0.5}
+                  className="p-1 rounded text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10 disabled:opacity-30 transition-all"
+                  title="Zoom Out (-)"
+                >
+                  <ZoomOut size={13} />
+                </button>
+                <span className="text-[11px] font-mono font-bold px-2 text-slate-800 dark:text-slate-200 min-w-[38px] text-center">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <button
+                  onClick={handleZoomIn}
+                  disabled={zoom >= 1.5}
+                  className="p-1 rounded text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10 disabled:opacity-30 transition-all"
+                  title="Zoom In (+)"
+                >
+                  <ZoomIn size={13} />
+                </button>
+                <button
+                  onClick={handleFitPage}
+                  className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                    zoom === 0.8 ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Fit Page (80%)"
+                >
+                  Fit Page
+                </button>
+                <button
+                  onClick={handleResetZoom}
+                  className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                    zoom === 1 ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="100%"
+                >
+                  100%
+                </button>
+              </div>
+              <button onClick={onClose} className="btn-ghost text-xs px-5">
+                Close
+              </button>
+            </div>
           </div>
         </motion.div>
       </div>
@@ -1162,7 +1289,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                     type="email"
                     required
                     className="input text-xs font-mono"
-                    placeholder="e.g. ap@customer.com / billing@company.in"
+                    placeholder="e.g. ap@example.com / billing@example.com"
                     value={recipientEmail}
                     onChange={(e) => setRecipientEmail(e.target.value)}
                   />
@@ -1222,7 +1349,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
         }}
       />
 
-      {/* ─── JNC DIRECT PRINTER CONNECTION MODAL ───────────────────────────────── */}
+      {/* ─── DIRECT PRINTER CONNECTION MODAL ───────────────────────────────── */}
       <DirectPrintModal
         isOpen={showDirectPrintModal}
         onClose={() => setShowDirectPrintModal(false)}

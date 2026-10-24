@@ -23,6 +23,7 @@ import { Response, Request } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { PageAccess } from '../auth/page-access.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { BackupService } from './backup.service';
@@ -82,6 +83,7 @@ async function logBackupAudit(
 @Controller('system/backup')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('platform_super_admin')
+@PageAccess('platform_backup')
 export class BackupController {
   constructor(
     private readonly backupService: BackupService,

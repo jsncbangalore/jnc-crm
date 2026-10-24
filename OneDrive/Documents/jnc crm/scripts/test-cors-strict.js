@@ -13,14 +13,14 @@ async function runCorsTests() {
   console.log('Running Production CORS Strict Enforcement Tests...\n');
 
   process.env.NODE_ENV = 'production';
-  process.env.ALLOWED_ORIGINS = 'https://admin.jsnc.co.in';
-  process.env.FRONTEND_URL = 'https://admin.jsnc.co.in';
+  process.env.ALLOWED_ORIGINS = 'https://app.example.com';
+  process.env.FRONTEND_URL = 'https://app.example.com';
 
   const testCases = [
-    { origin: 'https://evil.jsnc.co.in', expectedAllowed: false, name: 'Malicious Subdomain (https://evil.jsnc.co.in)' },
+    { origin: 'https://evil.example.com', expectedAllowed: false, name: 'Malicious Subdomain (https://evil.example.com)' },
     { origin: 'http://localhost:5173', expectedAllowed: false, name: 'Localhost in Production (http://localhost:5173)' },
-    { origin: 'http://admin.jsnc.co.in', expectedAllowed: false, name: 'Insecure HTTP Protocol (http://admin.jsnc.co.in)' },
-    { origin: 'https://admin.jsnc.co.in', expectedAllowed: true, name: 'Legitimate Production Origin (https://admin.jsnc.co.in)' },
+    { origin: 'http://app.example.com', expectedAllowed: false, name: 'Insecure HTTP Protocol (http://app.example.com)' },
+    { origin: 'https://app.example.com', expectedAllowed: true, name: 'Legitimate Production Origin (https://app.example.com)' },
   ];
 
   let passed = true;
@@ -37,9 +37,9 @@ async function runCorsTests() {
   }
 
   if (passed) {
-    console.log('✅ ALL CORS STRICTNESS TESTS PASSED IN PRODUCTION MODE!');
+    console.log('[PASS] ALL CORS STRICTNESS TESTS PASSED IN PRODUCTION MODE!');
   } else {
-    console.error('❌ SOME CORS TESTS FAILED!');
+    console.error('[ERROR] SOME CORS TESTS FAILED!');
     process.exit(1);
   }
 }

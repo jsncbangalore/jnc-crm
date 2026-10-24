@@ -1,5 +1,5 @@
 {
-  "name": "jnc-crm-api",
+  "name": "crm-api",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -12,7 +12,7 @@
     "prisma:generate": "node ../../node_modules/prisma/build/index.js generate",
     "prisma:migrate": "node ../../node_modules/prisma/build/index.js migrate dev",
     "prisma:db-push": "node ../../node_modules/prisma/build/index.js db push",
-    "prisma:seed": "node ../../node_modules/ts-node/dist/bin.js prisma/seed.ts",
+    "prisma:seed": "node ../../node_modules/ts-node/dist/bin.js prisma/seed-demo.ts",
     "db:push:dev": "node scripts/prisma-safe.js db-push-dev",
     "db:push:test": "node scripts/prisma-safe.js db-push-test",
     "db:seed:test": "node scripts/prisma-safe.js seed-test",
@@ -32,6 +32,11 @@
     "test:auth-suite": "node ../../node_modules/ts-node/dist/bin.js scripts/test-login-and-webhooks.ts",
     "test:auth-security": "node scripts/prisma-safe.js test-auth-security",
     "test:mail-security": "node scripts/prisma-safe.js test-mail-security",
+    "test:white-label": "node ../../node_modules/ts-node/dist/bin.js --project tsconfig.json ../../scripts/test-white-label.ts",
+    "inspect:mail-tls": "node scripts/prisma-safe.js inspect-mail-tls",
+    "admin:set-password": "node scripts/prisma-safe.js admin:set-password",
+    "admin:reset-2fa": "node scripts/prisma-safe.js admin:reset-2fa",
+    "admin:set-phone": "node scripts/prisma-safe.js admin:set-phone",
     "bundle:api": "node ../../scripts/bundle-api.js"
   },
   "dependencies": {

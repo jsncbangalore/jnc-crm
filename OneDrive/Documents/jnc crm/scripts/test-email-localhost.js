@@ -14,7 +14,7 @@ function testEmailTemplatesForLocalhost() {
   console.log('Running Email Template Localhost Sanitization Test...\n');
 
   process.env.NODE_ENV = 'production';
-  process.env.FRONTEND_URL = 'https://admin.jsnc.co.in';
+  process.env.FRONTEND_URL = 'https://app.example.com';
 
   const filesToScan = [
     path.join(__dirname, '..', 'apps', 'api', 'src', 'platform', 'platform.service.ts'),
@@ -35,16 +35,16 @@ function testEmailTemplatesForLocalhost() {
 
     lines.forEach((line, idx) => {
       if ((line.includes('emailHtml') || line.includes('loginUrl') || line.includes('resetUrl')) && line.includes('localhost')) {
-        console.error(`❌ Violation in ${relativePath}:${idx + 1}: ${line.trim()}`);
+        console.error(`[ERROR] Violation in ${relativePath}:${idx + 1}: ${line.trim()}`);
         violations++;
       }
     });
   }
 
   if (violations === 0) {
-    console.log('✅ ALL EMAIL TEMPLATES & DISPATCH URLS ARE CLEAN OF "localhost" IN PRODUCTION MODE!');
+    console.log('[PASS] ALL EMAIL TEMPLATES & DISPATCH URLS ARE CLEAN OF "localhost" IN PRODUCTION MODE!');
   } else {
-    console.error(`❌ FOUND ${violations} LOCALHOST VIOLATIONS IN EMAIL TEMPLATES!`);
+    console.error(`[ERROR] FOUND ${violations} LOCALHOST VIOLATIONS IN EMAIL TEMPLATES!`);
     process.exit(1);
   }
 }

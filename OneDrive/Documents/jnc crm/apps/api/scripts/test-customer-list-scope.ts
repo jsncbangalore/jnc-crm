@@ -158,7 +158,7 @@ async function runCustomerListScopeTestSuite() {
       update: { tenantId: testTenantA.id },
       create: {
         id: 'test-scope-emp-a1',
-        email: 'emp-a1@scopetest.local',
+        email: 'emp-a1@example.com',
         passwordHash: '$2b$10$maskedhashforautomatedtestpurposes',
         name: 'Employee A1 (Creator)',
         employeeCode: 'EMPA-001',
@@ -172,7 +172,7 @@ async function runCustomerListScopeTestSuite() {
       update: { tenantId: testTenantA.id },
       create: {
         id: 'test-scope-emp-a2',
-        email: 'emp-a2@scopetest.local',
+        email: 'emp-a2@example.com',
         passwordHash: '$2b$10$maskedhashforautomatedtestpurposes',
         name: 'Employee A2 (Colleague)',
         employeeCode: 'EMPA-002',
@@ -186,7 +186,7 @@ async function runCustomerListScopeTestSuite() {
       update: { tenantId: testTenantB.id },
       create: {
         id: 'test-scope-emp-b1',
-        email: 'emp-b1@scopetest.local',
+        email: 'emp-b1@example.com',
         passwordHash: '$2b$10$maskedhashforautomatedtestpurposes',
         name: 'Employee B1 (Cross-Tenant)',
         employeeCode: 'EMPB-001',

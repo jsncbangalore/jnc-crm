@@ -5,14 +5,24 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
+import path from 'path';
 import crypto from 'crypto';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ command, mode }) => {
   const isDev = command === 'serve';
+  const env = loadEnv(mode, process.cwd(), '');
+  const productName = env.VITE_PRODUCT_NAME || 'CRM';
+  const apiBaseUrl = env.VITE_API_BASE_URL || '';
+  process.env.VITE_PRODUCT_NAME = productName;
 
   return {
+    resolve: {
+      alias: {
+        '@crm/shared-validation': path.resolve(__dirname, '../../packages/shared-validation/src/index.ts'),
+      },
+    },
     build: {
       sourcemap: false,
     },
@@ -21,7 +31,7 @@ export default defineConfig(({ command, mode }) => {
       {
         name: 'html-transform-csp',
         transformIndexHtml(html: string, ctx) {
-          let modified = html;
+          let modified = html.replace(/%VITE_PRODUCT_NAME%/g, productName);
           const devMode = isDev || Boolean(ctx?.server);
 
           if (devMode) {
@@ -32,9 +42,16 @@ export default defineConfig(({ command, mode }) => {
             );
             modified = modified.replace(
               /connect-src ([^;]+);/,
-              (match: string, current: string) => `${match.slice(0, -1)} http://localhost:3333 http://127.0.0.1:3333;`,
+              (match: string, current: string) => `${match.slice(0, -1)} http://localhost:3333 http://127.0.0.1:3333 ${apiBaseUrl};`.trim().replace(/\s+;/g, ';'),
             );
           } else {
+            // Production: Allow configured API base URL if present
+            if (apiBaseUrl) {
+              modified = modified.replace(
+                /connect-src ([^;]+);/,
+                (match: string, current: string) => `${match.slice(0, -1)} ${apiBaseUrl};`,
+              );
+            }
             // Production: Calculate SHA-256 hash of the inline theme script and replace 'unsafe-inline'
             const inlineScriptMatch = modified.match(/<script>([\s\S]*?)<\/script>/);
             if (inlineScriptMatch) {
@@ -47,17 +64,6 @@ export default defineConfig(({ command, mode }) => {
             }
           }
           return modified;
-        },
-      },
-      {
-        name: 'clean-production-bundle',
-        renderChunk(code: string) {
-          if (command === 'build') {
-            return code
-              .replace(/http:\/\/localhost:?\d*/g, 'https://api.jsnc.co.in')
-              .replace(/localhost/g, '127.0.0.1');
-          }
-          return null;
         },
       },
       {

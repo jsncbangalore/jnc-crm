@@ -13,7 +13,7 @@ const apiDir = path.join(repoRoot, 'apps/api');
 const targetBundleDir = path.join(repoRoot, 'deploy-bundle/api');
 
 console.log('========================================================================');
-console.log('JNC-CRM API DEPLOYMENT BUNDLER');
+console.log('CRM API DEPLOYMENT BUNDLER');
 console.log(`Source: ${apiDir}`);
 console.log(`Target: ${targetBundleDir}`);
 console.log('========================================================================\n');
@@ -72,10 +72,10 @@ const bundleDependencies = {
 };
 
 const bundlePackageJson = {
-  name: 'jnc-crm-api',
+  name: 'crm-api',
   version: '1.0.0',
   private: true,
-  description: 'JNC CRM API - Standalone Hostinger Web App Deployment Bundle',
+  description: 'CRM API - Standalone Hostinger Web App Deployment Bundle',
   scripts: {
     start: 'node start_server.js',
     postinstall: 'prisma generate',

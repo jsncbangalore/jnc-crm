@@ -13,7 +13,7 @@ const { chromium } = require('playwright');
   });
 
   await page.goto('http://localhost:5173/platform/login', { waitUntil: 'domcontentloaded' });
-  await page.fill('#platform-email', 'platform@jsnc.co.in');
+  await page.fill('#platform-email', process.env.TEST_PLATFORM_EMAIL || 'platform@example.com');
   await page.fill('#platform-password', 'type-your-own-long-password');
   await page.click('button[type="submit"]');
   await page.waitForTimeout(5000);

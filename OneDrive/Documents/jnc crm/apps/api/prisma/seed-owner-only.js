@@ -1,22 +1,74 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
+const readline = require('readline');
+const { Writable } = require('stream');
 
 const prisma = new PrismaClient();
 
+function askPasswordHidden(query) {
+  return new Promise((resolve) => {
+    let muted = false;
+    const mutableStdout = new Writable({
+      write(chunk, encoding, callback) {
+        if (!muted) {
+          process.stdout.write(chunk, encoding);
+        }
+        callback();
+      },
+    });
+
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: mutableStdout,
+      terminal: true,
+    });
+
+    process.stdout.write(query);
+    muted = true;
+    rl.question('', (password) => {
+      muted = false;
+      process.stdout.write('\n');
+      rl.close();
+      resolve(password.trim());
+    });
+  });
+}
+
 async function main() {
-  console.log('🧹 [1/3] Purging ALL data from database (CASCADE)...');
+  const ownerEmail = process.env.OWNER_EMAIL?.trim();
+  const ownerName = process.env.OWNER_NAME?.trim() || 'System Owner';
+  const ownerPhone = process.env.OWNER_PHONE?.trim() || '';
+
+  if (!ownerEmail) {
+    console.error('[ERROR] Error: OWNER_EMAIL environment variable is required to seed the owner account.');
+    process.exit(1);
+  }
+
+  let password = process.env.OWNER_PASSWORD?.trim();
+  if (!password) {
+    if (process.stdin.isTTY) {
+      password = await askPasswordHidden('Enter Owner Password: ');
+    } else {
+      console.error('[ERROR] Error: OWNER_PASSWORD environment variable is required in non-interactive mode.');
+      process.exit(1);
+    }
+  }
+
+  if (!password || password.length < 8) {
+    console.error('[ERROR] Error: Password must be at least 8 characters long.');
+    process.exit(1);
+  }
+
+  console.log('[1/3] Purging existing database tables...');
 
   try {
-    // Truncate all tables in PostgreSQL with CASCADE
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE 
         "Tenant",
         "AccountLockout"
       CASCADE;
     `);
-    console.log('✅ All previous organizations, client accounts, test leads, and dummy users successfully wiped.');
   } catch (err) {
-    console.log('Fallback sequential deletion:', err.message);
     const models = [
       'stockItem', 'stockMovement', 'stockTransfer', 'locationBin', 'warehouse',
       'sku', 'product', 'supplier', 'invoiceLine', 'invoice', 'shipment', 'order',
@@ -33,74 +85,68 @@ async function main() {
     }
   }
 
-  // ─── [2/3] Seed SINGLE Master CRM Owner Organization ─────────────────────
-  console.log('🏢 [2/3] Creating Master JNC Organization (Platform Owner)...');
-  
+  console.log('[2/3] Creating Primary Organization...');
+  const tenantCode = process.env.OWNER_TENANT_CODE || 'ORG-001';
+  const tenantName = process.env.OWNER_TENANT_NAME || (process.env.PRODUCT_NAME ? `${process.env.PRODUCT_NAME} Primary Tenant` : 'Primary Tenant');
+  const tenantSlug = process.env.OWNER_TENANT_SLUG || 'primary';
+
   const masterOrg = await prisma.tenant.create({
     data: {
       id: 'default-tenant-id',
-      code: 'JNC-ORG-001',
-      name: 'JSNC Network & Power Solutions',
-      slug: 'jsnc',
+      code: tenantCode,
+      name: tenantName,
+      slug: tenantSlug,
       status: 'active',
       planTier: 'enterprise',
       maxUsers: 100,
-      state: 'Karnataka',
-      city: 'Bengaluru',
-      currency: 'INR',
-      invoicePrefix: 'JNC-INV',
-      lutBondNo: 'AD290525013648T',
-      lutValidity: 'From: 10/05/2025 To: 09/05/2026',
+      currency: process.env.CURRENCY || 'INR',
+      invoicePrefix: process.env.INVOICE_PREFIX || 'INV',
     },
   });
 
-  console.log('✅ Master Organization created:', masterOrg.code, `(${masterOrg.name})`);
-
-  // ─── [3/3] Seed ONLY the Single Master Super Admin / Owner User ───────────
-  console.log('👑 [3/3] Creating Master Super Admin / Owner Account...');
-  const ownerPasswordHash = await bcrypt.hash('Password123!', 10);
+  console.log('[3/3] Creating Master Super Admin Owner Account...');
+  const ownerPasswordHash = await bcrypt.hash(password, 10);
 
   const ownerUser = await prisma.user.create({
     data: {
       tenantId: masterOrg.id,
-      employeeCode: 'JNC-SA-001',
-      name: 'Jayaraj (JNC Owner)',
-      email: 'Jayarajjnc@gmail.com',
+      employeeCode: 'EMP-001',
+      name: ownerName,
+      email: ownerEmail,
       role: 'super_admin',
-      phone: '9845012345',
+      phone: ownerPhone,
       isActive: true,
       mustResetPassword: false,
       passwordHash: ownerPasswordHash,
     },
   });
 
-  // Seed standard master distribution hub
+  // Seed default warehouse hub
   await prisma.warehouse.create({
     data: {
       tenantId: masterOrg.id,
-      code: 'BLR-MAIN',
-      name: 'Bengaluru Central Distribution Hub',
-      address: '14, Electronics City Phase 1',
-      city: 'Bengaluru',
+      code: 'MAIN-WH',
+      name: 'Primary Storage Hub',
       isActive: true,
     },
   });
 
   console.log('\n======================================================');
-  console.log('🎉 CLEAN DATABASE INITIALIZED WITH ONLY THE MASTER OWNER!');
+  console.log('[SUCCESS] DATABASE INITIALIZED WITH PRIMARY OWNER ACCOUNT');
   console.log('======================================================');
-  console.log('Organization Code: JNC-ORG-001');
-  console.log('User ID / Code:    JNC-SA-001');
-  console.log('Email:             Jayarajjnc@gmail.com');
-  console.log('Password:          Password123!');
-  console.log('Role:              super_admin (Master Platform Owner)');
+  console.log(`Organization Code: ${masterOrg.code}`);
+  console.log(`Organization Name: ${masterOrg.name}`);
+  console.log(`User Code:         ${ownerUser.employeeCode}`);
+  console.log(`Owner Name:        ${ownerUser.name}`);
+  console.log(`Email:             ${ownerUser.email}`);
+  console.log('Role:              super_admin (Platform Owner)');
   console.log('Landing Route:     /platform/companies');
   console.log('======================================================\n');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Reset Error:', e);
+    console.error('[ERROR] Reset Error:', e.message || e);
     process.exit(1);
   })
   .finally(async () => {

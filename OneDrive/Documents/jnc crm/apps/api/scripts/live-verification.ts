@@ -16,7 +16,7 @@ assertNotProductionDb('live-verification');
 
 async function runLiveVerification() {
   console.log('================================================================');
-  console.log('           JNC-CRM LIVE VERIFICATION SUITE');
+  console.log('           CRM LIVE VERIFICATION SUITE');
   console.log('================================================================\n');
 
   const app = await NestFactory.create(AppModule, { logger: false });
@@ -38,7 +38,7 @@ async function runLiveVerification() {
     throw new Error('Admin or Employee user not found in DB');
   }
 
-  const jwtSecret = process.env.JWT_SECRET || 'jnc-crm-jwt-secret-key-prod-2026';
+  const jwtSecret = process.env.JWT_SECRET || 'crm-jwt-secret-key-prod-2026';
   const adminToken = jwtService.sign(
     { sub: admin.id, employeeCode: admin.employeeCode, role: admin.role, email: admin.email },
     { secret: jwtSecret }
@@ -66,7 +66,7 @@ async function runLiveVerification() {
     },
     body: JSON.stringify({
       companyDisplayName: 'Hacked Brand Name',
-      companyPhone: '+91 00000 00000',
+      companyPhone: '+1 555-0100',
     }),
   });
   const data2 = await res2.json();
@@ -83,9 +83,9 @@ async function runLiveVerification() {
       Authorization: `Bearer ${adminToken}`,
     },
     body: JSON.stringify({
-      companyDisplayName: 'JS Network Communication',
-      companyPhone: '+91 9663421455',
-      companyLogoUrl: '/jnc-logo.jpg',
+      companyDisplayName: 'Acme Corporation',
+      companyPhone: '+1 555-0199',
+      companyLogoUrl: '/logo.png',
     }),
   });
   const data3 = await res3.json();

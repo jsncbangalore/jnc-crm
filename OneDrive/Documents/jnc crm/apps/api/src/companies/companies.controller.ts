@@ -19,17 +19,22 @@ import * as Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 
 
+import { PageAccess } from '../auth/page-access.decorator';
+
 @Controller('companies')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
+@PageAccess('leads')
 export class CompaniesController {
   constructor(private companiesService: CompaniesService) {}
 
   @Get()
+  @PageAccess('leads', 'quotations', 'orders', 'invoices')
   async getCompanies(@CurrentUser() user: ScopedUser, @Query('search') search?: string) {
     return this.companiesService.findAll(user, { search });
   }
 
   @Get(':id')
+  @PageAccess('leads', 'quotations', 'orders', 'invoices')
   async getCompany(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.companiesService.findOne(id, user);
   }
@@ -57,6 +62,7 @@ export class CompaniesController {
   }
 
   @Get(':id/contacts')
+  @PageAccess('leads', 'quotations', 'orders', 'invoices')
   async getContacts(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.companiesService.getContacts(id, user);
   }

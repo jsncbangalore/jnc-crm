@@ -23,14 +23,15 @@ export const ENV_CATALOG: EnvDefinition[] = [
   { key: 'DATABASE_URL', category: 'REQUIRED', description: 'Database connection string (PostgreSQL pooler or SQLite)', isSecret: true },
   { key: 'JWT_SECRET', category: 'REQUIRED', description: 'HMAC-SHA256 secret for signing access tokens (>= 32 chars)', isSecret: true },
   { key: 'JWT_REFRESH_SECRET', category: 'REQUIRED', description: 'HMAC-SHA256 secret for signing refresh tokens (>= 32 chars)', isSecret: true },
+  { key: 'OTP_SECRET', category: 'REQUIRED', description: 'HMAC-SHA256 secret for one-time verification codes (>= 32 chars)', isSecret: true },
   { key: 'ENCRYPTION_KEY', category: 'REQUIRED', description: 'AES-256-GCM encryption key (32 bytes base64 encoded)', isSecret: true },
-  { key: 'FRONTEND_URL', category: 'REQUIRED', description: 'Full URL of frontend application (e.g. https://admin.jsnc.co.in)' },
+  { key: 'FRONTEND_URL', category: 'REQUIRED', description: 'Full URL of frontend application (e.g. https://your-domain.com)' },
   { key: 'ALLOWED_ORIGINS', category: 'REQUIRED', description: 'Comma-separated list of allowed CORS origins' },
   { key: 'SMTP_HOST', category: 'REQUIRED', description: 'SMTP server hostname for transactional email delivery' },
   { key: 'SMTP_PORT', category: 'REQUIRED', description: 'SMTP server port (e.g. 587 or 465)' },
   { key: 'SMTP_USER', category: 'REQUIRED', description: 'SMTP authentication username / sender account' },
   { key: 'SMTP_PASS', category: 'REQUIRED', description: 'SMTP authentication password', isSecret: true },
-  { key: 'EMAIL_FROM', category: 'REQUIRED', description: 'Canonical outbound sender address (e.g. noreply@jsnc.co.in)' },
+  { key: 'EMAIL_FROM', category: 'REQUIRED', description: 'Canonical outbound sender address' },
 
   // ─── FEATURE-GATED (Disabled unless configured; routes return 503/404) ────
   { key: 'WHATSAPP_APP_SECRET', category: 'FEATURE-GATED', description: 'Meta WhatsApp webhook HMAC signature verification secret', isSecret: true },
@@ -40,6 +41,8 @@ export const ENV_CATALOG: EnvDefinition[] = [
   { key: 'BACKUP_ENCRYPTION_KEY', category: 'FEATURE-GATED', description: 'AES-256-GCM database backup archive encryption key', isSecret: true },
 
   // ─── OPTIONAL / RUNTIME SETTINGS & SCRIPT GUARDS ─────────────────────────
+  { key: 'PRODUCT_NAME', category: 'OPTIONAL', description: 'White-label application product display name (default: CRM)' },
+  { key: 'PRODUCT_LOGO_URL', category: 'OPTIONAL', description: 'White-label application product logo URL' },
   { key: 'TRUST_PROXY', category: 'OPTIONAL', description: 'Number of upstream reverse proxy hops (integer, default: 1 in production, 0 in development; never true)' },
   { key: 'SMTP_FROM', category: 'OPTIONAL', description: 'Deprecated alias for EMAIL_FROM (emits warning if used)' },
   { key: 'CORS_ORIGIN', category: 'OPTIONAL', description: 'Legacy alias for ALLOWED_ORIGINS' },
@@ -48,7 +51,7 @@ export const ENV_CATALOG: EnvDefinition[] = [
   { key: 'APP_URL', category: 'OPTIONAL', description: 'Backend public URL if different from request host' },
   { key: 'BACKUP_OFFSITE_PATH', category: 'OPTIONAL', description: 'Custom offsite backup directory path (default: backups/offsite)' },
   { key: 'CUSTOMER_LIST_SCOPE', category: 'OPTIONAL', description: 'Overrides customer list visibility scoping behavior' },
-  { key: 'LEGACY_WEBHOOK_TENANT_CODE', category: 'OPTIONAL', description: 'Tenant code pinned for deprecated unkeyed webhooks (default: JNC)' },
+  { key: 'LEGACY_WEBHOOK_TENANT_CODE', category: 'OPTIONAL', description: 'Tenant code pinned for deprecated unkeyed webhooks' },
   { key: 'WEBSITE_SUBMISSION_SECRET', category: 'OPTIONAL', description: 'Legacy alias for WEBSITE_WEBHOOK_SECRET' },
   { key: 'ALLOW_OLD_LIVE', category: 'OPTIONAL', description: 'Set to "yes" only during emergency rollback to permit old Supabase database' },
   { key: 'ALLOWED_DB_HOSTS', category: 'OPTIONAL', description: 'Whitelist of allowed database hostnames in maintenance scripts' },
@@ -212,8 +215,6 @@ export function validateEnvironment(
     const fromEmail = (env.EMAIL_FROM || process.env.EMAIL_FROM || '').trim().toLowerCase();
     if (!fromEmail) {
       invalidVariables.push("MAIL_PROVIDER is 'resend', but EMAIL_FROM is missing or empty.");
-    } else if (fromEmail.endsWith('@resend.dev')) {
-      warnings.push("EMAIL_FROM uses unverified testing domain '@resend.dev' (emails can only be delivered to the Resend account owner). Configure a verified domain in Resend DNS.");
     }
   }
 
@@ -245,6 +246,60 @@ export function validateEnvironment(
     if (env.JWT_SECRET && rSecret === env.JWT_SECRET) {
       invalidVariables.push('JWT_REFRESH_SECRET must be distinct from JWT_SECRET.');
     }
+  }
+
+  if (isProduction) {
+    if (!env.DATABASE_URL || !env.DATABASE_URL.trim()) {
+      invalidVariables.push('DATABASE_URL is required in production mode.');
+    }
+    if (!env.FRONTEND_URL || !env.FRONTEND_URL.trim()) {
+      invalidVariables.push('FRONTEND_URL is required in production mode.');
+    }
+    if (!env.ALLOWED_ORIGINS || !env.ALLOWED_ORIGINS.trim()) {
+      invalidVariables.push('ALLOWED_ORIGINS is required in production mode.');
+    }
+    if (!env.EMAIL_FROM || !env.EMAIL_FROM.trim()) {
+      invalidVariables.push('EMAIL_FROM is required in production mode.');
+    }
+    if (!env.SMTP_HOST || !env.SMTP_HOST.trim()) {
+      invalidVariables.push('SMTP_HOST is required in production mode.');
+    }
+    if (!env.SMTP_PORT || !String(env.SMTP_PORT).trim()) {
+      invalidVariables.push('SMTP_PORT is required in production mode.');
+    }
+    if (!env.SMTP_USER || !env.SMTP_USER.trim()) {
+      invalidVariables.push('SMTP_USER is required in production mode.');
+    }
+    if (!env.SMTP_PASS || !env.SMTP_PASS.trim()) {
+      invalidVariables.push('SMTP_PASS is required in production mode.');
+    }
+    if (env.EMAIL_FROM && env.SMTP_USER) {
+      const canonicalFrom = env.EMAIL_FROM.trim().toLowerCase();
+      const canonicalUser = env.SMTP_USER.trim().toLowerCase();
+      if (canonicalFrom !== canonicalUser) {
+        invalidVariables.push(
+          `EMAIL_FROM ('${env.EMAIL_FROM}') must match SMTP_USER ('${env.SMTP_USER}') in production mode.`
+        );
+      }
+    }
+    if (!env.OTP_SECRET && env.JWT_SECRET && env.JWT_SECRET.trim().length >= 32) {
+      env.OTP_SECRET = env.JWT_SECRET;
+    }
+    if (!env.OTP_SECRET || env.OTP_SECRET.trim().length < 32) {
+      invalidVariables.push(
+        `OTP_SECRET is required and must be at least 32 characters in length in production (current length: ${env.OTP_SECRET ? env.OTP_SECRET.trim().length : 0}).`,
+      );
+    }
+    if (env.OTP_SECRET && KNOWN_DEFAULT_SECRETS.includes(env.OTP_SECRET.toLowerCase())) {
+      invalidVariables.push('OTP_SECRET cannot use known weak or default values.');
+    }
+    if (!env.ENCRYPTION_KEY || env.ENCRYPTION_KEY.trim().length < 32) {
+      invalidVariables.push(
+        `ENCRYPTION_KEY (mail password encryption key) is required and must be at least 32 characters in production (current length: ${env.ENCRYPTION_KEY ? env.ENCRYPTION_KEY.trim().length : 0}).`,
+      );
+    }
+  } else if (env.OTP_SECRET && env.OTP_SECRET.length < 32) {
+    warnings.push(`OTP_SECRET is recommended to be at least 32 characters (current: ${env.OTP_SECRET.length}).`);
   }
 
   if (env.ENCRYPTION_KEY) {
@@ -406,14 +461,14 @@ export function validateEnvironment(
 
   if (!isValid && exitOnError) {
     console.error('\n================================================================================');
-    console.error('❌ FATAL: SERVER ENVIRONMENT VALIDATION FAILED');
+    console.error('[FATAL]: SERVER ENVIRONMENT VALIDATION FAILED');
     console.error('================================================================================');
 
     if (missingVariables.length > 0) {
       console.error('The following REQUIRED variables are missing or empty:');
       missingVariables.forEach((k) => {
         const def = ENV_CATALOG.find((m) => m.key === k);
-        console.error(`  ✖ [MISSING] ${k.padEnd(24)} - ${def?.description || ''}`);
+        console.error(`  [-] [MISSING] ${k.padEnd(24)} - ${def?.description || ''}`);
       });
       console.error('');
     }
@@ -421,7 +476,7 @@ export function validateEnvironment(
     if (invalidVariables.length > 0) {
       console.error('The following variables failed security / format validation:');
       invalidVariables.forEach((err) => {
-        console.error(`  ✖ [INVALID] ${err}`);
+        console.error(`  [-] [INVALID] ${err}`);
       });
       console.error('');
     }

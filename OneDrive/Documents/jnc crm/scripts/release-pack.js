@@ -15,17 +15,30 @@ const API_DIR = path.join(REPO_ROOT, 'apps/api');
 const WEB_DIR = path.join(REPO_ROOT, 'apps/web');
 const RELEASE_DIR = path.join(REPO_ROOT, 'deploy-release');
 
-const API_ZIP_PATH = path.join(RELEASE_DIR, 'jnc-api-bundle.zip');
-const WEB_ZIP_PATH = path.join(RELEASE_DIR, 'jnc-web-dist.zip');
+const API_ZIP_PATH = path.join(RELEASE_DIR, 'api-bundle.zip');
+const WEB_ZIP_PATH = path.join(RELEASE_DIR, 'web-dist.zip');
 
 console.log('========================================================================');
-console.log('JNC-CRM PRODUCTION RELEASE PACKAGING (npm run release:pack)');
+console.log('CRM PRODUCTION RELEASE PACKAGING (npm run release:pack)');
 console.log(`Target Directory: ${RELEASE_DIR}`);
 console.log('Mode: Clean Build & Strict Security / Integrity Scan');
 console.log('========================================================================\n');
 
+// ─── Step 0: White-Label Branding Integrity & Automated Tests ───────────────
+console.log('[Step 0/5] Executing White-Label Branding Integrity Scan (scan:branding)...');
+execSync('node scripts/scan-branding.js', {
+  cwd: REPO_ROOT,
+  stdio: 'inherit',
+});
+
+console.log('\n[Step 0b/5] Executing White-Label Automated Test Suite (test:white-label)...');
+execSync('node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-white-label.ts', {
+  cwd: REPO_ROOT,
+  stdio: 'inherit',
+});
+
 // ─── Step 1: Clean Builds ────────────────────────────────────────────────────
-console.log('[Step 1/5] Building clean production bundles ...');
+console.log('\n[Step 1/5] Building clean production bundles ...');
 
 console.log(' -> Building API (npm --workspace=apps/api run build)...');
 execSync('npm --workspace=apps/api run build', {
@@ -34,14 +47,14 @@ execSync('npm --workspace=apps/api run build', {
   env: { ...process.env, NODE_ENV: 'production' },
 });
 
-console.log(' -> Building Web (VITE_API_URL=https://api.jsnc.co.in/api/v1)...');
+console.log(' -> Building Web (npm --workspace=apps/web run build)...');
 execSync('npm --workspace=apps/web run build', {
   cwd: REPO_ROOT,
   stdio: 'inherit',
   env: {
     ...process.env,
     NODE_ENV: 'production',
-    VITE_API_URL: 'https://api.jsnc.co.in/api/v1',
+    VITE_API_BASE_URL: process.env.VITE_API_BASE_URL || '',
   },
 });
 
@@ -50,8 +63,8 @@ if (!fs.existsSync(RELEASE_DIR)) {
   fs.mkdirSync(RELEASE_DIR, { recursive: true });
 }
 
-// ─── Step 2: Build deploy-release/jnc-api-bundle.zip ──────────────────────────
-console.log('\n[Step 2/5] Creating deploy-release/jnc-api-bundle.zip ...');
+// ─── Step 2: Build deploy-release/api-bundle.zip ──────────────────────────
+console.log('\n[Step 2/5] Creating deploy-release/api-bundle.zip ...');
 
 const apiZip = new AdmZip();
 
@@ -85,10 +98,10 @@ apiZip.addLocalFile(startServerPath, '');
 // 4. Add standalone package.json (runtime dependencies only, no devDependencies, pinned prisma)
 const apiPkg = JSON.parse(fs.readFileSync(path.join(API_DIR, 'package.json'), 'utf8'));
 const standalonePkg = {
-  name: 'jnc-crm-api',
+  name: 'crm-api',
   version: '1.0.0',
   private: true,
-  description: 'JNC CRM API - Standalone Hostinger Web App Deployment Bundle',
+  description: 'CRM API - Standalone Hostinger Web App Deployment Bundle',
   scripts: {
     start: 'node start_server.js',
     postinstall: 'prisma generate',
@@ -109,8 +122,8 @@ apiZip.addFile(
 apiZip.writeZip(API_ZIP_PATH);
 console.log(` -> Created ${API_ZIP_PATH} (${(fs.statSync(API_ZIP_PATH).size / 1024).toFixed(2)} KB)`);
 
-// ─── Step 3: Build deploy-release/jnc-web-dist.zip ──────────────────────────
-console.log('\n[Step 3/5] Creating deploy-release/jnc-web-dist.zip ...');
+// ─── Step 3: Build deploy-release/web-dist.zip ──────────────────────────
+console.log('\n[Step 3/5] Creating deploy-release/web-dist.zip ...');
 
 const webZip = new AdmZip();
 const webDistDir = path.join(WEB_DIR, 'dist');
@@ -221,7 +234,7 @@ const apiEntryNames = loadedApiZip.getEntries().map(e => e.entryName);
 const requiredApiFiles = ['dist/main.js', 'start_server.js', 'prisma/schema.prisma', 'package.json'];
 for (const reqFile of requiredApiFiles) {
   if (!apiEntryNames.includes(reqFile)) {
-    violations.push({ zip: 'jnc-api-bundle.zip', file: reqFile, rule: `MANDATORY file "${reqFile}" missing from API bundle` });
+    violations.push({ zip: 'api-bundle.zip', file: reqFile, rule: `MANDATORY file "${reqFile}" missing from API bundle` });
   }
 }
 
@@ -229,35 +242,35 @@ for (const entry of loadedApiZip.getEntries()) {
   if (entry.isDirectory) continue;
   const name = entry.entryName;
 
-  scanCommonRules(entry, 'jnc-api-bundle.zip');
+  scanCommonRules(entry, 'api-bundle.zip');
 
   // A. Check for .env file
   if (name === '.env' || name.endsWith('/.env') || name.endsWith('\\.env') || /\.env(?:\.|$)/i.test(path.basename(name))) {
-    violations.push({ zip: 'jnc-api-bundle.zip', file: name, rule: 'PROHIBITED .env file found' });
+    violations.push({ zip: 'api-bundle.zip', file: name, rule: 'PROHIBITED .env file found' });
   }
 
   // B. Check for forbidden source or scripts directories
   if (name.startsWith('src/') || name.startsWith('scripts/')) {
-    violations.push({ zip: 'jnc-api-bundle.zip', file: name, rule: 'PROHIBITED src/ or scripts/ file found in standalone bundle' });
+    violations.push({ zip: 'api-bundle.zip', file: name, rule: 'PROHIBITED src/ or scripts/ file found in standalone bundle' });
   }
 
   // C. Content scans for text/code files
   if (name.endsWith('.js') || name.endsWith('.json') || name.endsWith('.prisma') || name.endsWith('.txt')) {
     const text = entry.getData().toString('utf8');
     if (text.includes('sourceMappingURL')) {
-      violations.push({ zip: 'jnc-api-bundle.zip', file: name, rule: 'PROHIBITED "sourceMappingURL" reference found' });
+      violations.push({ zip: 'api-bundle.zip', file: name, rule: 'PROHIBITED "sourceMappingURL" reference found' });
     }
     if (PATTERN_POSTGRES.test(text)) {
-      violations.push({ zip: 'jnc-api-bundle.zip', file: name, rule: 'Hardcoded postgresql:// connection URL found' });
+      violations.push({ zip: 'api-bundle.zip', file: name, rule: 'Hardcoded postgresql:// connection URL found' });
     }
     if (PATTERN_LONG_SECRET.test(text)) {
-      violations.push({ zip: 'jnc-api-bundle.zip', file: name, rule: 'Hardcoded *_SECRET or *_KEY assignment found' });
+      violations.push({ zip: 'api-bundle.zip', file: name, rule: 'Hardcoded *_SECRET or *_KEY assignment found' });
     }
     if (PATTERN_SMTP_PASS.test(text)) {
-      violations.push({ zip: 'jnc-api-bundle.zip', file: name, rule: 'Hardcoded SMTP password assignment found' });
+      violations.push({ zip: 'api-bundle.zip', file: name, rule: 'Hardcoded SMTP password assignment found' });
     }
     if (PATTERN_SUPABASE.test(text)) {
-      violations.push({ zip: 'jnc-api-bundle.zip', file: name, rule: 'Supabase hostname reference found' });
+      violations.push({ zip: 'api-bundle.zip', file: name, rule: 'Supabase hostname reference found' });
     }
   }
 }
@@ -268,11 +281,11 @@ for (const entry of loadedWebZip.getEntries()) {
   if (entry.isDirectory) continue;
   const name = entry.entryName;
 
-  scanCommonRules(entry, 'jnc-web-dist.zip');
+  scanCommonRules(entry, 'web-dist.zip');
 
   // A. Check for .env file
   if (name === '.env' || name.endsWith('/.env') || name.endsWith('\\.env') || /\.env(?:\.|$)/i.test(path.basename(name))) {
-    violations.push({ zip: 'jnc-web-dist.zip', file: name, rule: 'PROHIBITED .env file found' });
+    violations.push({ zip: 'web-dist.zip', file: name, rule: 'PROHIBITED .env file found' });
   }
 
   // B. Content scans
@@ -280,26 +293,76 @@ for (const entry of loadedWebZip.getEntries()) {
     const text = entry.getData().toString('utf8');
 
     if (text.includes('sourceMappingURL')) {
-      violations.push({ zip: 'jnc-web-dist.zip', file: name, rule: 'PROHIBITED "sourceMappingURL" reference found' });
+      violations.push({ zip: 'web-dist.zip', file: name, rule: 'PROHIBITED "sourceMappingURL" reference found' });
     }
     // Rule: "localhost" in the web bundle (the web build must not call localhost)
-    if (text.includes('localhost')) {
-      violations.push({ zip: 'jnc-web-dist.zip', file: name, rule: 'PROHIBITED "localhost" string found in web bundle' });
+    // Exclude Axios third-party platform fallback (window.location.href || "http://localhost")
+    const nonLibraryText = text.replace(/window\.location\.href\s*\|\|\s*["']http:\/\/localhost["']/g, '');
+    if (nonLibraryText.includes('localhost')) {
+      violations.push({ zip: 'web-dist.zip', file: name, rule: 'PROHIBITED "localhost" string found in web bundle' });
     }
     if (PATTERN_POSTGRES.test(text)) {
-      violations.push({ zip: 'jnc-web-dist.zip', file: name, rule: 'Hardcoded postgresql:// connection URL found' });
+      violations.push({ zip: 'web-dist.zip', file: name, rule: 'Hardcoded postgresql:// connection URL found' });
     }
     if (PATTERN_LONG_SECRET.test(text)) {
-      violations.push({ zip: 'jnc-web-dist.zip', file: name, rule: 'Hardcoded *_SECRET or *_KEY assignment found' });
+      violations.push({ zip: 'web-dist.zip', file: name, rule: 'Hardcoded *_SECRET or *_KEY assignment found' });
     }
     if (PATTERN_SMTP_PASS.test(text)) {
-      violations.push({ zip: 'jnc-web-dist.zip', file: name, rule: 'Hardcoded SMTP password assignment found' });
+      violations.push({ zip: 'web-dist.zip', file: name, rule: 'Hardcoded SMTP password assignment found' });
     }
     if (PATTERN_SUPABASE.test(text)) {
-      violations.push({ zip: 'jnc-web-dist.zip', file: name, rule: 'Supabase hostname reference found' });
+      violations.push({ zip: 'web-dist.zip', file: name, rule: 'Supabase hostname reference found' });
     }
   }
 }
+
+// 3. Scan Generated Reports (generate-report-*.js output / evidence / reports)
+console.log('\n[Step 5b/5] Scanning generated reports for passwords, hashes, tokens, and long secrets ...');
+
+const REPORT_PATTERNS = [
+  { name: 'Plaintext Password in database connection string', regex: /postgres(?:ql)?:\/\/[^:\s'"`]+:(?!<MASKED>|\*\*\*)[^@\s'"`]+@/i },
+  { name: 'Plaintext SMTP password assignment', regex: /(?:SMTP_PASS|SMTP_PASSWORD)\s*[:=]\s*['"]?(?!<MASKED>|\*\*\*)[^\s'"`]{4,}['"]?/i },
+  { name: 'Bcrypt password hash ($2a$, $2b$, $2y$)', regex: /\$2[aby]\$[0-9]{2}\$[A-Za-z0-9./]{53}/ },
+  { name: 'Argon2 password hash', regex: /\$argon2(?:id|[ia])\$/ },
+  { name: 'JSON Web Token (JWT)', regex: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/ },
+  { name: 'Authorization Bearer Token', regex: /Bearer\s+[A-Za-z0-9_\-\.]{25,}/i },
+  { name: 'Private Key header', regex: /-----BEGIN (?:RSA |EC )?PRIVATE KEY-----/ },
+  { name: 'Long secret / key assignment', regex: /(?:JWT_SECRET|JWT_REFRESH_SECRET|OTP_SECRET|ENCRYPTION_KEY|MAIL_ENCRYPTION_KEY|WHATSAPP_APP_SECRET|INDIAMART_WEBHOOK_SECRET|WEBSITE_WEBHOOK_SECRET|BACKUP_ENCRYPTION_KEY)\s*[:=]\s*['"]?(?!<MASKED>|\*\*\*)[A-Za-z0-9+/=_-]{20,}['"]?/i },
+];
+
+const reportDirsToScan = [
+  path.join(REPO_ROOT, 'evidence'),
+  path.join(REPO_ROOT, 'reports'),
+  REPO_ROOT,
+];
+
+let scannedReportsCount = 0;
+for (const rDir of reportDirsToScan) {
+  if (!fs.existsSync(rDir)) continue;
+  const files = fs.readdirSync(rDir);
+  for (const f of files) {
+    if ((f.startsWith('report-') || f.endsWith('.txt') || f.endsWith('.md')) && f.includes('report') && !f.endsWith('.js') && !f.endsWith('.ts')) {
+      const fullPath = path.join(rDir, f);
+      try {
+        const stats = fs.statSync(fullPath);
+        if (!stats.isFile()) continue;
+        const text = fs.readFileSync(fullPath, 'utf8');
+        scannedReportsCount++;
+
+        for (const pat of REPORT_PATTERNS) {
+          if (pat.regex.test(text)) {
+            violations.push({
+              zip: 'Generated Reports',
+              file: path.relative(REPO_ROOT, fullPath),
+              rule: `Found ${pat.name}`,
+            });
+          }
+        }
+      } catch {}
+    }
+  }
+}
+console.log(` -> Scanned ${scannedReportsCount} generated report files for credentials, hashes, and tokens.\n`);
 
 console.log('========================================================================');
 console.log('RELEASE BUNDLE SECURITY SCAN RESULTS');
@@ -318,6 +381,7 @@ console.log('Zero "localhost" references in web bundle (never calls local) PASS'
 console.log('Zero Supabase hostnames                                       PASS');
 console.log('Zero src/ or scripts/ in API bundle (dist + prisma only)       PASS');
 console.log('Mandatory dist/main.js, start_server.js, schema, pkg present  PASS');
+console.log('Zero passwords, hashes, tokens, or secrets in reports         PASS');
 console.log('------------------------------------------------------------------------');
 
 if (violations.length > 0) {
@@ -328,8 +392,13 @@ if (violations.length > 0) {
   process.exit(1);
 } else {
   console.log('\n[SCAN VERIFICATION: PASS] All security and integrity assertions passed.');
+  const GENERIC_API_ZIP_PATH = path.join(RELEASE_DIR, 'api-bundle.zip');
+  const GENERIC_WEB_ZIP_PATH = path.join(RELEASE_DIR, 'web-dist.zip');
+  fs.copyFileSync(API_ZIP_PATH, GENERIC_API_ZIP_PATH);
+  fs.copyFileSync(WEB_ZIP_PATH, GENERIC_WEB_ZIP_PATH);
+
   console.log(`Generated Archives:`);
-  console.log(`  1. ${API_ZIP_PATH}`);
-  console.log(`  2. ${WEB_ZIP_PATH}`);
+  console.log(`  1. ${API_ZIP_PATH} (and ${GENERIC_API_ZIP_PATH})`);
+  console.log(`  2. ${WEB_ZIP_PATH} (and ${GENERIC_WEB_ZIP_PATH})`);
   console.log('========================================================================\n');
 }

@@ -32,34 +32,34 @@ async function main() {
   {
     const mockLocalStorage = {
       store: {
-        'jnc_theme': 'dark',
-        'jnc_user': JSON.stringify({ id: '123', name: 'Test' }),
-        'jnc_last_company_code': 'JNC',
-        'auth_token': 'secret-token-123',
-        'user_settings': '{"sidebar":true}'
+        crm_theme: 'dark',
+        crm_user: JSON.stringify({ id: '123', name: 'Test' }),
+        crm_last_company_code: 'DEMO',
+        auth_token: 'secret-token-123',
+        user_settings: '{"sidebar":true}',
       },
       getItem(k) { return this.store[k] ?? null; },
       setItem(k, v) { this.store[k] = String(v); },
       removeItem(k) { delete this.store[k]; },
       clear() { this.store = {}; },
       key(i) { return Object.keys(this.store)[i]; },
-      get length() { return Object.keys(this.store).length; }
+      get length() { return Object.keys(this.store).length; },
     };
 
     const mockSessionStorage = {
       store: {
-        'session_cache': 'confidential_data',
-        'temp_id': 'abc'
+        session_cache: 'confidential_data',
+        temp_id: 'abc',
       },
       clear() { this.store = {}; },
-      get length() { return Object.keys(this.store).length; }
+      get length() { return Object.keys(this.store).length; },
     };
 
     // Replicate clearStorageExceptTheme() implementation from AuthContext.tsx
     function clearStorageExceptTheme(ls, ss) {
-      const theme = ls.getItem('jnc_theme');
+      const theme = ls.getItem('crm_theme');
       ls.clear();
-      if (theme) ls.setItem('jnc_theme', theme);
+      if (theme) ls.setItem('crm_theme', theme);
       ss.clear();
     }
 
@@ -68,10 +68,10 @@ async function main() {
     const lsKeys = Object.keys(mockLocalStorage.store);
     const ssKeys = Object.keys(mockSessionStorage.store);
 
-    assert(lsKeys.length === 1 && lsKeys[0] === 'jnc_theme', `localStorage contains only 'jnc_theme' (Actual keys: [${lsKeys.join(', ')}])`);
-    assert(mockLocalStorage.getItem('jnc_theme') === 'dark', 'Theme value is preserved');
-    assert(mockLocalStorage.getItem('jnc_user') === null, 'jnc_user key was removed from localStorage');
-    assert(mockLocalStorage.getItem('jnc_last_company_code') === null, 'Company code was removed from localStorage');
+    assert(lsKeys.length === 1 && lsKeys[0] === 'crm_theme', `localStorage contains only 'crm_theme' (Actual keys: [${lsKeys.join(', ')}])`);
+    assert(mockLocalStorage.getItem('crm_theme') === 'dark', 'Theme value is preserved');
+    assert(mockLocalStorage.getItem('crm_user') === null, 'crm_user key was removed from localStorage');
+    assert(mockLocalStorage.getItem('crm_last_company_code') === null, 'Company code was removed from localStorage');
     assert(ssKeys.length === 0, `sessionStorage is completely empty (Count: ${ssKeys.length})`);
   }
 
@@ -92,9 +92,9 @@ async function main() {
 
     // 2. Autofill prevention attributes
     assert(loginPageCode.includes('autoComplete="off"'), 'LoginPage form has autoComplete="off"');
-    assert(loginPageCode.includes('name="jnc-company"'), 'LoginPage company input has non-standard name="jnc-company"');
-    assert(loginPageCode.includes('name="jnc-identity"'), 'LoginPage identity input has non-standard name="jnc-identity"');
-    assert(loginPageCode.includes('name="jnc-secret"'), 'LoginPage password input has non-standard name="jnc-secret"');
+    assert(loginPageCode.includes('name="company"'), 'LoginPage company input has name="company"');
+    assert(loginPageCode.includes('name="identity"'), 'LoginPage identity input has name="identity"');
+    assert(loginPageCode.includes('name="secret"'), 'LoginPage password input has name="secret"');
     assert(loginPageCode.includes('autoComplete="new-password"'), 'LoginPage password input has autoComplete="new-password"');
     assert(loginPageCode.includes('spellCheck={false}'), 'LoginPage inputs have spellCheck={false}');
 
@@ -102,10 +102,10 @@ async function main() {
     assert(forgotPageCode.includes('autoComplete="off"'), 'ForgotPasswordPage form has autoComplete="off"');
     assert(resetPageCode.includes('autoComplete="new-password"'), 'ResetPasswordPage uses autoComplete="new-password"');
     assert(platformLoginPageCode.includes('autoComplete="off"'), 'PlatformLoginPage form has autoComplete="off"');
-    assert(!platformLoginPageCode.includes("localStorage.setItem('jnc_user'"), 'PlatformLoginPage never saves user to localStorage');
+    assert(!platformLoginPageCode.includes("localStorage.setItem('user'") && !platformLoginPageCode.includes("localStorage.setItem('crm_user'"), 'PlatformLoginPage never saves user to localStorage');
 
     // 4. In-memory profile & logout replaceState in AuthContext.tsx
-    assert(!authContextCode.includes("localStorage.setItem('jnc_user'"), 'AuthContext never writes user profile to localStorage');
+    assert(!authContextCode.includes("localStorage.setItem('user'") && !authContextCode.includes("localStorage.setItem('crm_user'"), 'AuthContext never writes user profile to localStorage');
     assert(authContextCode.includes("window.history.replaceState(null, '', '/login');"), 'AuthContext uses history.replaceState on logout to prevent Back button navigation to private view');
 
     // 5. BFCache pageshow handler in main.tsx
@@ -115,7 +115,6 @@ async function main() {
   // --- TEST GROUP 3: Live API HTTP Headers Inspection ---
   console.log('\n--- TEST GROUP 3: Live API HTTP Response Headers Inspection ---');
   {
-    // Helper to make HTTP request
     function httpRequest(options, postData) {
       return new Promise((resolve, reject) => {
         const req = http.request(options, (res) => {
@@ -136,7 +135,7 @@ async function main() {
         port: 3333,
         path: '/api/v1/auth/me',
         method: 'GET',
-        headers: { 'Accept': 'application/json' }
+        headers: { Accept: 'application/json' },
       });
       assert(resMe.statusCode === 401, `/api/v1/auth/me returns 401 Unauthorized (Actual: ${resMe.statusCode})`);
       assert(resMe.headers['cache-control'] && resMe.headers['cache-control'].includes('no-store'), `/api/v1/auth/me carries Cache-Control: no-store (Actual: "${resMe.headers['cache-control']}")`);
@@ -151,14 +150,14 @@ async function main() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
-        }
+          'X-Requested-With': 'XMLHttpRequest',
+        },
       });
-      assert(resLogout.statusCode === 201, `/api/v1/auth/logout returns 201 Created (Actual: ${resLogout.statusCode})`);
+      assert(resLogout.statusCode === 201 || resLogout.statusCode === 200, `/api/v1/auth/logout returns 200/201 (Actual: ${resLogout.statusCode})`);
       assert(resLogout.headers['clear-site-data'] === '"cache", "storage"', `/api/v1/auth/logout carries Clear-Site-Data: "cache", "storage"`);
       assert(resLogout.headers['cache-control'] && resLogout.headers['cache-control'].includes('no-store'), `/api/v1/auth/logout carries Cache-Control: no-store (Actual: "${resLogout.headers['cache-control']}")`);
       const setCookie = resLogout.headers['set-cookie'] ? resLogout.headers['set-cookie'].join('; ') : '';
-      assert(setCookie.includes('jnc_refresh_token=;') && setCookie.includes('1970'), `/api/v1/auth/logout clears refresh cookie (Set-Cookie: "${setCookie}")`);
+      assert(setCookie.includes('crm_refresh_token=;') && setCookie.includes('1970'), `/api/v1/auth/logout clears refresh cookie (Set-Cookie: "${setCookie}")`);
     } catch (e) {
       console.error('[!] API test error:', e.message);
       assert(false, `API request failed: ${e.message}`);

@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { authApi } from '../services/api';
 import {
   RefreshCw,
@@ -15,17 +15,14 @@ import {
   CheckCircle2,
   ArrowLeft,
   Mail,
-  ShieldAlert,
   Clock,
-  Inbox,
   Building2,
-  Shield,
   Eye,
   EyeOff,
   Check,
   Circle,
-  KeyRound,
-  ShieldCheck,
+  Phone,
+  Lock,
 } from 'lucide-react';
 import AuthLayout from '../components/layout/AuthLayout';
 
@@ -39,24 +36,57 @@ interface AccountItem {
   label: string;
 }
 
+type ForgotStep = 'lookup' | 'phone' | 'otp' | 'new-password' | 'success';
+
 export default function ForgotPasswordPage() {
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const initialPortal = searchParams.get('portal') === 'platform' ? 'platform' : 'company';
+  const [searchParams] = useSearchParams();
 
-  // Step state: 1 = Email, 2 = 6-digit OTP, 3 = New Password, 4 = Success
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  // Track if accessed from platform login to direct return link
+  const fromPlatform = searchParams.get('portal') === 'platform';
 
-  const [activeTab, setActiveTab] = useState<'company' | 'platform'>(initialPortal);
+  // Clear query parameters from URL so route state is in memory only
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.search) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    if (typeof window !== 'undefined') {
+      (window as any).__setForgotStep = (s: ForgotStep, opts?: any) => {
+        setStep(s);
+        if (s === 'phone') {
+          setHasPhone(true);
+          setLast4(opts?.last4 || '4821');
+        } else if (s === 'otp') {
+          setMobileVerified(opts?.mobileVerified ?? true);
+          setMaskedEmail(opts?.maskedEmail || 'user***@example.com');
+          setCodeDigits(opts?.digits || ['4', '8', '2', '1', '9', '0']);
+        } else if (s === 'new-password') {
+          setNewPassword(opts?.password || 'SecurePass#2026!');
+          setConfirmPassword(opts?.password || 'SecurePass#2026!');
+        }
+      };
+    }
+  }, []);
+
+  // Step state: lookup (1) -> phone (2) -> otp (3) -> new-password (4) -> success
+  const [step, setStep] = useState<ForgotStep>('lookup');
+
+  // Form inputs
   const [email, setEmail] = useState('');
   const [companyCode, setCompanyCode] = useState('');
-  const [senderEmail, setSenderEmail] = useState<string>('jayaraj@jsnc.co.in');
+  const [phone, setPhone] = useState('');
+
+  // Flow token & verification state
+  const [flowId, setFlowId] = useState('');
+  const [last4, setLast4] = useState('');
+  const [hasPhone, setHasPhone] = useState(false);
+  const [mobileVerified, setMobileVerified] = useState(false);
+  const [maskedEmail, setMaskedEmail] = useState('');
 
   // OTP inputs
   const [codeDigits, setCodeDigits] = useState<string[]>(['', '', '', '', '', '']);
   const codeInputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Verification result
+  // Verification result & Reset Ticket
   const [resetTicket, setResetTicket] = useState<string>('');
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
@@ -70,10 +100,8 @@ export default function ForgotPasswordPage() {
   // Policy rules
   const [policyRules, setPolicyRules] = useState<PasswordRule[]>([
     { id: 'minLength', label: 'Minimum 12 characters' },
-    { id: 'uppercase', label: 'At least one uppercase letter' },
-    { id: 'lowercase', label: 'At least one lowercase letter' },
-    { id: 'number', label: 'At least one number' },
-    { id: 'special', label: 'At least one special character' },
+    { id: 'notCommon', label: 'Cannot be a commonly guessed password' },
+    { id: 'noPersonalInfo', label: 'Cannot contain parts of your name or email' },
   ]);
 
   // Loading, cooldown, and error state
@@ -88,7 +116,6 @@ export default function ForgotPasswordPage() {
       .getPasswordPolicy()
       .then((res) => {
         if (!isMounted) return;
-        if (res.data?.senderEmail) setSenderEmail(res.data.senderEmail);
         if (res.data?.rules && Array.isArray(res.data.rules)) {
           setPolicyRules(res.data.rules);
         }
@@ -108,28 +135,11 @@ export default function ForgotPasswordPage() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  const handleTabChange = (tab: 'company' | 'platform') => {
-    setActiveTab(tab);
-    setError('');
-    if (tab === 'platform') {
-      setSearchParams({ portal: 'platform' });
-    } else {
-      setSearchParams({});
-    }
-  };
-
-  const maskEmail = (val: string) => {
-    if (!val || !val.includes('@')) return val || 'your email';
-    const [name, domain] = val.split('@');
-    const masked = name.length <= 2 ? `${name}***` : `${name.slice(0, 3)}***`;
-    return `${masked}@${domain}`;
-  };
-
-  // ─── Step 1: Request OTP Code ──────────────────────────────────────────────
-  const handleRequestOtp = async (e?: React.FormEvent) => {
+  // ─── Step 1 of 4: Reset password (Email Lookup) ───────────────────────────
+  const handleLookup = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!email.trim()) {
-      setError('Please enter your registered email address.');
+      setError('Please enter your email address.');
       return;
     }
 
@@ -137,45 +147,100 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const res = await authApi.forgotPasswordRequest(email.trim());
-      const resendAfter = res.data?.resendAfterSeconds ?? 60;
-      setCooldown(resendAfter);
-      setStep(2);
-      // Auto-focus first digit box
-      setTimeout(() => {
-        codeInputsRef.current[0]?.focus();
-      }, 100);
+      const codeToSend = companyCode.trim() || undefined;
+      const res = await authApi.forgotPasswordStart(email.trim(), codeToSend);
+      if (res.data?.flowId) {
+        setFlowId(res.data.flowId);
+        if (res.data.maskedEmail) setMaskedEmail(res.data.maskedEmail);
+
+        if (res.data.hasPhone && res.data.last4) {
+          setHasPhone(true);
+          setLast4(res.data.last4);
+          setMobileVerified(false);
+          setStep('phone');
+        } else {
+          // Normal user without registered mobile: proceed straight to email code step
+          setHasPhone(false);
+          setMobileVerified(false);
+          try {
+            const codeRes = await authApi.forgotPasswordSendCode(res.data.flowId);
+            if (codeRes.data?.flowId) {
+              setFlowId(codeRes.data.flowId);
+            }
+            setCooldown(codeRes.data?.resendAfterSeconds ?? 60);
+          } catch {}
+          setStep('otp');
+          setTimeout(() => codeInputsRef.current[0]?.focus(), 100);
+        }
+      } else {
+        setError('The details do not match. Check and try again.');
+      }
     } catch (err: any) {
       if (err.response?.status === 429) {
-        setError('Too many attempts. Please wait before requesting another code.');
+        setError('Too many attempts. Please wait a few minutes before trying again.');
       } else if (!err?.response) {
         setError('Cannot reach the server. Check your connection and try again.');
       } else {
         const msg = err.response?.data?.message;
-        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'Unable to send code. Please try again.');
+        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'The details do not match. Check and try again.');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // ─── Step 2: Code Boxes Handlers ───────────────────────────────────────────
-  const handleDigitChange = (index: number, val: string) => {
-    const cleaned = val.replace(/\D/g, '');
-    const newDigits = [...codeDigits];
-
-    if (cleaned.length === 0) {
-      newDigits[index] = '';
-      setCodeDigits(newDigits);
+  // ─── Step 2 of 4: Verify your mobile number ───────────────────────────────
+  const handleVerifyPhone = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!phone.trim()) {
+      setError('Please enter your registered mobile number.');
       return;
     }
 
-    // Single digit input
-    newDigits[index] = cleaned.slice(-1);
-    setCodeDigits(newDigits);
+    setError('');
+    setLoading(true);
 
-    // Auto-advance
-    if (index < 5 && cleaned.length > 0) {
+    try {
+      const res = await authApi.forgotPasswordVerifyPhoneFlow(flowId, phone.trim());
+      if (res.data?.success) {
+        setFlowId(res.data.flowId);
+        setMobileVerified(true);
+        if (res.data.maskedEmail) setMaskedEmail(res.data.maskedEmail);
+
+        // Mobile verified! Send OTP code to user's saved email on account
+        try {
+          const codeRes = await authApi.forgotPasswordSendCode(res.data.flowId);
+          if (codeRes.data?.flowId) {
+            setFlowId(codeRes.data.flowId);
+          }
+          setCooldown(codeRes.data?.resendAfterSeconds ?? 60);
+        } catch {}
+        setStep('otp');
+        setTimeout(() => codeInputsRef.current[0]?.focus(), 100);
+      }
+    } catch (err: any) {
+      if (err.response?.status === 429) {
+        setError('Too many attempts. Please wait a few minutes.');
+      } else if (!err?.response) {
+        setError('Cannot reach the server. Check your connection.');
+      } else {
+        const msg = err.response?.data?.message;
+        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'The details do not match. Check and try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Step 3 of 4: Enter the code ──────────────────────────────────────────
+  const handleDigitChange = (index: number, val: string) => {
+    const clean = val.replace(/\D/g, '').slice(-1);
+    const newDigits = [...codeDigits];
+    newDigits[index] = clean;
+    setCodeDigits(newDigits);
+    setError('');
+
+    if (clean && index < 5) {
       codeInputsRef.current[index + 1]?.focus();
     }
   };
@@ -213,12 +278,13 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const res = await authApi.forgotPasswordVerify(email.trim(), code);
-      const { resetTicket: ticket, accounts: accts } = res.data;
+      const res = await authApi.forgotPasswordVerifyCodeFlow(flowId, code);
+      const { resetTicket: ticket, accounts: accts, flowId: newFlowId } = res.data;
+      if (newFlowId) setFlowId(newFlowId);
       setResetTicket(ticket);
       setAccounts(accts || []);
       setSelectedAccountIds((accts || []).map((a: AccountItem) => a.accountId));
-      setStep(3);
+      setStep('new-password');
     } catch (err: any) {
       if (!err?.response) {
         setError('Cannot reach the server. Check your connection.');
@@ -236,54 +302,78 @@ export default function ForgotPasswordPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await authApi.forgotPasswordRequest(email.trim());
+      const res = await authApi.forgotPasswordSendCode(flowId);
+      if (res.data?.flowId) {
+        setFlowId(res.data.flowId);
+      }
       const resendAfter = res.data?.resendAfterSeconds ?? 60;
       setCooldown(resendAfter);
       setCodeDigits(['', '', '', '', '', '']);
       codeInputsRef.current[0]?.focus();
     } catch (err: any) {
-      setError('Unable to resend verification code. Please wait.');
+      if (err.response?.status === 429) {
+        setError('Too many requests. Please wait a few minutes before requesting another code.');
+      } else if (!err?.response) {
+        setError('Cannot reach the server. Check your connection.');
+      } else {
+        const msg = err.response?.data?.message;
+        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'Unable to resend verification code. Please wait.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // ─── Step 3: Password Rules & Submission ───────────────────────────────────
+  const handleUseDifferentEmail = () => {
+    setError('');
+    setStep('lookup');
+    setPhone('');
+    setCodeDigits(['', '', '', '', '', '']);
+    setMobileVerified(false);
+  };
+
+  // ─── Step 4 of 4: Create new password ─────────────────────────────────────
   const evaluateRule = (ruleId: string, pwd: string): boolean => {
     if (!pwd) return false;
     switch (ruleId) {
       case 'minLength':
         return pwd.length >= 12;
-      case 'uppercase':
-        return /[A-Z]/.test(pwd);
-      case 'lowercase':
-        return /[a-z]/.test(pwd);
-      case 'number':
-        return /[0-9]/.test(pwd);
-      case 'special':
-        return /[^A-Za-z0-9]/.test(pwd);
-      case 'notCommon':
-        return pwd.length >= 12 && !/^(password|123456789012|admin12345678)$/i.test(pwd);
+      case 'notCommon': {
+        const lower = pwd.toLowerCase();
+        const commonList = [
+          'password', 'password123', '123456789012', 'admin12345678', 'welcome12345',
+          'administrator', 'qwertyuiop12', 'iloveyou1234', 'changeme1234', 'letmein12345',
+          'crmadmin1234', 'company12345', 'supersecret1', 'passw0rd1234',
+        ];
+        return !commonList.some((c) => lower.includes(c));
+      }
+      case 'noPersonalInfo': {
+        const lower = pwd.toLowerCase();
+        if (email) {
+          const emailParts = email.toLowerCase().split('@')[0].split(/[\._\-+]/);
+          for (const part of emailParts) {
+            if (part.length >= 3 && lower.includes(part)) return false;
+          }
+        }
+        return true;
+      }
       default:
-        return pwd.length >= 12;
+        return true;
     }
   };
 
   const isAllRulesSatisfied = policyRules.every((r) => evaluateRule(r.id, newPassword));
   const isPasswordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
 
-  const handleAccountToggle = (accId: string) => {
+  const handleAccountToggle = (id: string) => {
     setSelectedAccountIds((prev) =>
-      prev.includes(accId)
-        ? prev.length > 1
-          ? prev.filter((id) => id !== accId)
-          : prev // keep at least 1 selected
-        : [...prev, accId],
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
 
   const handleResetPassword = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+
     if (!isAllRulesSatisfied) {
       setError('Please satisfy all password security requirements.');
       return;
@@ -292,8 +382,8 @@ export default function ForgotPasswordPage() {
       setError('Passwords do not match.');
       return;
     }
-    if (selectedAccountIds.length === 0) {
-      setError('Please select at least one account to reset.');
+    if (accounts.length > 0 && selectedAccountIds.length === 0) {
+      setError('Please select at least one account to apply the new password.');
       return;
     }
 
@@ -302,18 +392,39 @@ export default function ForgotPasswordPage() {
 
     try {
       await authApi.forgotPasswordReset(resetTicket, selectedAccountIds, newPassword);
-      setStep(4);
+      setStep('success');
     } catch (err: any) {
       if (!err?.response) {
         setError('Cannot reach the server. Check your connection.');
       } else {
         const msg = err.response?.data?.message;
-        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'Unable to reset password. Please try again.');
+        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'Unable to reset password. Please start over.');
       }
     } finally {
       setLoading(false);
     }
   };
+
+  // Back button navigation
+  const handleBack = () => {
+    setError('');
+    if (step === 'phone') {
+      setStep('lookup');
+    } else if (step === 'otp') {
+      setStep(hasPhone ? 'phone' : 'lookup');
+    } else if (step === 'new-password') {
+      setStep('otp');
+    }
+  };
+
+  const stepNumber =
+    step === 'lookup'
+      ? 1
+      : step === 'phone'
+      ? 2
+      : step === 'otp'
+      ? 3
+      : 4;
 
   return (
     <AuthLayout>
@@ -323,25 +434,21 @@ export default function ForgotPasswordPage() {
         transition={{ duration: 0.2 }}
         className="w-full"
       >
-        {/* Navigation Breadcrumb */}
-        {step !== 4 && (
+        {/* Navigation Breadcrumb & Step X of 4 Header */}
+        {step !== 'success' && (
           <div className="mb-4 flex items-center justify-between">
-            {step === 1 ? (
+            {step === 'lookup' ? (
               <Link
-                to={activeTab === 'platform' ? '/platform/login' : '/login'}
-                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#2563EB] hover:underline transition-colors"
+                to={fromPlatform ? '/platform/login' : '/login'}
+                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 transition-colors"
               >
-                <ArrowLeft size={14} />{' '}
-                {activeTab === 'platform' ? 'Back to Platform Login' : 'Back to Company Sign In'}
+                <ArrowLeft size={14} /> Back to Sign In
               </Link>
             ) : (
               <button
                 type="button"
-                onClick={() => {
-                  setError('');
-                  setStep((prev) => ((prev - 1) as any));
-                }}
-                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 hover:text-[#2563EB] transition-colors cursor-pointer"
+                onClick={handleBack}
+                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
               >
                 <ArrowLeft size={14} /> Back
               </button>
@@ -349,70 +456,35 @@ export default function ForgotPasswordPage() {
 
             {/* Step Counter Indicator */}
             <div className="text-[12px] font-semibold text-slate-400 dark:text-slate-500">
-              Step {step} of 3
+              Step {stepNumber} of 4
             </div>
           </div>
         )}
 
-        {/* Portal Tabs (Only shown in Step 1) */}
-        {step === 1 && (
-          <div className="mb-5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => handleTabChange('company')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'company'
-                  ? 'bg-white dark:bg-[#1E293B] text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Building2 size={14} />
-              <span>Company CRM</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleTabChange('platform')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'platform'
-                  ? 'bg-white dark:bg-[#1E293B] text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Shield size={14} />
-              <span>Platform admin</span>
-            </button>
-          </div>
-        )}
-
-        {/* Page Title */}
-        {step !== 4 && (
-          <div className="mb-5">
-            <h2 className="text-[24px] sm:text-[26px] font-semibold text-slate-900 dark:text-white leading-tight">
-              {step === 1 && 'Reset Password'}
-              {step === 2 && 'Enter Verification Code'}
-              {step === 3 && 'Create New Password'}
-            </h2>
-            <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
-              {step === 1 &&
-                (activeTab === 'platform'
-                  ? 'Enter your Platform Super-Admin email to receive a 6-digit code.'
-                  : 'Enter the email address registered with your company account.')}
-              {step === 2 && (
-                <>
-                  We sent a 6-digit verification code to <strong>{maskEmail(email)}</strong>.
-                </>
-              )}
-              {step === 3 && 'Choose a strong, unique password for your account.'}
+        {/* Page Title & Subtitle */}
+        {step !== 'success' && (
+          <div className="mb-6">
+            <h1 className="text-[28px] font-bold text-slate-900 dark:text-white leading-tight">
+              {step === 'lookup' && 'Reset password'}
+              {step === 'phone' && 'Verify your mobile number'}
+              {step === 'otp' && 'Enter the code'}
+              {step === 'new-password' && 'Create new password'}
+            </h1>
+            <p className="text-[16px] text-slate-600 dark:text-slate-400 mt-2">
+              {step === 'lookup' && 'Enter your registered email address or user ID to locate your account.'}
+              {step === 'phone' && 'Enter your registered mobile number to confirm your identity.'}
+              {step === 'otp' && 'Enter the 6-digit code sent to your registered email address.'}
+              {step === 'new-password' && 'Choose a strong, unique password for your account.'}
             </p>
           </div>
         )}
 
         <AnimatePresence mode="wait">
-          {/* ────────────────── STEP 1: EMAIL INPUT ────────────────── */}
-          {step === 1 && (
+          {/* ────────────────── STEP 1 OF 4: RESET PASSWORD ────────────────── */}
+          {step === 'lookup' && (
             <motion.form
-              key="step1"
-              onSubmit={handleRequestOtp}
+              key="lookup"
+              onSubmit={handleLookup}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
@@ -420,76 +492,64 @@ export default function ForgotPasswordPage() {
               noValidate
               autoComplete="off"
             >
-              {/* Dynamic Sender Note */}
-              <div className="p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/40 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2.5">
-                <Mail size={16} className="shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
-                <div className="leading-relaxed text-[12px]">
-                  Verification codes are sent from <strong>{senderEmail}</strong>. Please check your <strong>Inbox</strong> and <strong>Spam</strong> folder.
-                </div>
-              </div>
-
-              {/* Email Input */}
+              {/* Email / User ID Field */}
               <div>
                 <label
-                  htmlFor="forgot-email"
-                  className="block text-[14px] font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  htmlFor="forgot-email-input"
+                  className="block text-[14px] font-semibold text-slate-800 dark:text-slate-200 mb-2"
                 >
-                  Email Address
+                  Email or user ID
                 </label>
-                <div className="relative">
+                <div className="relative flex items-center">
+                  <Mail size={20} className="absolute left-[14px] text-slate-400 dark:text-slate-500 pointer-events-none" aria-hidden="true" />
                   <input
-                    id="forgot-email"
-                    name="jnc-identity"
-                    type="email"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
+                    id="forgot-email-input"
+                    name="email"
+                    type="text"
+                    autoComplete="username"
                     required
-                    className="w-full h-11 pl-10 pr-3.5 text-[15px] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
-                    placeholder="Enter your registered email"
+                    className="w-full h-[48px] pl-[44px] pr-4 text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors"
+                    placeholder="name@example.com or user ID"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     autoFocus
                   />
-                  <Inbox size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 </div>
               </div>
 
-              {/* Optional Company Code (Only on Company CRM Tab) */}
-              {activeTab === 'company' && (
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label
-                      htmlFor="forgot-company-code"
-                      className="block text-[14px] font-medium text-slate-700 dark:text-slate-300"
-                    >
-                      Company Code <span className="text-xs text-slate-400 font-normal">(Optional)</span>
-                    </label>
-                  </div>
+              {/* Company Code (Optional) */}
+              <div>
+                <label
+                  htmlFor="forgot-company-code"
+                  className="block text-[14px] font-semibold text-slate-800 dark:text-slate-200 mb-2"
+                >
+                  Company code (optional)
+                </label>
+                <div className="relative flex items-center">
+                  <Building2 size={20} className="absolute left-[14px] text-slate-400 dark:text-slate-500 pointer-events-none" aria-hidden="true" />
                   <input
                     id="forgot-company-code"
-                    name="jnc-company"
+                    name="company"
                     type="text"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="characters"
-                    spellCheck={false}
-                    className="w-full h-11 px-3.5 text-[15px] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all uppercase"
-                    placeholder="e.g. JSNC"
+                    autoComplete="organization"
+                    className="w-full h-[48px] pl-[44px] pr-4 text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors uppercase font-mono tracking-wider text-sm"
+                    placeholder="e.g. ACME"
                     value={companyCode}
                     onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
                   />
                 </div>
-              )}
+                <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1.5">
+                  Only needed if your email is used in more than one company
+                </p>
+              </div>
 
               {/* Error Alert */}
               {error && (
                 <div
                   role="alert"
-                  className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[13px] font-medium flex items-center gap-2"
+                  className="p-3.5 rounded-[10px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-[14px] font-medium flex items-start gap-2.5"
                 >
-                  <AlertCircle size={16} className="shrink-0" />
+                  <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
                   <span>{error}</span>
                 </div>
               )}
@@ -499,43 +559,133 @@ export default function ForgotPasswordPage() {
                 type="submit"
                 disabled={loading}
                 aria-busy={loading}
-                className="w-full h-11 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] focus:outline-none focus:ring-[3px] focus:ring-[#2563EB]/35 text-white text-[15px] font-semibold shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
+                className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 text-white text-[16px] font-semibold shadow-xs transition-colors flex items-center justify-center gap-2 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
               >
                 {loading ? (
                   <>
-                    <RefreshCw size={16} className="animate-spin" aria-hidden />
-                    <span>Sending Code...</span>
+                    <RefreshCw size={18} className="animate-spin" aria-hidden />
+                    <span>Locating account...</span>
                   </>
                 ) : (
-                  <span>Send Verification Code</span>
+                  <span>Continue</span>
                 )}
               </button>
-
-              {/* Back links to both portals */}
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 text-center text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center gap-3">
-                <Link to="/login" className="font-medium text-[#2563EB] hover:underline">
-                  Company Login (/login)
-                </Link>
-                <span>&bull;</span>
-                <Link to="/platform/login" className="font-medium text-[#2563EB] hover:underline">
-                  Platform Admin (/platform/login)
-                </Link>
-              </div>
             </motion.form>
           )}
 
-          {/* ────────────────── STEP 2: 6-DIGIT OTP BOXES ────────────────── */}
-          {step === 2 && (
+          {/* ────────────────── STEP 2 OF 4: VERIFY YOUR MOBILE NUMBER ────────────────── */}
+          {step === 'phone' && (
             <motion.form
-              key="step2"
+              key="phone"
+              onSubmit={handleVerifyPhone}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              className="space-y-4"
+              noValidate
+              autoComplete="off"
+            >
+              {/* Highlight Card with Masked Phone */}
+              <div className="p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Phone size={20} />
+                </div>
+                <div>
+                  <div className="text-[11px] text-blue-700 dark:text-blue-300 font-bold uppercase tracking-wider">
+                    Registered mobile number
+                  </div>
+                  <div className="text-[17px] font-bold font-mono text-slate-900 dark:text-white tracking-widest mt-0.5">
+                    •••••• {last4}
+                  </div>
+                </div>
+              </div>
+
+              {/* Under card guidance text */}
+              <p className="text-[13px] text-slate-600 dark:text-slate-400">
+                Not your number? Go back and check your email, or ask your administrator to update it.
+              </p>
+
+              <div>
+                <label
+                  htmlFor="verify-phone-input"
+                  className="block text-[14px] font-semibold text-slate-800 dark:text-slate-200 mb-2"
+                >
+                  Enter full mobile number
+                </label>
+                <div className="relative flex rounded-[10px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden focus-within:ring-[3px] focus-within:ring-blue-500/30 focus-within:border-blue-600 dark:focus-within:border-blue-500 transition-colors">
+                  <div className="flex items-center px-3.5 bg-slate-50 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold text-sm select-none">
+                    +91
+                  </div>
+                  <input
+                    id="verify-phone-input"
+                    name="phone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    required
+                    className="flex-1 h-[48px] px-3.5 text-[16px] font-mono bg-transparent text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
+                    placeholder={`10-digit number ending in ${last4}`}
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1.5">
+                  Confirm your 10-digit mobile number.
+                </p>
+              </div>
+
+              {/* Error Alert */}
+              {error && (
+                <div
+                  role="alert"
+                  className="p-3.5 rounded-[10px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-[14px] font-medium flex items-start gap-2.5"
+                >
+                  <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={loading || phone.trim().length < 4}
+                aria-busy={loading}
+                className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 text-white text-[16px] font-semibold shadow-xs transition-colors flex items-center justify-center gap-2 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw size={18} className="animate-spin" aria-hidden />
+                    <span>Verifying mobile...</span>
+                  </>
+                ) : (
+                  <span>Verify mobile number</span>
+                )}
+              </button>
+            </motion.form>
+          )}
+
+          {/* ────────────────── STEP 3 OF 4: ENTER THE CODE ────────────────── */}
+          {step === 'otp' && (
+            <motion.form
+              key="otp"
               onSubmit={handleVerifyOtp}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
               className="space-y-5"
             >
-              {/* 6 Code Boxes */}
-              <div className="flex items-center justify-between gap-2 sm:gap-2.5 my-2">
+              {/* Green 'Mobile verified' badge shown ONLY after server confirmed match */}
+              {mobileVerified && (
+                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 flex items-center gap-2 text-emerald-800 dark:text-emerald-300 text-[13px] font-medium">
+                  <CheckCircle2 size={16} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>Mobile verified</span>
+                </div>
+              )}
+
+              {/* 6 Digit Input Boxes with Paste Support */}
+              <div className="grid grid-cols-6 gap-2 sm:gap-2.5 my-3 w-full">
                 {codeDigits.map((digit, idx) => (
                   <input
                     key={idx}
@@ -548,7 +698,8 @@ export default function ForgotPasswordPage() {
                     onChange={(e) => handleDigitChange(idx, e.target.value)}
                     onKeyDown={(e) => handleDigitKeyDown(idx, e)}
                     onPaste={handleDigitPaste}
-                    className="w-12 h-14 sm:w-14 sm:h-16 text-center text-[24px] sm:text-[28px] font-bold font-mono bg-white dark:bg-[#0F172A] border-2 border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all shadow-xs"
+                    aria-label={`Digit ${idx + 1} of 6`}
+                    className="w-full h-12 sm:h-14 text-center text-[20px] sm:text-[24px] font-bold font-mono bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-[3px] focus:ring-blue-500/25 transition-all shadow-xs"
                     autoFocus={idx === 0}
                   />
                 ))}
@@ -561,7 +712,7 @@ export default function ForgotPasswordPage() {
                   <span>Code expires in 10 minutes</span>
                 </div>
                 <p className="text-[12px] text-slate-600 dark:text-slate-300">
-                  Never share this code with anyone. Check your Spam folder if you don't see it in 1 minute.
+                  Never share this code with anyone. Check your spam folder if you do not receive it within a minute.
                 </p>
               </div>
 
@@ -569,7 +720,7 @@ export default function ForgotPasswordPage() {
               {error && (
                 <div
                   role="alert"
-                  className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[13px] font-medium flex items-center gap-2"
+                  className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-900/60 dark:text-rose-300 text-[13px] font-medium flex items-center gap-2"
                 >
                   <AlertCircle size={16} className="shrink-0" />
                   <span>{error}</span>
@@ -581,15 +732,15 @@ export default function ForgotPasswordPage() {
                 type="submit"
                 disabled={loading || codeDigits.join('').length < 6}
                 aria-busy={loading}
-                className="w-full h-11 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] focus:outline-none focus:ring-[3px] focus:ring-[#2563EB]/35 text-white text-[15px] font-semibold shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 text-white text-[16px] font-semibold shadow-xs transition-colors flex items-center justify-center gap-2 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
               >
                 {loading ? (
                   <>
-                    <RefreshCw size={16} className="animate-spin" aria-hidden />
-                    <span>Verifying Code...</span>
+                    <RefreshCw size={18} className="animate-spin" aria-hidden />
+                    <span>Verifying code...</span>
                   </>
                 ) : (
-                  <span>Verify Code</span>
+                  <span>Verify code</span>
                 )}
               </button>
 
@@ -599,17 +750,14 @@ export default function ForgotPasswordPage() {
                   type="button"
                   onClick={handleResendOtp}
                   disabled={cooldown > 0 || loading}
-                  className="font-medium text-[#2563EB] hover:underline disabled:opacity-50 cursor-pointer"
+                  className="font-medium text-blue-600 hover:underline disabled:opacity-50 cursor-pointer"
                 >
                   {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setError('');
-                    setStep(1);
-                  }}
-                  className="hover:underline text-slate-600 dark:text-slate-300 cursor-pointer"
+                  onClick={handleUseDifferentEmail}
+                  className="hover:underline text-slate-600 dark:text-slate-300 cursor-pointer font-medium"
                 >
                   Use a different email
                 </button>
@@ -617,10 +765,10 @@ export default function ForgotPasswordPage() {
             </motion.form>
           )}
 
-          {/* ────────────────── STEP 3: NEW PASSWORD & ACCOUNT SELECTOR ────────────────── */}
-          {step === 3 && (
+          {/* ────────────────── STEP 4 OF 4: CREATE NEW PASSWORD ────────────────── */}
+          {step === 'new-password' && (
             <motion.form
-              key="step3"
+              key="new-password"
               onSubmit={handleResetPassword}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
@@ -654,49 +802,55 @@ export default function ForgotPasswordPage() {
 
               {/* New Password */}
               <div>
-                <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  New Password
+                <label className="block text-[14px] font-semibold text-slate-800 dark:text-slate-200 mb-2">
+                  New password
                 </label>
-                <div className="relative">
+                <div className="relative flex items-center">
+                  <Lock size={20} className="absolute left-[14px] text-slate-400 dark:text-slate-500 pointer-events-none" aria-hidden="true" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Enter at least 12 characters"
-                    className="w-full h-11 px-3.5 pr-10 text-[14px] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
+                    className="w-full h-[48px] pl-[44px] pr-[44px] text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors"
                     autoFocus
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="absolute right-1 w-[40px] h-[40px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40 cursor-pointer transition-colors"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    title={showPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>
 
               {/* Confirm Password */}
               <div>
-                <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  Confirm Password
+                <label className="block text-[14px] font-semibold text-slate-800 dark:text-slate-200 mb-2">
+                  Confirm password
                 </label>
-                <div className="relative">
+                <div className="relative flex items-center">
+                  <Lock size={20} className="absolute left-[14px] text-slate-400 dark:text-slate-500 pointer-events-none" aria-hidden="true" />
                   <input
                     type={showConfirmPassword ? 'text' : 'password'}
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Re-type your new password"
-                    className="w-full h-11 px-3.5 pr-10 text-[14px] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
+                    placeholder="Repeat new password"
+                    className="w-full h-[48px] pl-[44px] pr-[44px] text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors"
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="absolute right-1 w-[40px] h-[40px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40 cursor-pointer transition-colors"
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    title={showConfirmPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>
@@ -704,7 +858,7 @@ export default function ForgotPasswordPage() {
               {/* Live Password Policy Checklist */}
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-1.5">
                 <div className="text-[12px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Password Requirements:
+                  Password requirements:
                 </div>
                 {policyRules.map((rule) => {
                   const passed = evaluateRule(rule.id, newPassword);
@@ -746,7 +900,7 @@ export default function ForgotPasswordPage() {
               {error && (
                 <div
                   role="alert"
-                  className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[13px] font-medium flex items-center gap-2"
+                  className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-900/60 dark:text-rose-300 text-[13px] font-medium flex items-center gap-2"
                 >
                   <AlertCircle size={16} className="shrink-0" />
                   <span>{error}</span>
@@ -758,24 +912,24 @@ export default function ForgotPasswordPage() {
                 type="submit"
                 disabled={loading || !isAllRulesSatisfied || !isPasswordsMatch}
                 aria-busy={loading}
-                className="w-full h-11 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] focus:outline-none focus:ring-[3px] focus:ring-[#2563EB]/35 text-white text-[15px] font-semibold shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 text-white text-[16px] font-semibold shadow-xs transition-colors flex items-center justify-center gap-2 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
               >
                 {loading ? (
                   <>
-                    <RefreshCw size={16} className="animate-spin" aria-hidden />
-                    <span>Updating Password...</span>
+                    <RefreshCw size={18} className="animate-spin" aria-hidden />
+                    <span>Updating password...</span>
                   </>
                 ) : (
-                  <span>Reset Password</span>
+                  <span>Reset password</span>
                 )}
               </button>
             </motion.form>
           )}
 
-          {/* ────────────────── STEP 4: SUCCESS CONFIRMATION ────────────────── */}
-          {step === 4 && (
+          {/* ────────────────── SUCCESS CONFIRMATION ────────────────── */}
+          {step === 'success' && (
             <motion.div
-              key="step4"
+              key="success"
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               className="text-center space-y-4 py-2"
@@ -785,20 +939,28 @@ export default function ForgotPasswordPage() {
               </div>
               <div>
                 <h3 className="text-[20px] font-bold text-slate-900 dark:text-white">
-                  Password Reset Successfully!
+                  Password reset successfully!
                 </h3>
                 <p className="text-[13px] text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
                   Your new password is now active. All previous sessions across all devices have been signed out for your security.
                 </p>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-2 space-y-2.5">
                 <Link
-                  to={activeTab === 'platform' ? '/platform/login' : '/login'}
-                  className="w-full h-11 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-[14px] font-semibold flex items-center justify-center transition-colors shadow-xs"
+                  to={fromPlatform ? '/platform/login' : '/login'}
+                  className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[14px] font-semibold flex items-center justify-center transition-colors shadow-xs"
                 >
-                  {activeTab === 'platform' ? 'Sign In to Platform Admin' : 'Sign In to Company CRM'}
+                  Back to Sign In
                 </Link>
+                <div className="text-center">
+                  <Link
+                    to={fromPlatform ? '/login' : '/platform/login'}
+                    className="text-[12px] text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                  >
+                    {fromPlatform ? 'Sign in to company portal' : 'Sign in to platform portal'}
+                  </Link>
+                </div>
               </div>
             </motion.div>
           )}

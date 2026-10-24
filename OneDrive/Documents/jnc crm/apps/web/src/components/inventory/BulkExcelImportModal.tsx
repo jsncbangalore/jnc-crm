@@ -50,7 +50,7 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Universal Table & Multi-Section JNC BOM Parser
+  // Universal Table & Multi-Section BOM Parser
   const parseRowsFrom2DArray = (rawRows: any[][], defaultProjectName = 'General Inventory'): any[] => {
     if (!rawRows || rawRows.length === 0) return [];
 
@@ -266,8 +266,8 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
   const handleDownloadExcelTemplate = () => {
     const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'JNC_Inventory_Template');
-    XLSX.writeFile(wb, 'JNC_Inventory_Bulk_Import_Template.xlsx');
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventory_Template');
+    XLSX.writeFile(wb, 'Inventory_Bulk_Import_Template.xlsx');
   };
 
   // Download Clean CSV Template (.csv) with Headers Only
@@ -277,7 +277,7 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'JNC_Inventory_Bulk_Import_Template.csv';
+    link.download = 'Inventory_Bulk_Import_Template.csv';
     link.click();
   };
 

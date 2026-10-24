@@ -23,13 +23,13 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
   return new Promise((resolve) => {
     try {
       // Remove any previous print sandbox iframe
-      const oldFrame = document.getElementById('jnc-direct-print-sandbox');
+      const oldFrame = document.getElementById('crm-direct-print-sandbox');
       if (oldFrame) {
         oldFrame.remove();
       }
 
       const iframe = document.createElement('iframe');
-      iframe.id = 'jnc-direct-print-sandbox';
+      iframe.id = 'crm-direct-print-sandbox';
       iframe.style.position = 'fixed';
       iframe.style.right = '0';
       iframe.style.bottom = '0';
@@ -74,7 +74,7 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>${options.title || 'JNC_Print_Job'}</title>
+  <title>${options.title || 'Print_Job'}</title>
   <style>
     ${pageRule}
 
@@ -119,7 +119,7 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
     }
 
     th, td {
-      border: 1px solid #000000 !important;
+      border: 1px solid #000000;
       padding: 2.5px 4.5px !important;
       box-sizing: border-box !important;
     }

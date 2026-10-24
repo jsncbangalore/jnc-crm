@@ -2442,7 +2442,7 @@ export class InventoryService {
 
     if (gstinMatch) {
       let g = gstinMatch[1].toUpperCase();
-      if (g.startsWith('20') && /kamataka|karnataka|bangalore|bengaluru/i.test(text)) {
+      if (g.startsWith('20') && /kamataka|karnataka/i.test(text)) {
         g = '29' + g.slice(2);
       }
       detectedGstin = g;

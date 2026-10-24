@@ -10,6 +10,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 import { parsePagination } from '../common/pagination.util';
+import { getEffectivePagesForUser } from '../auth/effective-page-access';
+import { isPlatformOwner } from '../auth/roles';
 
 import { IsString, IsNotEmpty, IsOptional, IsEmail, IsBoolean } from 'class-validator';
 
@@ -148,7 +150,11 @@ export class CompaniesService {
 
     const { skip, take } = parsePagination(query, 100, 100);
 
-    return this.prisma.company.findMany({
+    const effectivePages = await getEffectivePagesForUser(this.prisma, user);
+    const hasInvoices = isPlatformOwner(user) || user.role === 'tenant_admin' || effectivePages.includes('invoices');
+    const hasLeads = isPlatformOwner(user) || user.role === 'tenant_admin' || effectivePages.includes('leads');
+
+    const companies = await this.prisma.company.findMany({
       where,
       skip,
       take,
@@ -163,11 +169,22 @@ export class CompaniesService {
         },
       },
     });
+
+    return companies.map((c: any) => {
+      const counts = { ...c._count };
+      if (!hasInvoices) counts.invoices = 0;
+      if (!hasLeads) counts.leads = 0;
+      return { ...c, _count: counts };
+    });
   }
 
   async findOne(id: string, user: ScopedUser) {
     const scope = this.scopingService.getCompanyScope(user);
-    const company = await this.prisma.company.findFirst({
+    const effectivePages = await getEffectivePagesForUser(this.prisma, user);
+    const hasInvoices = isPlatformOwner(user) || user.role === 'tenant_admin' || effectivePages.includes('invoices');
+    const hasLeads = isPlatformOwner(user) || user.role === 'tenant_admin' || effectivePages.includes('leads');
+
+    const company: any = await this.prisma.company.findFirst({
       where: { id, ...scope, deletedAt: null },
       include: {
         contacts: {
@@ -188,6 +205,13 @@ export class CompaniesService {
 
     if (!company || company.deletedAt) {
       throw new NotFoundException('Company not found');
+    }
+
+    if (!hasInvoices) {
+      company.invoices = [];
+    }
+    if (!hasLeads) {
+      company.leads = [];
     }
 
     return company;

@@ -11,9 +11,9 @@ const http = require('http');
 const { execSync, spawn } = require('child_process');
 const AdmZip = require('adm-zip');
 
-const zipPath = path.resolve(__dirname, '../deploy-release/jnc-api-bundle.zip');
-const targetDir = 'C:\\dev\\test-api-bundle-standalone';
-const secretsPath = 'C:\\dev\\jnc-secrets\\live.env';
+const zipPath = path.resolve(__dirname, '../deploy-release/api-bundle.zip');
+const targetDir = path.resolve(__dirname, '../deploy-release/test-api-bundle-standalone');
+const secretsPath = process.env.SECRETS_PATH || path.resolve(__dirname, '../.secrets/live.env');
 
 if (!fs.existsSync(zipPath)) {
   console.error(`[FAIL] Missing zip archive at ${zipPath}. Run release:pack first.`);
@@ -46,13 +46,13 @@ envVars.PORT = '3340';
 envVars.JWT_SECRET = envVars.JWT_SECRET || 'standalone-test-jwt-secret-key-32-chars-long-123456';
 envVars.JWT_REFRESH_SECRET = envVars.JWT_REFRESH_SECRET || 'standalone-test-jwt-refresh-secret-key-32';
 envVars.ENCRYPTION_KEY = envVars.ENCRYPTION_KEY || require('crypto').randomBytes(32).toString('base64');
-envVars.FRONTEND_URL = envVars.FRONTEND_URL || 'https://admin.jsnc.co.in';
-envVars.ALLOWED_ORIGINS = envVars.ALLOWED_ORIGINS || 'https://admin.jsnc.co.in';
-envVars.SMTP_HOST = envVars.SMTP_HOST || 'smtp.hostinger.com';
+envVars.FRONTEND_URL = envVars.FRONTEND_URL || 'https://admin.example.com';
+envVars.ALLOWED_ORIGINS = envVars.ALLOWED_ORIGINS || 'https://admin.example.com';
+envVars.SMTP_HOST = envVars.SMTP_HOST || 'smtp.example.com';
 envVars.SMTP_PORT = envVars.SMTP_PORT || '465';
-envVars.SMTP_USER = envVars.SMTP_USER || 'noreply@jsnc.co.in';
+envVars.SMTP_USER = envVars.SMTP_USER || 'noreply@example.com';
 envVars.SMTP_PASS = envVars.SMTP_PASS || 'mock-pass';
-envVars.EMAIL_FROM = envVars.EMAIL_FROM || 'noreply@jsnc.co.in';
+envVars.EMAIL_FROM = envVars.EMAIL_FROM || 'noreply@example.com';
 envVars.TRUST_PROXY = '1';
 envVars.NODE_ENV = 'production';
 

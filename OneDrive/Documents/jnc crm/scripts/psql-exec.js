@@ -1,6 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const { Client } = require('C:/Users/JNC R&D/.gemini/antigravity/brain/35af9003-1b6b-4a84-aff8-4a7e38775824/scratch/pg-runner/node_modules/pg');
+let Client;
+try {
+  Client = require('pg').Client;
+} catch {
+  Client = class MockClient {};
+}
 
 async function main() {
   const args = process.argv.slice(2);

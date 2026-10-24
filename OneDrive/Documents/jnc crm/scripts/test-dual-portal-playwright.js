@@ -8,8 +8,8 @@
 const { chromium } = require('playwright');
 
 const BASE_URL = process.env.TEST_FRONTEND_URL || 'http://localhost:5173';
-const STAFF_EMAIL = 'tenantadmin@jsnc.co.in';
-const PLATFORM_EMAIL = 'platform@jsnc.co.in';
+const STAFF_EMAIL = 'tenantadmin@example.com';
+const PLATFORM_EMAIL = 'platform@example.com';
 const TEST_PASSWORD = process.env.TEST_PASSWORD || 'type-your-own-long-password';
 
 async function runTests() {
@@ -159,7 +159,7 @@ async function runTests() {
 
     await pageOffline.goto(`${BASE_URL}/login`, { waitUntil: 'domcontentloaded' });
     await pageOffline.waitForSelector('#identifier', { timeout: 10000 });
-    await pageOffline.fill('#identifier', 'test@jsnc.co.in');
+    await pageOffline.fill('#identifier', 'test@example.com');
     await pageOffline.fill('#password', 'AnyPassword#123');
     await pageOffline.click('button[type="submit"]');
 

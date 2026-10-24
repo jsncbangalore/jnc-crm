@@ -14,9 +14,14 @@ import { ValidationPipe } from '@nestjs/common';
 import * as cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module';
 
-const { Client } = require('C:/Users/JNC R&D/.gemini/antigravity/brain/35af9003-1b6b-4a84-aff8-4a7e38775824/scratch/pg-runner/node_modules/pg');
+let Client: any;
+try {
+  Client = require('pg').Client;
+} catch {
+  Client = class MockClient {};
+}
 
-const FRESH_DB_URL = 'postgresql://postgres:postgres@localhost:5432/jnc_crm_fresh?schema=public';
+const FRESH_DB_URL = process.env.FRESH_DB_URL || 'postgresql://postgres:postgres@localhost:5432/crm_fresh?schema=public';
 const PORT = 3336;
 const apiDir = path.resolve(__dirname, '..');
 
@@ -54,12 +59,12 @@ function makeRequest(
 async function runDryRun() {
   console.log('========================================================================');
   console.log('DRY RUN: FRESH PRODUCTION DATABASE INITIALIZATION & VERIFICATION');
-  console.log('Target Database: jnc_crm_fresh @ localhost:5432');
+  console.log('Target Database: crm_fresh @ localhost:5432');
   console.log('Safety: Strictly LOCAL, Remote Hosts Forbidden, Passwords Masked in Logs');
   console.log('========================================================================\n');
 
-  // STEP 1: Re-create jnc_crm_fresh
-  console.log('--- [Step 1] Creating fresh empty database jnc_crm_fresh ---');
+  // STEP 1: Re-create crm_fresh
+  console.log('--- [Step 1] Creating fresh empty database crm_fresh ---');
   const pgClient = new Client({
     host: '127.0.0.1',
     port: 5432,
@@ -71,15 +76,15 @@ async function runDryRun() {
   await pgClient.query(`
     SELECT pg_terminate_backend(pid)
     FROM pg_stat_activity
-    WHERE datname = 'jnc_crm_fresh' AND pid <> pg_backend_pid();
+    WHERE datname = 'crm_fresh' AND pid <> pg_backend_pid();
   `);
-  await pgClient.query('DROP DATABASE IF EXISTS jnc_crm_fresh;');
-  await pgClient.query('CREATE DATABASE jnc_crm_fresh;');
+  await pgClient.query('DROP DATABASE IF EXISTS crm_fresh;');
+  await pgClient.query('CREATE DATABASE crm_fresh;');
   await pgClient.end();
-  console.log('[OK] Empty database jnc_crm_fresh successfully created.\n');
+  console.log('[OK] Empty database crm_fresh successfully created.\n');
 
-  // STEP 2: Prisma db push to jnc_crm_fresh
-  console.log('--- [Step 2] Pushing clean Prisma schema to jnc_crm_fresh ---');
+  // STEP 2: Prisma db push to crm_fresh
+  console.log('--- [Step 2] Pushing clean Prisma schema to crm_fresh ---');
   const pushOutput = execSync('npx prisma db push --skip-generate', {
     cwd: apiDir,
     env: { ...process.env, DATABASE_URL: FRESH_DB_URL },
@@ -87,13 +92,13 @@ async function runDryRun() {
   });
   console.log(pushOutput);
 
-  // STEP 2B: Run deploy/supabase-lockdown.sql against jnc_crm_fresh
-  console.log('--- [Step 2B] Executing deploy/supabase-lockdown.sql against jnc_crm_fresh ---');
+  // STEP 2B: Run deploy/supabase-lockdown.sql against crm_fresh
+  console.log('--- [Step 2B] Executing deploy/supabase-lockdown.sql against crm_fresh ---');
   const lockdownSql = fs.readFileSync(path.resolve(apiDir, '../../deploy/supabase-lockdown.sql'), 'utf8');
   const pgLockdown = new Client({
     host: '127.0.0.1',
     port: 5432,
-    database: 'jnc_crm_fresh',
+    database: 'crm_fresh',
     user: 'postgres',
     password: 'postgres',
   });
@@ -102,16 +107,16 @@ async function runDryRun() {
   await pgLockdown.end();
   console.log('[OK] PostgREST Row Level Security (RLS) successfully enabled on all public tables.\n');
 
-  // STEP 3: Run npm run prod:bootstrap against jnc_crm_fresh
-  console.log('--- [Step 3] Running prod:bootstrap against jnc_crm_fresh ---');
+  // STEP 3: Run npm run prod:bootstrap against crm_fresh
+  console.log('--- [Step 3] Running prod:bootstrap against crm_fresh ---');
   const bootstrapEnv = {
     ...process.env,
     DATABASE_URL: FRESH_DB_URL,
     NODE_ENV: 'production',
     CONFIRM_PRODUCTION: 'yes',
     ALLOWED_DB_HOSTS: 'localhost,127.0.0.1',
-    OWNER_EMAIL: 'owner@jsnc.co.in',
-    PLATFORM_ADMIN_EMAIL: 'platform@jsnc.co.in',
+    OWNER_EMAIL: 'owner@example.com',
+    PLATFORM_ADMIN_EMAIL: 'platform@example.com',
   };
 
   let bootstrapRaw = '';
@@ -150,13 +155,13 @@ async function runDryRun() {
 
   console.log(maskedBootstrap);
 
-  // STEP 3B: Run deploy/postcheck-live.sql verification against jnc_crm_fresh
-  console.log('--- [Step 3B] Executing deploy/postcheck-live.sql verification against jnc_crm_fresh ---');
+  // STEP 3B: Run deploy/postcheck-live.sql verification against crm_fresh
+  console.log('--- [Step 3B] Executing deploy/postcheck-live.sql verification against crm_fresh ---');
   const postcheckSql = fs.readFileSync(path.resolve(apiDir, '../../deploy/postcheck-live.sql'), 'utf8');
   const pgPostcheck = new Client({
     host: '127.0.0.1',
     port: 5432,
-    database: 'jnc_crm_fresh',
+    database: 'crm_fresh',
     user: 'postgres',
     password: 'postgres',
   });
@@ -203,7 +208,7 @@ async function runDryRun() {
   }
   console.log(envCheckOutput);
 
-  // STEP 6: Bootstrap NestJS in-process with NODE_ENV=production against jnc_crm_fresh
+  // STEP 6: Bootstrap NestJS in-process with NODE_ENV=production against crm_fresh
   console.log(`--- [Step 6] Bootstrapping NestJS server on port ${PORT} (NODE_ENV=production) ---`);
   process.env.DATABASE_URL = FRESH_DB_URL;
   process.env.NODE_ENV = 'production';
@@ -244,7 +249,7 @@ async function runDryRun() {
     );
 
     const setCookie = String(loginRes.headers['set-cookie'] || '');
-    const cookieMasked = setCookie.replace(/jnc_refresh_token=ey[A-Za-z0-9_.-]+/g, 'jnc_refresh_token=<MASKED>');
+    const cookieMasked = setCookie.replace(/crm_refresh_token=ey[A-Za-z0-9_.-]+/g, 'crm_refresh_token=<MASKED>');
 
     console.log(`HTTP Status: ${loginRes.statusCode}`);
     console.log(`Set-Cookie:  ${cookieMasked}`);

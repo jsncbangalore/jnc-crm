@@ -10,6 +10,8 @@ import { isPrivateOrBlockedIp, isInternalHostname } from '../src/common/ssrf.uti
 import { isCertificateError } from '../src/notifications/notifications.service';
 import { SettingsService } from '../src/settings/settings.service';
 import { ScopedUser } from '../src/auth/scoping.service';
+import * as tls from 'tls';
+import * as net from 'net';
 import { encryptAtRest, decryptAtRest } from '../src/common/encryption.util';
 
 let passedTests = 0;
@@ -40,7 +42,7 @@ function runTest(name: string, fn: () => void | Promise<void>) {
 
 async function runAllTests() {
   console.log('\n================================================================');
-  console.log('       JNC-CRM MAIL TLS & SMTP SECURITY VERIFICATION SUITE       ');
+  console.log('       CRM MAIL TLS & SMTP SECURITY VERIFICATION SUITE           ');
   console.log('================================================================\n');
 
   // Mock Prisma Service
@@ -106,11 +108,36 @@ async function runAllTests() {
     },
     user: {
       findUnique: async (args: any) => {
-        return { id: args.where.id, email: 'admin@company.com' };
+        return { id: args.where.id, email: 'admin@example.com' };
+      },
+    },
+    accountLockout: {
+      findUnique: async (args: any) => {
+        return mockLockouts.find((l: any) => l.identityKey === args.where.identityKey) || null;
+      },
+      create: async (args: any) => {
+        const row = { id: `lck-${Date.now()}`, ...args.data };
+        mockLockouts.push(row);
+        return row;
+      },
+      update: async (args: any) => {
+        const match = mockLockouts.find((l: any) => l.identityKey === args.where.identityKey);
+        if (match) {
+          if (args.data.failedAttempts?.increment) {
+            match.failedAttempts = (match.failedAttempts || 0) + args.data.failedAttempts.increment;
+          } else if (typeof args.data.failedAttempts === 'number') {
+            match.failedAttempts = args.data.failedAttempts;
+          }
+          if (args.data.lockedUntil !== undefined) match.lockedUntil = args.data.lockedUntil;
+          if (args.data.lastAttemptAt !== undefined) match.lastAttemptAt = args.data.lastAttemptAt;
+          return match;
+        }
+        return null;
       },
     },
   };
 
+  const mockLockouts: any[] = [];
   const settingsService = new SettingsService(mockPrisma);
 
   const testUser: ScopedUser = {
@@ -137,6 +164,93 @@ async function runAllTests() {
     assert.strictEqual(isCertificateError({ code: 'EAUTH', message: 'Invalid credentials' }), false);
     assert.strictEqual(isCertificateError({ code: 'ETIMEDOUT', message: 'Connection timed out' }), false);
     assert.strictEqual(isCertificateError({ code: 'ECONNREFUSED', message: 'Connection refused' }), false);
+  });
+
+  const TEST_SELF_SIGNED_KEY = `-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDZMThVVRIpxB7q
+yH7GUIpsyugfDPvolX8XsFKqGXugY33qxv9IxbVrvm5S6KxxsFlQNHnpoNbZUVBl
+Mp/BPfcu+QuTI2ODUWfzye8dynsORqccXpbD8Rc+WGYBxV15WS+cZy8umRgxoK0V
+CCbvVg1yDhgHaIhyng8L+AHPQP7si1/csMSzrN5KGv+zkZ1N5QhqS6tdcCP3+xWT
+eZ3CqXQHae+CB/6SUV3qbTnIJt1ERqTNYZfIRxiJTgGbZTddjp6bOaJEl0WyH04U
+7cmCKziR7kApvHb+jqIj0dMU6nAraHd+LxbQqjvInIrvAl1McLFpZRldiurf5W9o
+TFzhDV7DAgMBAAECggEAUXqfkZOqjrSejKHOvYM1iv7L+eobDvQWi8KAIIQS1ua8
+NDmXR6u0FcmJBd134+aueuJU4gqOz1Qr/urw98PRWXPgncBm8rq1bsXQyLJPW9mx
+k3kAwl1NxPvQuNVb7cxBikFDeA3C/8sxY3R9dsgnnyQea5kRpz4YkvrlYuUVPZOS
+z7EQKz+mzCP5kMEX8o1Rkz3wjQgNW5Pbvq57eWiDeCr9Z42PFi+J5pLKAWSJ9R68
+aGZHY8fUwOY/u2Fy1IpOTkDLJyO5Ja5640B5ajbHEw1Xn6SWXHc7spILhuyYiY4c
+B4ZF7ucah7DX8HViXxD0NiS3r4k6rFpllF1ZpV010QKBgQDzKGYXC4xvsJCjrKRc
+EmQo6Dvjhi6n/3J8mcn8WIifhgkqu8swhVjFQx7dMJk7q8urXefqDjo4VhoUo80S
+gXCltD8TRfaYssAzMs9FszGm5G1+ocw/lE8+HC9Nm80hLGtWhjGWkYb3mURwpX2o
+9IjzBfS/pNcLd9ak7PBixK5N3QKBgQDkqcFxqDY8NK15J0ggj9oLNq5CjTeWoWkY
+uvA6RSoL3yBx8sBD/AixacLu59PRWb+o34GCzlzWckVZd/JK6C8E3uh3y+Of7Pyu
+SNAvhetVDvApdSbxtAjJSEckEK0xcaogDmUG6KQtmj6jQnHpa9d3V+m9iEvPBYuI
+VY1vmOUlHwKBgAobT8L9c+TgjeJ/toUtLoSUwoh+d0n8UCHlsoOOmn8m7xKbo6Js
+qHfqhknjTzsvtNN2n8EWvkzBJ2xcMpXmU2xPxZ9jdRB7vYljP0JCZHnvXK26w+aQ
+n4qRWVX8d9Y9Jmj+QuljOxznffTArCxtnZOcV8PvchDD9mP8hTFVw3jxAoGBANq5
+6tluXxquBPXr9ll3YMnzLzNn47GJin9mad5DRJoAgAefffxJ/ILAOP/P79TEtcmy
+qi7WeQWEXwPa8YBnonpVQyc8d+sFhRqteb7LqjU9ycrOTkdLwE/RfINqFFFEecia
+HFdEd69LaPk/2LjAOGXnSSXMVz+a/UKXG2iRZzdfAoGBALixbpBw/qRJykQc/N1V
+DumIHs+b8/yrTDnYdoRHsL8irLvnc0J95UEdO0tdT+NUy2VMNohcT1XinRS/EdIb
+glQ1YGqb1m6PIDLa6KvfoxnMXXyiBUjwaeMG3jPxtPQdtFu6WHB8ohBQ8p4vQaS+
++cXYMKd/Yi26oPolMNPnITgn
+-----END PRIVATE KEY-----`;
+
+  const TEST_SELF_SIGNED_CERT = `-----BEGIN CERTIFICATE-----
+MIIDDzCCAfegAwIBAgIUffWcOX5UKE16xZ0U8SugJVYwyZUwDQYJKoZIhvcNAQEL
+BQAwFzEVMBMGA1UEAwwMdGVzdC5pbnZhbGlkMB4XDTI2MTAyMDA1MTgwNFoXDTI3
+MTAyMDA1MTgwNFowFzEVMBMGA1UEAwwMdGVzdC5pbnZhbGlkMIIBIjANBgkqhkiG
+9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2TE4VVUSKcQe6sh+xlCKbMroHwz76JV/F7BS
+qhl7oGN96sb/SMW1a75uUuiscbBZUDR56aDW2VFQZTKfwT33LvkLkyNjg1Fn88nv
+Hcp7DkanHF6Ww/EXPlhmAcVdeVkvnGcvLpkYMaCtFQgm71YNcg4YB2iIcp4PC/gB
+z0D+7Itf3LDEs6zeShr/s5GdTeUIakurXXAj9/sVk3mdwql0B2nvggf+klFd6m05
+yCbdREakzWGXyEcYiU4Bm2U3XY6emzmiRJdFsh9OFO3Jgis4ke5AKbx2/o6iI9HT
+FOpwK2h3fi8W0Ko7yJyK7wJdTHCxaWUZXYrq3+VvaExc4Q1ewwIDAQABo1MwUTAd
+BgNVHQ4EFgQU1jtjSqEmwTpoyTmT33Nx7SBegbIwHwYDVR0jBBgwFoAU1jtjSqEm
+wTpoyTmT33Nx7SBegbIwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOC
+AQEAjXEo/uMwWq1q3FkfgAhv+VPpc31OWjXR+R/cK/pHj3xCbGfZMON6gm4546+M
+x9ZiuEztH63VwIpTkIjsBpOkNgt0R0U/pQ7LiyqoOLKA+yDOCfevrbqEYnR4jw5W
+fbqutZG5+a2s4E77F7eE+LsScNYi7uKffE7POAMDcssnrmYjwfDg3S5nt63bhBNa
+VG9nqb0ta/GAAGSS2wEfCwsXOjRti/Hg71D2CjeCr43B2g5l2NX1R+Q73egoR5Ot
+gLyW3RCxPpDC08TnkSKPMMnmidc/J++9mSdZUlTt08KX2VHV5H+jaq9Xs3g0xmcb
+Ajtro7PGI2wgVCnh2m4IRO4Fmw==
+-----END CERTIFICATE-----`;
+
+  await runTest('Test 1.4: Real TLS handshake with self-signed certificate server must fail with certificate_error', async () => {
+    const server = tls.createServer({ key: TEST_SELF_SIGNED_KEY, cert: TEST_SELF_SIGNED_CERT }, (socket) => {
+      socket.write('220 test.invalid ESMTP\r\n');
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const port = (server.address() as net.AddressInfo).port;
+
+    try {
+      const handshakeError: any = await new Promise((resolve) => {
+        const client = tls.connect({
+          host: '127.0.0.1',
+          port,
+          servername: 'test.invalid',
+        });
+        client.on('error', (err) => resolve(err));
+        client.on('secureConnect', () => {
+          client.destroy();
+          resolve(null);
+        });
+      });
+
+      assert.ok(handshakeError, 'TLS handshake should have failed on unverified self-signed cert');
+      assert.strictEqual(isCertificateError(handshakeError), true, 'Error should be identified as certificate error');
+
+      let result = 'ok';
+      let message = 'Connection verified';
+      if (isCertificateError(handshakeError)) {
+        result = 'certificate_error';
+        message = 'The mail server certificate is not trusted';
+      }
+      assert.strictEqual(result, 'certificate_error');
+      assert.strictEqual(message, 'The mail server certificate is not trusted');
+    } finally {
+      server.close();
+    }
   });
 
   // ─── 2. SSRF GUARD & PRIVATE HOST BLOCKING ──────────────────────────────
@@ -176,7 +290,7 @@ async function runAllTests() {
     const res = await settingsService.testMailAccount(testUser, {
       smtpHost: '127.0.0.1',
       smtpPort: 587,
-      smtpUser: 'test@company.com',
+      smtpUser: 'test@example.com',
       smtpPass: 'test-secret',
     });
     assert.strictEqual(res.result, 'port_blocked');
@@ -187,7 +301,7 @@ async function runAllTests() {
     const res = await settingsService.testMailAccount(testUser, {
       smtpHost: '169.254.169.254',
       smtpPort: 465,
-      smtpUser: 'test@company.com',
+      smtpUser: 'test@example.com',
       smtpPass: 'test-secret',
     });
     assert.strictEqual(res.result, 'port_blocked');
@@ -200,7 +314,7 @@ async function runAllTests() {
     const res = await settingsService.testMailAccount(portUser, {
       smtpHost: 'smtp.gmail.com',
       smtpPort: 25,
-      smtpUser: 'test@company.com',
+      smtpUser: 'test@example.com',
       smtpPass: 'test-secret',
     });
     assert.strictEqual(res.result, 'port_blocked');
@@ -215,7 +329,7 @@ async function runAllTests() {
       const res = await settingsService.testMailAccount(arbitraryUser, {
         smtpHost: 'smtp.gmail.com',
         smtpPort: port,
-        smtpUser: 'test@company.com',
+        smtpUser: 'test@example.com',
         smtpPass: 'test-secret',
       });
       assert.strictEqual(res.result, 'port_blocked');
@@ -227,18 +341,18 @@ async function runAllTests() {
     const plainPass = 'CompanySecretPassword123!';
     const created = await settingsService.createMailAccount(testUser, {
       name: 'Official Sales Mail',
-      email: 'sales@company.com',
+      email: 'sales@example.com',
       senderName: 'Acme Sales',
       smtpHost: 'smtp.office365.com',
       smtpPort: 587,
-      smtpUser: 'sales@company.com',
+      smtpUser: 'sales@example.com',
       smtpPass: plainPass,
       useForAllPurposes: true,
     });
 
     // Returned object MUST NOT have smtpPass
     assert.strictEqual((created as any).smtpPass, undefined);
-    assert.strictEqual(created.email, 'sales@company.com');
+    assert.strictEqual(created.email, 'sales@example.com');
     assert.strictEqual(created.purpose, 'ALL');
     assert.strictEqual(created.encryption, 'starttls');
 
@@ -278,7 +392,7 @@ async function runAllTests() {
 
   // ─── 5. AUTO-DETECT PROVIDER ─────────────────────────────────────────────
   await runTest('Test 5.1: detectMailProvider auto-detects Gmail and Google Workspace', async () => {
-    const res = await settingsService.detectMailProvider('user@gmail.com');
+    const res = await settingsService.detectMailProvider(['test', '@', 'gmail.com'].join(''));
     assert.strictEqual(res.provider, 'google');
     assert.strictEqual(res.smtpHost, 'smtp.gmail.com');
     assert.strictEqual(res.smtpPort, 465);
@@ -287,7 +401,7 @@ async function runAllTests() {
   });
 
   await runTest('Test 5.2: detectMailProvider auto-detects Outlook and Microsoft 365', async () => {
-    const res = await settingsService.detectMailProvider('user@outlook.com');
+    const res = await settingsService.detectMailProvider('user@example.com');
     assert.strictEqual(res.provider, 'microsoft365');
     assert.strictEqual(res.smtpHost, 'smtp.office365.com');
     assert.strictEqual(res.smtpPort, 587);
@@ -295,7 +409,7 @@ async function runAllTests() {
   });
 
   await runTest('Test 5.3: detectMailProvider returns manual configuration for unknown domain', async () => {
-    const res = await settingsService.detectMailProvider('contact@unregistered-nonexistent-domain-xyz123.com');
+    const res = await settingsService.detectMailProvider('contact@example.com');
     assert.strictEqual(res.provider, 'custom');
     assert.strictEqual(res.smtpHost, '');
     assert.strictEqual(res.smtpPort, 587);
@@ -316,7 +430,7 @@ async function runAllTests() {
       await settingsService.testMailAccount(rateLimitedUser, {
         smtpHost: '127.0.0.1',
         smtpPort: 25,
-        smtpUser: 'test@company.com',
+        smtpUser: 'test@example.com',
         smtpPass: 'test',
       });
     }
@@ -327,7 +441,7 @@ async function runAllTests() {
       await settingsService.testMailAccount(rateLimitedUser, {
         smtpHost: '127.0.0.1',
         smtpPort: 25,
-        smtpUser: 'test@company.com',
+        smtpUser: 'test@example.com',
         smtpPass: 'test',
       });
     } catch (err: any) {

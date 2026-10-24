@@ -10,7 +10,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const AdmZip = require('adm-zip');
 
-const REPORT_PATH = 'C:\\dev\\jnc-crm\\evidence\\report-2026-10-06u.txt';
+const REPORT_PATH = 'C:\\dev\\crm\\evidence\\report-2026-10-06u.txt';
 const now = new Date().toISOString();
 
 let reportContent = '';
@@ -26,7 +26,7 @@ function appendHeader(title, isCommand = true, scriptName = '') {
   reportContent += `========================================================================\n`;
 }
 
-function runCmd(cmd, cwd = 'C:\\dev\\jnc-crm', envOverrides = {}, timeoutMs = 45000) {
+function runCmd(cmd, cwd = 'C:\\dev\\crm', envOverrides = {}, timeoutMs = 45000) {
   try {
     const output = execSync(cmd, {
       cwd,
@@ -71,7 +71,7 @@ reportContent += hostEnv;
 
 // 5. env:check against hostinger.env
 appendHeader('SECTION 4: HEALTH & SECURITY VALIDATION ON HOSTINGER.ENV', true, 'env-check.js');
-const envCheck = runCmd('node apps/api/scripts/env-check.js C:\\dev\\jnc-secrets\\hostinger.env');
+const envCheck = runCmd('node apps/api/scripts/env-check.js C:\\dev\\secrets\\hostinger.env');
 reportContent += envCheck;
 
 // 6. Standalone API Bundle Install Test
@@ -82,7 +82,7 @@ if (fs.existsSync(standaloneDir)) {
 }
 fs.mkdirSync(standaloneDir, { recursive: true });
 
-const bundleZipPath = 'C:\\dev\\jnc-crm\\deploy-release\\jnc-api-bundle.zip';
+const bundleZipPath = 'C:\\dev\\crm\\deploy-release\\api-bundle.zip';
 if (fs.existsSync(bundleZipPath)) {
   const zip = new AdmZip(bundleZipPath);
   zip.extractAllTo(standaloneDir, true);
@@ -116,19 +116,19 @@ const scriptsToTest = [
 
 scriptsToTest.forEach(s => {
   reportContent += `\n--- Refusal Test: ${s.name} (OLD_PROJECT_REF in URL) ---\n`;
-  const oldRefOutput = runCmd(s.cmd, 'C:\\dev\\jnc-crm', {
+  const oldRefOutput = runCmd(s.cmd, 'C:\\dev\\crm', {
     TEST_DIRECT_URL: 'postgresql://postgres.hbzlelktcfagwvmyusvw:dummy@aws-0-ap-south-1.pooler.supabase.com:5432/postgres'
   });
   reportContent += oldRefOutput;
 
   reportContent += `\n--- Refusal Test: ${s.name} (Ref Mismatch) ---\n`;
-  const mismatchOutput = runCmd(s.cmd, 'C:\\dev\\jnc-crm', {
+  const mismatchOutput = runCmd(s.cmd, 'C:\\dev\\crm', {
     TEST_DIRECT_URL: 'postgresql://postgres.invalidref123:dummy@aws-0-ap-south-1.pooler.supabase.com:5432/postgres'
   });
   reportContent += mismatchOutput;
 
   reportContent += `\n--- Refusal Test: ${s.name} (Missing Ref in Username) ---\n`;
-  const missingRefOutput = runCmd(s.cmd, 'C:\\dev\\jnc-crm', {
+  const missingRefOutput = runCmd(s.cmd, 'C:\\dev\\crm', {
     TEST_DIRECT_URL: 'postgresql://postgres:dummy@aws-0-ap-south-1.pooler.supabase.com:5432/postgres'
   });
   reportContent += missingRefOutput;

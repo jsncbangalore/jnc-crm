@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE "MailAccount" ADD COLUMN "encryption" TEXT NOT NULL DEFAULT 'starttls';
+ALTER TABLE "MailAccount" ADD COLUMN IF NOT EXISTS "encryption" TEXT NOT NULL DEFAULT 'starttls';
 
 -- Migrate isSecure into encryption ('ssl' when isSecure is true or smtpPort is 465, otherwise 'starttls')
 UPDATE "MailAccount"

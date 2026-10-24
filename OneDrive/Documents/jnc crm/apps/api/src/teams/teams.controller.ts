@@ -24,7 +24,7 @@ import { PageAccess } from '../auth/page-access.decorator';
 
 @Controller('teams')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@PageAccess('users') // Bound to the same module as Users setup
+@PageAccess('teams')
 export class TeamsController {
   constructor(private teamsService: TeamsService) {}
 

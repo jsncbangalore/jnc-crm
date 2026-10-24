@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const liveSecretsPath = 'C:\\dev\\jnc-secrets\\live.env';
+const liveSecretsPath = 'C:\\dev\\secrets\\live.env';
 if (!fs.existsSync(liveSecretsPath)) {
   console.error(`[HOST ENV FAIL] Live secrets file missing at ${liveSecretsPath}`);
   process.exit(1);
@@ -33,7 +33,7 @@ liveContent.split('\n').forEach(line => {
 
 let dbUrl = liveSecrets.DATABASE_URL;
 if (!dbUrl) {
-  console.error('[HOST ENV FAIL] DATABASE_URL missing in C:\\dev\\jnc-secrets\\live.env');
+  console.error('[HOST ENV FAIL] DATABASE_URL missing in C:\\dev\\secrets\\live.env');
   process.exit(1);
 }
 
@@ -61,11 +61,11 @@ const envLines = [
   `JWT_SECRET="${jwtSecret}"`,
   `JWT_REFRESH_SECRET="${jwtRefreshSecret}"`,
   `ENCRYPTION_KEY="${encryptionKey}"`,
-  `FRONTEND_URL="https://admin.jsnc.co.in"`,
-  `ALLOWED_ORIGINS="https://admin.jsnc.co.in"`,
+  `FRONTEND_URL="${process.env.FRONTEND_URL || 'https://admin.example.com'}"`,
+  `ALLOWED_ORIGINS="${process.env.ALLOWED_ORIGINS || 'https://admin.example.com'}"`,
   `TRUST_PROXY=1`,
-  `EMAIL_FROM="noreply@jsnc.co.in"`,
-  `SMTP_FROM="noreply@jsnc.co.in"`,
+  `EMAIL_FROM="${process.env.EMAIL_FROM || 'noreply@example.com'}"`,
+  `SMTP_FROM="${process.env.EMAIL_FROM || 'noreply@example.com'}"`,
   '# Optional / Transactional Email Credentials',
   'SMTP_HOST=""',
   'SMTP_PORT="587"',
@@ -73,7 +73,7 @@ const envLines = [
   'SMTP_PASS=""',
 ];
 
-const targetPath = 'C:\\dev\\jnc-secrets\\hostinger.env';
+const targetPath = 'C:\\dev\\secrets\\hostinger.env';
 fs.writeFileSync(targetPath, envLines.join('\n'), 'utf8');
 
 const varNames = envLines

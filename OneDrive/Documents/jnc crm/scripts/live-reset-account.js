@@ -15,16 +15,16 @@ const { PrismaClient } = require('@prisma/client');
 function enforceFolderGuard() {
   const currentPath = process.cwd();
   const scriptDir = __dirname;
-  const prohibited = [/onedrive/i, /&/, /jnc crm/i];
+  const prohibited = [/onedrive/i, /&/, /crm/i];
 
   for (const pattern of prohibited) {
     if (pattern.test(currentPath) || pattern.test(scriptDir)) {
       console.error(`\n========================================================================`);
-      console.error(`❌ FOLDER GUARD REFUSAL ERROR: Prohibited path detected.`);
+      console.error(`[ERROR] FOLDER GUARD REFUSAL ERROR: Prohibited path detected.`);
       console.error(`Current directory: "${currentPath}"`);
       console.error(`Script directory:  "${scriptDir}"`);
       console.error(`Prohibited pattern: ${pattern}`);
-      console.error(`Execution is strictly required inside 'C:\\dev\\jnc-crm'. Aborting immediately.`);
+      console.error(`Execution is strictly required inside 'C:\\dev\\crm'. Aborting immediately.`);
       console.error(`========================================================================\n`);
       process.exit(1);
     }
@@ -35,7 +35,7 @@ enforceFolderGuard();
 
 // ─── 2. SECRETS & PROJECT REF VALIDATION ────────────────────────────────────
 const secrets = {};
-['C:\\dev\\jnc-secrets\\live.env', 'C:\\dev\\jnc-secrets\\hostinger.env'].forEach(secretsPath => {
+['C:\\dev\\secrets\\live.env', 'C:\\dev\\secrets\\hostinger.env'].forEach(secretsPath => {
   if (fs.existsSync(secretsPath)) {
     const envContent = fs.readFileSync(secretsPath, 'utf8');
     envContent.split('\n').forEach(line => {
@@ -146,10 +146,15 @@ async function runAccountReset() {
   try {
     await prisma.$connect();
 
+    const targetEmail = (process.env.RESET_TARGET_EMAIL || '').trim().toLowerCase();
     const user = await prisma.user.findFirst({
       where: roleArg === 'owner'
-        ? { OR: [{ role: 'tenant_admin' }, { role: 'admin' }, { email: 'santhoshs0815@gmail.com' }, { employeeCode: 'JNC-SA-001' }, { employeeCode: 'EMP-ADM-001' }], deletedAt: null }
-        : { OR: [{ role: 'platform_super_admin' }, { email: 'jayarajjnc@gmail.com' }, { email: 'jsnccrm@gmail.com' }, { employeeCode: 'SYS-SUP-001' }], deletedAt: null },
+        ? (targetEmail
+            ? { email: { equals: targetEmail, mode: 'insensitive' }, deletedAt: null }
+            : { role: { in: ['tenant_admin', 'admin'] }, deletedAt: null })
+        : (targetEmail
+            ? { email: { equals: targetEmail, mode: 'insensitive' }, role: 'platform_super_admin', deletedAt: null }
+            : { role: 'platform_super_admin', deletedAt: null }),
       include: { tenant: { select: { id: true, code: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -269,14 +274,14 @@ async function runAccountReset() {
       });
     } catch (err) {
       if (err.message === 'REHEARSAL_ROLLBACK_INTENTIONAL') {
-        console.log(`\n✅ REHEARSAL SUCCESSFUL: Transaction safely rolled back. Database remains untouched.`);
+        console.log(`\n[PASS] REHEARSAL SUCCESSFUL: Transaction safely rolled back. Database remains untouched.`);
       } else {
         throw err;
       }
     }
 
     if (committed) {
-      console.log(`\n✅ LIVE ACCOUNT PASSWORD RESET SUCCESSFUL!`);
+      console.log(`\n[PASS] LIVE ACCOUNT PASSWORD RESET SUCCESSFUL!`);
       console.log(`  Account ID: ${user.id}`);
       console.log(`  Role:       ${user.role}`);
       console.log(`  ------------------------------------------------------------------------`);
@@ -286,7 +291,7 @@ async function runAccountReset() {
     }
 
   } catch (error) {
-    console.error(`❌ Operation failed:`, error.message);
+    console.error(`[ERROR] Operation failed:`, error.message);
     process.exit(1);
   } finally {
     await prisma.$disconnect().catch(() => {});

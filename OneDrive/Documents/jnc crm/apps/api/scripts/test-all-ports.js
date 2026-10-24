@@ -23,6 +23,7 @@ for (const line of lines) {
   }
 }
 
+const customHost = env.SMTP_HOST || 'mail.example.com';
 const configs = [
   { host: 'smtpout.secureserver.net', port: 465, secure: true },
   { host: 'smtpout.secureserver.net', port: 587, secure: false },
@@ -30,8 +31,8 @@ const configs = [
   { host: 'smtpout.secureserver.net', port: 3535, secure: false },
   { host: 'smtp.secureserver.net', port: 465, secure: true },
   { host: 'smtp.secureserver.net', port: 587, secure: false },
-  { host: 'mail.jsnc.co.in', port: 465, secure: true },
-  { host: 'mail.jsnc.co.in', port: 587, secure: false },
+  { host: customHost, port: 465, secure: true },
+  { host: customHost, port: 587, secure: false },
 ];
 
 async function testAll() {
@@ -45,15 +46,14 @@ async function testAll() {
         user: env.SMTP_USER,
         pass: env.SMTP_PASS,
       },
-      tls: { rejectUnauthorized: false },
     });
 
     try {
       await transporter.verify();
-      console.log(`✅ SUCCESS on ${cfg.host}:${cfg.port}!`);
+      console.log(`[OK] SUCCESS on ${cfg.host}:${cfg.port}!`);
       return cfg;
     } catch (e) {
-      console.log(`❌ Failed: ${e.message}`);
+      console.log(`[FAIL] Failed: ${e.message}`);
     }
   }
 }

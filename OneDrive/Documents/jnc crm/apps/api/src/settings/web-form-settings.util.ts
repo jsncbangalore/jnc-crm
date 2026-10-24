@@ -200,23 +200,39 @@ export function validateAndSanitizeWebFormInput(input: any): Partial<WebFormSett
     sanitized.fields = cleanFields;
   }
 
-  // 6. Allowed Origins: array of strings
+  // 6. Allowed Origins: array of valid HTTPS website origins (https only, no wildcard, no path)
   if (input.allowedOrigins !== undefined) {
     if (!Array.isArray(input.allowedOrigins)) {
-      throw new BadRequestException('allowedOrigins must be an array of website domains.');
+      throw new BadRequestException('allowedOrigins must be an array of website origins.');
     }
     sanitized.allowedOrigins = input.allowedOrigins
-      .filter((o) => typeof o === 'string' && o.trim().length > 0)
-      .map((o) => {
-        let domain = o.trim().toLowerCase();
-        // Normalize: remove protocol if user entered https://
+      .filter((o: any) => typeof o === 'string' && o.trim().length > 0)
+      .map((o: string) => {
+        const raw = o.trim();
+        if (raw.includes('*')) {
+          throw new BadRequestException(`Allowed website "${raw}" cannot contain wildcards (*).`);
+        }
+        let parsed: URL;
         try {
-          if (domain.startsWith('http://') || domain.startsWith('https://')) {
-            const parsed = new URL(domain);
-            domain = parsed.hostname;
-          }
-        } catch {}
-        return domain.replace(/\/+$/, '');
+          parsed = new URL(raw);
+        } catch {
+          throw new BadRequestException(`Allowed website "${raw}" is not a valid URL (must start with https://).`);
+        }
+        const isLocalDev =
+          (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') &&
+          process.env.NODE_ENV !== 'production';
+        if (parsed.protocol !== 'https:' && !isLocalDev) {
+          throw new BadRequestException(`Allowed website "${raw}" must use HTTPS (e.g. https://example.com).`);
+        }
+        if (parsed.pathname && parsed.pathname !== '/') {
+          throw new BadRequestException(
+            `Allowed website "${raw}" cannot contain a path (${parsed.pathname}). Specify only the origin (e.g. https://example.com).`
+          );
+        }
+        if (parsed.search || parsed.hash) {
+          throw new BadRequestException(`Allowed website "${raw}" cannot contain query parameters or fragments.`);
+        }
+        return `${parsed.protocol}//${parsed.host}`;
       })
       .slice(0, 50);
   }

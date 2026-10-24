@@ -9,9 +9,9 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const secretsPath = 'C:\\dev\\jnc-secrets\\live.env';
+const secretsPath = 'C:\\dev\\secrets\\live.env';
 if (!fs.existsSync(secretsPath)) {
-  console.error('[DEV:LIVE FAIL] Missing secrets file C:\\dev\\jnc-secrets\\live.env');
+  console.error('[DEV:LIVE FAIL] Missing secrets file C:\\dev\\secrets\\live.env');
   process.exit(1);
 }
 

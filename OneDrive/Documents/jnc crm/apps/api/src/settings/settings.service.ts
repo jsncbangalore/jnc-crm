@@ -34,7 +34,7 @@ export interface CompanyBrandingConfig {
 
 export const DEFAULT_BRANDING: CompanyBrandingConfig = {
   companyDisplayName: BRAND_CONFIG.displayName,
-  companyPhone: '+91 9876543210',
+  companyPhone: (process.env.DEFAULT_COMPANY_PHONE || '').trim(),
   companyLogoUrl: '/api/v1/settings/branding/logo',
 };
 
@@ -70,7 +70,7 @@ export class SettingsService {
             companyLogoUrl:
               tenant.logoUrl && !tenant.logoUrl.startsWith('data:') && tenant.logoUrl.trim() !== ''
                 ? tenant.logoUrl
-                : '/jnc-logo.jpg',
+                : (process.env.PRODUCT_LOGO_URL || '/logo.png'),
           };
         }
       }
@@ -102,9 +102,9 @@ export class SettingsService {
 
     let sanitizedLogoUrl = dto.companyLogoUrl;
     if (sanitizedLogoUrl && sanitizedLogoUrl.startsWith('data:')) {
-      sanitizedLogoUrl = '/jnc-logo.jpg';
+      sanitizedLogoUrl = process.env.PRODUCT_LOGO_URL || '/logo.png';
     } else if (!sanitizedLogoUrl || sanitizedLogoUrl.trim() === '') {
-      sanitizedLogoUrl = '/jnc-logo.jpg';
+      sanitizedLogoUrl = process.env.PRODUCT_LOGO_URL || '/logo.png';
     }
 
     const updatedTenant = await this.prisma.tenant.update({
@@ -135,14 +135,15 @@ export class SettingsService {
       throw new BadRequestException('Invalid file upload. Image buffer is missing.');
     }
 
+    const logoFile = process.env.PRODUCT_LOGO_PATH || 'logo.png';
     const destinations = [
-      path.resolve(process.cwd(), 'apps/web/public/jnc-logo.jpg'),
-      path.resolve(process.cwd(), 'apps/api/assets/jnc-logo.jpg'),
-      path.resolve(process.cwd(), 'assets/jnc-logo.jpg'),
-      path.resolve(process.cwd(), 'apps/web/src/assets/jnc-logo.jpg'),
+      path.resolve(process.cwd(), 'apps/web/public', logoFile),
+      path.resolve(process.cwd(), 'apps/api/assets', logoFile),
+      path.resolve(process.cwd(), 'assets', logoFile),
+      path.resolve(process.cwd(), 'apps/web/src/assets', logoFile),
     ];
 
-    const distLogo = path.resolve(process.cwd(), 'apps/web/dist/jnc-logo.jpg');
+    const distLogo = path.resolve(process.cwd(), 'apps/web/dist', logoFile);
     if (fs.existsSync(path.dirname(distLogo))) {
       destinations.push(distLogo);
     }
@@ -159,7 +160,7 @@ export class SettingsService {
       }
     }
 
-    const logoPath = '/jnc-logo.jpg';
+    const logoPath = `/${logoFile}`;
 
     if (user?.tenantId) {
       await this.prisma.tenant.update({
@@ -246,9 +247,9 @@ export class SettingsService {
 
     let sanitizedLogo = dto.logoUrl;
     if (sanitizedLogo && sanitizedLogo.startsWith('data:')) {
-      sanitizedLogo = '/jnc-logo.jpg';
+      sanitizedLogo = process.env.PRODUCT_LOGO_URL || '/logo.png';
     } else if (!sanitizedLogo || sanitizedLogo.trim() === '') {
-      sanitizedLogo = '/jnc-logo.jpg';
+      sanitizedLogo = process.env.PRODUCT_LOGO_URL || '/logo.png';
     }
 
     const updated = await this.prisma.tenant.update({
@@ -278,6 +279,7 @@ export class SettingsService {
         signatureUrl: dto.signatureUrl,
         stampUrl: dto.stampUrl,
         logoUrl: sanitizedLogo,
+        requireTwoFactor: dto.requireTwoFactor !== undefined ? Boolean(dto.requireTwoFactor) : undefined,
         isOnboarded: true,
       },
     });
@@ -287,17 +289,83 @@ export class SettingsService {
 
   // --- TENANT-SCOPED ISOLATED MAIL ACCOUNTS ---
 
-  private mailTestTimestamps: Map<string, number[]> = new Map();
-
-  private checkTestRateLimit(userId: string) {
-    const now = Date.now();
-    const tenMinutes = 10 * 60 * 1000;
-    const timestamps = (this.mailTestTimestamps.get(userId) || []).filter(t => now - t < tenMinutes);
-    if (timestamps.length >= 5) {
-      throw new BadRequestException('Rate limit exceeded: maximum 5 mail tests per 10 minutes per user.');
+  /**
+   * SSRF and Port Verification Guard
+   * Enforces allowed ports (465, 587, 2525) and blocks loopback, private, link-local, and cloud metadata.
+   * Returns the verified resolved IP for DNS pinning.
+   */
+  async validateMailHostAndPort(host: string, port: number): Promise<string> {
+    if (![465, 587, 2525].includes(port)) {
+      throw new BadRequestException(
+        `Port ${port} is not allowed. Only secure ports 465 (SSL), 587 (STARTTLS), or 2525 (Alternative TLS) are permitted.`,
+      );
     }
-    timestamps.push(now);
-    this.mailTestTimestamps.set(userId, timestamps);
+
+    if (isInternalHostname(host)) {
+      throw new BadRequestException('Security restriction: loopback, private, and internal hosts are prohibited.');
+    }
+
+    let resolvedIps: string[] = [];
+    try {
+      const lookups = await dns.promises.lookup(host, { all: true });
+      resolvedIps = lookups.map((l) => l.address);
+    } catch {
+      throw new BadRequestException(`Host "${host}" could not be resolved in DNS.`);
+    }
+
+    if (resolvedIps.length === 0) {
+      throw new BadRequestException(`Host "${host}" could not be resolved in DNS.`);
+    }
+
+    for (const ip of resolvedIps) {
+      if (isPrivateOrBlockedIp(ip)) {
+        throw new BadRequestException(
+          'Security restriction: host resolves to loopback, private, link-local, or cloud metadata address.',
+        );
+      }
+    }
+
+    return resolvedIps[0];
+  }
+
+  /**
+   * Database-backed rate limiter for mail account tests (5 tests per 10 minutes per user)
+   */
+  private async checkTestRateLimit(userId: string) {
+    const identityKey = `mail_test:${userId}`;
+    const now = new Date();
+    const windowMs = 10 * 60 * 1000; // 10 minutes
+    const maxTests = 5;
+
+    const record = await this.prisma.accountLockout.findUnique({
+      where: { identityKey },
+    });
+
+    if (record) {
+      const elapsed = now.getTime() - new Date(record.lastAttemptAt).getTime();
+      if (elapsed > windowMs) {
+        await this.prisma.accountLockout.update({
+          where: { identityKey },
+          data: { failedAttempts: 1, lastAttemptAt: now, lockedUntil: null },
+        });
+      } else {
+        if (record.failedAttempts >= maxTests) {
+          throw new BadRequestException('Rate limit exceeded: maximum 5 mail tests per 10 minutes per user.');
+        }
+        await this.prisma.accountLockout.update({
+          where: { identityKey },
+          data: { failedAttempts: { increment: 1 }, lastAttemptAt: now },
+        });
+      }
+    } else {
+      await this.prisma.accountLockout.create({
+        data: {
+          identityKey,
+          failedAttempts: 1,
+          lastAttemptAt: now,
+        },
+      });
+    }
   }
 
   async getMailAccounts(user: ScopedUser) {
@@ -357,6 +425,9 @@ export class SettingsService {
     }
 
     const port = dto.smtpPort ? Number(dto.smtpPort) : 587;
+    // SSRF and allowed ports (465, 587, 2525) validation
+    await this.validateMailHostAndPort(dto.smtpHost, port);
+
     const resolvedEncryption: 'starttls' | 'ssl' =
       dto.encryption || (dto.isSecure || port === 465 ? 'ssl' : 'starttls');
     const isSecure = resolvedEncryption === 'ssl' || Boolean(dto.isSecure) || port === 465;
@@ -437,6 +508,11 @@ export class SettingsService {
       : undefined;
 
     const port = dto.smtpPort !== undefined ? Number(dto.smtpPort) : account.smtpPort;
+    const host = dto.smtpHost !== undefined ? dto.smtpHost : account.smtpHost;
+    if (dto.smtpHost !== undefined || dto.smtpPort !== undefined) {
+      await this.validateMailHostAndPort(host, port);
+    }
+
     const resolvedEncryption: 'starttls' | 'ssl' | undefined = dto.encryption
       ? dto.encryption
       : (dto.isSecure !== undefined ? (dto.isSecure ? 'ssl' : 'starttls') : (port === 465 ? 'ssl' : undefined));
@@ -682,7 +758,7 @@ export class SettingsService {
     }
 
     // Enforce rate limit: 5 tests per 10 minutes per user
-    this.checkTestRateLimit(user.id);
+    await this.checkTestRateLimit(user.id);
 
     let smtpHost = dto.smtpHost;
     let smtpPort = dto.smtpPort;
@@ -762,12 +838,17 @@ export class SettingsService {
     }
 
     // 4. Connect, TLS negotiation, and authentication check
+    // Connect to already checked IP address with TLS servername (DNS Pinning)
+    const checkedIp = resolvedIps[0];
     const isSsl = encryption === 'ssl' || port === 465;
     const transporter = nodemailer.createTransport({
-      host: smtpHost,
+      host: checkedIp,
       port,
       secure: isSsl,
       requireTLS: !isSsl,
+      tls: {
+        servername: smtpHost,
+      },
       auth: {
         user: smtpUser,
         pass: smtpPass,
@@ -800,10 +881,11 @@ export class SettingsService {
         }
 
         if (recipientEmail) {
+          const prodName = process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM';
           await transporter.sendMail({
-            from: `"${BRAND_CONFIG.displayName} Mail Test" <${email || smtpUser}>`,
+            from: `"${prodName} Mail Test" <${email || smtpUser}>`,
             to: recipientEmail,
-            subject: '[JNC CRM] SMTP Mail Connection Test Successful',
+            subject: `[${prodName}] SMTP Mail Connection Test Successful`,
             html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #e2e8f0;border-radius:8px;">
               <h2 style="color:#059669;margin-top:0;">SMTP Connection Verified</h2>
               <p>Your mail account <strong>${email || smtpUser}</strong> connected to <strong>${smtpHost}:${port}</strong> with strict TLS encryption.</p>
@@ -922,9 +1004,9 @@ export class SettingsService {
 
     // 2. DKIM Check across common and provider selectors
     const candidateSelectors = ['google', 'default', 'k1', 's1', 's2', 'mail', 'godaddy', 'zoho'];
-    let dkimResult: { status: 'found' | 'missing' | 'invalid'; selector?: string; record?: string; fix: string } = {
-      status: 'missing',
-      fix: `Generate a 2048-bit DKIM key in your email provider console and add the TXT record at default._domainkey.${domain}.`,
+    let dkimResult: { status: 'found' | 'not_found_common' | 'invalid'; selector?: string; record?: string; fix: string } = {
+      status: 'not_found_common',
+      fix: `DKIM record not found for common selector names (${candidateSelectors.join(', ')}). Check your email provider DNS settings for the exact selector name configured for your domain.`,
     };
 
     for (const selector of candidateSelectors) {
@@ -1042,18 +1124,25 @@ export class SettingsService {
     }
 
     // Default logo fallback
-    const defaultLogoPaths = [
-      path.resolve(process.cwd(), 'apps/web/public/jnc-logo.jpg'),
-      path.resolve(process.cwd(), 'apps/api/assets/jnc-logo.jpg'),
-      path.resolve(process.cwd(), 'assets/jnc-logo.jpg'),
-      path.resolve(__dirname, '../../assets/jnc-logo.jpg'),
-      path.resolve(__dirname, '../../../assets/jnc-logo.jpg'),
+    const logoCandidates = [process.env.PRODUCT_LOGO_PATH, 'logo.png', 'logo.jpg', 'logo-icon.png', 'logo-full.png'].filter(Boolean);
+    const candidateDirs = [
+      path.resolve(process.cwd(), 'apps/api/assets'),
+      path.resolve(process.cwd(), 'apps/web/public'),
+      path.resolve(process.cwd(), 'assets'),
+      path.resolve(__dirname, '../../assets'),
+      path.resolve(__dirname, '../../../assets'),
+      path.resolve(__dirname, '../../../../assets'),
     ];
 
-    for (const p of defaultLogoPaths) {
-      if (fs.existsSync(p)) {
-        res.setHeader('Content-Type', 'image/jpeg');
-        return res.sendFile(p);
+    for (const dir of candidateDirs) {
+      for (const file of logoCandidates) {
+        const fullPath = path.resolve(dir, file as string);
+        if (fs.existsSync(fullPath)) {
+          const ext = path.extname(fullPath).toLowerCase();
+          const mime = ext === '.png' ? 'image/png' : ext === '.svg' ? 'image/svg+xml' : 'image/jpeg';
+          res.setHeader('Content-Type', mime);
+          return res.sendFile(fullPath);
+        }
       }
     }
 

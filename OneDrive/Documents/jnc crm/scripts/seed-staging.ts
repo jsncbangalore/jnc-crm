@@ -63,7 +63,7 @@ function validateStagingEnvironment() {
 
 function generateSecureRandomPassword(): string {
   const token = crypto.randomBytes(9).toString('base64url');
-  return `Jnc#Stg${token}!9`;
+  return `Stg#Secure${token}!9`;
 }
 
 async function main() {
@@ -76,81 +76,79 @@ async function main() {
     console.log('[STAGING SEED] Seeding staging database with initial companies & users...');
     console.log('========================================================================\n');
 
-    // 1. Create JNC Internal Company
-    const jncTenant = await prisma.tenant.upsert({
-      where: { code: 'JNC' },
+    // 1. Create Staging Primary Company
+    const primaryTenant = await prisma.tenant.upsert({
+      where: { code: 'STAGING-ORG' },
       update: {
-        name: 'JNC Network & Communication',
-        isInternal: true,
+        name: 'Staging Primary Organization',
         status: 'active',
       },
       create: {
-        code: 'JNC',
-        slug: 'jnc',
-        name: 'JNC Network & Communication',
-        isInternal: true,
+        code: 'STAGING-ORG',
+        slug: 'staging-org',
+        name: 'Staging Primary Organization',
         status: 'active',
       },
     });
-    console.log(`[OK] Internal Tenant verified: [${jncTenant.code}] ${jncTenant.name}`);
+    console.log(`[OK] Internal Tenant verified: [${primaryTenant.code}] ${primaryTenant.name}`);
 
     // 2. Define users to seed with random passwords and mustResetPassword = true
     const userDefinitions = [
       {
         role: 'platform_super_admin',
         name: 'Staging Platform Super Admin',
-        email: 'staging.superadmin@jsnc.co.in',
+        email: 'staging.superadmin@example.com',
         employeeCode: 'PSA-STG-001',
         tenantId: null,
       },
       {
         role: 'tenant_admin',
         name: 'Boss Tenant Admin',
-        email: 'staging.boss@jsnc.co.in',
+        email: 'staging.boss@example.com',
         employeeCode: 'TA-STG-001',
-        tenantId: jncTenant.id,
+        tenantId: primaryTenant.id,
       },
       {
         role: 'employee',
         name: 'Staging Employee',
-        email: 'staging.employee@jsnc.co.in',
+        email: 'staging.employee@example.com',
         employeeCode: 'EMP-STG-001',
-        tenantId: jncTenant.id,
+        tenantId: primaryTenant.id,
       },
       {
         role: 'sub_admin',
         name: 'Staging Sub Admin',
-        email: 'staging.subadmin@jsnc.co.in',
+        email: 'staging.subadmin@example.com',
         employeeCode: 'SUB-STG-001',
-        tenantId: jncTenant.id,
+        tenantId: primaryTenant.id,
       },
       {
         role: 'store_manager',
         name: 'Staging Store Manager',
-        email: 'staging.storemanager@jsnc.co.in',
+        email: 'staging.storemanager@example.com',
         employeeCode: 'STM-STG-001',
-        tenantId: jncTenant.id,
+        tenantId: primaryTenant.id,
       },
       {
         role: 'project_manager',
         name: 'Staging Project Manager',
-        email: 'staging.projectmanager@jsnc.co.in',
+        email: 'staging.projectmanager@example.com',
         employeeCode: 'PJM-STG-001',
-        tenantId: jncTenant.id,
+        tenantId: primaryTenant.id,
       },
       {
         role: 'developer_lead',
         name: 'Staging Developer Lead',
-        email: 'staging.devlead@jsnc.co.in',
+        email: 'staging.devlead@example.com',
         employeeCode: 'DVL-STG-001',
-        tenantId: jncTenant.id,
+        tenantId: primaryTenant.id,
       },
       {
         role: 'developer',
         name: 'Staging Developer',
-        email: 'staging.developer@jsnc.co.in',
+        email: 'staging.developer@example.com',
         employeeCode: 'DEV-STG-001',
-        tenantId: jncTenant.id,
+        tenantId: primaryTenant.id,
       },
     ];
 
@@ -211,7 +209,7 @@ async function main() {
         email: def.email,
         password: plainPassword,
         employeeCode: def.employeeCode,
-        tenant: def.tenantId ? 'JNC' : 'Platform Scope',
+        tenant: def.tenantId ? 'Primary Tenant' : 'Platform Scope',
       });
     }
 
@@ -228,11 +226,11 @@ async function main() {
     for (let i = 0; i < fakeCompanyNames.length; i++) {
       const comp = await prisma.company.create({
         data: {
-          tenantId: jncTenant.id,
+          tenantId: primaryTenant.id,
           name: fakeCompanyNames[i],
           gstin: `29AAACT${1000 + i}A1Z${i}`,
           industry: 'Electronics & Audio Systems',
-          city: 'Bangalore',
+          city: '',
           state: 'Karnataka',
           billingEmail: `billing.test${i + 1}@example.com`,
         },
@@ -260,7 +258,7 @@ async function main() {
       const company = createdCompanies[i % createdCompanies.length];
       const lead = await prisma.lead.create({
         data: {
-          tenantId: jncTenant.id,
+          tenantId: primaryTenant.id,
           leadNumber: `LEAD-TEST-${String(i + 1).padStart(3, '0')}`,
           customerName: `${fakeLeadTitles[i]} (Contact ${i + 1})`,
           customerPhone: `+9198000${String(i).padStart(5, '0')}`,
@@ -284,7 +282,7 @@ async function main() {
       const lead = createdLeads[i];
       await prisma.quotation.create({
         data: {
-          tenantId: jncTenant.id,
+          tenantId: primaryTenant.id,
           quoteNumber: `Q-TEST-${String(i + 1).padStart(4, '0')}`,
           leadId: lead.id,
           status: 'draft',

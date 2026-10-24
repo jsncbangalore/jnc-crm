@@ -285,8 +285,8 @@ export const DigitalSoftCopyModal: React.FC<DigitalSoftCopyModalProps> = ({
 
                 {/* Digital Stamp Footer */}
                 <div className="border-t border-slate-300 pt-4 flex justify-between items-center text-[10.5px] text-slate-500 font-mono">
-                  <span>Digitally Verified & Stamped by JNC ERP</span>
-                  <span>Security Checksum: JNC-{bill.id}</span>
+                  <span>Digitally Verified & Stamped</span>
+                  <span>Security Checksum: {bill.id}</span>
                 </div>
               </div>
             ) : (

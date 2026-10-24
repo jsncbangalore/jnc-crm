@@ -243,8 +243,8 @@ export async function seedTestDatabase() {
       name: 'Acme Motors Pvt Ltd',
       gstin: '29ABCDE1234F1Z5',
       industry: 'Automotive',
-      city: 'Bangalore',
-      billingEmail: 'accounts@acmemotors.com',
+      city: 'Metropolis',
+      billingEmail: 'accounts@example.com',
     },
   });
 
@@ -256,8 +256,8 @@ export async function seedTestDatabase() {
       tenantId: tenantA.id, // Strictly scoped
       companyId: companyA.id,
       name: 'Ramesh Sharma',
-      phone: '+91 9845011111',
-      email: 'ramesh@acmemotors.com',
+      phone: '',
+      email: 'ramesh@example.com',
       designation: 'Procurement Manager',
       isPrimary: true,
     },
@@ -273,7 +273,7 @@ export async function seedTestDatabase() {
       gstin: '27AABCT8888P1ZZ',
       industry: 'Logistics',
       city: 'Mumbai',
-      billingEmail: 'billing@zenithlogistics.com',
+      billingEmail: 'billing@example.com',
     },
   });
 
@@ -285,8 +285,8 @@ export async function seedTestDatabase() {
       tenantId: tenantB.id, // Strictly scoped
       companyId: companyB.id,
       name: 'Anita Patel',
-      phone: '+91 9820022222',
-      email: 'anita@zenithlogistics.com',
+      phone: '',
+      email: 'anita@example.com',
       designation: 'VP Operations',
       isPrimary: true,
     },
@@ -309,8 +309,8 @@ export async function seedTestDatabase() {
       source: 'web',
       status: 'qualified',
       customerName: 'Ramesh Sharma',
-      customerPhone: '+91 9845011111',
-      customerEmail: 'ramesh@acmemotors.com',
+      customerPhone: '',
+      customerEmail: 'ramesh@example.com',
       companyId: companyA.id,
       contactId: contactA.id,
       estimatedValue: 150000,
@@ -332,8 +332,8 @@ export async function seedTestDatabase() {
       source: 'indiamart',
       status: 'contacted',
       customerName: 'Anita Patel',
-      customerPhone: '+91 9820022222',
-      customerEmail: 'anita@zenithlogistics.com',
+      customerPhone: '',
+      customerEmail: 'anita@example.com',
       companyId: companyB.id,
       contactId: contactB.id,
       estimatedValue: 280000,
@@ -350,8 +350,8 @@ export async function seedTestDatabase() {
       tenantId: tenantA.id,
       name: 'Alpha Component Supply',
       contactPerson: 'Suresh Kumar',
-      phone: '+91 9800012345',
-      city: 'Bangalore',
+      phone: '',
+      city: 'Metropolis',
     },
   });
 
@@ -363,7 +363,7 @@ export async function seedTestDatabase() {
       tenantId: tenantB.id,
       name: 'Beta Precision Instruments',
       contactPerson: 'Meera Deshmukh',
-      phone: '+91 9800067890',
+      phone: '',
       city: 'Pune',
     },
   });
@@ -376,7 +376,7 @@ export async function seedTestDatabase() {
       tenantId: tenantA.id,
       code: 'WH-A-MAIN',
       name: 'Warehouse Alpha Main',
-      city: 'Bangalore',
+      city: 'Metropolis',
     },
   });
 
@@ -502,7 +502,7 @@ export async function seedTestDatabase() {
       taxAmount: 2880,
       totalAmount: 18880,
       customerName: 'Acme Motors Pvt Ltd',
-      customerPhone: '+91 9845011111',
+      customerPhone: '',
     },
   });
 
@@ -516,7 +516,7 @@ export async function seedTestDatabase() {
       orderId: orderA.id,
       companyId: companyA.id,
       customerName: 'Acme Motors Pvt Ltd',
-      customerPhone: '+91 9845011111',
+      customerPhone: '',
       customerGstin: '29ABCDE1234F1Z5',
       subtotal: 16000,
       cgstAmount: 1440,
@@ -568,7 +568,7 @@ export async function seedTestDatabase() {
       taxAmount: 4320,
       totalAmount: 28320,
       customerName: 'Zenith Logistics Ltd',
-      customerPhone: '+91 9820022222',
+      customerPhone: '',
     },
   });
 
@@ -582,7 +582,7 @@ export async function seedTestDatabase() {
       orderId: orderB.id,
       companyId: companyB.id,
       customerName: 'Zenith Logistics Ltd',
-      customerPhone: '+91 9820022222',
+      customerPhone: '',
       customerGstin: '27AABCT8888P1ZZ',
       subtotal: 24000,
       cgstAmount: 2160,

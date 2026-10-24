@@ -1,4 +1,4 @@
-// Prisma Schema for JNC-CRM Multi-Tenant SaaS Platform
+// Prisma Schema for Multi-Tenant CRM SaaS Platform
 // Multi-Tenant SaaS Platform Partitioning
 
 generator client {
@@ -17,7 +17,7 @@ datasource db {
 // ==========================================
 model Tenant {
   id              String         @id @default(uuid())
-  code            String         @unique // e.g. "JNC-ORG-001", "ACME", "VERTEX"
+  code            String         @unique // e.g. "ORG-001", "ACME", "VERTEX"
   name            String         // Display Company Name
   slug            String         @unique // Subdomain/URL identifier
   status          String         @default("active") // active | suspended | expired
@@ -30,14 +30,14 @@ model Tenant {
   email               String?
   address             String?
   city                String?
-  state               String?        @default("Karnataka")
+  state               String?
   pincode             String?
   website             String?
   gstin               String?
   pan                 String?
   currency            String         @default("INR")
-  lutBondNo           String?        @default("AD290525013648T")
-  lutValidity         String?        @default("From : 10/05/2025 To: 09/05/2026")
+  lutBondNo           String?
+  lutValidity         String?
   invoicePrefix       String?        @default("INV")
   invoiceTerms        String?
 
@@ -56,6 +56,7 @@ model Tenant {
 
   isOnboarded         Boolean        @default(false)
   isInternal          Boolean        @default(false)
+  requireTwoFactor    Boolean        @default(false)
   webhookKeyHash      String?        @unique
 
   createdAt           DateTime       @default(now())
@@ -91,6 +92,8 @@ model Tenant {
   paymentRecords  PaymentRecord[]
   stockPositions  ProjectStockPosition[]
   webFormSettings WebFormSettings?
+  userPageAccesses UserPageAccess[]
+  accessTemplates AccessTemplate[]
 
   @@index([status])
 }
@@ -178,6 +181,12 @@ model User {
   createdPurchaseBills PurchaseBill[] @relation("CreatedPurchaseBills")
   passwordResetTokens PasswordResetToken[]
   refreshSessions   RefreshSession[]
+  firstLoginAfter2FaReleaseAt DateTime?
+  twoFactor         UserTwoFactor?
+  trustedDevices    TrustedDevice[]
+  loginTickets      LoginTicket[]
+  pageAccess        UserPageAccess?
+  passwordResetFlows PasswordResetFlow[] @relation("UserPasswordResetFlows")
 
   @@unique([tenantId, email])
   @@unique([tenantId, employeeCode])
@@ -238,6 +247,101 @@ model OtpChallenge {
   createdAt        DateTime  @default(now())
 
   @@index([emailNormalized])
+  @@index([expiresAt])
+}
+
+model ResetTicket {
+  id              String    @id @default(uuid())
+  jti             String    @unique
+  emailNormalized String
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([emailNormalized])
+  @@index([expiresAt])
+}
+
+model PasswordResetFlow {
+  id            String    @id @default(uuid())
+  accountId     String?
+  lookupHash    String
+  stage         String    @default("started") // 'started' | 'phone_ok' | 'email_ok' | 'code_sent' | 'code_ok' | 'done'
+  phoneAttempts Int       @default(0)
+  emailAttempts Int       @default(0)
+  expiresAt     DateTime
+  ipHash        String
+  createdAt     DateTime  @default(now())
+
+  account       User?     @relation("UserPasswordResetFlows", fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([lookupHash])
+  @@index([expiresAt])
+}
+
+model EmailOutbox {
+  id            String    @id @default(uuid())
+  tenantId      String?
+  to            String
+  subject       String
+  text          String?
+  html          String?
+  status        String    @default("pending") // pending | sent | failed | discarded
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(3)
+  lastError     String?
+  nextAttemptAt DateTime  @default(now())
+  sentAt        DateTime?
+  isDecoy       Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+}
+
+model UserTwoFactor {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  method          String    @default("totp") // totp | email
+  secretEnc       String?   // AES-GCM encrypted base32 secret
+  enabledAt       DateTime?
+  lastUsedStep    Int?
+  backupCodesHash String?   // JSON array of SHA-256 hashed backup codes
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TrustedDevice {
+  id          String   @id @default(uuid())
+  userId      String
+  tokenHash   String   @unique
+  label       String?
+  userAgent   String?
+  ip          String?
+  expiresAt   DateTime
+  lastUsedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model LoginTicket {
+  id        String    @id @default(uuid())
+  jti       String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
   @@index([expiresAt])
 }
 
@@ -756,14 +860,14 @@ model Invoice {
   customerPhone   String
   customerEmail   String?
   customerGstin   String?
-  customerState   String        @default("Karnataka")
+  customerState   String?
   billingAddress  String?
   deliveryAddress String?
   referenceNo     String?
   buyerOrderNo    String?
   poDate          DateTime?
-  lutBondNo       String?       @default("AD290525013648T")
-  lutValidity     String?       @default("From : 10/05/2025 To: 09/05/2026")
+  lutBondNo       String?
+  lutValidity     String?
   isSez           Boolean       @default(false)
   advancePercent  Float?
   advanceAmount   Float?
@@ -924,6 +1028,36 @@ model Team {
 
   tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   users        User[]   @relation("UserTeam")
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model UserPageAccess {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  tenantId  String
+  pages     String   @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model AccessTemplate {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  pages       String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, name])
   @@index([tenantId])

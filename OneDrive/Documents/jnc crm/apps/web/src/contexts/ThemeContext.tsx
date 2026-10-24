@@ -1,4 +1,12 @@
+/* --- C2PA CONTENT CREDENTIALS & PROVENANCE NOTICE ---
+ * c2pa.action: 'c2pa.created'
+ * c2pa.ai_training: 'disallowed'
+ * c2pa.do_not_train: true
+ * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
+ * ----------------------------------------------------- */
+
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import { canStore, COOKIE_CONSENT_EVENT } from '../utils/cookieConsent';
 
 type Theme = 'light' | 'dark';
 
@@ -11,6 +19,13 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const getSystemTheme = (): Theme => {
+  if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    return 'dark';
+  }
+  return 'light';
+};
+
 const applyDOMTheme = (newTheme: Theme) => {
   const root = document.documentElement;
   root.classList.add('no-theme-transition');
@@ -21,9 +36,14 @@ const applyDOMTheme = (newTheme: Theme) => {
     root.classList.add('light');
     root.classList.remove('dark');
   }
-  try {
-    localStorage.setItem('jnc_theme', newTheme);
-  } catch {}
+
+  // Without consent, do not write to localStorage; keep in memory only
+  if (canStore('preferences')) {
+    try {
+      localStorage.setItem('crm_theme', newTheme);
+    } catch {}
+  }
+
   // Remove temporary transition lock immediately on next frame
   requestAnimationFrame(() => {
     root.classList.remove('no-theme-transition');
@@ -32,18 +52,57 @@ const applyDOMTheme = (newTheme: Theme) => {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    try {
-      const savedTheme = localStorage.getItem('jnc_theme');
-      if (savedTheme === 'light' || savedTheme === 'dark') {
-        return savedTheme;
-      }
-    } catch {}
-    return 'light'; // Clean, friendly default theme
+    if (canStore('preferences')) {
+      try {
+        const savedTheme = localStorage.getItem('crm_theme');
+        if (savedTheme === 'light' || savedTheme === 'dark') {
+          return savedTheme;
+        }
+      } catch {}
+    }
+    return getSystemTheme();
   });
 
   useEffect(() => {
     applyDOMTheme(theme);
   }, [theme]);
+
+  // Sync when cookie consent changes or when system color scheme changes
+  useEffect(() => {
+    const handleConsentChange = () => {
+      if (!canStore('preferences')) {
+        // Preference storage revoked: remove any stored theme key and adopt system theme if not overridden in memory
+        try {
+          localStorage.removeItem('crm_theme');
+        } catch {}
+      } else {
+        // Preference storage consented: persist active in-memory theme
+        try {
+          localStorage.setItem('crm_theme', theme);
+        } catch {}
+      }
+    };
+
+    window.addEventListener(COOKIE_CONSENT_EVENT, handleConsentChange);
+    return () => window.removeEventListener(COOKIE_CONSENT_EVENT, handleConsentChange);
+  }, [theme]);
+
+  // Listen to prefers-color-scheme changes when preferences are not stored
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleMediaChange = (e: MediaQueryListEvent) => {
+      if (!canStore('preferences')) {
+        const sysTheme: Theme = e.matches ? 'dark' : 'light';
+        setThemeState(sysTheme);
+        applyDOMTheme(sysTheme);
+      }
+    };
+    if (media.addEventListener) {
+      media.addEventListener('change', handleMediaChange);
+      return () => media.removeEventListener('change', handleMediaChange);
+    }
+  }, []);
 
   const toggleTheme = useCallback(() => {
     setThemeState((prev) => {

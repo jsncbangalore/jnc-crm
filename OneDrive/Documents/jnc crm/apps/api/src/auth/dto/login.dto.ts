@@ -56,6 +56,10 @@ export class LoginDto {
 
   @IsOptional()
   @IsString()
+  email?: string; // Standard alias for identifier
+
+  @IsOptional()
+  @IsString()
   username?: string; // Backward compatibility alias
 
   @IsDefined({ message: 'password is required' })
@@ -135,12 +139,48 @@ export class RefreshTokenDto {
   @IsOptional()
   @IsString()
   refreshToken?: string;
+
+  @IsOptional()
+  @IsString()
+  expectedUserId?: string;
+}
+
+export class ForgotPasswordLookupDto {
+  @IsNotEmpty()
+  @IsString()
+  identifier: string;
+
+  @IsOptional()
+  @IsString()
+  companyCode?: string;
+}
+
+export class ForgotPasswordVerifyPhoneDto {
+  @IsNotEmpty()
+  @IsString()
+  lookupToken: string;
+
+  @IsNotEmpty()
+  @IsString()
+  phone: string;
 }
 
 export class ForgotPasswordRequestDto {
   @IsNotEmpty()
   @IsString()
   email: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  companyCode?: string;
+
+  @IsOptional()
+  @IsString()
+  phoneVerifiedToken?: string;
 }
 
 export class ForgotPasswordVerifyDto {
@@ -185,7 +225,11 @@ export class UpdateProfileDto {
 }
 
 export class RequestEmailChangeDto {
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'currentPassword is required' })
+  @IsString()
+  currentPassword: string;
+
+  @IsNotEmpty({ message: 'newEmail is required' })
   @IsString()
   newEmail: string;
 }
@@ -220,3 +264,128 @@ export class ChangePasswordDto {
   @IsBoolean()
   logoutOthers?: boolean;
 }
+
+export class VerifyTwoFactorDto {
+  @IsNotEmpty({ message: 'loginTicket is required' })
+  @IsString({ message: 'loginTicket must be a string' })
+  loginTicket: string;
+
+  @IsNotEmpty({ message: 'code is required' })
+  @IsString({ message: 'code must be a string' })
+  @MaxLength(50, { message: 'code must not exceed 50 characters' })
+  code: string;
+
+  @IsOptional()
+  @IsBoolean()
+  trustDevice?: boolean;
+
+  @IsOptional()
+  @IsString()
+  method?: string;
+}
+
+export class SendTwoFactorEmailDto {
+  @IsNotEmpty({ message: 'loginTicket is required' })
+  @IsString({ message: 'loginTicket must be a string' })
+  loginTicket: string;
+}
+
+export class EnableTwoFactorDto {
+  @IsNotEmpty({ message: 'code is required' })
+  @IsString({ message: 'code must be a string' })
+  @MaxLength(20, { message: 'code must not exceed 20 characters' })
+  code: string;
+}
+
+export class RegenerateBackupCodesDto {
+  @IsDefined({ message: 'currentPassword is required' })
+  @IsString({ message: 'currentPassword must be a string' })
+  @MaxLength(200)
+  @IsValidPassword()
+  currentPassword: string;
+
+  @IsNotEmpty({ message: 'code is required' })
+  @IsString({ message: 'code must be a string' })
+  @MaxLength(20)
+  code: string;
+}
+
+export class DisableTwoFactorDto {
+  @IsDefined({ message: 'currentPassword is required' })
+  @IsString({ message: 'currentPassword must be a string' })
+  @MaxLength(200)
+  @IsValidPassword()
+  currentPassword: string;
+
+  @IsNotEmpty({ message: 'code is required' })
+  @IsString({ message: 'code must be a string' })
+  @MaxLength(20)
+  code: string;
+}
+
+export class ForgotPasswordStartDto {
+  @IsNotEmpty({ message: 'lookup is required' })
+  @IsString({ message: 'lookup must be a string' })
+  lookup: string;
+
+  @IsOptional()
+  @IsString()
+  companyCode?: string;
+}
+
+export class ForgotPasswordVerifyPhoneFlowDto {
+  @IsNotEmpty({ message: 'flowId is required' })
+  @IsString({ message: 'flowId must be a string' })
+  flowId: string;
+
+  @IsNotEmpty({ message: 'phone is required' })
+  @IsString({ message: 'phone must be a string' })
+  phone: string;
+}
+
+export class ForgotPasswordVerifyEmailDto {
+  @IsNotEmpty({ message: 'flowId is required' })
+  @IsString({ message: 'flowId must be a string' })
+  flowId: string;
+
+  @IsNotEmpty({ message: 'email is required' })
+  @IsString({ message: 'email must be a string' })
+  email: string;
+}
+
+export class ForgotPasswordSendCodeDto {
+  @IsNotEmpty({ message: 'flowId is required' })
+  @IsString({ message: 'flowId must be a string' })
+  flowId: string;
+}
+
+export class ForgotPasswordVerifyCodeFlowDto {
+  @IsNotEmpty({ message: 'flowId is required' })
+  @IsString({ message: 'flowId must be a string' })
+  flowId: string;
+
+  @IsNotEmpty({ message: 'code is required' })
+  @IsString({ message: 'code must be a string' })
+  code: string;
+}
+
+export class RequestPhoneChangeDto {
+  @IsNotEmpty({ message: 'currentPassword is required' })
+  @IsString()
+  currentPassword: string;
+
+  @IsNotEmpty({ message: 'newPhone is required' })
+  @IsString()
+  newPhone: string;
+}
+
+export class VerifyPhoneChangeDto {
+  @IsNotEmpty({ message: 'newPhone is required' })
+  @IsString()
+  newPhone: string;
+
+  @IsNotEmpty({ message: 'code is required' })
+  @IsString()
+  code: string;
+}
+

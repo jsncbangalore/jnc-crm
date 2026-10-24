@@ -14,6 +14,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePopup } from '../contexts/PopupContext';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import LeadSetupModal, { LeadSetupView } from '../components/leads/LeadSetupModal';
+import CreateLeadModal from '../components/leads/CreateLeadModal';
 import { format, formatDistanceToNow, isToday } from 'date-fns';
 import Papa from 'papaparse';
 import SafeHtml from '../components/common/SafeHtml';
@@ -81,11 +82,9 @@ export const PIPELINE_COLUMNS: ColumnDef[] = [
   },
 ];
 
-// Sample leads template for import demo
+// Leads template headers for import
 const SAMPLE_LEADS = [
-  { company_name: 'Acme Enterprise Ltd', contact_name: 'Sample Contact 1', phone: '9845012345', email: 'contact@acme.com', product_interest: 'Commercial Sound Equipment', city: 'Metropolis', estimated_value: 50000, urgency: 'urgent' },
-  { company_name: 'Global Technologies', contact_name: 'Sample Contact 2', phone: '9820055443', email: 'info@globaltech.com', product_interest: 'Control Panels & Hardware', city: 'City Center', estimated_value: 45000, urgency: 'standard' },
-  { company_name: 'Pioneer Automation', contact_name: 'Sample Contact 3', phone: '9811122334', email: 'orders@pioneer.com', product_interest: 'Intercom System Stations', city: 'North District', estimated_value: 28000, urgency: 'planning' },
+  { company_name: '', contact_name: '', phone: '', email: '', product_interest: '', city: '', estimated_value: '', urgency: '' },
 ];
 
 export default function LeadsPage() {
@@ -416,7 +415,7 @@ export default function LeadsPage() {
   };
 
   const handleLoadSampleLeads = async () => {
-    setFileName('jsnc_trade_show_sample.csv');
+    setFileName('leads_template.csv');
     setEvaluating(true);
     try {
       const { data } = await leadsApi.previewJson(SAMPLE_LEADS);
@@ -506,7 +505,7 @@ export default function LeadsPage() {
                 const encodedUri = encodeURI(csvContent);
                 const link = document.createElement('a');
                 link.setAttribute('href', encodedUri);
-                link.setAttribute('download', `JSNC_Leads_Client_Directory_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`);
+                link.setAttribute('download', `Leads_Client_Directory_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`);
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -1356,148 +1355,16 @@ export default function LeadsPage() {
       </AnimatePresence>
 
       {/* ─── MODAL: Manual Add Lead ──────────────────────────────────────── */}
-      <AnimatePresence>
-        {showAddModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 16 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 16 }}
-              className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden my-auto"
-            >
-              <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230]">
-                <h2 className="text-base font-bold text-slate-950 dark:text-white flex items-center gap-2">
-                  <Plus size={16} className="text-crm-blue" /> Create New Lead Manually
-                </h2>
-                <button
-                  onClick={() => setShowAddModal(false)}
-                  className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white flex items-center justify-center"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateLeadSubmit} className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">Contact Name *</label>
-                    <input
-                      className="input text-xs"
-                      placeholder="Enter contact name"
-                      value={newLead.customerName}
-                      onChange={(e) => setNewLead({ ...newLead, customerName: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Mobile Number *</label>
-                    <input
-                      className="input text-xs font-mono"
-                      placeholder="Enter phone number"
-                      value={newLead.customerPhone}
-                      onChange={(e) => setNewLead({ ...newLead, customerPhone: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">Company Name</label>
-                    <input
-                      className="input text-xs"
-                      placeholder="Enter company name"
-                      value={newLead.companyName}
-                      onChange={(e) => setNewLead({ ...newLead, companyName: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Email Address</label>
-                    <input
-                      type="email"
-                      className="input text-xs"
-                      placeholder="contact@company.com"
-                      value={newLead.customerEmail}
-                      onChange={(e) => setNewLead({ ...newLead, customerEmail: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">System Category</label>
-                    <input
-                      className="input text-xs"
-                      placeholder="Enter category or system type"
-                      value={newLead.productCategory}
-                      onChange={(e) => setNewLead({ ...newLead, productCategory: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Est. Deal Value (₹)</label>
-                    <input
-                      type="number"
-                      className="input text-xs"
-                      placeholder="0.00"
-                      value={newLead.estimatedValue || ''}
-                      onChange={(e) =>
-                        setNewLead({ ...newLead, estimatedValue: parseFloat(e.target.value) || 0 })
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">Urgency Level</label>
-                    <select
-                      className="input text-xs font-medium"
-                      value={newLead.urgency}
-                      onChange={(e) => setNewLead({ ...newLead, urgency: e.target.value })}
-                    >
-                      <option value="urgent">Urgent (Immediate Procurement)</option>
-                      <option value="standard">Standard (Next 1-2 Weeks)</option>
-                      <option value="planning">Planning (Budgeting / Future)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label">City / Location</label>
-                    <input
-                      className="input text-xs"
-                      placeholder="Enter city or location"
-                      value={newLead.city}
-                      onChange={(e) => setNewLead({ ...newLead, city: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="label">Requirement Notes</label>
-                  <textarea
-                    className="input text-xs w-full min-h-[60px] resize-none"
-                    placeholder="Enter notes or requirement specifications..."
-                    value={newLead.queryMessage}
-                    onChange={(e) => setNewLead({ ...newLead, queryMessage: e.target.value })}
-                  />
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#2A3042]">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddModal(false)}
-                    className="btn-ghost text-xs"
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn-primary text-xs px-5 shadow-glow-blue">
-                    Create Lead
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <CreateLeadModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSuccess={(_lead, action) => {
+          fetchLeads();
+          if (action === 'close') {
+            setShowAddModal(false);
+          }
+        }}
+      />
 
       {/* ─── MODAL: Bulk Import Excel / CSV ───────────────────────────────── */}
       <AnimatePresence>
@@ -1556,7 +1423,7 @@ export default function LeadsPage() {
                       onClick={handleLoadSampleLeads}
                       className="btn bg-crm-violet/20 hover:bg-crm-violet/30 text-crm-violet-light text-xs justify-center py-2.5"
                     >
-                      <Plus size={14} /> Load Sample Trade Show Leads
+                      <Plus size={14} /> Load Template Columns
                     </button>
                     <button
                       onClick={() => {
@@ -1565,7 +1432,7 @@ export default function LeadsPage() {
                         const url = URL.createObjectURL(blob);
                         const link = document.createElement('a');
                         link.href = url;
-                        link.setAttribute('download', 'jsnc_leads_template.csv');
+                        link.setAttribute('download', 'leads_template.csv');
                         document.body.appendChild(link);
                         link.click();
                         document.body.removeChild(link);

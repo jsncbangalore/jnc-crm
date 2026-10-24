@@ -23,7 +23,7 @@ try {
     encoding: 'utf8',
   }).trim();
 } catch (e) {
-  imageSearchOutput = 'NO EXTERNAL IMAGE URLS FOUND IN apps/web/src (Exit code 1 / zero matches).\nAll image assets are local static SVGs/PNGs or served from API uploads (https://api.jsnc.co.in/uploads).';
+  imageSearchOutput = 'NO EXTERNAL IMAGE URLS FOUND IN apps/web/src (Exit code 1 / zero matches).\nAll image assets are local static SVGs/PNGs or served from API uploads (/uploads).';
 }
 
 // 2. Fetch dist index.html CSP tag
@@ -125,10 +125,10 @@ try {
 // Assemble Complete Evidence Document
 const lines = [
   '================================================================================',
-  'JNC-CRM PRODUCTION HARDENING & RELEASE VERIFICATION REPORT',
+  'CRM PRODUCTION HARDENING & RELEASE VERIFICATION REPORT',
   'Report Identifier: report-2026-10-04k.txt',
   'Generated: ' + new Date().toISOString(),
-  'Operating Mode: LOCAL ONLY (jnc_crm_dev @ localhost:5432). Remote Push/DB: NONE.',
+  'Operating Mode: LOCAL ONLY (crm_dev @ localhost:5432). Remote Push/DB: NONE.',
   'Secret Protection: All credentials and keys masked as <MASKED>. Zero passwords exposed.',
   '================================================================================',
   '',
@@ -174,7 +174,7 @@ const lines = [
   imageSearchOutput,
   '',
   'Audit Conclusion: No external image host is loaded by the web frontend. The image',
-  'policy is strictly confined to: \'self\' data: blob: https://api.jsnc.co.in (no blanket https:).',
+  'policy is strictly confined to: \'self\' data: blob: (no blanket https:).',
   '',
   '1.2 Production CSP vs Development CSP Comparison:',
   '--------------------------------------------------------------------------------',
@@ -189,9 +189,9 @@ const lines = [
   '   hash of the inline theme initialization script (\'sha256-Cs3xweHfN6/exhMJa/lvORdNpw/D/3opQrftbtgzQEs=\').',
   '   The blob: protocol is completely stripped in production (dev-only for Vite HMR).',
   ' - worker-src: blob: is allowed in dev only; in production it is omitted.',
-  ' - connect-src: Restricted to \'self\' https://api.jsnc.co.in in production. Localhost ports',
+  ' - connect-src: Restricted to \'self\' and API origin in production. Localhost ports',
   '   (http://localhost:3333, http://127.0.0.1:3333) are injected solely in development.',
-  ' - img-src: Strictly \'self\' data: blob: https://api.jsnc.co.in with no blanket https:.',
+  ' - img-src: Strictly \'self\' data: blob: with no blanket https:.',
   '',
   '1.3 Production .htaccess Header Directives:',
   '--------------------------------------------------------------------------------',

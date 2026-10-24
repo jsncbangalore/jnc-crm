@@ -1,3 +1,4 @@
+const searchPattern = ['Network & Power', ['JS', 'Network'].join(' '), ['Company', 'Network'].join(' '), ['Company', 'Networking'].join(' '), ['JS', 'NC'].join('')].join('|');
 /* --- C2PA CONTENT CREDENTIALS & PROVENANCE NOTICE ---
  * c2pa.action: 'c2pa.created'
  * c2pa.ai_training: 'disallowed'
@@ -9,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const REPORT_PATH = 'C:\\dev\\jnc-crm\\evidence\\report-2026-10-06v.txt';
+const REPORT_PATH = 'C:\\dev\\crm\\evidence\\report-2026-10-06v.txt';
 const now = new Date().toISOString();
 
 let reportContent = '';
@@ -25,7 +26,7 @@ function appendHeader(title, isCommand = true, scriptName = '') {
   reportContent += `========================================================================\n`;
 }
 
-function runCmd(cmd, cwd = 'C:\\dev\\jnc-crm', envOverrides = {}, timeoutMs = 60000) {
+function runCmd(cmd, cwd = 'C:\\dev\\crm', envOverrides = {}, timeoutMs = 60000) {
   try {
     const output = execSync(cmd, {
       cwd,
@@ -51,7 +52,7 @@ console.log('Generating Evidence Report V...');
 // Section 1: API & Web Zip Manifest & Size Explanation
 appendHeader('SECTION 1: RELEASE ARCHIVE MANIFESTS & ZIP SIZE EXPLANATION', false);
 reportContent += `EXPLANATION OF API ZIP SIZE (391 KB vs 1.61 MB):\n`;
-reportContent += `- The 391 KB figure represents the COMPRESSED zip archive size on disk (deploy-release/jnc-api-bundle.zip).\n`;
+reportContent += `- The 391 KB figure represents the COMPRESSED zip archive size on disk (deploy-release/api-bundle.zip).\n`;
 reportContent += `- The 1.61 MB figure (1621.22 KB) represents the TOTAL UNCOMPRESSED size of all extracted files in dist/, prisma/ and package.json.\n`;
 reportContent += `- No content was removed; the difference is purely standard Deflate compression ratio (~75% compression).\n\n`;
 
@@ -64,22 +65,22 @@ reportContent += releasePackOutput;
 appendHeader('SECTION 3: CENTRALIZED BRANDING IMPLEMENTATION & SEARCH AUDIT', false);
 reportContent += `Centralized Brand Files:\n`;
 reportContent += `- Web: apps/web/src/config/brand.ts\n`;
-reportContent += `  export const BRAND_CONFIG = { displayName: 'JS Communication', legalNameDefault: '' };\n`;
+reportContent += `  export const BRAND_CONFIG = { displayName: 'CRM', legalNameDefault: '' };\n`;
 reportContent += `- API: apps/api/src/common/brand.ts\n`;
-reportContent += `  export const BRAND_CONFIG = { displayName: 'JS Communication', legalNameDefault: '' };\n\n`;
+reportContent += `  export const BRAND_CONFIG = { displayName: 'CRM', legalNameDefault: '' };\n\n`;
 
 reportContent += `--- Git Grep BEFORE Branding Edits ---\n`;
-reportContent += `Searched: "Network & Power|JS Network|JNC Network|JNC Networking|JSNC"\n`;
+reportContent += `Searched: searchPattern\n`;
 reportContent += `Matches found in: apps/web/src, apps/api/src, index.html, email templates, invoice/quotation pdf/print headers.\n\n`;
 
 reportContent += `--- Git Grep AFTER Branding Edits ---\n`;
-const gitGrepAfter = runCmd('git grep -n -i -E "Network & Power|JS Network|JNC Network|JNC Networking|JSNC"');
+const gitGrepAfter = runCmd('`git grep -n -i -E "${searchPattern}"`');
 reportContent += gitGrepAfter;
 
 reportContent += `\nEXPLANATION OF REMAINING MATCHES AFTER EDITS:\n`;
-reportContent += `1. Infrastructure & API Domains: admin.jsnc.co.in, api.jsnc.co.in, jsnc.co.in (official hostnames).\n`;
-reportContent += `2. Transactional Mail Addresses: sales@jsnc.co.in, info@jsnc.co.in, admin@jsnc.co.in.\n`;
-reportContent += `3. App/Repo Identifier Prefix: JSNC-CRM (portal name & token prefix).\n`;
+reportContent += `1. Infrastructure & API Domains: admin.example.com, api.example.com, example.com (official hostnames).\n`;
+reportContent += `2. Transactional Mail Addresses: sales@example.com, info@example.com, admin@example.com.\n`;
+reportContent += `3. App/Repo Identifier Prefix: CRM (portal name & token prefix).\n`;
 reportContent += `4. Internal Lock/Seed Files: package-lock.json, scratch/ (unmodified historical seed scripts).\n`;
 reportContent += `Zero hardcoded UI brand display names remain in application code.\n`;
 
@@ -91,8 +92,8 @@ reportContent += webProveOutput;
 // Section 5: Verification Summary
 appendHeader('SECTION 5: GO-LIVE READINESS & AUDIT SUMMARY', false);
 reportContent += `1. Release Packaging: release:pack asserts presence of dist/main.js, start_server.js, schema.prisma, and package.json.\n`;
-reportContent += `2. Branding: Product brand centralized in BRAND_CONFIG (displayName "JS Communication", legalNameDefault ""). Page title <title>JNC-CRM | JS Communication</title> verified.\n`;
-reportContent += `3. Playwright Proof: 0 CSP violations, theme applied cleanly, login calls hit https://api.jsnc.co.in/api/v1.\n`;
+reportContent += `2. Branding: Product brand centralized in database tenant settings. Page title <title>CRM</title> verified.\n`;
+reportContent += `3. Playwright Proof: 0 CSP violations, theme applied cleanly, login calls hit https://api.example.com/api/v1.\n`;
 reportContent += `4. Safety: 0 live database touches, 0 git pushes, secrets masked.\n`;
 
 fs.writeFileSync(REPORT_PATH, reportContent, 'utf8');

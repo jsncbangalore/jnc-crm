@@ -48,28 +48,28 @@ async function runTests() {
   console.log('Running Separation & Isolation Verification Tests');
   console.log('====================================================\n');
 
-  // Fetch JNC Tenant
-  const jncTenant = await prisma.tenant.findFirst({
+  // Fetch Internal Tenant
+  const internalTenant = await prisma.tenant.findFirst({
     where: {
-      OR: [{ code: 'JNC' }, { id: 'default-tenant-id' }],
+      OR: [{ isInternal: true }, { code: process.env.DEFAULT_TENANT_CODE || 'DEMO' }],
     },
   });
 
-  if (!jncTenant) {
-    throw new Error('JNC tenant not found in database');
+  if (!internalTenant) {
+    throw new Error('Internal tenant not found in database');
   }
-  console.log(`[Setup] JNC Tenant found: ID=${jncTenant.id}, Code=${jncTenant.code}, isInternal=${jncTenant.isInternal}`);
+  console.log(`[Setup] Internal Tenant found: ID=${internalTenant.id}, Code=${internalTenant.code}, isInternal=${internalTenant.isInternal}`);
 
-  // Test 1: GET /platform/tenants does not include the JNC tenant
-  console.log('\n--- Test 1: GET /platform/tenants does not include JNC tenant ---');
+  // Test 1: GET /platform/tenants does not include the internal tenant
+  console.log('\n--- Test 1: GET /platform/tenants does not include internal tenant ---');
   const tenantsList = await platformService.listTenants();
-  const includesJnc = tenantsList.some(
-    (t) => t.code === 'JNC' || t.code === 'JNC-ORG-001' || t.id === jncTenant.id || (t as any).isInternal === true
+  const includesInternal = tenantsList.some(
+    (t) => t.id === internalTenant.id || (t as any).isInternal === true
   );
-  if (includesJnc) {
-    throw new Error('FAILED: JNC tenant is present in platformService.listTenants() result!');
+  if (includesInternal) {
+    throw new Error('FAILED: Internal tenant is present in platformService.listTenants() result!');
   }
-  console.log(`PASSED: listTenants returned ${tenantsList.length} client company(ies), JNC tenant is completely excluded.`);
+  console.log(`PASSED: listTenants returned ${tenantsList.length} client company(ies), internal tenant is completely excluded.`);
 
   // Test 2: Platform admin gets 403 on tenant workspace endpoints (/leads, /orders, /invoices)
   console.log('\n--- Test 2: Platform admin gets 403 on /leads, /orders, /invoices ---');
@@ -126,13 +126,13 @@ async function runTests() {
     throw new Error('FAILED: RolesGuard did not throw ForbiddenException for platform admin on /leads!');
   }
 
-  // Test 3: JNC tenant_admin gets 403 on /platform/tenants
-  console.log('\n--- Test 3: JNC tenant_admin gets 403 on /platform/tenants ---');
-  const jncTenantAdminUser = {
-    id: 'jnc-boss-id',
+  // Test 3: Internal tenant_admin gets 403 on /platform/tenants
+  console.log('\n--- Test 3: Internal tenant_admin gets 403 on /platform/tenants ---');
+  const internalTenantAdminUser = {
+    id: 'internal-admin-id',
     role: 'tenant_admin',
-    tenantId: jncTenant.id,
-    employeeCode: 'JNC-SA-001',
+    tenantId: internalTenant.id,
+    employeeCode: 'ADM-001',
   };
 
   const mockPlatformContext = {
@@ -140,7 +140,7 @@ async function runTests() {
     getClass: () => ({}),
     switchToHttp: () => ({
       getRequest: () => ({
-        user: jncTenantAdminUser,
+        user: internalTenantAdminUser,
         url: '/platform/tenants',
         path: '/platform/tenants',
       }),
@@ -158,52 +158,52 @@ async function runTests() {
   } catch (err: any) {
     if (err instanceof ForbiddenException) {
       tenantAdminBlocked = true;
-      console.log(`PASSED: RolesGuard blocked JNC tenant_admin on /platform/tenants with: "${err.message}"`);
+      console.log(`PASSED: RolesGuard blocked internal tenant_admin on /platform/tenants with: "${err.message}"`);
     }
   }
   if (!tenantAdminBlocked) {
-    throw new Error('FAILED: RolesGuard did not block JNC tenant_admin on /platform/tenants!');
+    throw new Error('FAILED: RolesGuard did not block internal tenant_admin on /platform/tenants!');
   }
 
-  // Test 4: Calling impersonate or reset-admin-password on JNC tenant returns 403
-  console.log('\n--- Test 4: Impersonate or reset-admin-password on JNC tenant returns 403 ---');
+  // Test 4: Calling impersonate or reset-admin-password on internal tenant returns 403
+  console.log('\n--- Test 4: Impersonate or reset-admin-password on internal tenant returns 403 ---');
   let impersonateBlocked = false;
   try {
-    await platformService.impersonateTenant(jncTenant.id);
+    await platformService.impersonateTenant(internalTenant.id);
   } catch (err: any) {
     if (err instanceof ForbiddenException) {
       impersonateBlocked = true;
-      console.log(`PASSED: Impersonate JNC tenant threw ForbiddenException: "${err.message}"`);
+      console.log(`PASSED: Impersonate internal tenant threw ForbiddenException: "${err.message}"`);
     }
   }
   if (!impersonateBlocked) {
-    throw new Error('FAILED: platformService.impersonateTenant did not throw ForbiddenException for JNC tenant!');
+    throw new Error('FAILED: platformService.impersonateTenant did not throw ForbiddenException for internal tenant!');
   }
 
   let resetAdminBlocked = false;
   try {
-    await platformService.resetTenantAdminPassword(jncTenant.id);
+    await platformService.resetTenantAdminPassword(internalTenant.id);
   } catch (err: any) {
     if (err instanceof ForbiddenException) {
       resetAdminBlocked = true;
-      console.log(`PASSED: Reset admin password for JNC tenant threw ForbiddenException: "${err.message}"`);
+      console.log(`PASSED: Reset admin password for internal tenant threw ForbiddenException: "${err.message}"`);
     }
   }
   if (!resetAdminBlocked) {
-    throw new Error('FAILED: platformService.resetTenantAdminPassword did not throw ForbiddenException for JNC tenant!');
+    throw new Error('FAILED: platformService.resetTenantAdminPassword did not throw ForbiddenException for internal tenant!');
   }
 
   let deleteBlocked = false;
   try {
-    await platformService.deleteTenant(jncTenant.id);
+    await platformService.deleteTenant(internalTenant.id);
   } catch (err: any) {
     if (err instanceof ForbiddenException) {
       deleteBlocked = true;
-      console.log(`PASSED: Delete JNC tenant threw ForbiddenException: "${err.message}"`);
+      console.log(`PASSED: Delete internal tenant threw ForbiddenException: "${err.message}"`);
     }
   }
   if (!deleteBlocked) {
-    throw new Error('FAILED: platformService.deleteTenant did not throw ForbiddenException for JNC tenant!');
+    throw new Error('FAILED: platformService.deleteTenant did not throw ForbiddenException for internal tenant!');
   }
 
   console.log('\n====================================================');

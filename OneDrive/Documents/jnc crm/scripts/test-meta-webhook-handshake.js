@@ -53,8 +53,8 @@ async function run() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        identifier: 'santhosh1508sk@gmail.com',
-        password: 'Jsnc@2024jsn',
+        identifier: process.env.TEST_USER_EMAIL || 'test@example.com',
+        password: process.env.TEST_USER_PASSWORD || '',
       }),
     });
 
@@ -98,7 +98,7 @@ async function run() {
     // STEP 3: Test Meta hub.challenge GET Handshake
     // ----------------------------------------------------
     console.log(`\n${INFO} Step 3: Testing Meta hub.challenge GET Handshake on /webhooks/meta/:key...`);
-    const testChallenge1 = '19283746501';
+    const testChallenge1 = '10000000001';
     const metaHandshakeUrl = `${API_BASE}/webhooks/meta/${webhookKey}?hub.mode=subscribe&hub.verify_token=${encodeURIComponent(verifyToken)}&hub.challenge=${testChallenge1}`;
     
     const metaHandshakeRes = await fetch(metaHandshakeUrl);
@@ -177,7 +177,7 @@ async function run() {
     // ----------------------------------------------------
     console.log(`\n${INFO} Step 6: Testing Meta Lead Ad Ingestion via POST /webhooks/meta/:key...`);
     const uniqueLeadId = `leadgen_test_${Date.now()}`;
-    const testPhone = `91${Math.floor(6000000000 + Math.random() * 3999999999)}`;
+    const testPhone = '1000000000';
     const testEmail = `meta_ad_lead_${Date.now()}@example.com`;
     const testName = 'Priya Sharma (Meta Lead Ad Test)';
 

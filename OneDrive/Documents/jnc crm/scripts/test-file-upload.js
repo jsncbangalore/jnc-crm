@@ -5,17 +5,17 @@ const FormData = require('form-data');
 
 async function testUpload() {
   const tmpFile = path.join(__dirname, 'test-upload-sample.pdf');
-  fs.writeFileSync(tmpFile, '%PDF-1.4 JNC CRM File Upload Verification Sample Document');
+  fs.writeFileSync(tmpFile, '%PDF-1.4 CRM File Upload Verification Sample Document');
   console.log('Created sample test file:', tmpFile);
 
   try {
     const loginRes = await axios.post('http://localhost:3333/api/v1/auth/login', {
-      identifier: 'santhoshs0815@gmail.com',
-      password: 'Jsnc@2024jsn',
+      identifier: process.env.TEST_USER_EMAIL || 'test@example.com',
+      password: process.env.TEST_USER_PASSWORD || '',
     });
 
     const token = loginRes.data.accessToken;
-    console.log('Successfully logged in as JNC Company CRM Owner. Token acquired.');
+    console.log('Successfully logged in as Company CRM Owner. Token acquired.');
 
     const form = new FormData();
     form.append('file', fs.createReadStream(tmpFile));

@@ -9,6 +9,8 @@
 export const PAGE_KEY_TO_ROUTE: Record<string, string> = {
   dashboard: '/',
   leads: '/leads',
+  lead_flow: '/lead-flow',
+  lead_setup: '/start-setup',
   orders: '/orders',
   invoices: '/invoices',
   inventory: '/inventory',
@@ -17,9 +19,17 @@ export const PAGE_KEY_TO_ROUTE: Record<string, string> = {
   shipments: '/shipments',
   quotations: '/quotations',
   users: '/users',
+  teams: '/users?tab=teams',
+  branding: '/settings/branding',
+  mail_settings: '/settings/mail',
   automation: '/automation',
   custom_objects: '/setup/objects',
   daily_activities: '/daily-activities',
+  notifications: '/notifications',
+  audit_logs: '/users?tab=audit',
+  platform_companies: '/platform/companies',
+  platform_admins: '/platform/admins',
+  platform_backup: '/platform/backup',
 };
 
 /** Roles restricted to a specific page (single page locked roles) */
@@ -31,16 +41,16 @@ export const ROLE_ONLY_PAGE: Record<string, string> = {
 
 /** Strict role-to-page baseline access rules */
 export const ROLE_ALLOWED_PAGES: Record<string, string[]> = {
-  tenant_admin: ['dashboard', 'leads', 'quotations', 'orders', 'invoices', 'inventory', 'purchase_bills', 'shipments', 'daily_activities', 'users', 'automation', 'custom_objects'],
-  admin: ['dashboard', 'leads', 'quotations', 'orders', 'invoices', 'inventory', 'purchase_bills', 'shipments', 'daily_activities', 'users', 'automation', 'custom_objects'],
-  sub_admin: ['dashboard', 'leads', 'quotations', 'orders', 'invoices', 'inventory', 'purchase_bills', 'shipments', 'daily_activities', 'users', 'automation', 'custom_objects'],
-  employee: ['dashboard', 'leads', 'quotations', 'orders'],
-  store_manager: ['dashboard', 'orders', 'inventory', 'purchase_bills', 'shipments'],
-  finance: ['dashboard', 'quotations', 'orders', 'invoices'],
-  accountant: ['dashboard', 'quotations', 'orders', 'invoices'],
-  developer: ['daily_activities'],
-  developer_lead: ['daily_activities'],
-  project_manager: ['daily_activities'],
+  tenant_admin: ['dashboard', 'leads', 'lead_flow', 'lead_setup', 'quotations', 'orders', 'invoices', 'inventory', 'suppliers', 'purchase_bills', 'shipments', 'daily_activities', 'notifications', 'custom_objects', 'automation', 'audit_logs', 'users', 'teams', 'branding', 'mail_settings'],
+  admin: ['dashboard', 'leads', 'lead_flow', 'lead_setup', 'quotations', 'orders', 'invoices', 'inventory', 'suppliers', 'purchase_bills', 'shipments', 'daily_activities', 'notifications', 'custom_objects', 'automation', 'audit_logs', 'users', 'teams', 'branding', 'mail_settings'],
+  sub_admin: ['dashboard', 'leads', 'lead_flow', 'quotations', 'orders', 'invoices', 'inventory', 'suppliers', 'purchase_bills', 'shipments', 'daily_activities', 'notifications'],
+  employee: ['dashboard', 'leads', 'lead_flow', 'quotations', 'orders', 'notifications'],
+  store_manager: ['dashboard', 'orders', 'inventory', 'suppliers', 'purchase_bills', 'shipments', 'notifications'],
+  finance: ['dashboard', 'quotations', 'orders', 'invoices', 'suppliers', 'purchase_bills', 'notifications'],
+  accountant: ['dashboard', 'quotations', 'orders', 'invoices', 'suppliers', 'purchase_bills', 'notifications'],
+  developer: ['daily_activities', 'notifications'],
+  developer_lead: ['daily_activities', 'notifications'],
+  project_manager: ['daily_activities', 'notifications'],
 };
 
 /** Default landing route per role upon login */
@@ -60,6 +70,7 @@ export const ROLE_DEFAULT_LANDING: Record<string, string> = {
 export interface NavigationDecision {
   action: 'allow' | 'redirect' | 'no_pages';
   targetRoute?: string;
+  firstAllowedRoute?: string;
 }
 
 /**
@@ -74,37 +85,38 @@ export function resolveTeamNavigation(user: any, pageKey: string): NavigationDec
   // Platform owner without tenant cannot open company CRM pages; redirect to platform hub
   const isPlatformSuperAdmin = user.role === 'platform_super_admin' && !user.tenantId;
   if (isPlatformSuperAdmin) {
+    if (pageKey.startsWith('platform')) {
+      return { action: 'allow' };
+    }
     return { action: 'redirect', targetRoute: '/platform/companies' };
   }
 
-  // Tenant admin and sub-admin roles bypass team module restrictions
-  if (user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'sub_admin') {
+  // Tenant admin has full access to all company pages
+  if (user.role === 'tenant_admin') {
     return { action: 'allow' };
   }
 
-  // Roles locked strictly to single page
-  const onlyPage = ROLE_ONLY_PAGE[user.role || ''];
-  if (onlyPage) {
-    if (pageKey !== onlyPage) {
-      return { action: 'redirect', targetRoute: PAGE_KEY_TO_ROUTE[onlyPage] || '/daily-activities' };
+  // If effectivePages is provided on the user object (from /auth/me or login)
+  if (Array.isArray(user.effectivePages)) {
+    if (user.effectivePages.length === 0) {
+      return { action: 'no_pages' };
     }
-    return { action: 'allow' };
+
+    if (user.effectivePages.includes(pageKey)) {
+      return { action: 'allow' };
+    }
+
+    // Direct access to a page without access: redirect or show no access with first allowed page
+    const firstAllowedKey = user.effectivePages.find((k: string) => PAGE_KEY_TO_ROUTE[k]);
+    const firstAllowedRoute = firstAllowedKey ? PAGE_KEY_TO_ROUTE[firstAllowedKey] : '/';
+    return {
+      action: 'redirect',
+      targetRoute: firstAllowedRoute,
+      firstAllowedRoute,
+    };
   }
 
-  // Role-level baseline access check
-  const roleAllowed = ROLE_ALLOWED_PAGES[user.role || ''];
-  if (roleAllowed) {
-    const hasRoleAccess =
-      roleAllowed.includes(pageKey) ||
-      (pageKey === 'purchase_bills' && (roleAllowed.includes('suppliers') || roleAllowed.includes('inventory')));
-
-    if (!hasRoleAccess) {
-      const defaultLanding = ROLE_DEFAULT_LANDING[user.role || ''] || '/';
-      return { action: 'redirect', targetRoute: defaultLanding };
-    }
-  }
-
-  // Team-scoped access: check allowedPages
+  // Fallback if effectivePages is not yet loaded:
   if (user.teamId && user.teamRef) {
     let allowedPages: string[] = [];
     try {
@@ -115,22 +127,27 @@ export function resolveTeamNavigation(user: any, pageKey: string): NavigationDec
       allowedPages = [];
     }
 
-    // Empty allowedPages = no access to any page
     if (allowedPages.length === 0) {
       return { action: 'no_pages' };
     }
 
-    const hasAccess =
-      allowedPages.includes(pageKey) ||
-      (pageKey === 'purchase_bills' && (allowedPages.includes('suppliers') || allowedPages.includes('inventory')));
-
+    const hasAccess = allowedPages.includes(pageKey);
     if (!hasAccess) {
-      // Redirect to the FIRST page the team is allowed to access
       const firstAllowed = allowedPages.find((p) => PAGE_KEY_TO_ROUTE[p]);
-      return { action: 'redirect', targetRoute: PAGE_KEY_TO_ROUTE[firstAllowed || ''] || '/' };
+      const targetRoute = PAGE_KEY_TO_ROUTE[firstAllowed || ''] || '/';
+      return { action: 'redirect', targetRoute, firstAllowedRoute: targetRoute };
     }
   }
 
-  // No team restriction or page is explicitly allowed
+  // Fallback to role-allowed pages if no team is set
+  const roleAllowed = ROLE_ALLOWED_PAGES[user.role || ''];
+  if (roleAllowed) {
+    if (!roleAllowed.includes(pageKey)) {
+      const defaultLanding = ROLE_DEFAULT_LANDING[user.role || ''] || '/';
+      return { action: 'redirect', targetRoute: defaultLanding, firstAllowedRoute: defaultLanding };
+    }
+  }
+
   return { action: 'allow' };
 }
+

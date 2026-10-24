@@ -85,7 +85,7 @@ export const SessionConflictModal: React.FC<SessionConflictModalProps> = ({
 
         {/* Security Rationale */}
         <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-          <strong>Why is this happening?</strong> Web browsers share login cookies across all tabs under the same address. JNC CRM Tab Isolation prevents one tab from silently corrupting or modifying data in another tab&apos;s workspace.
+          <strong>Why is this happening?</strong> Web browsers share login cookies across all tabs under the same address. Workspace Tab Isolation prevents one tab from silently corrupting or modifying data in another tab&apos;s workspace.
         </div>
 
         {/* Action Buttons */}

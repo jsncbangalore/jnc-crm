@@ -16,24 +16,24 @@ const apiDir = path.join(repoRoot, 'apps', 'api');
 const reportPath = path.join(repoRoot, 'evidence', 'report-2026-10-04h.txt');
 
 const TEST_PORT = 3339;
-const DB_URL = 'postgresql://postgres:postgres@localhost:5432/jnc_crm_dev?schema=public';
+const DB_URL = 'postgresql://postgres:postgres@localhost:5432/crm_dev?schema=public';
 
 async function run() {
   console.log('Generating evidence/report-2026-10-04h.txt ...');
   const sections = [];
 
   sections.push('================================================================================');
-  sections.push('JNC-CRM VERIFICATION EVIDENCE REPORT: 2026-10-04h');
+  sections.push('CRM VERIFICATION EVIDENCE REPORT: 2026-10-04h');
   sections.push('Scope: Login Isolation, Portal Separation, Dual Refresh Sessions, Error Handling');
   sections.push(`Generated: ${new Date().toISOString()}`);
   sections.push('Environment: Windows 11 / Node.js v24 / PowerShell (Strictly Local Execution)');
   sections.push('================================================================================\n');
 
   // -----------------------------------------------------------------------------
-  // SECTION 1: FACTS FIRST - AUTHENTIC USERS IN jnc_crm_dev
+  // SECTION 1: FACTS FIRST - AUTHENTIC USERS IN crm_dev
   // -----------------------------------------------------------------------------
   sections.push('================================================================================');
-  sections.push('SECTION 1: FACTS FIRST - AUTHENTIC USERS IN jnc_crm_dev');
+  sections.push('SECTION 1: FACTS FIRST - AUTHENTIC USERS IN crm_dev');
   sections.push('================================================================================\n');
 
   const prisma = new PrismaClient({ datasources: { db: { url: DB_URL } } });
@@ -55,7 +55,7 @@ async function run() {
     orderBy: { createdAt: 'asc' },
   });
 
-  sections.push('Read-only Query Output from jnc_crm_dev:');
+  sections.push('Read-only Query Output from crm_dev:');
   sections.push('--------------------------------------------------------------------------------');
   sections.push(
     ['Email'.padEnd(28), 'EmployeeCode'.padEnd(20), 'Role'.padEnd(24), 'Tenant'.padEnd(10), 'isInternal'.padEnd(12), 'Active'.padEnd(8), 'mustReset'].join(' | ')
@@ -80,16 +80,16 @@ async function run() {
   sections.push('--------------------------------------------------------------------------------\n');
 
   sections.push('Account Roles & Identity Declarations:');
-  sections.push('  1. JNC Owner Account:');
-  sections.push('     - Email: tenantadmin@jsnc.co.in');
-  sections.push('     - Employee Code: EMP-JNC-001');
+  sections.push('  1. Tenant Owner Account:');
+  sections.push('     - Email: tenantadmin@example.com');
+  sections.push('     - Employee Code: EMP-001');
   sections.push('     - Role: tenant_admin');
-  sections.push('     - Tenant: JNC (isInternal: true)');
+  sections.push('     - Tenant: Primary (isInternal: true)');
   sections.push('     - Status: Active (mustResetPassword: false)');
   sections.push('     - Portal: Staff Portal (/login -> /)\n');
 
   sections.push('  2. Platform Admin Account:');
-  sections.push('     - Email: platform@jsnc.co.in');
+  sections.push('     - Email: platform@example.com');
   sections.push('     - Employee Code: ADM-PLATFORM-001');
   sections.push('     - Role: platform_super_admin');
   sections.push('     - Tenant: NULL (isInternal: NULL)');
@@ -97,9 +97,9 @@ async function run() {
   sections.push('     - Portal: Platform Administration Portal (/platform/login -> /platform/companies)\n');
 
   sections.push('  3. Verification of Invented Credentials:');
-  sections.push('     - owner@jncnetwork.com: DOES NOT EXIST in database or codebase');
+  sections.push('     - owner@example.com: DOES NOT EXIST in database or codebase');
   sections.push('     - OWNER-001: DOES NOT EXIST in database or codebase');
-  sections.push('     - Clean state confirmed: Exactly 2 authentic accounts present in jnc_crm_dev.\n');
+  sections.push('     - Clean state confirmed: Exactly 2 authentic accounts present in crm_dev.\n');
 
   // -----------------------------------------------------------------------------
   // SECTION 2: WHY ONLY CLIENT SIDE WAS SHOWN (ROOT CAUSE ANALYSIS & FIX DIFF)
@@ -115,8 +115,8 @@ async function run() {
   sections.push('  ------------------------------------------------------------------------------------------------------------------------');
   sections.push('  Account / Identity        | Login Portal   | redirectPath          | Stored Role          | Route Displayed');
   sections.push('  ------------------------------------------------------------------------------------------------------------------------');
-  sections.push('  tenantadmin@jsnc.co.in    | /login         | /                     | tenant_admin         | / (Dashboard / CRM Operations)');
-  sections.push('  platform@jsnc.co.in       | /platform/login| /platform/companies   | platform_super_admin | /platform/companies (Client Companies)');
+  sections.push('  tenantadmin@example.com   | /login         | /                     | tenant_admin         | / (Dashboard / CRM Operations)');
+  sections.push('  platform@example.com      | /platform/login| /platform/companies   | platform_super_admin | /platform/companies (Client Companies)');
   sections.push('  ------------------------------------------------------------------------------------------------------------------------\n');
 
   sections.push('  Code Path Analysis of Potential Cross-Portal Leaks:');
@@ -142,12 +142,12 @@ async function run() {
   sections.push('       It does NOT send a tenant user to /platform/* under any circumstance.\n');
 
   sections.push('  4. isInternal Checks (Prisma / Scoping):');
-  sections.push('     - Finding: Tenant.isInternal determines internal JNC operations vs multi-tenant client companies.');
+  sections.push('     - Finding: Tenant.isInternal determines internal company operations vs multi-tenant client companies.');
   sections.push('       It does not affect authentication endpoints or URL routing.\n');
 
   sections.push('  5. Stale Session Restore from Silent Refresh (PRIMARY ROOT CAUSE):');
   sections.push('     - Finding: AuthContext on page load called authApi.refresh() indiscriminately.');
-  sections.push('       Because both portals shared the cookie "jnc_refresh_token" at path "/api/v1/auth",');
+  sections.push('       Because both portals shared the cookie "crm_refresh_token" at path "/api/v1/auth",');
   sections.push('       logging in as platform super admin overwrote the cookie for the entire origin.');
   sections.push('       Subsequent page loads at "/" or "/login" restored the platform super admin session,');
   sections.push('       locking the browser into the client-companies portal.');
@@ -179,7 +179,7 @@ async function run() {
   const testHash = bcrypt.hashSync(TEST_PASSWORD, 10);
 
   await prisma.user.updateMany({
-    where: { email: { in: ['tenantadmin@jsnc.co.in', 'platform@jsnc.co.in'] } },
+    where: { email: { in: ['tenantadmin@example.com', 'platform@example.com'] } },
     data: { passwordHash: testHash, isActive: true, mustResetPassword: false, failedLoginAttempts: 0, lockoutUntil: null },
   });
 
@@ -219,7 +219,7 @@ async function run() {
   } else {
     sections.push(`[OK] Server listening at http://127.0.0.1:${TEST_PORT}/api/v1\n`);
 
-    // TEST 3A: Staff login at /api/v1/auth/login as tenantadmin@jsnc.co.in
+    // TEST 3A: Staff login at /api/v1/auth/login as tenantadmin@example.com
     sections.push('--- [Test 3A] Staff Login at POST /api/v1/auth/login ---');
     const staffLoginRes = await fetch(`http://127.0.0.1:${TEST_PORT}/api/v1/auth/login`, {
       method: 'POST',
@@ -227,11 +227,11 @@ async function run() {
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
       },
-      body: JSON.stringify({ identifier: 'tenantadmin@jsnc.co.in', password: TEST_PASSWORD }),
+      body: JSON.stringify({ identifier: 'tenantadmin@example.com', password: TEST_PASSWORD }),
     });
     const staffLoginJson = await staffLoginRes.json();
     const staffCookie = staffLoginRes.headers.get('set-cookie') || '';
-    const staffCookieMasked = staffCookie.replace(/jnc_refresh_token=ey[A-Za-z0-9_.-]+/g, 'jnc_refresh_token=<MASKED>');
+    const staffCookieMasked = staffCookie.replace(/crm_refresh_token=ey[A-Za-z0-9_.-]+/g, 'crm_refresh_token=<MASKED>');
 
     sections.push(`Status: ${staffLoginRes.status}`);
     sections.push(`Set-Cookie: ${staffCookieMasked}`);
@@ -240,7 +240,7 @@ async function run() {
     sections.push(`user.tenant.code: ${staffLoginJson.user?.tenant?.code}`);
     sections.push(`Token Path Verification: ${staffCookie.includes('Path=/api/v1/auth') ? 'PASSED (Path=/api/v1/auth)' : 'FAILED'}\n`);
 
-    // TEST 3B: Platform super admin login at POST /api/v1/platform-auth/login as platform@jsnc.co.in
+    // TEST 3B: Platform super admin login at POST /api/v1/platform-auth/login as platform@example.com
     sections.push('--- [Test 3B] Platform Super Admin Login at POST /api/v1/platform-auth/login ---');
     const platformLoginRes = await fetch(`http://127.0.0.1:${TEST_PORT}/api/v1/platform-auth/login`, {
       method: 'POST',
@@ -248,11 +248,11 @@ async function run() {
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
       },
-      body: JSON.stringify({ email: 'platform@jsnc.co.in', password: TEST_PASSWORD }),
+      body: JSON.stringify({ email: 'platform@example.com', password: TEST_PASSWORD }),
     });
     const platformLoginJson = await platformLoginRes.json();
     const platformCookie = platformLoginRes.headers.get('set-cookie') || '';
-    const platformCookieMasked = platformCookie.replace(/jnc_platform_refresh=ey[A-Za-z0-9_.-]+/g, 'jnc_platform_refresh=<MASKED>');
+    const platformCookieMasked = platformCookie.replace(/crm_platform_refresh=ey[A-Za-z0-9_.-]+/g, 'crm_platform_refresh=<MASKED>');
 
     sections.push(`Status: ${platformLoginRes.status}`);
     sections.push(`Set-Cookie: ${platformCookieMasked}`);
@@ -262,14 +262,14 @@ async function run() {
     sections.push(`Token Path Verification: ${platformCookie.includes('Path=/api/v1/platform-auth') ? 'PASSED (Path=/api/v1/platform-auth)' : 'FAILED'}\n`);
 
     // TEST 3C: Cross-portal rejection 1 - Platform admin trying staff login /api/v1/auth/login
-    sections.push('--- [Test 3C] Cross-Portal Rejection: platform@jsnc.co.in at Staff Login ---');
+    sections.push('--- [Test 3C] Cross-Portal Rejection: platform@example.com at Staff Login ---');
     const rej1Res = await fetch(`http://127.0.0.1:${TEST_PORT}/api/v1/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
       },
-      body: JSON.stringify({ identifier: 'platform@jsnc.co.in', password: TEST_PASSWORD }),
+      body: JSON.stringify({ identifier: 'platform@example.com', password: TEST_PASSWORD }),
     });
     const rej1Json = await rej1Res.json();
     sections.push(`HTTP Status: ${rej1Res.status}`);
@@ -277,14 +277,14 @@ async function run() {
     sections.push(`Result: ${rej1Res.status === 401 && rej1Json.message === 'Invalid credentials.' ? 'PASSED (Generic 401 rejection with no account disclosure)' : 'FAILED'}\n`);
 
     // TEST 3D: Cross-portal rejection 2 - Tenant admin trying platform login /api/v1/platform-auth/login
-    sections.push('--- [Test 3D] Cross-Portal Rejection: tenantadmin@jsnc.co.in at Platform Login ---');
+    sections.push('--- [Test 3D] Cross-Portal Rejection: tenantadmin@example.com at Platform Login ---');
     const rej2Res = await fetch(`http://127.0.0.1:${TEST_PORT}/api/v1/platform-auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
       },
-      body: JSON.stringify({ email: 'tenantadmin@jsnc.co.in', password: TEST_PASSWORD }),
+      body: JSON.stringify({ email: 'tenantadmin@example.com', password: TEST_PASSWORD }),
     });
     const rej2Json = await rej2Res.json();
     sections.push(`HTTP Status: ${rej2Res.status}`);
@@ -293,8 +293,8 @@ async function run() {
 
     // TEST 3E: Refresh Token Isolation
     sections.push('--- [Test 3E] Refresh Token Cookie Isolation ---');
-    const rawStaffCookieValue = (staffCookie.match(/jnc_refresh_token=([^;]+)/) || [])[1];
-    const rawPlatformCookieValue = (platformCookie.match(/jnc_platform_refresh=([^;]+)/) || [])[1];
+    const rawStaffCookieValue = (staffCookie.match(/crm_refresh_token=([^;]+)/) || [])[1];
+    const rawPlatformCookieValue = (platformCookie.match(/platform_refresh_token=([^;]+)/) || [])[1];
 
     // Try refreshing staff token on platform endpoint /api/v1/platform-auth/refresh -> MUST FAIL
     const crossRefreshRes1 = await fetch(`http://127.0.0.1:${TEST_PORT}/api/v1/platform-auth/refresh`, {
@@ -302,7 +302,7 @@ async function run() {
       headers: {
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
-        Cookie: `jnc_platform_refresh=${rawStaffCookieValue}`,
+        Cookie: `platform_refresh_token=${rawStaffCookieValue}`,
       },
     });
     const crossRefresh1Json = await crossRefreshRes1.json();
@@ -314,7 +314,7 @@ async function run() {
       headers: {
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
-        Cookie: `jnc_refresh_token=${rawPlatformCookieValue}`,
+        Cookie: `crm_refresh_token=${rawPlatformCookieValue}`,
       },
     });
     const crossRefresh2Json = await crossRefreshRes2.json();
@@ -326,7 +326,7 @@ async function run() {
       headers: {
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
-        Cookie: `jnc_refresh_token=${rawStaffCookieValue}`,
+        Cookie: `crm_refresh_token=${rawStaffCookieValue}`,
       },
     });
     sections.push(`Valid Staff Refresh on /api/v1/auth/refresh: HTTP ${validStaffRefreshRes.status} -> ${validStaffRefreshRes.status === 200 ? 'PASSED' : 'FAILED'}`);
@@ -337,7 +337,7 @@ async function run() {
       headers: {
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
-        Cookie: `jnc_platform_refresh=${rawPlatformCookieValue}`,
+        Cookie: `platform_refresh_token=${rawPlatformCookieValue}`,
       },
     });
     sections.push(`Valid Platform Refresh on /api/v1/platform-auth/refresh: HTTP ${validPlatformRefreshRes.status} -> ${validPlatformRefreshRes.status === 200 ? 'PASSED' : 'FAILED'}\n`);
@@ -349,7 +349,7 @@ async function run() {
       headers: {
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
-        Cookie: `jnc_platform_refresh=${rawPlatformCookieValue}`,
+        Cookie: `platform_refresh_token=${rawPlatformCookieValue}`,
       },
     });
     const platLogoutSetCookie = platLogoutRes.headers.get('set-cookie') || '';
@@ -398,7 +398,7 @@ async function run() {
     await fetch(`http://127.0.0.1:${TEST_PORT}/api/v1/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier: 'tenantadmin@jsnc.co.in', password: '<MASKED>' }),
+      body: JSON.stringify({ identifier: 'tenantadmin@example.com', password: '<MASKED>' }),
     });
   } catch (err) {
     stoppedErrorOutput = mapLoginError(err);
@@ -459,14 +459,14 @@ async function run() {
   const mockPanelEnv = {
     ...process.env,
     PORT: '3000',
-    DATABASE_URL: 'postgresql://postgres:<MASKED>@127.0.0.1:5432/jnc_crm_dev?schema=public',
+    DATABASE_URL: 'postgresql://postgres:<MASKED>@127.0.0.1:5432/crm_dev?schema=public',
     JWT_SECRET: 'a_very_secure_random_key_of_at_least_32_characters_length!',
     JWT_REFRESH_SECRET: 'another_very_secure_refresh_token_secret_32_characters!',
     SMTP_HOST: 'smtp.mail.com',
     SMTP_PORT: '587',
-    SMTP_USER: 'admin@jsnc.co.in',
+    SMTP_USER: 'admin@example.com',
     SMTP_PASS: '<MASKED>',
-    EMAIL_FROM: 'noreply@jsnc.co.in',
+    EMAIL_FROM: 'noreply@example.com',
     WHATSAPP_APP_SECRET: '<MASKED>',
     WHATSAPP_VERIFY_TOKEN: '<MASKED>',
     INDIAMART_WEBHOOK_SECRET: '<MASKED>',

@@ -274,8 +274,8 @@ export default function ProjectStockPositionView() {
 
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'JNC_BOM_Stock_Position');
-    XLSX.writeFile(wb, `JNC_Project_BOM_Shortages_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'BOM_Stock_Position');
+    XLSX.writeFile(wb, `Project_BOM_Shortages_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   // Export CSV
@@ -300,7 +300,7 @@ export default function ProjectStockPositionView() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `JNC_BOM_Shortage_List_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `BOM_Shortage_List_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
   };
 

@@ -211,7 +211,7 @@ export const FullCalendarPicker: React.FC<FullCalendarPickerProps> = ({
       <div className="relative flex items-center">
         <input
           type="text"
-          name={name || 'jnc_full_calendar_date'}
+          name={name || 'crm_full_calendar_date'}
           autoComplete="off"
           data-lpignore="true"
           data-1p-ignore="true"

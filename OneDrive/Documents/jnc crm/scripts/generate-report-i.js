@@ -15,7 +15,7 @@ async function main() {
   // 1. Run env:check to capture raw output
   let envCheckOutput = '';
   try {
-    envCheckOutput = execSync('npm run env:check', { cwd: 'C:/dev/jnc-crm/apps/api', encoding: 'utf8' });
+    envCheckOutput = execSync('npm run env:check', { cwd: 'C:/dev/crm/apps/api', encoding: 'utf8' });
   } catch (err) {
     envCheckOutput = err.stdout || err.message;
   }
@@ -23,7 +23,7 @@ async function main() {
   // 2. Run test-bundle-matrix to capture raw output
   let bundleMatrixOutput = '';
   try {
-    bundleMatrixOutput = execSync('node apps/api/scripts/test-bundle-matrix.js', { cwd: 'C:/dev/jnc-crm', encoding: 'utf8' });
+    bundleMatrixOutput = execSync('node apps/api/scripts/test-bundle-matrix.js', { cwd: 'C:/dev/crm', encoding: 'utf8' });
   } catch (err) {
     bundleMatrixOutput = err.stdout || err.message;
   }
@@ -31,20 +31,20 @@ async function main() {
   // 3. Run Playwright dual-portal test to capture raw output
   let playwrightOutput = '';
   try {
-    playwrightOutput = execSync('node scripts/test-dual-portal-playwright.js', { cwd: 'C:/dev/jnc-crm', encoding: 'utf8' });
+    playwrightOutput = execSync('node scripts/test-dual-portal-playwright.js', { cwd: 'C:/dev/crm', encoding: 'utf8' });
   } catch (err) {
     playwrightOutput = err.stdout || err.message;
   }
 
   // Read deploy/hostinger-env.template.txt
-  const templatePath = 'C:/dev/jnc-crm/deploy/hostinger-env.template.txt';
+  const templatePath = 'C:/dev/crm/deploy/hostinger-env.template.txt';
   const templateContent = fs.existsSync(templatePath) ? fs.readFileSync(templatePath, 'utf8') : '';
 
   const report = `================================================================================
-JNC-CRM COMPREHENSIVE PRODUCTION READINESS & AUTH VALIDATION REPORT
+CRM COMPREHENSIVE PRODUCTION READINESS & AUTH VALIDATION REPORT
 Generated: 2026-10-04T19:07:00Z
-Scope: LOCAL ONLY (jnc_crm_dev @ localhost:5432). All secrets masked as <MASKED>.
-Report File: C:\\dev\\jnc-crm\\evidence\\report-2026-10-04i.txt
+Scope: LOCAL ONLY (crm_dev @ localhost:5432). All secrets masked as <MASKED>.
+Report File: C:\\dev\\crm\\evidence\\report-2026-10-04i.txt
 ================================================================================
 
 TABLE OF CONTENTS
@@ -93,21 +93,21 @@ Every variable has been classified into REQUIRED, FEATURE-GATED, or OPTIONAL.
 | APP_URL                      | OPTIONAL       | Defaults to request origin                | Base API URL override                |
 | BACKUP_OFFSITE_PATH          | OPTIONAL       | Defaults to 'backups/offsite'             | Offsite backup storage directory     |
 | CUSTOMER_LIST_SCOPE          | OPTIONAL       | Defaults to tenant scoping                | Scoping behavior override            |
-| LEGACY_WEBHOOK_TENANT_CODE   | OPTIONAL       | Defaults to 'JNC'                         | Unkeyed webhook fallback tenant      |
+| LEGACY_WEBHOOK_TENANT_CODE   | OPTIONAL       | Defaults to 'DEFAULT'                     | Unkeyed webhook fallback tenant      |
 | WEBSITE_SUBMISSION_SECRET    | OPTIONAL       | Legacy alias for WEBSITE_WEBHOOK_SECRET   | Compatibility fallback               |
 | ALLOWED_DB_HOSTS             | OPTIONAL       | Whitelist check in migration scripts      | Maintenance script guard             |
 | ALLOWED_DB_PROJECT_REFS      | OPTIONAL       | Whitelist check in migration scripts      | Supabase project guard               |
 | BLOCKED_DB_PROJECT_REFS      | OPTIONAL       | Blacklist check in migration scripts      | Guard against accidental overwrite   |
 | CONFIRM_PRODUCTION           | OPTIONAL       | Must be 'yes' for prod bootstrap          | Accidental write guard               |
 | ALLOW_OLD_LIVE               | OPTIONAL       | Must be 'yes' during rollback             | Emergency override for old DB        |
-| OWNER_EMAIL                  | OPTIONAL       | Defaults to tenantadmin@jsnc.co.in        | Script target user                   |
+| OWNER_EMAIL                  | OPTIONAL       | Defaults to tenantadmin@example.com       | Script target user                   |
 | OWNER_PASSWORD               | OPTIONAL       | Auto-generated if unset in reset script   | Script override password             |
-| OWNER_NAME                   | OPTIONAL       | Defaults to 'JNC Owner'                   | Display name in bootstrap            |
-| PLATFORM_ADMIN_EMAIL         | OPTIONAL       | Defaults to platform@jsnc.co.in           | Platform super admin target          |
+| OWNER_NAME                   | OPTIONAL       | Defaults to 'Owner'                       | Display name in bootstrap            |
+| PLATFORM_ADMIN_EMAIL         | OPTIONAL       | Defaults to platform@example.com          | Platform super admin target          |
 | PLATFORM_PASSWORD            | OPTIONAL       | Auto-generated if unset in reset script   | Script override password             |
 | PLATFORM_ADMIN_NAME          | OPTIONAL       | Defaults to 'Platform Administrator'      | Platform admin display name          |
 | PLATFORM_ADMIN_CODE          | OPTIONAL       | Defaults to 'ADM-PLATFORM-001'            | Employee code override               |
-| TENANT_NAME                  | OPTIONAL       | Defaults to 'JNC Network & Power'         | Default tenant company name          |
+| TENANT_NAME                  | OPTIONAL       | Defaults to 'Primary Organization'        | Default tenant company name          |
 ------------------------------------------------------------------------------------------------------------------------------------
 
 ================================================================================
@@ -145,15 +145,15 @@ The following matrix documents every authentication route across staff and platf
 ------------------------------------------------------------------------------------------------------------------------------------------
 | Method | Path                            | Controller             | Cookie Used            | Allowed Caller        | Canonical Status  |
 ------------------------------------------------------------------------------------------------------------------------------------------
-| POST   | /api/v1/auth/login              | AuthController         | jnc_refresh_token      | Tenant users & staff  | CANONICAL         |
-| POST   | /api/v1/auth/login/select-co    | AuthController         | jnc_refresh_token      | Multi-tenant users    | CANONICAL         |
-| POST   | /api/v1/platform-auth/login     | PlatformAuthController | jnc_platform_refresh   | Platform Super Admin  | CANONICAL         |
-| POST   | /api/v1/auth/platform-login     | AuthController         | jnc_platform_refresh   | Platform Super Admin  | DEPRECATED (299)  |
-| POST   | /api/v1/auth/refresh            | AuthController         | jnc_refresh_token      | Tenant users & staff  | CANONICAL         |
-| POST   | /api/v1/platform-auth/refresh   | PlatformAuthController | jnc_platform_refresh   | Platform Super Admin  | CANONICAL         |
-| POST   | /api/v1/auth/logout             | AuthController         | jnc_refresh_token      | Tenant users & staff  | CANONICAL         |
-| POST   | /api/v1/platform-auth/logout    | PlatformAuthController | jnc_platform_refresh   | Platform Super Admin  | CANONICAL         |
-| POST   | /api/v1/auth/logout-all         | AuthController         | jnc_refresh_token      | Tenant users & staff  | CANONICAL         |
+| POST   | /api/v1/auth/login              | AuthController         | crm_refresh_token      | Tenant users & staff  | CANONICAL         |
+| POST   | /api/v1/auth/login/select-co    | AuthController         | crm_refresh_token      | Multi-tenant users    | CANONICAL         |
+| POST   | /api/v1/platform-auth/login     | PlatformAuthController | platform_refresh_token   | Platform Super Admin  | CANONICAL         |
+| POST   | /api/v1/auth/platform-login     | AuthController         | platform_refresh_token   | Platform Super Admin  | DEPRECATED (299)  |
+| POST   | /api/v1/auth/refresh            | AuthController         | crm_refresh_token      | Tenant users & staff  | CANONICAL         |
+| POST   | /api/v1/platform-auth/refresh   | PlatformAuthController | platform_refresh_token   | Platform Super Admin  | CANONICAL         |
+| POST   | /api/v1/auth/logout             | AuthController         | crm_refresh_token      | Tenant users & staff  | CANONICAL         |
+| POST   | /api/v1/platform-auth/logout    | PlatformAuthController | platform_refresh_token   | Platform Super Admin  | CANONICAL         |
+| POST   | /api/v1/auth/logout-all         | AuthController         | crm_refresh_token      | Tenant users & staff  | CANONICAL         |
 | GET    | /api/v1/auth/me                 | AuthController         | (Bearer token)         | All authenticated     | CANONICAL         |
 | PATCH  | /api/v1/auth/profile            | AuthController         | (Bearer token)         | All authenticated     | CANONICAL         |
 | POST   | /api/v1/auth/change-password    | AuthController         | (Bearer token)         | All authenticated     | CANONICAL         |
@@ -222,12 +222,12 @@ All requirements specified in the instructions have been verified and confirmed:
   [OK] 12-variable removal matrix passed (every single missing variable caught and named).
   [OK] Auth routes matrix generated; canonical POST /platform-auth/login verified.
   [OK] Playwright dual-context tests passed 9/9 across scenarios (a), (b), (c), and (d).
-  [OK] Local database protection enforced strictly on jnc_crm_dev.
+  [OK] Local database protection enforced strictly on crm_dev.
   [OK] Secrets masked as <MASKED>. Zero passwords leaked.
 ================================================================================
 `;
 
-  const outputPath = 'C:/dev/jnc-crm/evidence/report-2026-10-04i.txt';
+  const outputPath = 'C:/dev/crm/evidence/report-2026-10-04i.txt';
   fs.writeFileSync(outputPath, report, 'utf8');
 
   const stats = fs.statSync(outputPath);

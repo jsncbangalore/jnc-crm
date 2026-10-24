@@ -1,6 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const { Client } = require('C:/Users/JNC R&D/.gemini/antigravity/brain/35af9003-1b6b-4a84-aff8-4a7e38775824/scratch/pg-runner/node_modules/pg');
+let Client;
+try {
+  Client = require('pg').Client;
+} catch {
+  Client = class MockClient {};
+}
 const bcrypt = require('bcryptjs');
 
 const rootDir = path.resolve(__dirname, '..');
@@ -88,8 +93,8 @@ function validateBaselineExport(filePath) {
 
 async function main() {
   console.log('========================================================================');
-  console.log('JNC-CRM LOCAL REHEARSAL SUITE: LIVE SCHEMA UPGRADE & ROLLBACK');
-  console.log('Target Database: jnc_crm_rehearsal @ localhost:5432');
+  console.log('CRM LOCAL REHEARSAL SUITE: LIVE SCHEMA UPGRADE & ROLLBACK');
+  console.log('Target Database: crm_rehearsal @ localhost:5432');
   console.log('Safety Check: Strict local verification (remote production hosts refused)');
   console.log('========================================================================\n');
 
@@ -100,10 +105,10 @@ async function main() {
   // Guard: strictly localhost
   const host = '127.0.0.1';
   const port = 5432;
-  const dbName = 'jnc_crm_rehearsal';
+  const dbName = 'crm_rehearsal';
 
-  // 1. Terminate and recreate jnc_crm_rehearsal from clean slate
-  console.log('[Step 1] Preparing empty database jnc_crm_rehearsal...');
+  // 1. Terminate and recreate crm_rehearsal from clean slate
+  console.log('[Step 1] Preparing empty database crm_rehearsal...');
   const rootClient = new Client({ host, port, database: 'postgres', user: 'postgres', password: 'postgres' });
   await rootClient.connect();
   await rootClient.query(`
@@ -115,7 +120,7 @@ async function main() {
   await rootClient.end();
   console.log(`[Step 1] Database "${dbName}" created successfully on ${host}:${port}.`);
 
-  // Connect to jnc_crm_rehearsal
+  // Connect to crm_rehearsal
   const rehClient = new Client({ host, port, database: dbName, user: 'postgres', password: 'postgres' });
   await rehClient.connect();
 
@@ -141,7 +146,7 @@ async function main() {
   await rehClient.query(`
     INSERT INTO "Tenant" ("id", "code", "name", "slug", "currency", "status", "createdAt", "updatedAt")
     VALUES 
-      ('tenant-jnc-rehearsal', 'JNC', 'JNC Technologies Pvt Ltd', 'jnc-technologies', 'INR', 'active', NOW(), NOW()),
+      ('tenant-alpha-rehearsal', 'ALPHA', 'Alpha Technologies Pvt Ltd', 'alpha-technologies', 'INR', 'active', NOW(), NOW()),
       ('tenant-acme-rehearsal', 'ACME', 'Acme Corporation', 'acme-corporation', 'USD', 'active', NOW(), NOW());
   `);
 
@@ -149,9 +154,9 @@ async function main() {
   await rehClient.query(`
     INSERT INTO "User" ("id", "tenantId", "employeeCode", "name", "email", "passwordHash", "role", "isActive", "mustResetPassword", "createdAt", "updatedAt")
     VALUES
-      ('u-jnc-tadmin', 'tenant-jnc-rehearsal', 'JNC-001', 'JNC Boss', 'admin@jnc.test', '${passwordHash}', 'tenant_admin', true, false, NOW(), NOW()),
-      ('u-jnc-admin',  'tenant-jnc-rehearsal', 'JNC-002', 'JNC Ops Admin', 'ops@jnc.test', '${passwordHash}', 'admin', true, false, NOW(), NOW()),
-      ('u-jnc-emp',    'tenant-jnc-rehearsal', 'JNC-003', 'JNC Sales Exec', 'emp@jnc.test', '${passwordHash}', 'employee', true, false, NOW(), NOW()),
+      ('u-alpha-tadmin', 'tenant-alpha-rehearsal', 'ALP-001', 'Alpha Boss', 'admin@alpha.test', '${passwordHash}', 'tenant_admin', true, false, NOW(), NOW()),
+      ('u-alpha-admin',  'tenant-alpha-rehearsal', 'ALP-002', 'Alpha Ops Admin', 'ops@alpha.test', '${passwordHash}', 'admin', true, false, NOW(), NOW()),
+      ('u-alpha-emp',    'tenant-alpha-rehearsal', 'ALP-003', 'Alpha Sales Exec', 'emp@alpha.test', '${passwordHash}', 'employee', true, false, NOW(), NOW()),
       ('u-acme-tadmin', 'tenant-acme-rehearsal', 'ACM-001', 'Acme Director', 'admin@acme.test', '${passwordHash}', 'tenant_admin', true, false, NOW(), NOW()),
       ('u-acme-admin',  'tenant-acme-rehearsal', 'ACM-002', 'Acme Ops', 'ops@acme.test', '${passwordHash}', 'admin', true, false, NOW(), NOW()),
       ('u-acme-emp',    'tenant-acme-rehearsal', 'ACM-003', 'Acme Rep', 'emp@acme.test', '${passwordHash}', 'employee', true, false, NOW(), NOW());
@@ -161,8 +166,8 @@ async function main() {
   await rehClient.query(`
     INSERT INTO "Company" ("id", "tenantId", "name", "createdAt", "updatedAt")
     VALUES
-      ('comp-jnc-1', 'tenant-jnc-rehearsal', 'JNC Systems Ltd (Has Contacts)', NOW(), NOW()),
-      ('comp-jnc-2', 'tenant-jnc-rehearsal', 'JNC Retail Direct (No Contacts)', NOW(), NOW()),
+      ('comp-alpha-1', 'tenant-alpha-rehearsal', 'Alpha Systems Ltd (Has Contacts)', NOW(), NOW()),
+      ('comp-alpha-2', 'tenant-alpha-rehearsal', 'Alpha Retail Direct (No Contacts)', NOW(), NOW()),
       ('comp-acme-1', 'tenant-acme-rehearsal', 'Acme Global Logistics (Has Contacts)', NOW(), NOW()),
       ('comp-acme-2', 'tenant-acme-rehearsal', 'Acme Supply Chain (No Contacts)', NOW(), NOW());
   `);
@@ -171,26 +176,26 @@ async function main() {
   await rehClient.query(`
     INSERT INTO "Contact" ("id", "companyId", "name", "email", "phone", "createdAt", "updatedAt")
     VALUES
-      ('con-jnc-1', 'comp-jnc-1', 'Rahul Sharma', 'rahul@jncsystems.test', '9811100001', NOW(), NOW()),
-      ('con-jnc-2', 'comp-jnc-1', 'Priya Patel', 'priya@jncsystems.test', '9811100002', NOW(), NOW()),
-      ('con-acme-1', 'comp-acme-1', 'John Doe', 'john@acmeglobal.test', '9822200001', NOW(), NOW());
+      ('con-alpha-1', 'comp-alpha-1', 'Rahul Sharma', 'rahul@alphasystems.test', '', NOW(), NOW()),
+      ('con-alpha-2', 'comp-alpha-1', 'Priya Patel', 'priya@alphasystems.test', '', NOW(), NOW()),
+      ('con-acme-1', 'comp-acme-1', 'John Doe', 'john@acmeglobal.test', '', NOW(), NOW());
   `);
 
   // Leads: pre-upgrade schema has NO createdById (some have assignedToId, some null)
   await rehClient.query(`
     INSERT INTO "Lead" ("id", "tenantId", "leadNumber", "customerName", "customerPhone", "assignedToId", "companyId", "source", "status", "createdAt", "updatedAt")
     VALUES
-      ('lead-jnc-1', 'tenant-jnc-rehearsal', 'JNC-LD-001', 'Vikram Seth', '9833300001', 'u-jnc-emp', 'comp-jnc-1', 'manual', 'new', NOW(), NOW()),
-      ('lead-jnc-2', 'tenant-jnc-rehearsal', 'JNC-LD-002', 'Ananya Roy', '9833300002', NULL, 'comp-jnc-2', 'manual', 'new', NOW(), NOW()),
-      ('lead-acme-1', 'tenant-acme-rehearsal', 'ACM-LD-001', 'David Miller', '9844400001', 'u-acme-emp', 'comp-acme-1', 'manual', 'new', NOW(), NOW()),
-      ('lead-acme-2', 'tenant-acme-rehearsal', 'ACM-LD-002', 'Sarah Connor', '9844400002', NULL, NULL, 'manual', 'new', NOW(), NOW());
+      ('lead-alpha-1', 'tenant-alpha-rehearsal', 'ALP-LD-001', 'Vikram Seth', '', 'u-alpha-emp', 'comp-alpha-1', 'manual', 'new', NOW(), NOW()),
+      ('lead-alpha-2', 'tenant-alpha-rehearsal', 'ALP-LD-002', 'Ananya Roy', '', NULL, 'comp-alpha-2', 'manual', 'new', NOW(), NOW()),
+      ('lead-acme-1', 'tenant-acme-rehearsal', 'ACM-LD-001', 'David Miller', '', 'u-acme-emp', 'comp-acme-1', 'manual', 'new', NOW(), NOW()),
+      ('lead-acme-2', 'tenant-acme-rehearsal', 'ACM-LD-002', 'Sarah Connor', '', NULL, NULL, 'manual', 'new', NOW(), NOW());
   `);
 
   // Suppliers: pre-upgrade schema has NO createdById
   await rehClient.query(`
     INSERT INTO "Supplier" ("id", "tenantId", "name", "createdAt", "updatedAt")
     VALUES
-      ('sup-jnc-1', 'tenant-jnc-rehearsal', 'Paramount Electronic Components', NOW(), NOW()),
+      ('sup-alpha-1', 'tenant-alpha-rehearsal', 'Paramount Electronic Components', NOW(), NOW()),
       ('sup-acme-1', 'tenant-acme-rehearsal', 'Summit Precision Metals', NOW(), NOW());
   `);
 
@@ -198,15 +203,15 @@ async function main() {
   await rehClient.query(`
     INSERT INTO "Order" ("id", "tenantId", "orderNumber", "contactId", "customerName", "customerPhone", "totalAmount", "createdAt", "updatedAt")
     VALUES
-      ('ord-jnc-1', 'tenant-jnc-rehearsal', 'ORD-JNC-001', 'con-jnc-1', 'Rahul Sharma', '9811100001', 45000.00, NOW(), NOW()),
-      ('ord-acme-1', 'tenant-acme-rehearsal', 'ORD-ACM-001', 'con-acme-1', 'John Doe', '9822200001', 72000.00, NOW(), NOW());
+      ('ord-alpha-1', 'tenant-alpha-rehearsal', 'ORD-ALP-001', 'con-alpha-1', 'Rahul Sharma', '', 45000.00, NOW(), NOW()),
+      ('ord-acme-1', 'tenant-acme-rehearsal', 'ORD-ACM-001', 'con-acme-1', 'John Doe', '', 72000.00, NOW(), NOW());
   `);
 
   await rehClient.query(`
     INSERT INTO "Invoice" ("id", "tenantId", "invoiceNumber", "companyId", "orderId", "customerName", "customerPhone", "totalAmount", "createdAt", "updatedAt")
     VALUES
-      ('inv-jnc-1', 'tenant-jnc-rehearsal', 'INV-JNC-001', 'comp-jnc-1', 'ord-jnc-1', 'Rahul Sharma', '9811100001', 53100.00, NOW(), NOW()),
-      ('inv-acme-1', 'tenant-acme-rehearsal', 'INV-ACM-001', 'comp-acme-1', 'ord-acme-1', 'John Doe', '9822200001', 84960.00, NOW(), NOW());
+      ('inv-alpha-1', 'tenant-alpha-rehearsal', 'INV-ALP-001', 'comp-alpha-1', 'ord-alpha-1', 'Rahul Sharma', '', 53100.00, NOW(), NOW()),
+      ('inv-acme-1', 'tenant-acme-rehearsal', 'INV-ACM-001', 'comp-acme-1', 'ord-acme-1', 'John Doe', '', 84960.00, NOW(), NOW());
   `);
 
   console.log('[Step 3] Sample pre-upgrade records successfully inserted.');
@@ -293,17 +298,17 @@ async function main() {
     console.log(` - Company ${c.name}: createdById = ${c.createdById} (${c.creator_name}, ${c.creator_role})`);
   });
 
-  // 7. Run API & Business Verification Against jnc_crm_rehearsal
+  // 7. Run API & Business Verification Against crm_rehearsal
   console.log('\n========================================================================');
   console.log('[Step 7] API & BUSINESS LOGIC VERIFICATION AGAINST REHEARSAL DATABASE');
-  console.log('Database: jnc_crm_rehearsal @ localhost');
+  console.log('Database: crm_rehearsal @ localhost');
   console.log('========================================================================');
 
   // a) Login verification
   console.log('\n--- 7.1 Login Authentication Verification ---');
-  const userRow = await rehClient.query(`SELECT * FROM "User" WHERE email = 'admin@jnc.test';`);
+  const userRow = await rehClient.query(`SELECT * FROM "User" WHERE email = 'admin@alpha.test';`);
   const validPass = bcrypt.compareSync('Password123!', userRow.rows[0].passwordHash);
-  console.log(`[PASS] User "admin@jnc.test" password hash matches bcrypt: ${validPass}`);
+  console.log(`[PASS] User "admin@alpha.test" password hash matches bcrypt: ${validPass}`);
 
   // Sanitized login payload format verification
   const u = userRow.rows[0];
@@ -328,13 +333,13 @@ async function main() {
   console.log(JSON.stringify(sanitizedUser, null, 2));
 
   // b) Lead list as Employee (Role: employee, Scoping: 'own' -> assignedToId = emp.id or createdById = emp.id)
-  console.log('\n--- 7.2 Lead List as Employee (u-jnc-emp) ---');
-  const empId = 'u-jnc-emp';
-  const jncTenantId = 'tenant-jnc-rehearsal';
+  console.log('\n--- 7.2 Lead List as Employee (u-alpha-emp) ---');
+  const empId = 'u-alpha-emp';
+  const alphaTenantId = 'tenant-alpha-rehearsal';
   const empLeads = await rehClient.query(`
     SELECT id, "leadNumber", "customerName", "assignedToId", "createdById"
     FROM "Lead"
-    WHERE "tenantId" = '${jncTenantId}'
+    WHERE "tenantId" = '${alphaTenantId}'
       AND ("assignedToId" = '${empId}' OR "createdById" = '${empId}')
       AND "deletedAt" IS NULL;
   `);
@@ -342,22 +347,22 @@ async function main() {
   empLeads.rows.forEach(l => console.log(`   * ${l.leadNumber}: ${l.customerName} (assignedToId: ${l.assignedToId}, createdById: ${l.createdById})`));
 
   // c) Lead list as Admin (Role: admin, Scoping: 'all' within tenant)
-  console.log('\n--- 7.3 Lead List as Admin (u-jnc-admin) ---');
+  console.log('\n--- 7.3 Lead List as Admin (u-alpha-admin) ---');
   const adminLeads = await rehClient.query(`
     SELECT id, "leadNumber", "customerName", "assignedToId", "createdById"
     FROM "Lead"
-    WHERE "tenantId" = '${jncTenantId}'
+    WHERE "tenantId" = '${alphaTenantId}'
       AND "deletedAt" IS NULL;
   `);
   console.log(`[PASS] Admin sees ALL leads within tenant (${adminLeads.rows.length} lead(s)):`);
   adminLeads.rows.forEach(l => console.log(`   * ${l.leadNumber}: ${l.customerName} (assignedToId: ${l.assignedToId})`));
 
-  // Cross-tenant check: 0 ACME leads visible to JNC Admin
-  const acmeLeadsVisibleToJnc = await rehClient.query(`
+  // Cross-tenant check: 0 ACME leads visible to Alpha Admin
+  const acmeLeadsVisibleToAlpha = await rehClient.query(`
     SELECT COUNT(*)::int as cnt FROM "Lead"
-    WHERE "tenantId" = '${jncTenantId}' AND "tenantId" = 'tenant-acme-rehearsal';
+    WHERE "tenantId" = '${alphaTenantId}' AND "tenantId" = 'tenant-acme-rehearsal';
   `);
-  console.log(`[PASS] Cross-tenant isolation: ${acmeLeadsVisibleToJnc.rows[0].cnt} cross-tenant leads visible (strictly 0).`);
+  console.log(`[PASS] Cross-tenant isolation: ${acmeLeadsVisibleToAlpha.rows[0].cnt} cross-tenant leads visible (strictly 0).`);
 
   // d) Platform Admin Tenant List
   console.log('\n--- 7.4 Platform Admin Tenant List ---');

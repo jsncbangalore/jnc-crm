@@ -6,6 +6,21 @@
  * ----------------------------------------------------- */
 
 export const BRAND_CONFIG = {
-  displayName: 'JNC Network & Power Solutions',
-  legalNameDefault: 'JNC Network & Power Solutions',
+  get displayName(): string {
+    return (process.env.PRODUCT_NAME || '').trim() || 'CRM';
+  },
+  get legalNameDefault(): string {
+    return (process.env.PRODUCT_NAME || '').trim() || 'CRM';
+  },
+  get logoUrl(): string {
+    return (process.env.PRODUCT_LOGO_URL || '').trim();
+  },
 };
+
+export function getProductName(): string {
+  return (process.env.PRODUCT_NAME || '').trim() || 'CRM';
+}
+
+export function getProductLogoUrl(): string {
+  return (process.env.PRODUCT_LOGO_URL || '').trim();
+}

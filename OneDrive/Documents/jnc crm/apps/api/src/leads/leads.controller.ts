@@ -59,18 +59,12 @@ export class LeadsController {
 
   @Get('template-csv')
   downloadTemplate(@Res() res: Response) {
-    const csvContent = `company_name,contact_name,phone,email,product_interest,city,estimated_value,assigned_to,source
-Apex Robotics Pvt Ltd,Rajesh Sharma,9845012345,rajesh@apexrobotics.in,STM32F401RET6 MCU,Bengaluru,75000,,manual
-Quantron Automation,Pooja Patel,9820055443,pooja@quantron.com,ESP32-S3 Dual-Core Module,Pune,45000,,web
-Voltrix Embedded,Anand Verma,9811122334,anand@voltrix.in,ATmega328P DIP-28,Hyderabad,28000,,trade_show
-Nexus Power Electronics,Siddharth Rao,9876543210,siddharth@nexuspower.in,IRFZ44N Power MOSFET,Chennai,120000,,manual
-`;
+    const csvContent = `company_name,contact_name,phone,email,product_interest,city,estimated_value,assigned_to,source\n`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="jnc_leads_import_template.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="leads_import_template.csv"');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-store');
     return res.send(csvContent);
-
   }
 
   @Get(':id')

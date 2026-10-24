@@ -11,7 +11,7 @@ const { execSync, spawnSync } = require('child_process');
 const AdmZip = require('adm-zip');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const ZIP_PATH = path.join(REPO_ROOT, 'deploy-release/jnc-api-bundle.zip');
+const ZIP_PATH = path.join(REPO_ROOT, 'deploy-release/api-bundle.zip');
 
 function checkDockerInstalled() {
   try {
@@ -98,23 +98,23 @@ async function runLinuxDockerTest() {
     // Unzip bundle
     zip.extractAllTo(tempDir, true);
 
-    const containerName = `jnc-test-${img.port}`;
+    const containerName = `crm-test-${img.port}`;
     try {
       console.log(` -> Running container ${containerName} ...`);
       execSync(`docker run -d --name ${containerName} -p ${img.port}:3333 -v "${tempDir}:/app" -w /app ` +
         `-e NODE_ENV=production ` +
         `-e PORT=3333 ` +
-        `-e DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/jnc_crm_dev" ` +
+        `-e DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/crm_dev" ` +
         `-e JWT_SECRET="super-secure-production-jwt-secret-min32chars" ` +
         `-e JWT_REFRESH_SECRET="super-secure-production-jwt-refresh-secret-min32chars" ` +
         `-e ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=" ` +
-        `-e FRONTEND_URL="https://admin.jsnc.co.in" ` +
-        `-e ALLOWED_ORIGINS="https://admin.jsnc.co.in" ` +
+        `-e FRONTEND_URL="https://admin.example.com" ` +
+        `-e ALLOWED_ORIGINS="https://admin.example.com" ` +
         `-e SMTP_HOST="smtp.hostinger.com" ` +
         `-e SMTP_PORT="465" ` +
-        `-e SMTP_USER="admin@jsnc.co.in" ` +
+        `-e SMTP_USER="admin@example.com" ` +
         `-e SMTP_PASS="securepass123" ` +
-        `-e EMAIL_FROM="admin@jsnc.co.in" ` +
+        `-e EMAIL_FROM="admin@example.com" ` +
         `${img.name} sh -c "npm install --omit=dev && node start_server.js"`, { stdio: 'inherit' });
 
       // Poll container
@@ -127,7 +127,7 @@ async function runLinuxDockerTest() {
       console.log(`    Status: ${meRes} (PASS: ${meRes === '401'})`);
 
       console.log(' -> Testing POST /api/v1/auth/login (expect 200) ...');
-      const loginRes = execSync(`curl -s -X POST http://localhost:${img.port}/api/v1/auth/login -H "Content-Type: application/json" -d "{\\"identifier\\":\\"owner@jsnc.co.in\\",\\"password\\":\\"Owner#2026!PlatformKey\\"}"`).toString();
+      const loginRes = execSync(`curl -s -X POST http://localhost:${img.port}/api/v1/auth/login -H "Content-Type: application/json" -d "{\\"identifier\\":\\"owner@example.com\\",\\"password\\":\\"Owner#2026!PlatformKey\\"}"`).toString();
       console.log(`    Response: ${loginRes.substring(0, 100)}...`);
     } catch (err) {
       console.error(` -> Error during ${img.name} run:`, err.message);

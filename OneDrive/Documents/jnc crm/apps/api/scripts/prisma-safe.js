@@ -104,6 +104,7 @@ if (dbUrl) {
 }
 
 function assertLocalDatabase(contextName) {
+  if (contextName === 'inspect-mail-tls') return; // Read-only SMTP TLS network diagnostic tool
   if (!dbUrl) return; // nothing to check
   try {
     const parsed = new URL(dbUrl);
@@ -173,6 +174,14 @@ function assertLocalDatabase(contextName) {
       console.error('\n[SECURITY ERROR] migrate:prod requires CONFIRM_PRODUCTION=yes environment variable.');
       process.exit(1);
     }
+
+    if (contextName === 'admin:set-password') {
+      if (process.env.CONFIRM_PRODUCTION !== 'yes') {
+        console.error('\n[SECURITY ERROR] admin:set-password requires CONFIRM_PRODUCTION=yes environment variable.');
+        process.exit(1);
+      }
+      return;
+    }
   } catch (e) {
     console.error(`\n[SECURITY ERROR] ${contextName} has invalid DATABASE_URL: ${e.message}`);
     process.exit(1);
@@ -198,6 +207,10 @@ const knownActions = {
   'dry-run-fresh': { type: 'ts-node', file: 'scripts/dry-run-fresh.ts' },
   'test-auth-security': { type: 'ts-node', file: 'scripts/test-auth-security.ts' },
   'test-mail-security': { type: 'ts-node', file: 'scripts/test-mail-tls-security.ts' },
+  'inspect-mail-tls': { type: 'ts-node', file: 'scripts/inspect-mail-tls.ts' },
+  'admin:set-password': { type: 'ts-node', file: 'scripts/admin-set-password.ts' },
+  'admin:reset-2fa': { type: 'ts-node', file: 'scripts/admin-reset-2fa.ts' },
+  'admin:set-phone': { type: 'ts-node', file: 'scripts/admin-set-phone.ts' },
 };
 
 function resolveBin(pkgSubpath) {

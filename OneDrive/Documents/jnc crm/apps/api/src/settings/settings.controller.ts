@@ -36,6 +36,7 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
+import { Public, PageAccess } from '../auth/page-access.decorator';
 import {
   UpdateBrandingDto,
   UpdateCompanyProfileDto,
@@ -55,6 +56,7 @@ export class SettingsController {
    * Tenant-aware endpoint to fetch company branding on app boot / pages.
    */
   @Get('branding')
+  @Public()
   async getBranding(
     @Query('tenantId') queryTenantId?: string,
     @Headers('x-tenant-id') headerTenantId?: string,
@@ -78,17 +80,20 @@ export class SettingsController {
    * Public tenant branding logo with Cross-Origin-Resource-Policy: cross-origin
    */
   @Get('branding/logo')
+  @Public()
   async getBrandingLogoDefault(@Res() res: Response) {
     return this.settingsService.servePublicBrandingImage('logo', undefined, res);
   }
 
   @Get('branding/logo/:tenantKey')
+  @Public()
   async getBrandingLogo(@Param('tenantKey') tenantKey: string, @Res() res: Response) {
     return this.settingsService.servePublicBrandingImage('logo', tenantKey, res);
   }
 
   @Post('branding/logo')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('branding')
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -107,6 +112,7 @@ export class SettingsController {
 
   @Post('branding/favicon')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('branding')
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -129,11 +135,13 @@ export class SettingsController {
    * Public tenant branding stamp with Cross-Origin-Resource-Policy: cross-origin
    */
   @Get('branding/stamp')
+  @Public()
   async getBrandingStampDefault(@Res() res: Response) {
     return this.settingsService.servePublicBrandingImage('stamp', undefined, res);
   }
 
   @Get('branding/stamp/:tenantKey')
+  @Public()
   async getBrandingStamp(@Param('tenantKey') tenantKey: string, @Res() res: Response) {
     return this.settingsService.servePublicBrandingImage('stamp', tenantKey, res);
   }
@@ -144,6 +152,7 @@ export class SettingsController {
    */
   @Post('branding')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('branding')
   @Roles('tenant_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   async updateBranding(
@@ -159,6 +168,7 @@ export class SettingsController {
    */
   @Get('company-profile')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('branding')
   @Roles('tenant_admin', 'admin')
   async getCompanyProfile(@CurrentUser() user: ScopedUser) {
     return this.settingsService.getCompanyProfile(user);
@@ -170,6 +180,7 @@ export class SettingsController {
    */
   @Post('company-profile')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('branding')
   @Roles('tenant_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   async updateCompanyProfile(
@@ -183,6 +194,7 @@ export class SettingsController {
 
   @Get('mail-accounts')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('mail_settings')
   @Roles('platform_super_admin', 'tenant_admin')
   async getMailAccounts(@CurrentUser() user: ScopedUser) {
     return this.settingsService.getMailAccounts(user);
@@ -190,6 +202,7 @@ export class SettingsController {
 
   @Post('mail-accounts')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('mail_settings')
   @Roles('platform_super_admin', 'tenant_admin')
   async createMailAccount(
     @Body() body: CreateMailAccountDto,
@@ -200,6 +213,7 @@ export class SettingsController {
 
   @Put('mail-accounts/:id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('mail_settings')
   @Roles('platform_super_admin', 'tenant_admin')
   async updateMailAccount(
     @Param('id') id: string,
@@ -211,6 +225,7 @@ export class SettingsController {
 
   @Delete('mail-accounts/:id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('mail_settings')
   @Roles('platform_super_admin', 'tenant_admin')
   async deleteMailAccount(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.settingsService.deleteMailAccount(user, id);
@@ -218,6 +233,7 @@ export class SettingsController {
 
   @Post('mail-accounts/detect')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('mail_settings')
   @Roles('platform_super_admin', 'tenant_admin')
   @HttpCode(HttpStatus.OK)
   async detectMailProvider(@Body() body: DetectMailProviderDto) {
@@ -226,6 +242,7 @@ export class SettingsController {
 
   @Post('mail-accounts/test')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('mail_settings')
   @Roles('platform_super_admin', 'tenant_admin')
   @HttpCode(HttpStatus.OK)
   async testMailAccount(
@@ -237,6 +254,7 @@ export class SettingsController {
 
   @Get('mail-accounts/:id/domain-health')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('mail_settings')
   @Roles('platform_super_admin', 'tenant_admin')
   async getDomainHealth(
     @Param('id') id: string,
@@ -251,6 +269,7 @@ export class SettingsController {
    */
   @Get('web-form')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('lead_setup')
   @Roles('tenant_admin', 'admin', 'platform_super_admin')
   async getWebFormSettings(@CurrentUser() user: ScopedUser) {
     const tenantId = requireTenantId(user);
@@ -263,6 +282,7 @@ export class SettingsController {
    */
   @Put('web-form')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('lead_setup')
   @Roles('tenant_admin', 'admin')
   async updateWebFormSettings(
     @CurrentUser() user: ScopedUser,

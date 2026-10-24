@@ -1,6 +1,6 @@
-# 🏭 JNC Network — Enterprise ERP, CRM & Component Inventory System
+# 🏭 Enterprise ERP, CRM & Component Inventory System
 
-A production-grade Enterprise Resource Planning (ERP), CRM, and Electronic Component Inventory Management Platform built for **JNC Network & Communication**.
+A production-grade Enterprise Resource Planning (ERP), CRM, and Electronic Component Inventory Management Platform.
 
 ---
 
@@ -127,7 +127,7 @@ The REST API is live at `http://localhost:3333/api/v1`.
 
 ## 👤 Owner Login Shortcut (Local Development)
 
-- The internal JNC owner can log in via the normal login endpoint `/auth/login` using the email `tenantadmin@jsnc.co.in` (or the email set via `OWNER_EMAIL`). No company code is required.
+- The owner can log in via the normal login endpoint `/auth/login` using the email set via `OWNER_EMAIL`. No company code is required.
 - After successful login, you will be redirected to the Platform Admin page at `/platform/companies`.
 - Use `npm run owner:reset` to reset the owner password locally. The script prints the password (if generated) once to the console.
 - Ensure you are using the local test database (`DATABASE_URL` points to localhost) before running the script.

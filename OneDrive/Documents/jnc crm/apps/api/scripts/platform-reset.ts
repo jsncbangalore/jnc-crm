@@ -57,7 +57,7 @@ async function main() {
   const prisma = new PrismaClient();
 
   try {
-    const targetEmail = (process.env.PLATFORM_ADMIN_EMAIL || 'platform@jsnc.co.in').trim().toLowerCase();
+    const targetEmail = (process.env.PLATFORM_ADMIN_EMAIL || 'platform@example.com').trim().toLowerCase();
 
     // 1. Find platform_super_admin user (tenantId null)
     let platformAdmin = await prisma.user.findFirst({

@@ -15,7 +15,7 @@ const ROOT = path.resolve(__dirname, '..');
 let dbUrl = process.env.DATABASE_URL;
 let directUrl = process.env.DIRECT_URL;
 
-const secretsPath = 'C:\\dev\\jnc-secrets\\live.env';
+const secretsPath = process.env.SECRETS_FILE || path.resolve(ROOT, '.env');
 if (fs.existsSync(secretsPath)) {
   const envContent = fs.readFileSync(secretsPath, 'utf8');
   envContent.split('\n').forEach(line => {
@@ -41,21 +41,21 @@ const env = {
   ...process.env,
   NODE_ENV: 'production',
   PORT: '3333',
-  FRONTEND_URL: 'https://admin.jsnc.co.in',
-  ALLOWED_ORIGINS: 'https://admin.jsnc.co.in',
+  FRONTEND_URL: process.env.FRONTEND_URL || 'https://admin.example.com',
+  ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || 'https://admin.example.com',
   MAIL_PROVIDER: 'brevo',
   BREVO_API_KEY: '<MASKED>',
   SMTP_HOST: 'smtp.brevo.com',
   SMTP_PORT: '587',
-  SMTP_USER: 'jsnccrm@gmail.com',
+  SMTP_USER: process.env.SMTP_USER || 'crm-system@example.com',
   SMTP_PASS: '<MASKED>',
-  EMAIL_FROM: 'jsnccrm@gmail.com',
-  PRIMARY_EMAIL_FROM: 'jsnccrm@gmail.com',
+  EMAIL_FROM: process.env.EMAIL_FROM || 'crm-system@example.com',
+  PRIMARY_EMAIL_FROM: process.env.PRIMARY_EMAIL_FROM || 'crm-system@example.com',
   JWT_SECRET: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-  JWT_REFRESH_SECRET: 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
+  JWT_REFRESH_SECRET: 'fedcba0123456789fedcba0123456789fedcba0123456789fedcba0123456789',
   ENCRYPTION_KEY: valid32ByteBase64Key,
-  DATABASE_URL: dbUrl || 'postgresql://postgres.aybysdzuwwtqhnzhgiwp:<MASKED>@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres',
-  DIRECT_URL: directUrl || 'postgresql://postgres.aybysdzuwwtqhnzhgiwp:<MASKED>@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres',
+  DATABASE_URL: dbUrl || 'postgresql://postgres:postgres@localhost:5432/crm_prod',
+  DIRECT_URL: directUrl || 'postgresql://postgres:postgres@localhost:5432/crm_prod',
 };
 
 console.log('=== STARTING API IN PRODUCTION MODE (NODE_ENV=production) ===\n');

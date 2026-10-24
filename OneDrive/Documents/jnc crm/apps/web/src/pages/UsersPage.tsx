@@ -4,15 +4,25 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, UserPlus, Search, RefreshCw, KeyRound, ShieldAlert,
   CheckCircle2, X, Lock, Mail, Phone, Building2, MapPin, Copy,
-  Check, UserCheck, UserX, Edit3, Shield, AlertTriangle, Trash2, Clock,
-  Upload, Download, FileSpreadsheet, Sliders, FileText, Unlock, LogOut
+  Check, UserCheck, UserX, Edit3, Shield, ShieldCheck, AlertTriangle, Trash2, Clock,
+  Upload, Download, FileSpreadsheet, Sliders, FileText, Unlock, LogOut,
+  CheckSquare, Square, Layers, LayoutGrid, ChevronRight, Eye, Plus, Sparkles, FolderKey
 } from 'lucide-react';
 import api, { usersApi, authApi } from '../services/api';
 import { User, Role } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import TeamsTab from './TeamsTab';
+import { getProductName } from '../config/brand';
 import { ROLE_RANKS, ROLE_LABELS, getAllowedAssignableRoles, isPlatformOwner } from '../utils/roles';
+import {
+  ALL_COMPANY_PAGE_KEYS,
+  COMPANY_PAGE_REGISTRY,
+  PAGE_GROUPS,
+  getCompanyPagesGrouped,
+  PageDefinition,
+  PageGroup,
+} from '../config/page-registry';
 
 const ROLE_CODE_MAP: Record<string, string> = {
   platform_super_admin: 'PSA',
@@ -51,11 +61,29 @@ export default function UsersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [companies, setCompanies] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'teams' | 'signins'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'teams' | 'templates' | 'signins'>('users');
   const [teams, setTeams] = useState<any[]>([]);
   const [recentSignIns, setRecentSignIns] = useState<any[]>([]);
   const [loadingSignIns, setLoadingSignIns] = useState(false);
   const [showMyProfile, setShowMyProfile] = useState(false);
+
+  // Per-User Granular Access Modal State
+  const [accessUser, setAccessUser] = useState<User | null>(null);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessData, setAccessData] = useState<any | null>(null);
+  const [selectedPages, setSelectedPages] = useState<string[]>([]);
+  const [savingAccess, setSavingAccess] = useState(false);
+  const [accessCopyUserId, setAccessCopyUserId] = useState('');
+  const [accessTemplateId, setAccessTemplateId] = useState('');
+  const [accessTeamId, setAccessTeamId] = useState('');
+
+  // Access Templates State (Company Predefined Presets)
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<{ id?: string; name: string; description: string; pages: string[] } | null>(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  const groupedPages = getCompanyPagesGrouped();
 
   // Filter out current user's profile and platform super admin so only employee/staff profiles are shown
   const visibleUsers = users.filter((u) => {
@@ -142,7 +170,7 @@ export default function UsersPage() {
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'jnc_users_import_template.csv');
+      link.setAttribute('download', 'users_import_template.csv');
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -249,6 +277,204 @@ export default function UsersPage() {
     }
   };
 
+  const fetchTemplates = async () => {
+    try {
+      setLoadingTemplates(true);
+      const { data } = await usersApi.getAccessTemplates();
+      setTemplates(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Failed to load templates', e);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const handleOpenAccessModal = async (targetUser: User) => {
+    setAccessUser(targetUser);
+    setAccessLoading(true);
+    setAccessCopyUserId('');
+    setAccessTemplateId('');
+    setAccessTeamId('');
+    try {
+      fetchTemplates();
+      const { data } = await usersApi.getUserAccess(targetUser.id);
+      setAccessData(data);
+      if (Array.isArray(data?.customPages)) {
+        setSelectedPages(data.customPages);
+      } else if (Array.isArray(data?.effectivePages)) {
+        setSelectedPages(data.effectivePages);
+      } else {
+        setSelectedPages([]);
+      }
+    } catch (err: any) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Error Loading Access',
+        message: err?.response?.data?.message || err.message || 'Could not load page access for this user.',
+        variant: 'error',
+      });
+      setAccessUser(null);
+    } finally {
+      setAccessLoading(false);
+    }
+  };
+
+  const executeSaveAccess = async () => {
+    if (!accessUser) return;
+    setSavingAccess(true);
+    try {
+      await usersApi.updateUserAccess(accessUser.id, selectedPages);
+      setAlertDialog({
+        isOpen: true,
+        title: 'Access Saved',
+        message: `Page access permissions for ${accessUser.name} have been updated successfully.`,
+        variant: 'success',
+      });
+      setAccessUser(null);
+      await fetchUsers();
+      if (accessUser.id === currentUser?.id) {
+        const { data: meData } = await authApi.me();
+        if (meData?.user) {
+          updateUser(meData.user);
+        }
+      }
+    } catch (err: any) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Save Failed',
+        message: err?.response?.data?.message || err.message || 'Failed to update page access.',
+        variant: 'error',
+      });
+    } finally {
+      setSavingAccess(false);
+    }
+  };
+
+  const handleSaveAccess = async () => {
+    if (!accessUser) return;
+    if (accessUser.id === currentUser?.id && !selectedPages.includes('users')) {
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Warning: Removing Own User Access',
+        message: 'You are modifying your own access and removing the User Accounts & Roles page. You will lose the ability to manage user permissions. Do you want to proceed?',
+        confirmText: 'Save Anyway',
+        variant: 'danger',
+        iconType: 'alert',
+        onConfirm: async () => {
+          setConfirmDialog(null);
+          await executeSaveAccess();
+        },
+      });
+      return;
+    }
+    await executeSaveAccess();
+  };
+
+  const handleResetToTeam = async () => {
+    if (!accessUser) return;
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reset to Team Inherit?',
+      message: `This will remove all custom page overrides for ${accessUser.name} and restore page access inherited from their team (${accessUser.teamRef?.name || 'No Team'}).`,
+      confirmText: 'Reset to Team',
+      variant: 'primary',
+      iconType: 'toggle',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setSavingAccess(true);
+        try {
+          await usersApi.resetUserAccess(accessUser.id);
+          setAlertDialog({
+            isOpen: true,
+            title: 'Access Reset',
+            message: `Custom access cleared. ${accessUser.name} now inherits module access from their team.`,
+            variant: 'success',
+          });
+          setAccessUser(null);
+          await fetchUsers();
+        } catch (err: any) {
+          setAlertDialog({
+            isOpen: true,
+            title: 'Reset Failed',
+            message: err?.response?.data?.message || err.message || 'Failed to reset access.',
+            variant: 'error',
+          });
+        } finally {
+          setSavingAccess(false);
+        }
+      },
+    });
+  };
+
+  const handleSaveTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTemplate || !editingTemplate.name.trim()) return;
+    setSavingTemplate(true);
+    try {
+      if (editingTemplate.id) {
+        await usersApi.updateAccessTemplate(editingTemplate.id, {
+          name: editingTemplate.name.trim(),
+          description: editingTemplate.description?.trim(),
+          pages: editingTemplate.pages,
+        });
+        setAlertDialog({
+          isOpen: true,
+          title: 'Template Updated',
+          message: `Access template "${editingTemplate.name}" has been updated.`,
+          variant: 'success',
+        });
+      } else {
+        await usersApi.createAccessTemplate({
+          name: editingTemplate.name.trim(),
+          description: editingTemplate.description?.trim(),
+          pages: editingTemplate.pages,
+        });
+        setAlertDialog({
+          isOpen: true,
+          title: 'Template Created',
+          message: `Access template "${editingTemplate.name}" has been created.`,
+          variant: 'success',
+        });
+      }
+      setEditingTemplate(null);
+      await fetchTemplates();
+    } catch (err: any) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Save Failed',
+        message: err?.response?.data?.message || err.message || 'Failed to save template.',
+        variant: 'error',
+      });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = (tpl: any) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Access Template?',
+      message: `Are you sure you want to delete template "${tpl.name}"? Users already assigned these pages will not be affected.`,
+      confirmText: 'Delete Template',
+      variant: 'danger',
+      iconType: 'trash',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          await usersApi.deleteAccessTemplate(tpl.id);
+          await fetchTemplates();
+        } catch (err: any) {
+          setAlertDialog({
+            isOpen: true,
+            title: 'Delete Failed',
+            message: err?.response?.data?.message || err.message || 'Failed to delete template.',
+            variant: 'error',
+          });
+        }
+      },
+    });
+  };
+
   useEffect(() => {
     fetchTeams();
     if (isPlatform) {
@@ -266,6 +492,8 @@ export default function UsersPage() {
   useEffect(() => {
     if (activeTab === 'signins' && canManageUsers) {
       fetchRecentSignIns();
+    } else if (activeTab === 'templates' && canManageUsers) {
+      fetchTemplates();
     }
   }, [activeTab]);
 
@@ -275,6 +503,8 @@ export default function UsersPage() {
     }
     if (searchParams.get('tab') === 'teams') {
       setActiveTab('teams');
+    } else if (searchParams.get('tab') === 'templates') {
+      setActiveTab('templates');
     }
   }, [searchParams]);
 
@@ -311,7 +541,7 @@ export default function UsersPage() {
         phone: '',
         role: 'employee',
         teamId: '',
-        warehouseId: 'BLR-MAIN',
+        warehouseId: 'WH-MAIN',
       });
       await fetchUsers();
     } catch (err: any) {
@@ -421,6 +651,41 @@ export default function UsersPage() {
             isOpen: true,
             title: 'Failed to Send Code',
             message: err?.response?.data?.message || err.message,
+            variant: 'error',
+          });
+        } finally {
+          setActionLoadingId(null);
+        }
+      },
+    });
+  };
+
+  // Handle Reset 2-Step Verification
+  const handleResetUserTwoFactor = (targetUser: User) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reset 2-Step Verification?',
+      message: `Are you sure you want to reset 2-Step Verification for ${targetUser.name} (${targetUser.email})? Their authenticator secret and backup recovery codes will be removed immediately.`,
+      confirmText: 'Reset 2-Step Verification',
+      variant: 'warning',
+      iconType: 'alert',
+      onConfirm: async () => {
+        setActionLoadingId(targetUser.id);
+        setConfirmDialog(null);
+        try {
+          await usersApi.resetTwoFactor(targetUser.id);
+          await fetchUsers();
+          setAlertDialog({
+            isOpen: true,
+            title: '2-Step Verification Reset',
+            message: `2-Step verification has been reset for ${targetUser.name}. They can now sign in with their password only.`,
+            variant: 'success',
+          });
+        } catch (err: any) {
+          setAlertDialog({
+            isOpen: true,
+            title: 'Action Failed',
+            message: 'Failed to reset 2-Step verification: ' + (err?.response?.data?.message || err.message),
             variant: 'error',
           });
         } finally {
@@ -635,7 +900,7 @@ export default function UsersPage() {
   const handleCopyCredentials = () => {
     if (!createdCredentialModal) return;
     const portalUrl = `${window.location.origin}/login`;
-    const text = `JSNC-CRM Login Credentials:\nPortal: ${portalUrl}\nEmployee Code: ${createdCredentialModal.user.employeeCode}\nTemporary Password: ${createdCredentialModal.tempPassword}\nNote: Please change your password on first login.`;
+    const text = `${getProductName()} Login Credentials:\nPortal: ${portalUrl}\nEmployee Code: ${createdCredentialModal.user.employeeCode}\nTemporary Password: ${createdCredentialModal.tempPassword}\nNote: Please change your password on first login.`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
@@ -680,7 +945,7 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Navigation Sub-Tabs (Users vs Teams vs Recent Sign-ins) */}
+      {/* Navigation Sub-Tabs (Users vs Teams vs Templates vs Recent Sign-ins) */}
       <div className="flex border-b border-slate-200 dark:border-[#2A3042] gap-4">
         <button
           onClick={() => setActiveTab('users')}
@@ -704,6 +969,18 @@ export default function UsersPage() {
         </button>
         {(isPlatform || isTenantAdmin || isAdmin) && (
           <button
+            onClick={() => setActiveTab('templates')}
+            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${
+              activeTab === 'templates'
+                ? 'border-crm-teal text-crm-teal'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <FolderKey size={16} /> Access Templates ({templates.length})
+          </button>
+        )}
+        {(isPlatform || isTenantAdmin || isAdmin) && (
+          <button
             onClick={() => setActiveTab('signins')}
             className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${
               activeTab === 'signins'
@@ -718,6 +995,116 @@ export default function UsersPage() {
 
       {activeTab === 'teams' ? (
         <TeamsTab />
+      ) : activeTab === 'templates' ? (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042] flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <FolderKey size={16} className="text-crm-teal" /> Company Access Templates
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Standard permission presets for company job roles. Apply templates in one click when configuring user page access.
+              </p>
+            </div>
+            <button
+              onClick={() =>
+                setEditingTemplate({
+                  name: '',
+                  description: '',
+                  pages: [],
+                })
+              }
+              className="btn-primary text-xs gap-1.5 shadow-glow-blue"
+            >
+              <Plus size={14} /> Create New Template
+            </button>
+          </div>
+
+          {loadingTemplates ? (
+            <div className="text-center py-12 text-slate-400">
+              <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-crm-blue" />
+              Loading access templates...
+            </div>
+          ) : templates.length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed border-slate-200 dark:border-[#2A3042] rounded-2xl p-8 space-y-3">
+              <FolderKey size={36} className="mx-auto text-slate-400" />
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">No Access Templates Created Yet</p>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                Create reusable page bundles (e.g., "Sales Rep", "Accountant", "Logistics Executive") to quickly provision team members.
+              </p>
+              <button
+                onClick={() =>
+                  setEditingTemplate({
+                    name: '',
+                    description: '',
+                    pages: [],
+                  })
+                }
+                className="btn-primary text-xs gap-1.5 mx-auto"
+              >
+                <Plus size={14} /> Create Your First Template
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {templates.map((tpl) => (
+                <div
+                  key={tpl.id}
+                  className="rounded-xl border border-slate-200 dark:border-[#2A3042] bg-white dark:bg-[#181B26] p-4 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <FolderKey size={15} className="text-crm-teal shrink-0" />
+                        {tpl.name}
+                      </h4>
+                      <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-[#2A3042] text-slate-600 dark:text-slate-300 font-semibold">
+                        {Array.isArray(tpl.pages) ? tpl.pages.length : 0} pages
+                      </span>
+                    </div>
+                    {tpl.description && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                        {tpl.description}
+                      </p>
+                    )}
+                    <div className="pt-2 flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                      {(tpl.pages || []).map((pageKey: string) => (
+                        <span
+                          key={pageKey}
+                          className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#222736] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#2A3042]"
+                        >
+                          {COMPANY_PAGE_REGISTRY[pageKey]?.label || pageKey}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-3 mt-3 border-t border-slate-100 dark:border-[#2A3042]">
+                    <button
+                      onClick={() =>
+                        setEditingTemplate({
+                          id: tpl.id,
+                          name: tpl.name,
+                          description: tpl.description || '',
+                          pages: Array.isArray(tpl.pages) ? tpl.pages : [],
+                        })
+                      }
+                      className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-[#2A3042] text-slate-500 hover:text-crm-blue transition-colors text-xs flex items-center gap-1"
+                    >
+                      <Edit3 size={13} /> Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTemplate(tpl)}
+                      className="p-1.5 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-500 transition-colors text-xs flex items-center gap-1"
+                    >
+                      <Trash2 size={13} /> Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       ) : activeTab === 'signins' ? (
         <div className="space-y-4">
           <div className="p-4 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-900/40 text-xs text-blue-800 dark:text-blue-300 flex items-center justify-between flex-wrap gap-2">
@@ -987,7 +1374,7 @@ export default function UsersPage() {
                         <div className="space-y-0.5 text-xs">
                           <p className="text-slate-800 dark:text-slate-200 font-medium">{u.teamRef?.name || 'Unrestricted'}</p>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1">
-                            <MapPin size={11} className="text-slate-400 dark:text-slate-600" /> {u.warehouseId || 'BLR-MAIN'}
+                            <MapPin size={11} className="text-slate-400 dark:text-slate-600" /> {u.warehouseId || 'WH-MAIN'}
                           </p>
                         </div>
                       </td>
@@ -1008,6 +1395,24 @@ export default function UsersPage() {
                             <Lock size={10} /> Password Reset Pending
                           </p>
                         )}
+                        {/* 2-Step Verification badge */}
+                        <div className="mt-1">
+                          {u.twoFactor?.enabledAt ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                              title={`2-Step Verification Active (${u.twoFactor.method})`}
+                            >
+                              <ShieldCheck size={10} /> 2-Step: On
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+                              title="2-Step Verification Disabled"
+                            >
+                              2-Step: Off
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Last Login */}
@@ -1056,6 +1461,18 @@ export default function UsersPage() {
                             </button>
                           )}
 
+                          {/* Reset 2-Step Verification Action */}
+                          {u.twoFactor?.enabledAt && !isCurrentUser && (
+                            <button
+                              onClick={() => handleResetUserTwoFactor(u)}
+                              disabled={actionLoadingId === u.id || !canActOnUser}
+                              className="p-1.5 rounded hover:bg-purple-500/10 dark:hover:bg-purple-500/20 text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              title="Reset 2-Step Verification (remove authenticator & backup codes)"
+                            >
+                              <ShieldAlert size={14} className={actionLoadingId === u.id ? 'animate-spin' : ''} />
+                            </button>
+                          )}
+
                           {/* Unlock Account Action */}
                           {!isCurrentUser && (
                             <button
@@ -1076,6 +1493,16 @@ export default function UsersPage() {
                             title="Regenerate & Email Temporary Password"
                           >
                             <KeyRound size={14} className={actionLoadingId === u.id ? 'animate-spin' : ''} />
+                          </button>
+
+                          {/* Granular Page Access Action */}
+                          <button
+                            onClick={() => handleOpenAccessModal(u)}
+                            disabled={actionLoadingId === u.id || !canEditUser}
+                            className="p-1.5 rounded hover:bg-crm-blue/10 dark:hover:bg-crm-blue/20 text-slate-400 hover:text-crm-blue dark:hover:text-crm-blue-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Manage User Page Access Permissions"
+                          >
+                            <Sliders size={14} />
                           </button>
 
                           {/* Edit User Action */}
@@ -1166,7 +1593,7 @@ export default function UsersPage() {
                     <input
                       type="email"
                       className="input text-xs"
-                      placeholder="user@company.com"
+                      placeholder="user@example.com"
                       value={createForm.email}
                       onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
                       required
@@ -1204,13 +1631,16 @@ export default function UsersPage() {
                       </option>
                     ))}
                   </select>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    Role sets job title and administrative powers only. Specific module pages are assigned in the Access panel.
+                  </p>
                 </div>
 
                 {/* Live Auto-Generated ID Preview */}
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex items-center justify-between">
                   <span className="text-[11px] text-slate-500 font-medium">Auto-Generated Employee ID:</span>
                   <span className="font-mono text-xs font-bold text-crm-blue bg-crm-blue/10 px-2 py-0.5 rounded border border-crm-blue/20">
-                    JNC-{(currentUser?.tenant?.code || 'TENANT').replace(/^JNC-/, '')}-{ROLE_CODE_MAP[createForm.role] || 'EMP'}-XXX
+                    {(currentUser?.tenant?.code || 'TENANT')}-{ROLE_CODE_MAP[createForm.role] || 'EMP'}-XXX
                   </span>
                 </div>
 
@@ -1408,6 +1838,9 @@ export default function UsersPage() {
                       </option>
                     ))}
                   </select>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    Role sets job title and administrative powers only. Specific module pages are assigned in the Access panel.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -1422,10 +1855,10 @@ export default function UsersPage() {
                     <label className="label">Warehouse</label>
                     <select
                       className="input text-xs"
-                      value={editingUser.warehouseId || 'BLR-MAIN'}
+                      value={editingUser.warehouseId || 'WH-MAIN'}
                       onChange={(e) => setEditingUser({ ...editingUser, warehouseId: e.target.value })}
                     >
-                      <option value="BLR-MAIN">BLR-MAIN (Bengaluru Hub)</option>
+                      <option value="WH-MAIN">WH-MAIN (Main Warehouse)</option>
                     </select>
                   </div>
                 </div>
@@ -1777,6 +2210,521 @@ export default function UsersPage() {
                   </div>
                 )}
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── MODAL: Create / Edit Access Template ─────────────────────────── */}
+      <AnimatePresence>
+        {editingTemplate && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden my-auto max-h-[90vh] flex flex-col"
+            >
+              <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230]">
+                <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <FolderKey size={18} className="text-crm-teal" />
+                  {editingTemplate.id ? 'Edit Access Template' : 'Create Access Template'}
+                </h2>
+                <button
+                  onClick={() => setEditingTemplate(null)}
+                  className="w-7 h-7 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveTemplate} className="p-6 space-y-4 overflow-y-auto flex-1">
+                <div>
+                  <label className="label">Template Name *</label>
+                  <input
+                    className="input text-xs"
+                    placeholder="e.g. Sales Executive Preset"
+                    value={editingTemplate.name}
+                    onChange={(e) =>
+                      setEditingTemplate({ ...editingTemplate, name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="label">Description (Optional)</label>
+                  <input
+                    className="input text-xs"
+                    placeholder="Brief description of who should receive this permission set"
+                    value={editingTemplate.description}
+                    onChange={(e) =>
+                      setEditingTemplate({ ...editingTemplate, description: e.target.value })
+                    }
+                  />
+                </div>
+
+                {/* Toolbar */}
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Granted Module Pages ({editingTemplate.pages.length} / {ALL_COMPANY_PAGE_KEYS.length})
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingTemplate({ ...editingTemplate, pages: [...ALL_COMPANY_PAGE_KEYS] })
+                      }
+                      className="btn-ghost text-xs py-1 px-2.5"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingTemplate({ ...editingTemplate, pages: [] })}
+                      className="btn-ghost text-xs py-1 px-2.5"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                {/* Grouped Checkboxes */}
+                <div className="space-y-3">
+                  {PAGE_GROUPS.map((group) => {
+                    const pagesInGroup = groupedPages[group] || [];
+                    const selectedInGroup = pagesInGroup.filter((p) =>
+                      editingTemplate.pages.includes(p.key)
+                    );
+                    const allInGroup = selectedInGroup.length === pagesInGroup.length;
+                    return (
+                      <div
+                        key={group}
+                        className="border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-hidden"
+                      >
+                        <div className="p-2.5 bg-slate-50 dark:bg-[#1A1D29] border-b border-slate-200 dark:border-[#2A3042] flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                            {group} ({selectedInGroup.length}/{pagesInGroup.length})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const keys = pagesInGroup.map((p) => p.key);
+                              if (allInGroup) {
+                                setEditingTemplate({
+                                  ...editingTemplate,
+                                  pages: editingTemplate.pages.filter((k) => !keys.includes(k)),
+                                });
+                              } else {
+                                setEditingTemplate({
+                                  ...editingTemplate,
+                                  pages: Array.from(new Set([...editingTemplate.pages, ...keys])),
+                                });
+                              }
+                            }}
+                            className="text-xs text-crm-blue hover:underline font-semibold"
+                          >
+                            {allInGroup ? 'Clear Group' : 'Select All in Group'}
+                          </button>
+                        </div>
+                        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2 bg-white dark:bg-[#141722]">
+                          {pagesInGroup.map((page) => {
+                            const isChecked = editingTemplate.pages.includes(page.key);
+                            return (
+                              <label
+                                key={page.key}
+                                className={`flex items-start gap-2.5 p-2 rounded-lg border cursor-pointer transition-colors ${
+                                  isChecked
+                                    ? 'border-crm-blue/40 bg-crm-blue/5 dark:bg-crm-blue/10 text-slate-900 dark:text-white'
+                                    : 'border-slate-200 dark:border-[#2A3042] text-slate-600 dark:text-slate-400'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    setEditingTemplate({
+                                      ...editingTemplate,
+                                      pages: isChecked
+                                        ? editingTemplate.pages.filter((k) => k !== page.key)
+                                        : [...editingTemplate.pages, page.key],
+                                    });
+                                  }}
+                                  className="mt-0.5 rounded border-slate-300 text-crm-blue focus:ring-crm-blue"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold">{page.label}</span>
+                                    <span className="font-mono text-[10px] text-slate-400">{page.key}</span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">
+                                    {page.description}
+                                  </p>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4 border-t border-slate-200 dark:border-[#2A3042]">
+                  <button
+                    type="button"
+                    onClick={() => setEditingTemplate(null)}
+                    className="btn-ghost text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingTemplate}
+                    className="btn-primary text-xs px-5 shadow-glow-blue"
+                  >
+                    {savingTemplate ? 'Saving...' : 'Save Template'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── MODAL: User Page Access Control Panel ─────────────────────────── */}
+      <AnimatePresence>
+        {accessUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230]">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Sliders size={18} className="text-crm-blue" />
+                    Configure Page Access: {accessUser.name}
+                  </h2>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="font-mono text-xs font-bold text-purple-600 dark:text-crm-violet-light">
+                      {accessUser.employeeCode}
+                    </span>
+                    <span className="text-slate-400">•</span>
+                    <span className="text-xs text-slate-600 dark:text-slate-300 font-semibold">
+                      {ROLE_LABELS[accessUser.role] || accessUser.role}
+                    </span>
+                    <span className="text-slate-400">•</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-slate-200/60 dark:bg-[#2A3042] text-slate-700 dark:text-slate-300">
+                      {accessData?.inheritedFrom === 'tenant_admin'
+                        ? 'Full Company Access (Tenant Admin)'
+                        : accessData?.inheritedFrom === 'custom'
+                        ? 'Custom User Overrides'
+                        : accessData?.inheritedFrom === 'team'
+                        ? `Inherited from Team: ${accessUser.teamRef?.name || 'Assigned Team'}`
+                        : 'No Pages Granted'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setAccessUser(null)}
+                  className="w-7 h-7 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {accessLoading ? (
+                <div className="p-12 text-center text-slate-400">
+                  <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-crm-blue" />
+                  Loading user access configuration...
+                </div>
+              ) : (
+                <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                  {/* Warning if editing own profile */}
+                  {accessUser.id === currentUser?.id && (
+                    <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-crm-amber flex items-start gap-2.5">
+                      <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-bold">Editing Your Own Account:</strong> Be careful not to uncheck
+                        "User Accounts & Roles" or other critical modules, as saving will immediately update your active navigation and permissions.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Toolbar Shortcuts: Select All, Clear, Copy from user, Apply template, Team shortcut */}
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042] flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPages([...ALL_COMPANY_PAGE_KEYS])}
+                        className="btn-ghost text-xs py-1.5 px-3 border border-slate-200 dark:border-[#2A3042] bg-white dark:bg-[#1A1D29]"
+                      >
+                        <CheckSquare size={13} className="text-crm-blue" /> Select All ({ALL_COMPANY_PAGE_KEYS.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPages([])}
+                        className="btn-ghost text-xs py-1.5 px-3 border border-slate-200 dark:border-[#2A3042] bg-white dark:bg-[#1A1D29]"
+                      >
+                        <Square size={13} className="text-slate-400" /> Clear
+                      </button>
+
+                      {/* Reset to Team Inherit */}
+                      {accessData?.inheritedFrom === 'custom' && (
+                        <button
+                          type="button"
+                          onClick={handleResetToTeam}
+                          disabled={savingAccess}
+                          className="btn-ghost text-xs py-1.5 px-3 border border-purple-500/30 text-purple-600 dark:text-crm-violet-light bg-purple-500/5 hover:bg-purple-500/10"
+                          title="Clear custom overrides and revert to team allowedPages"
+                        >
+                          <Shield size={13} /> Reset to Team Inherit
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Copy from user */}
+                      <select
+                        className="input text-xs w-48 py-1.5"
+                        value={accessCopyUserId}
+                        onChange={async (e) => {
+                          const targetId = e.target.value;
+                          setAccessCopyUserId(targetId);
+                          if (!targetId) return;
+                          try {
+                            const { data } = await usersApi.getUserAccess(targetId);
+                            if (Array.isArray(data?.effectivePages)) {
+                              setSelectedPages(data.effectivePages);
+                            }
+                          } catch (err: any) {
+                            setAlertDialog({
+                              isOpen: true,
+                              title: 'Copy Failed',
+                              message: 'Could not load access for the chosen user.',
+                              variant: 'error',
+                            });
+                          }
+                        }}
+                      >
+                        <option value="">Copy from user...</option>
+                        {users
+                          .filter((u) => u.id !== accessUser.id)
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name} ({u.employeeCode})
+                            </option>
+                          ))}
+                      </select>
+
+                      {/* Apply Template */}
+                      <select
+                        className="input text-xs w-44 py-1.5"
+                        value={accessTemplateId}
+                        onChange={(e) => {
+                          const tplId = e.target.value;
+                          setAccessTemplateId(tplId);
+                          if (!tplId) return;
+                          const tpl = templates.find((t) => t.id === tplId);
+                          if (tpl && Array.isArray(tpl.pages)) {
+                            setSelectedPages(tpl.pages);
+                          }
+                        }}
+                      >
+                        <option value="">Apply template...</option>
+                        {templates.map((tpl) => (
+                          <option key={tpl.id} value={tpl.id}>
+                            {tpl.name} ({tpl.pages?.length || 0} pgs)
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Team shortcut */}
+                      <select
+                        className="input text-xs w-44 py-1.5"
+                        value={accessTeamId}
+                        onChange={(e) => {
+                          const tmId = e.target.value;
+                          setAccessTeamId(tmId);
+                          if (!tmId) return;
+                          const tm = teams.find((t) => t.id === tmId);
+                          if (tm && Array.isArray(tm.allowedPages)) {
+                            setSelectedPages(tm.allowedPages);
+                          }
+                        }}
+                      >
+                        <option value="">Fill from team...</option>
+                        {teams.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({t.allowedPages?.length || 0} pgs)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Live Menu Preview Bar */}
+                  <div className="rounded-xl border border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#141722] p-4 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Eye size={15} className="text-crm-blue" />
+                        <span className="text-xs font-bold text-slate-900 dark:text-white">
+                          Live Navigation Preview for {accessUser.name}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-500 font-semibold">
+                        {selectedPages.length} of {ALL_COMPANY_PAGE_KEYS.length} modules granted
+                      </span>
+                    </div>
+
+                    {selectedPages.length === 0 ? (
+                      <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-crm-amber">
+                        No pages granted. This user will see: <em>"Ask your administrator to give you access"</em> and a sign-out button.
+                      </div>
+                    ) : (
+                      <div className="space-y-2 pt-1">
+                        {PAGE_GROUPS.map((group) => {
+                          const groupPages = (groupedPages[group] || []).filter((p) =>
+                            selectedPages.includes(p.key)
+                          );
+                          if (groupPages.length === 0) return null;
+                          return (
+                            <div key={group} className="flex items-center gap-2 flex-wrap text-xs">
+                              <span className="font-bold text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500 w-24 shrink-0">
+                                {group}:
+                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap flex-1">
+                                {groupPages.map((p) => (
+                                  <span
+                                    key={p.key}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-white dark:bg-[#1E2230] border border-slate-200 dark:border-[#2A3042] text-slate-700 dark:text-slate-300 shadow-sm"
+                                  >
+                                    <Check size={11} className="text-crm-teal" />
+                                    {p.label}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Grouped Checkboxes */}
+                  <div className="space-y-3">
+                    {PAGE_GROUPS.map((group) => {
+                      const pagesInGroup = groupedPages[group] || [];
+                      const selectedInGroup = pagesInGroup.filter((p) =>
+                        selectedPages.includes(p.key)
+                      );
+                      const allInGroup = selectedInGroup.length === pagesInGroup.length;
+                      return (
+                        <div
+                          key={group}
+                          className="border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-hidden"
+                        >
+                          <div className="p-2.5 bg-slate-50 dark:bg-[#1A1D29] border-b border-slate-200 dark:border-[#2A3042] flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                                {group}
+                              </span>
+                              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-200 dark:bg-[#2A3042] text-slate-700 dark:text-slate-300 font-semibold">
+                                {selectedInGroup.length} / {pagesInGroup.length}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const keys = pagesInGroup.map((p) => p.key);
+                                if (allInGroup) {
+                                  setSelectedPages((prev) => prev.filter((k) => !keys.includes(k)));
+                                } else {
+                                  setSelectedPages((prev) =>
+                                    Array.from(new Set([...prev, ...keys]))
+                                  );
+                                }
+                              }}
+                              className="text-xs text-crm-blue hover:underline font-semibold"
+                            >
+                              {allInGroup ? 'Deselect Group' : 'Select All in Group'}
+                            </button>
+                          </div>
+                          <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2 bg-white dark:bg-[#141722]">
+                            {pagesInGroup.map((page) => {
+                              const isChecked = selectedPages.includes(page.key);
+                              return (
+                                <label
+                                  key={page.key}
+                                  className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                                    isChecked
+                                      ? 'border-crm-blue/40 bg-crm-blue/5 dark:bg-crm-blue/10 text-slate-900 dark:text-white'
+                                      : 'border-slate-200 dark:border-[#2A3042] hover:bg-slate-50 dark:hover:bg-[#1E2230] text-slate-600 dark:text-slate-400'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      setSelectedPages((prev) =>
+                                        isChecked
+                                          ? prev.filter((k) => k !== page.key)
+                                          : [...prev, page.key]
+                                      );
+                                    }}
+                                    className="mt-0.5 rounded border-slate-300 text-crm-blue focus:ring-crm-blue"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-bold leading-none">
+                                        {page.label}
+                                      </span>
+                                      <span className="font-mono text-[10px] text-slate-400">
+                                        {page.key}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
+                                      {page.description}
+                                    </p>
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-[#2A3042]">
+                    <span className="text-xs text-slate-500">
+                      Changes apply immediately across navigation menus, search, dashboard, and API endpoints.
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAccessUser(null)}
+                        className="btn-ghost text-xs"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveAccess}
+                        disabled={savingAccess}
+                        className="btn-primary text-xs px-6 shadow-glow-blue"
+                      >
+                        {savingAccess ? 'Saving Access...' : 'Save Page Access'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </div>
         )}

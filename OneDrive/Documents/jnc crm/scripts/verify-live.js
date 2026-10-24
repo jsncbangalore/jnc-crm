@@ -11,8 +11,8 @@ const { URL } = require('url');
 const dns = require('dns').promises;
 
 // Parse CLI Arguments
-let webUrl = 'https://admin.jsnc.co.in';
-let apiUrl = 'https://api.jsnc.co.in';
+let webUrl = process.env.TEST_WEB_URL || 'https://admin.example.com';
+let apiUrl = process.env.TEST_API_URL || 'https://api.example.com';
 let allowInsecure = false;
 let loginCheck = false;
 let rateLimitNote = false;
@@ -40,7 +40,7 @@ const apiRoot = apiUrl.endsWith('/api/v1') ? apiUrl.replace(/\/api\/v1$/, '') : 
 const webOrigin = new URL(webUrl).origin;
 
 console.log('========================================================================');
-console.log('JNC-CRM POST-DEPLOYMENT LIVE / INTEGRITY VERIFICATION');
+console.log('CRM POST-DEPLOYMENT LIVE / INTEGRITY VERIFICATION');
 console.log(`Web URL:    ${webUrl}`);
 console.log(`API URL:    ${apiUrl} (Base: ${apiBase})`);
 console.log(`Mode:       ${allowInsecure ? 'ALLOW-INSECURE (Local Dev / Staging)' : 'STRICT PRODUCTION HTTPS'}`);
@@ -59,7 +59,6 @@ function makeRequest(targetUrl, options = {}) {
       path: parsed.pathname + (parsed.search || ''),
       method: options.method || 'GET',
       headers: options.headers || {},
-      rejectUnauthorized: !allowInsecure,
     };
 
     const req = client.request(reqOpts, (res) => {
@@ -182,7 +181,7 @@ async function runVerification() {
 
   // ─── CHECK 2: Web HTML References API URL ───────────────────────────────
   console.log('\n[2/6] Verifying Web HTML references target API URL ...');
-  const targetRef = 'https://api.jsnc.co.in';
+  const targetRef = apiUrl;
   if (!webDnsOk) {
     record(`Web HTML References API (${targetRef})`, false, `Skipped: DNS: ${webHost} does not exist yet`);
   } else {
@@ -443,13 +442,13 @@ async function runVerification() {
 
           const setCookieHeaders = loginRes.headers['set-cookie'] || [];
           const cookies = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
-          const refreshCookie = cookies.find((c) => c && c.startsWith('jnc_refresh_token='));
+          const refreshCookie = cookies.find((c) => c && (c.startsWith('crm_refresh_token=') || c.startsWith('refresh_token=')));
 
           if (!refreshCookie) {
             record(
-              'Session Cookie Issued (jnc_refresh_token)',
+              'Session Cookie Issued (crm_refresh_token)',
               false,
-              'jnc_refresh_token not found in Set-Cookie headers'
+              'crm_refresh_token not found in Set-Cookie headers'
             );
           } else {
             const cookieStr = refreshCookie.toLowerCase();

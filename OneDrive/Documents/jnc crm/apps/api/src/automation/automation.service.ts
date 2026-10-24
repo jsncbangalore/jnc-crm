@@ -559,7 +559,7 @@ export class AutomationService implements OnModuleInit {
                 tenantId,
               },
             });
-            recipientEmail = admin?.email || 'admin@jsnc.co.in';
+            recipientEmail = admin?.email;
           } else if (config.recipient === 'assigned_employee') {
             if (context.assignedToId) {
               const rep = await this.prisma.user.findFirst({
@@ -572,15 +572,21 @@ export class AutomationService implements OnModuleInit {
           }
         }
 
-        if (recipientEmail) {
-          await this.notificationsService.sendEmail({
-            to: recipientEmail,
-            subject: this.interpolate(config.subject || 'Notification from JNC CRM', context),
-            html: this.interpolate(config.html || config.body || 'No message body', context),
-            relatedEntityType: context.entityType,
-            relatedEntityId: context.entityId || context.leadId,
-          });
+        if (!recipientEmail || !recipientEmail.trim()) {
+          this.logger.warn(`[AUTOMATION] Skipping send_email step: No valid recipient found for tenant ${tenantId}. Context: ${JSON.stringify({ entityType: context.entityType, entityId: context.entityId || context.leadId })}`);
+          break;
         }
+
+        const prodName = process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM';
+        await this.notificationsService.sendEmail({
+          tenantId,
+          to: recipientEmail,
+          subject: this.interpolate(config.subject || `Notification from ${prodName}`, context),
+          html: this.interpolate(config.html || config.body || 'No message body', context),
+          relatedEntityType: context.entityType,
+          relatedEntityId: context.entityId || context.leadId,
+          purpose: 'automation',
+        });
         break;
       }
 
@@ -920,10 +926,11 @@ export class AutomationService implements OnModuleInit {
       )
       .join('');
 
+    const prodName = process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM';
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
         <div style="background: #FF5A5F; color: white; padding: 20px;">
-          <h2>JNC-CRM: Low Stock Alert — ${new Date().toLocaleDateString('en-IN')}</h2>
+          <h2>${prodName}: Low Stock Alert — ${new Date().toLocaleDateString('en-IN')}</h2>
         </div>
         <div style="padding: 20px;">
           <p><strong>${alerts.length} SKU(s)</strong> are below their reorder point and require attention.</p>
@@ -942,18 +949,20 @@ export class AutomationService implements OnModuleInit {
             <tbody>${alertTableRows}</tbody>
           </table>
           <p style="margin-top:20px;">Please contact suppliers directly via phone or email to place orders.</p>
-          <p><strong>${BRAND_CONFIG.displayName} CRM — Automated Inventory Alert</strong></p>
+          <p><strong>${prodName} — Automated Inventory Alert</strong></p>
         </div>
       </div>
     `;
 
     for (const admin of admins) {
       await this.notificationsService.sendEmail({
+        tenantId,
         to: admin.email,
-        subject: `[JNC-CRM] Low Stock Alert — ${alerts.length} SKUs require reorder`,
+        subject: `[${prodName}] Low Stock Alert — ${alerts.length} SKUs require reorder`,
         html: emailHtml,
         relatedEntityType: 'inventory',
         relatedEntityId: 'reorder_check',
+        purpose: 'security_alert',
       });
     }
 

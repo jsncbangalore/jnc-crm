@@ -9,9 +9,9 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const secretsPath = 'C:\\dev\\jnc-secrets\\live.env';
+const secretsPath = 'C:\\dev\\secrets\\live.env';
 if (!fs.existsSync(secretsPath)) {
-  console.error('[BACKUP FAIL] Missing secrets file C:\\dev\\jnc-secrets\\live.env');
+  console.error('[BACKUP FAIL] Missing secrets file C:\\dev\\secrets\\live.env');
   process.exit(1);
 }
 
@@ -76,17 +76,17 @@ try {
   pgDumpAvailable = false;
 }
 
-const backupsDir = 'C:\\dev\\jnc-secrets\\backups';
+const backupsDir = 'C:\\dev\\secrets\\backups';
 if (!fs.existsSync(backupsDir)) {
   fs.mkdirSync(backupsDir, { recursive: true });
 }
 
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-const backupFilename = `jnc-backup-${timestamp}.sql`;
+const backupFilename = `crm-backup-${timestamp}.sql`;
 const backupFilePath = path.join(backupsDir, backupFilename);
 
 console.log('========================================================================');
-console.log(`JNC-CRM DATABASE BACKUP UTILITY (Project Ref: ${actualRef})`);
+console.log(`CRM DATABASE BACKUP UTILITY (Project Ref: ${actualRef})`);
 console.log('========================================================================');
 
 if (!pgDumpAvailable) {

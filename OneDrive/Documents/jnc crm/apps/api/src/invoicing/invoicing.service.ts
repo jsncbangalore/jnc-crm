@@ -12,7 +12,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
 import { parsePagination } from '../common/pagination.util';
-import { JSNC_COMPANY_PROFILE, calculateGst, numberToIndianWords } from './invoice-config';
+import { calculateGst, numberToIndianWords } from './invoice-config';
 import { generateInvoicePdfBuffer } from './pdf-generator';
 import { validateLutStatus } from './lut-validator';
 import { sanitizeHtml } from '../common/html-sanitize.util';
@@ -33,7 +33,7 @@ export class InvoicingService {
 
   /**
    * Generates sequential Invoice Number per Indian Financial Year (April - March)
-   * Format: JNC/26-27/0001 or [PREFIX]/26-27/0001
+   * Format: [PREFIX]/26-27/0001
    * Numbers are NEVER reused even if voided.
    */
   async generateFinancialYearInvoiceNumber(date: Date = new Date(), prefix?: string, tenantId?: string): Promise<string> {
@@ -63,7 +63,7 @@ export class InvoicingService {
       if (tenant?.invoicePrefix) cleanPrefix = tenant.invoicePrefix.toUpperCase();
       else if (tenant?.code) cleanPrefix = tenant.code.toUpperCase();
     }
-    if (!cleanPrefix) cleanPrefix = 'JNC';
+    if (!cleanPrefix) cleanPrefix = 'INV';
 
     // Count all invoices created in this financial year for this tenant
     const safeTenantId = requireTenantId(tenantId);
@@ -180,7 +180,7 @@ export class InvoicingService {
         customerEmail: order.customerEmail,
         customerGstin,
         customerState,
-        billingAddress: order.shippingAddress || customerCompany?.address || 'Bengaluru, Karnataka',
+        billingAddress: order.shippingAddress || customerCompany?.address || '',
         subtotal,
         cgstAmount: totalCgst,
         sgstAmount: totalSgst,
@@ -218,7 +218,7 @@ export class InvoicingService {
 
     // Automated LUT Validity Verification for SEZ Invoices
     if (invoice.isSez || invoice.docType === 'sez_invoice') {
-      const lutStatus = validateLutStatus(invoice.lutBondNo || JSNC_COMPANY_PROFILE.lutBondNo, invoice.lutValidity || JSNC_COMPANY_PROFILE.lutValidity, invoice.invoiceDate);
+      const lutStatus = validateLutStatus(invoice.lutBondNo || '', invoice.lutValidity || '', invoice.invoiceDate);
       if (lutStatus.isExpired || lutStatus.isExpiringSoon) {
         await this.auditService.log({
           actorId: user.id,
@@ -247,7 +247,7 @@ export class InvoicingService {
 
   /**
    * Generates next sequential document number for any document type:
-   * - Tax Invoice: JNC/26-27/0001 or 002/26-27
+   * - Tax Invoice: [PREFIX]/26-27/0001 or 002/26-27
    * - SEZ Invoice: 013/25-26
    * - Proforma Invoice: 006/26-27 or PI/26-27/0001
    * - Delivery Challan: 024/26-27 or DC/26-27/0001
@@ -280,7 +280,7 @@ export class InvoicingService {
         where: { id: tenantId },
         select: { invoicePrefix: true, code: true },
       });
-      const tPrefix = tenant?.invoicePrefix || tenant?.code?.replace('JNC-', '') || 'INV';
+      const tPrefix = tenant?.invoicePrefix || tenant?.code || 'INV';
       if (docType === 'delivery_challan') {
         return `DC/${tPrefix}/${fyCode}/${seq4}`;
       }
@@ -299,7 +299,7 @@ export class InvoicingService {
     }
     if (docType === 'purchase_order') {
       const poSeq = String(count + 1).padStart(2, '0');
-      return `JNC_PO_${poSeq}/${fyCode}`;
+      return `PO_${poSeq}/${fyCode}`;
     }
     if (docType === 'delivery_challan') {
       return `DC/${fyCode}/${seq4}`;
@@ -355,9 +355,35 @@ export class InvoicingService {
       }>;
     },
   ) {
+    const tenantId = requireTenantId(user);
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+    if (!tenant) {
+      throw new BadRequestException('Tenant not found.');
+    }
+
     const docType = dto.docType || 'tax_invoice';
     const isSez = docType === 'sez_invoice' || !!dto.isSez;
-    const customerState = dto.customerState || 'Karnataka';
+
+    const missingFields: string[] = [];
+    if (!tenant.name?.trim()) missingFields.push('Company Name');
+    if (!tenant.address?.trim()) missingFields.push('Address');
+    if (!tenant.gstin?.trim()) missingFields.push('GSTIN');
+    if (!tenant.bankName?.trim() || !tenant.bankAccountNumber?.trim() || !tenant.bankIfsc?.trim()) {
+      missingFields.push('Bank Details (Bank Name, Account Number, IFSC)');
+    }
+    if (isSez && !tenant.lutBondNo?.trim() && !dto.lutBondNo?.trim()) {
+      missingFields.push('LUT Bond No');
+    }
+
+    if (missingFields.length > 0) {
+      throw new BadRequestException(
+        `Cannot create invoice. Company profile in Settings is incomplete. Missing: ${missingFields.join(', ')}.`
+      );
+    }
+
+    const customerState = dto.customerState || tenant.state || 'Karnataka';
 
     let invoiceNumber = dto.invoiceNumber?.trim();
     if (!invoiceNumber) {
@@ -365,7 +391,7 @@ export class InvoicingService {
     }
 
     // Ensure uniqueness
-    const existing = await this.prisma.invoice.findFirst({ where: { invoiceNumber, tenantId: requireTenantId(user) } });
+    const existing = await this.prisma.invoice.findFirst({ where: { invoiceNumber, tenantId } });
     if (existing) {
       invoiceNumber = `${invoiceNumber}-${Date.now().toString().slice(-4)}`;
     }
@@ -375,7 +401,8 @@ export class InvoicingService {
     let totalSgst = 0;
     let totalIgst = 0;
 
-    const lineItemsData = (dto.lines || []).map((line) => {
+    const rawItems = (dto.lines && dto.lines.length > 0 ? dto.lines : (dto as any).items) || [];
+    const lineItemsData = rawItems.map((line) => {
       const lineTaxable = Number((line.quantity * line.unitPrice).toFixed(2));
       const taxRate = docType === 'delivery_challan' ? 0 : (line.taxRate ?? 18.0);
       const taxCalc = calculateGst(lineTaxable, customerState, taxRate, isSez);
@@ -422,7 +449,7 @@ export class InvoicingService {
 
     const invoice = await this.prisma.invoice.create({
       data: {
-        tenantId: requireTenantId(user),
+        tenantId,
         invoiceNumber,
         docType,
         createdById: user.id,
@@ -439,8 +466,8 @@ export class InvoicingService {
         customerState,
         billingAddress: dto.billingAddress,
         deliveryAddress: dto.deliveryAddress || dto.billingAddress,
-        lutBondNo: dto.lutBondNo || JSNC_COMPANY_PROFILE.lutBondNo,
-        lutValidity: dto.lutValidity || JSNC_COMPANY_PROFILE.lutValidity,
+        lutBondNo: dto.lutBondNo || tenant.lutBondNo || null,
+        lutValidity: dto.lutValidity || tenant.lutValidity || null,
         isSez,
         advancePercent,
         advanceAmount,
@@ -480,7 +507,7 @@ export class InvoicingService {
 
     // Automated LUT Validity Verification for SEZ Invoices
     if (isSez) {
-      const lutStatus = validateLutStatus(invoice.lutBondNo || JSNC_COMPANY_PROFILE.lutBondNo, invoice.lutValidity || JSNC_COMPANY_PROFILE.lutValidity, invoice.invoiceDate);
+      const lutStatus = validateLutStatus(invoice.lutBondNo || '', invoice.lutValidity || '', invoice.invoiceDate);
       if (lutStatus.isExpired || lutStatus.isExpiringSoon) {
         await this.auditService.log({
           actorId: user.id,
@@ -682,7 +709,7 @@ export class InvoicingService {
 
     // Automated LUT Validity Verification for SEZ Invoices
     if (isSez) {
-      const lutStatus = validateLutStatus(updated.lutBondNo || JSNC_COMPANY_PROFILE.lutBondNo, updated.lutValidity || JSNC_COMPANY_PROFILE.lutValidity, updated.invoiceDate);
+      const lutStatus = validateLutStatus(updated.lutBondNo || '', updated.lutValidity || '', updated.invoiceDate);
       if (lutStatus.isExpired || lutStatus.isExpiringSoon) {
         await this.auditService.log({
           actorId: user.id,
@@ -793,32 +820,54 @@ export class InvoicingService {
         return {
           companyName: tenant.name,
           tradeName: tenant.name,
-          address: tenant.address || 'Registered Office Address',
-          city: tenant.city || 'Bengaluru',
-          state: tenant.state || 'Karnataka',
-          pincode: tenant.pincode || '560001',
-          gstin: tenant.gstin || '29AAAAA0000A1Z5',
-          pan: tenant.pan || (tenant.gstin && tenant.gstin.length >= 12 ? tenant.gstin.substring(2, 12) : 'AAAAA0000A'),
+          address: tenant.address || '',
+          city: tenant.city || '',
+          state: tenant.state || '',
+          pincode: tenant.pincode || '',
+          gstin: tenant.gstin || '',
+          pan: tenant.pan || (tenant.gstin && tenant.gstin.length >= 12 ? tenant.gstin.substring(2, 12) : ''),
           phone: tenant.phone || '',
           email: tenant.email || '',
           website: tenant.website || '',
-          bankName: tenant.bankName || 'HDFC Bank',
+          bankName: tenant.bankName || '',
           bankAccountNumber: tenant.bankAccountNumber || '',
           bankIfsc: tenant.bankIfsc || '',
           bankBranch: tenant.bankBranch || '',
-          bankAccountHolder: tenant.name,
-          lutBondNo: tenant.lutBondNo || 'AD290525013648T',
+          bankAccountHolder: tenant.name || '',
+          lutBondNo: tenant.lutBondNo || '',
           logoUrl:
             tenant.logoUrl && !tenant.logoUrl.startsWith('data:') && tenant.logoUrl.trim() !== ''
               ? tenant.logoUrl
-              : '/jnc-logo.jpg',
+              : (process.env.PRODUCT_LOGO_URL || ''),
           invoicePrefix: tenant.invoicePrefix || 'INV',
           isOnboarded: tenant.isOnboarded || false,
         };
       }
     }
 
-    return JSNC_COMPANY_PROFILE;
+    const defaultName = process.env.PRODUCT_NAME || 'CRM';
+    return {
+      companyName: defaultName,
+      tradeName: defaultName,
+      address: '',
+      city: '',
+      state: '',
+      pincode: '',
+      gstin: '',
+      pan: '',
+      phone: '',
+      email: '',
+      website: '',
+      bankName: '',
+      bankAccountNumber: '',
+      bankIfsc: '',
+      bankBranch: '',
+      bankAccountHolder: defaultName,
+      lutBondNo: '',
+      logoUrl: process.env.PRODUCT_LOGO_URL || '',
+      invoicePrefix: 'INV',
+      isOnboarded: false,
+    };
   }
 
   /**
@@ -837,9 +886,9 @@ export class InvoicingService {
 
       if (tenant) {
         return {
-          companyName: tenant.name || 'JNC Network & Power Solutions',
+          companyName: tenant.name || process.env.PRODUCT_NAME || 'CRM',
           signatoryName: tenant.signatoryName || `${tenant.name} Authorized Signatory`,
-          signatoryDesignation: tenant.signatoryDesignation || 'Proprietor / Director',
+          signatoryDesignation: tenant.signatoryDesignation || 'Authorized Signatory',
           signatureImage: tenant.signatureUrl || null,
           stampImage: tenant.stampUrl || null,
         };
@@ -850,9 +899,11 @@ export class InvoicingService {
       where: { key: 'invoice_signatory_config' },
     });
 
+    const defaultCompanyName = (process.env.PRODUCT_NAME || '').trim() || 'Company';
+
     if (!setting) {
       return {
-        companyName: 'JNC Network & Power Solutions',
+        companyName: defaultCompanyName,
         signatoryName: '',
         signatoryDesignation: '',
         signatureImage: null,
@@ -863,7 +914,7 @@ export class InvoicingService {
     try {
       const parsed = JSON.parse(setting.value);
       return {
-        companyName: parsed.companyName || 'JNC Network & Power Solutions',
+        companyName: parsed.companyName || defaultCompanyName,
         signatoryName: parsed.signatoryName || '',
         signatoryDesignation: parsed.signatoryDesignation || '',
         signatureImage: parsed.signatureImage || null,
@@ -871,7 +922,7 @@ export class InvoicingService {
       };
     } catch {
       return {
-        companyName: 'JNC Network & Power Solutions',
+        companyName: defaultCompanyName,
         signatoryName: '',
         signatoryDesignation: '',
         signatureImage: null,
@@ -899,7 +950,8 @@ export class InvoicingService {
 
     const tenantId = user.tenantId || (user.role === 'platform_super_admin' ? (await this.prisma.tenant.findFirst())?.id : undefined);
 
-    let resolvedCompanyName = dto.companyName?.trim() || 'JNC Network & Power Solutions';
+    const defaultCompanyName = (process.env.PRODUCT_NAME || '').trim() || 'Company';
+    let resolvedCompanyName = dto.companyName?.trim() || defaultCompanyName;
 
     if (tenantId) {
       const updateData: any = {
@@ -1194,20 +1246,22 @@ export class InvoicingService {
   }
 
   /**
-   * Helper to get JNC logo base64
+   * Helper to get company logo base64
    */
    private getLogoBase64(): string {
      try {
+       const logoFile = process.env.PRODUCT_LOGO_PATH || 'logo.png';
        const possiblePaths = [
-         path.join(process.cwd(), 'apps/web/public/jnc-logo.jpg'),
-         path.join(process.cwd(), 'public/jnc-logo.jpg'),
-         path.join(process.cwd(), '../web/public/jnc-logo.jpg'),
-         path.join(process.cwd(), '../../apps/web/public/jnc-logo.jpg'),
+         path.join(process.cwd(), 'apps/web/public', logoFile),
+         path.join(process.cwd(), 'public', logoFile),
+         path.join(process.cwd(), '../web/public', logoFile),
+         path.join(process.cwd(), '../../apps/web/public', logoFile),
        ];
        for (const p of possiblePaths) {
          if (fs.existsSync(p)) {
            const buf = fs.readFileSync(p);
-           return `data:image/jpeg;base64,${buf.toString('base64')}`;
+           const mime = p.endsWith('.png') ? 'image/png' : 'image/jpeg';
+           return `data:${mime};base64,${buf.toString('base64')}`;
          }
        }
      } catch (e) {
@@ -1307,7 +1361,7 @@ export class InvoicingService {
 
     // Dynamic Company Branding
     const rawBranding: any = invoice.companyProfile || (await this.notificationsService.getBranding(invoice.tenantId));
-    const companyDisplayName = rawBranding?.companyName || rawBranding?.companyDisplayName || 'JNC CRM';
+    const companyDisplayName = rawBranding?.companyName || rawBranding?.companyDisplayName || process.env.PRODUCT_NAME || 'CRM';
     const companyPhone = rawBranding?.phone || rawBranding?.companyPhone || '';
 
     // Clean, elegant, professional email body (NO raw code, NO huge duplicate copies)
@@ -1479,7 +1533,7 @@ export class InvoicingService {
           signatorySettings: invoice.signatorySettings,
         });
 
-        const tempFileName = `jnc_print_${crypto.randomUUID()}.pdf`;
+        const tempFileName = `print_${crypto.randomUUID()}.pdf`;
         const tempPath = path.join(os.tmpdir(), tempFileName);
         fs.writeFileSync(tempPath, buffer);
         tempFiles.push(tempPath);

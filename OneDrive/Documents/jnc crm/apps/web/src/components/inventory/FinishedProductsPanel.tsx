@@ -89,7 +89,7 @@ export default function FinishedProductsPanel({ onQuickAdd }: Props) {
             Finished Products Catalog
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            {products.length} product line{products.length !== 1 ? 's' : ''} — JNC product portfolio from jsnc.co.in
+            {products.length} product line{products.length !== 1 ? 's' : ''} — Standard product catalog
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -99,7 +99,7 @@ export default function FinishedProductsPanel({ onQuickAdd }: Props) {
             className="btn bg-crm-violet/20 text-crm-violet border border-crm-violet/30 hover:bg-crm-violet/30 text-xs gap-1.5"
           >
             {seeding ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
-            {products.length === 0 ? 'Seed 9 Products' : 'Re-seed Products'}
+            {products.length === 0 ? 'Seed Sample Catalog' : 'Re-seed Catalog'}
           </button>
           <button
             onClick={fetchProducts}
@@ -119,7 +119,7 @@ export default function FinishedProductsPanel({ onQuickAdd }: Props) {
           <div>
             <p className="text-white font-bold text-sm">No products seeded yet</p>
             <p className="text-xs text-slate-400 mt-1">
-              Click "Seed 9 Products" to populate the JNC product catalog from jsnc.co.in
+              Click "Seed Sample Catalog" to populate sample finished products and BOM components
             </p>
           </div>
           <button
@@ -128,7 +128,7 @@ export default function FinishedProductsPanel({ onQuickAdd }: Props) {
             className="btn-primary text-xs gap-1.5 shadow-glow-blue"
           >
             {seeding ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
-            Seed 9 JNC Products
+            Seed Sample Products
           </button>
         </div>
       )}

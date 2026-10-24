@@ -19,7 +19,7 @@ export default function BrandingSettingsPage() {
   const [companyName, setCompanyName] = useState(branding.companyDisplayName);
   const [companyPhone, setCompanyPhone] = useState(branding.companyPhone);
   const [logoPreview, setLogoPreview] = useState<string | null>(
-    branding.companyLogoUrl || '/jnc-logo.jpg'
+    branding.companyLogoUrl || null
   );
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
@@ -27,7 +27,7 @@ export default function BrandingSettingsPage() {
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
-  const [state, setState] = useState('Karnataka');
+  const [state, setState] = useState('');
   const [pincode, setPincode] = useState('');
   const [website, setWebsite] = useState('');
   const [gstin, setGstin] = useState('');
@@ -48,6 +48,7 @@ export default function BrandingSettingsPage() {
   const [signatoryDesignation, setSignatoryDesignation] = useState('');
   const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
   const [stampPreview, setStampPreview] = useState<string | null>(null);
+  const [requireTwoFactor, setRequireTwoFactor] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -61,7 +62,7 @@ export default function BrandingSettingsPage() {
   useEffect(() => {
     setCompanyName(branding.companyDisplayName);
     setCompanyPhone(branding.companyPhone);
-    setLogoPreview(branding.companyLogoUrl || '/jnc-logo.jpg');
+    setLogoPreview(branding.companyLogoUrl || null);
 
     // Fetch full company invoicing profile
     const loadProfile = async () => {
@@ -74,7 +75,7 @@ export default function BrandingSettingsPage() {
           if (data.logoUrl && !data.logoUrl.startsWith('data:')) {
             setLogoPreview(data.logoUrl);
           } else {
-            setLogoPreview('/jnc-logo.jpg');
+            setLogoPreview(null);
           }
           if (data.email) setEmail(data.email);
           if (data.address) setAddress(data.address);
@@ -96,6 +97,7 @@ export default function BrandingSettingsPage() {
           if (data.signatoryDesignation) setSignatoryDesignation(data.signatoryDesignation);
           if (data.signatureUrl) setSignaturePreview(data.signatureUrl);
           if (data.stampUrl) setStampPreview(data.stampUrl);
+          if (typeof data.requireTwoFactor === 'boolean') setRequireTwoFactor(data.requireTwoFactor);
         }
       } catch (err) {
         // Fallback to defaults
@@ -124,11 +126,12 @@ export default function BrandingSettingsPage() {
     setErrorMessage('');
     setUploadingLogo(true);
     try {
-      await brandingApi.uploadLogo(file);
+      const { data } = await brandingApi.uploadLogo(file);
       await refreshBranding();
-      const freshUrl = `/jnc-logo.jpg?t=${Date.now()}`;
-      setLogoPreview(freshUrl);
-      setSuccessMessage('Official Company Logo uploaded and updated successfully across all invoices, printouts, and headers.');
+      if (data?.logoUrl) {
+        setLogoPreview(data.logoUrl);
+      }
+      setSuccessMessage('Company Logo uploaded and updated successfully across all invoices, printouts, and headers.');
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (err: any) {
       setErrorMessage(err?.response?.data?.message || 'Failed to upload logo.');
@@ -141,14 +144,14 @@ export default function BrandingSettingsPage() {
   };
 
   const handleRemoveLogo = () => {
-    setLogoPreview('/jnc-logo.jpg');
+    setLogoPreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
   const handleResetToDefaultLogo = () => {
-    setLogoPreview('/jnc-logo.jpg');
+    setLogoPreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -174,13 +177,13 @@ export default function BrandingSettingsPage() {
       await updateBranding({
         companyDisplayName: companyName.trim(),
         companyPhone: companyPhone.trim(),
-        companyLogoUrl: '/jnc-logo.jpg',
+        companyLogoUrl: logoPreview || '',
       });
 
       await brandingApi.updateProfile({
         name: companyName.trim(),
         phone: companyPhone.trim() || undefined,
-        logoUrl: '/jnc-logo.jpg',
+        logoUrl: logoPreview || undefined,
         email: email.trim() || undefined,
         address: address.trim() || undefined,
         city: city.trim() || undefined,
@@ -201,6 +204,7 @@ export default function BrandingSettingsPage() {
         signatoryDesignation: signatoryDesignation.trim() || undefined,
         signatureUrl: signaturePreview || null,
         stampUrl: stampPreview || null,
+        requireTwoFactor,
       });
 
       setSuccessMessage('Company Business Details & Invoicing Profile successfully updated! All tax invoices, headers, and documents are synchronized.');
@@ -345,7 +349,7 @@ export default function BrandingSettingsPage() {
               Invoice & Quotation Custom Logo
             </h2>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Upload your custom logo to appear exclusively on Tax Invoices, Quotations, and Documents. The portal header logo (JNC) remains permanent.
+              Upload your custom logo to appear across Tax Invoices, Quotations, and Documents.
             </p>
           </div>
 
@@ -354,14 +358,16 @@ export default function BrandingSettingsPage() {
             <div className="md:col-span-5 flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed border-slate-200 dark:border-[#2A3042] bg-slate-50/50 dark:bg-[#1E2230]/40 text-center">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">Invoice Logo Preview</div>
               <div className="h-16 w-48 px-4 py-2 rounded-xl bg-white flex items-center justify-center shadow-md border border-slate-200">
-                <img
-                  src={logoPreview || '/jnc-logo.jpg'}
-                  alt={companyName || 'Company Logo'}
-                  className="max-h-12 max-w-full object-contain"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = '/jnc-logo.jpg';
-                  }}
-                />
+                {logoPreview ? (
+                  <img
+                    src={logoPreview}
+                    alt={companyName || 'Company Logo'}
+                    className="max-h-12 max-w-full object-contain"
+                    onError={() => setLogoPreview(null)}
+                  />
+                ) : (
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{companyName || 'No Logo'}</span>
+                )}
               </div>
               <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-3">{companyName || 'Company Name'}</p>
               <p className="text-[10px] text-slate-500 font-mono">{companyPhone || 'No Phone'}</p>
@@ -392,9 +398,9 @@ export default function BrandingSettingsPage() {
                   type="button"
                   onClick={handleResetToDefaultLogo}
                   className="btn-secondary text-xs flex items-center gap-1.5"
-                  title="Reset to default company logo"
+                  title="Remove company logo"
                 >
-                  <RefreshCw size={13} /> Reset to Default
+                  <RefreshCw size={13} /> Remove Logo
                 </button>
               </div>
 
@@ -402,7 +408,6 @@ export default function BrandingSettingsPage() {
                 <p>• Recommended dimension: <strong>300x80px</strong> or proportional aspect ratio.</p>
                 <p>• Max file size: <strong>2 MB</strong>.</p>
                 <p>• This logo appears on Tax Invoices, Quotations, and printable documents.</p>
-                <p>• The main portal header logo remains the permanent official JNC emblem.</p>
               </div>
             </div>
           </div>
@@ -632,6 +637,40 @@ export default function BrandingSettingsPage() {
                 onChange={(e) => setSignatoryDesignation(e.target.value)}
               />
             </div>
+          </div>
+        </div>
+
+        {/* ─── SECURITY & 2-STEP VERIFICATION POLICY ───────────────────────── */}
+        <div className="card space-y-4">
+          <div className="border-b border-slate-200 dark:border-[#2A3042] pb-3">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <ShieldCheck size={16} className="text-blue-600" />
+              Security & 2-Step Verification Policy
+            </h2>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              Enforce company-wide authentication standards and multi-factor requirements.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800">
+            <div className="space-y-0.5 pr-4">
+              <label htmlFor="require-2fa-switch" className="text-xs font-bold text-slate-900 dark:text-white cursor-pointer">
+                Require 2-step verification for all users
+              </label>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                When enabled, all employees, managers, and administrators in this company must configure an authenticator app (TOTP) to sign in.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                id="require-2fa-switch"
+                type="checkbox"
+                checked={requireTwoFactor}
+                onChange={(e) => setRequireTwoFactor(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
+            </label>
           </div>
         </div>
 

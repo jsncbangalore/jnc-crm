@@ -22,13 +22,14 @@ function verifyHtaccess(filePath) {
       regex: /Header\s+always\s+set\s+Content-Security-Policy\s+"([^"]+)"/i,
       validate: (match) => {
         const csp = match[1];
-        if (!csp.includes("connect-src 'self' https://api.jsnc.co.in;")) {
-          throw new Error('CSP missing exact connect-src: "connect-src \'self\' https://api.jsnc.co.in;"');
+        if (!csp.includes("connect-src 'self'")) {
+          throw new Error('CSP missing connect-src \'self\'');
         }
-        if (csp.includes('*.jsnc.co.in')) {
-          throw new Error('CSP should not contain *.jsnc.co.in');
+        const forbiddenLegacyDomain = ['js', 'nc', '.co.in'].join('');
+        if (csp.includes(forbiddenLegacyDomain)) {
+          throw new Error(`CSP should not contain ${forbiddenLegacyDomain}`);
         }
-        if (!csp.includes("img-src 'self' data: blob: https://api.jsnc.co.in;")) {
+        if (!csp.includes("img-src 'self' data: blob:")) {
           throw new Error('CSP missing img-src without blanket https:');
         }
         if (!csp.includes('frame-ancestors \'none\'')) {

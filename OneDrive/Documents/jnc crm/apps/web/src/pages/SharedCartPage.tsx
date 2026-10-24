@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { canStore } from '../utils/cookieConsent';
 import { motion } from 'framer-motion';
 import {
   ShoppingCart,
@@ -62,7 +63,7 @@ export default function SharedCartPage() {
 
     // Fallback: Check local storage buy list if available
     try {
-      const local = localStorage.getItem('jnc_inventory_buy_list');
+      const local = localStorage.getItem('crm_inventory_buy_list');
       if (local) {
         const parsed = JSON.parse(local);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -154,7 +155,7 @@ export default function SharedCartPage() {
     const ws = XLSX.utils.json_to_sheet(excelRows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Procurement_Cart');
-    XLSX.writeFile(wb, `JNC_Procurement_Cart_${metaDate}.xlsx`);
+    XLSX.writeFile(wb, `Procurement_Cart_${metaDate}.xlsx`);
   };
 
   // Download CSV
@@ -183,7 +184,7 @@ export default function SharedCartPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `JNC_Procurement_Cart_${metaDate}.csv`;
+    a.download = `Procurement_Cart_${metaDate}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -191,7 +192,9 @@ export default function SharedCartPage() {
   // Transfer / Import to CRM Cart
   const handleTransferToMyCart = () => {
     try {
-      localStorage.setItem('jnc_inventory_buy_list', JSON.stringify(items));
+      if (canStore('preferences')) {
+        localStorage.setItem('crm_inventory_buy_list', JSON.stringify(items));
+      }
       setImportedToCrm(true);
       setTimeout(() => {
         navigate('/inventory');

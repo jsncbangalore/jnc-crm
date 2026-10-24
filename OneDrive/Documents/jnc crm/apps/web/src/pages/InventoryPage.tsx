@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { canStore } from '../utils/cookieConsent';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -88,19 +89,24 @@ export default function InventoryPage() {
 
   // Buy List / Procurement Cart State
   const [buyList, setBuyList] = useState<BuyListItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('jnc_inventory_buy_list');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
+    if (canStore('preferences')) {
+      try {
+        const saved = localStorage.getItem('crm_inventory_buy_list');
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
     }
+    return [];
   });
 
-  // Save Buy List to localStorage
+  // Save Buy List to localStorage if consented
   useEffect(() => {
-    try {
-      localStorage.setItem('jnc_inventory_buy_list', JSON.stringify(buyList));
-    } catch {}
+    if (canStore('preferences')) {
+      try {
+        localStorage.setItem('crm_inventory_buy_list', JSON.stringify(buyList));
+      } catch {}
+    }
   }, [buyList]);
 
   // Share Cart Modal State
@@ -119,18 +125,28 @@ export default function InventoryPage() {
   const [shortageOnly, setShortageOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // KPI display toggles (persisted)
+  // KPI display toggles (persisted if consented)
   const [showStockKpis, setShowStockKpis] = useState<boolean>(() => {
-    return localStorage.getItem('jnc_show_stock_kpis') !== 'false';
+    if (canStore('preferences')) {
+      return localStorage.getItem('crm_show_stock_kpis') !== 'false';
+    }
+    return true;
   });
   const [showBuyListKpis, setShowBuyListKpis] = useState<boolean>(() => {
-    return localStorage.getItem('jnc_show_buylist_kpis') !== 'false';
+    if (canStore('preferences')) {
+      return localStorage.getItem('crm_show_buylist_kpis') !== 'false';
+    }
+    return true;
   });
 
   const toggleStockKpis = () => {
     setShowStockKpis((prev) => {
       const next = !prev;
-      localStorage.setItem('jnc_show_stock_kpis', String(next));
+      if (canStore('preferences')) {
+        try {
+          localStorage.setItem('crm_show_stock_kpis', String(next));
+        } catch {}
+      }
       return next;
     });
   };
@@ -138,7 +154,11 @@ export default function InventoryPage() {
   const toggleBuyListKpis = () => {
     setShowBuyListKpis((prev) => {
       const next = !prev;
-      localStorage.setItem('jnc_show_buylist_kpis', String(next));
+      if (canStore('preferences')) {
+        try {
+          localStorage.setItem('crm_show_buylist_kpis', String(next));
+        } catch {}
+      }
       return next;
     });
   };
@@ -540,7 +560,7 @@ export default function InventoryPage() {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Purchase_Order_List');
-    XLSX.writeFile(wb, `JNC_Procurement_Purchase_Order_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `Procurement_Purchase_Order_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // Download Supplier PO (CSV)
@@ -569,7 +589,7 @@ export default function InventoryPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `JNC_Procurement_Purchase_Order_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `Procurement_Purchase_Order_${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
   };
 
@@ -1710,10 +1730,10 @@ export default function InventoryPage() {
               </div>
 
               <div className="p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-[11px] text-red-700 dark:text-red-300">
-                Type <strong className="text-slate-950 dark:text-white font-mono uppercase">WIPE-INVENTORY-{(user?.tenant?.code || 'JNC').toUpperCase()}</strong> below to confirm:
+                Type <strong className="text-slate-950 dark:text-white font-mono uppercase">WIPE-INVENTORY-{(user?.tenant?.code || 'TENANT').toUpperCase()}</strong> below to confirm:
                 <input
                   type="text"
-                  placeholder={`Type WIPE-INVENTORY-${(user?.tenant?.code || 'JNC').toUpperCase()}`}
+                  placeholder={`Type WIPE-INVENTORY-${(user?.tenant?.code || 'TENANT').toUpperCase()}`}
                   value={wipeConfirmText}
                   onChange={(e) => setWipeConfirmText(e.target.value)}
                   className="input mt-2 font-mono text-center font-bold tracking-widest text-red-700 dark:text-red-300 border-red-300 dark:border-red-500/40 bg-white dark:bg-[#141722]"
@@ -1748,8 +1768,8 @@ export default function InventoryPage() {
                   disabled={
                     clearing ||
                     !wipePassword.trim() ||
-                    (wipeConfirmText.trim().toUpperCase() !== `WIPE-INVENTORY-${(user?.tenant?.code || 'JNC').toUpperCase()}` &&
-                     wipeConfirmText.trim().toUpperCase() !== `WIPE-INVENTORY${(user?.tenant?.code || 'JNC').toUpperCase()}` &&
+                    (wipeConfirmText.trim().toUpperCase() !== `WIPE-INVENTORY-${(user?.tenant?.code || 'TENANT').toUpperCase()}` &&
+                     wipeConfirmText.trim().toUpperCase() !== `WIPE-INVENTORY${(user?.tenant?.code || 'TENANT').toUpperCase()}` &&
                      wipeConfirmText.trim().toUpperCase() !== 'WIPE-INVENTORY')
                   }
                   onClick={async () => {
@@ -1909,7 +1929,7 @@ export default function InventoryPage() {
               <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-[#2A3042] gap-2 flex-wrap">
                 <a
                   href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
-                    `*JNC Procurement Material List*\nItems: ${buyList.length} components (${buyListUnitsCount} units)\n\nView live list here:\n${shareCartUrl}`
+                    `*Procurement Material List*\nItems: ${buyList.length} components (${buyListUnitsCount} units)\n\nView live list here:\n${shareCartUrl}`
                   )}`}
                   target="_blank"
                   rel="noopener noreferrer"

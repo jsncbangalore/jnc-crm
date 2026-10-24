@@ -379,7 +379,7 @@ export default function NotificationsPage() {
                   <input
                     type="email"
                     className="input text-xs"
-                    placeholder="e.g. client@company.com"
+                    placeholder="e.g. client@example.com"
                     value={replyFrom}
                     onChange={(e) => setReplyFrom(e.target.value)}
                     required

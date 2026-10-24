@@ -268,7 +268,7 @@ async function runPhase3Tests() {
         tenantId: tenantB.id,
         leadNumber: `LD-B-${timestamp}`.substring(0, 15),
         customerName: 'Secret Customer B',
-        customerPhone: '9988776655',
+        customerPhone: '',
         status: 'new',
       },
     });
@@ -301,7 +301,7 @@ async function runPhase3Tests() {
         tenantId: tenantB.id,
         companyId: companyInB.id,
         name: `Dr. Contact B ${timestamp}`,
-        phone: '9988776655',
+        phone: '',
         email: `contact.b.${timestamp}@example.com`,
       },
     });
@@ -317,7 +317,7 @@ async function runPhase3Tests() {
         tenantId: tenantB.id,
         orderNumber: `ORD-B-${timestamp}`.substring(0, 15),
         customerName: 'Buyer B',
-        customerPhone: '9876543210',
+        customerPhone: '',
         totalAmount: 50000,
       },
     });
@@ -337,7 +337,7 @@ async function runPhase3Tests() {
         tenantId: tenantB.id,
         invoiceNumber: `INV-B-${timestamp}`.substring(0, 15),
         customerName: 'Invoice Customer B',
-        customerPhone: '9876543210',
+        customerPhone: '',
         totalAmount: 15000,
       },
     });
@@ -869,13 +869,13 @@ async function runPhase3Tests() {
     recordPass('CORS Untrusted Rejection', `Calling real corsOriginCallback: origin "${testUntrustedOrigin}" rejected with "${untrustedError.message}" (no CORS headers issued)`);
   }
 
-  const testTrustedOrigin = 'https://admin.jsnc.co.in';
+  const testTrustedOrigin = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',')[0].trim() : 'http://localhost:5173';
   let trustedAllowed = false;
   corsOriginCallback(testTrustedOrigin, (err, allow) => {
     if (!err && allow) trustedAllowed = true;
   });
   if (!trustedAllowed) {
-    recordFail('CORS Trusted Allow', 'Legitimate origin admin.jsnc.co.in was blocked by corsOriginCallback');
+    recordFail('CORS Trusted Allow', `Legitimate origin ${testTrustedOrigin} was blocked by corsOriginCallback`);
   } else {
     recordPass('CORS Trusted Allow', `Calling real corsOriginCallback: legitimate origin "${testTrustedOrigin}" is permitted`);
   }
@@ -972,7 +972,7 @@ async function runPhase3Tests() {
 
   const companyByB = await companiesService.create({
     name: `Private Company B ${timestamp}`,
-    city: 'Bangalore',
+    city: 'Metropolis',
   }, scopedEmpB);
 
   const leadByB = await leadsService.createLead({

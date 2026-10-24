@@ -10,22 +10,22 @@ export default function MetaWhatsAppTab() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Domain selection states
-  const [domainMode, setDomainMode] = useState<'production' | 'api' | 'custom'>(() => {
-    const saved = localStorage.getItem('jnc_custom_webhook_domain');
+  const [domainMode, setDomainMode] = useState<'production' | 'custom'>(() => {
+    const saved = localStorage.getItem('crm_custom_webhook_domain');
     if (saved) return 'custom';
     return 'production';
   });
-  const [customDomain, setCustomDomain] = useState(() => localStorage.getItem('jnc_custom_webhook_domain') || '');
+  const [customDomain, setCustomDomain] = useState(() => localStorage.getItem('crm_custom_webhook_domain') || '');
 
   // Tenant Webhook Key states
-  const [tenantKey, setTenantKey] = useState(() => localStorage.getItem('jnc_tenant_webhook_key') || '');
+  const [tenantKey, setTenantKey] = useState(() => localStorage.getItem('crm_tenant_webhook_key') || '');
   const [showTenantKey, setShowTenantKey] = useState(false);
   const [isRegeneratingKey, setIsRegeneratingKey] = useState(false);
 
   // Meta Graph API Credentials (strictly empty if not entered by user)
-  const [phoneNumberId, setPhoneNumberId] = useState(() => localStorage.getItem('jnc_meta_phone_id') || '');
-  const [wabaId, setWabaId] = useState(() => localStorage.getItem('jnc_meta_waba_id') || '');
-  const [accessToken, setAccessToken] = useState(() => localStorage.getItem('jnc_meta_token') || '');
+  const [phoneNumberId, setPhoneNumberId] = useState(() => localStorage.getItem('crm_meta_phone_id') || '');
+  const [wabaId, setWabaId] = useState(() => localStorage.getItem('crm_meta_waba_id') || '');
+  const [accessToken, setAccessToken] = useState(() => localStorage.getItem('crm_meta_token') || '');
   const [showToken, setShowToken] = useState(false);
   const [showVerifyToken, setShowVerifyToken] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -44,7 +44,7 @@ export default function MetaWhatsAppTab() {
   }>({
     hasWebhookKey: false,
     isWhatsAppConfigured: false,
-    verifyToken: 'jnc_meta_verify_secret_2026',
+    verifyToken: 'meta_verify_token',
     stats: {
       whatsappCount: 0,
       lastLeadAt: null,
@@ -61,9 +61,6 @@ export default function MetaWhatsAppTab() {
     if (domainMode === 'custom' && customDomain.trim()) {
       return customDomain.trim().replace(/\/+$/, '');
     }
-    if (domainMode === 'api') {
-      return 'https://api.jsnc.co.in';
-    }
     return getPublicWebhookBaseUrl();
   };
 
@@ -73,7 +70,7 @@ export default function MetaWhatsAppTab() {
   // Exact Callback URL for Meta
   const keyToDisplay = tenantKey || (liveConfig.hasWebhookKey ? '<YOUR_TENANT_KEY>' : 'whk_tenant_key');
   const callbackUrl = `${publicDomain}/api/v1/webhooks/whatsapp/${keyToDisplay}`;
-  const verifyToken = liveConfig.verifyToken || 'jnc_meta_verify_secret_2026';
+  const verifyToken = liveConfig.verifyToken || 'meta_verify_token';
 
   // Fetch real tenant config and statistics on mount
   const fetchTenantConfig = async () => {
@@ -84,7 +81,7 @@ export default function MetaWhatsAppTab() {
           hasWebhookKey: Boolean(res.data.hasWebhookKey),
           tenantCode: res.data.tenantCode,
           isWhatsAppConfigured: Boolean(res.data.isWhatsAppConfigured),
-          verifyToken: res.data.verifyToken || 'jnc_meta_verify_secret_2026',
+          verifyToken: res.data.verifyToken || 'meta_verify_token',
           stats: {
             whatsappCount: res.data.stats?.whatsappCount || 0,
             lastLeadAt: res.data.stats?.lastLeadAt || null,
@@ -116,7 +113,7 @@ export default function MetaWhatsAppTab() {
       const res = await webhooksApi.regenerateKey();
       if (res.data?.webhookKey) {
         setTenantKey(res.data.webhookKey);
-        localStorage.setItem('jnc_tenant_webhook_key', res.data.webhookKey);
+        localStorage.setItem('crm_tenant_webhook_key', res.data.webhookKey);
         setLiveConfig((prev) => ({ ...prev, hasWebhookKey: true }));
         setShowTenantKey(true);
       }
@@ -164,13 +161,13 @@ export default function MetaWhatsAppTab() {
 
   const handleSaveCredentials = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('jnc_meta_phone_id', phoneNumberId.trim());
-    localStorage.setItem('jnc_meta_waba_id', wabaId.trim());
-    localStorage.setItem('jnc_meta_token', accessToken.trim());
+    localStorage.setItem('crm_meta_phone_id', phoneNumberId.trim());
+    localStorage.setItem('crm_meta_waba_id', wabaId.trim());
+    localStorage.setItem('crm_meta_token', accessToken.trim());
     if (domainMode === 'custom') {
-      localStorage.setItem('jnc_custom_webhook_domain', customDomain.trim());
+      localStorage.setItem('crm_custom_webhook_domain', customDomain.trim());
     } else {
-      localStorage.removeItem('jnc_custom_webhook_domain');
+      localStorage.removeItem('crm_custom_webhook_domain');
     }
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
@@ -312,7 +309,7 @@ export default function MetaWhatsAppTab() {
         </div>
 
         {/* Domain radio options */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <label
             onClick={() => setDomainMode('production')}
             className={`p-3 rounded-xl border text-xs cursor-pointer transition-all flex items-start gap-2.5 ${
@@ -329,29 +326,8 @@ export default function MetaWhatsAppTab() {
               className="mt-0.5 text-crm-blue"
             />
             <div>
-              <p className="text-xs font-bold">admin.jsnc.co.in</p>
-              <span className="text-[10px] text-slate-400 font-normal">Primary Production HTTPS</span>
-            </div>
-          </label>
-
-          <label
-            onClick={() => setDomainMode('api')}
-            className={`p-3 rounded-xl border text-xs cursor-pointer transition-all flex items-start gap-2.5 ${
-              domainMode === 'api'
-                ? 'border-crm-blue bg-blue-50/50 dark:bg-blue-950/20 text-slate-900 dark:text-white font-bold'
-                : 'border-slate-200 dark:border-[#2A3042] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5'
-            }`}
-          >
-            <input
-              type="radio"
-              name="domainMode"
-              checked={domainMode === 'api'}
-              onChange={() => setDomainMode('api')}
-              className="mt-0.5 text-crm-blue"
-            />
-            <div>
-              <p className="text-xs font-bold">api.jsnc.co.in</p>
-              <span className="text-[10px] text-slate-400 font-normal">Dedicated API Subdomain</span>
+              <p className="text-xs font-bold">Primary Production URL</p>
+              <span className="text-[10px] text-slate-400 font-normal">Configured API / Webhook Host</span>
             </div>
           </label>
 
@@ -389,7 +365,7 @@ export default function MetaWhatsAppTab() {
                 value={customDomain}
                 onChange={(e) => {
                   setCustomDomain(e.target.value);
-                  localStorage.setItem('jnc_custom_webhook_domain', e.target.value.trim());
+                  localStorage.setItem('crm_custom_webhook_domain', e.target.value.trim());
                 }}
                 placeholder="https://xxxx.trycloudflare.com"
                 className="flex-1 text-xs font-mono rounded-xl border border-slate-200/90 dark:border-[#22293A] bg-slate-50 dark:bg-[#0B0D13] px-3.5 py-2 text-slate-800 dark:text-slate-200 outline-none focus:border-crm-blue"
@@ -527,7 +503,7 @@ export default function MetaWhatsAppTab() {
                 value={tenantKey}
                 onChange={(e) => {
                   setTenantKey(e.target.value.trim());
-                  localStorage.setItem('jnc_tenant_webhook_key', e.target.value.trim());
+                  localStorage.setItem('crm_tenant_webhook_key', e.target.value.trim());
                 }}
                 placeholder="whk_xxxxxxxxxxxxxxxxxxxxxxxx"
                 className="flex-1 text-xs font-mono bg-white dark:bg-[#0B0D13] border border-slate-200/90 dark:border-[#22293A] rounded-xl px-3 py-2 text-slate-800 dark:text-slate-200 outline-none"
@@ -586,7 +562,7 @@ export default function MetaWhatsAppTab() {
                   type="text"
                   value={phoneNumberId}
                   onChange={(e) => setPhoneNumberId(e.target.value)}
-                  placeholder="e.g. 104829104829104"
+                  placeholder="e.g. 100000000000001"
                   className="w-full text-xs font-mono rounded-xl border border-slate-200/90 dark:border-[#22293A] bg-slate-50 dark:bg-[#0B0D13] pl-9 pr-3.5 py-2.5 text-slate-800 dark:text-slate-200 outline-none focus:border-crm-blue"
                 />
               </div>

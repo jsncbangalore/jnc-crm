@@ -1,11 +1,14 @@
 {
-  "name": "jnc-crm-monorepo",
+  "name": "crm-monorepo",
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
+    "scan:branding": "node scripts/scan-branding.js",
+    "test:white-label": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-white-label.ts",
     "start:api": "npm --workspace=apps/api run start:dev",
     "start:web": "npm --workspace=apps/web run dev",
     "build": "npm --workspace=apps/api run build && npm --workspace=apps/web run build",
@@ -29,11 +32,19 @@
     "check:prisma-fields": "node scripts/check-prisma-fields.js",
     "mail:test": "node scripts/mail-test.js",
     "backend:push": "node scripts/push-backend.js",
+    "admin:set-password": "npm --workspace=apps/api run admin:set-password",
+    "admin:reset-2fa": "npm --workspace=apps/api run admin:reset-2fa",
+    "admin:set-phone": "npm --workspace=apps/api run admin:set-phone",
+    "test:auth-security": "npm --workspace=apps/api run test:auth-security",
+    "test:page-registry": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-page-registry.ts",
+    "test:access-control": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-page-access-control.ts",
+    "migration:preflight": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/migration-preflight.ts",
+    "test:e2e-session": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-e2e-session.ts",
     "host:env": "node scripts/host-env.js"
   },
   "devDependencies": {
     "adm-zip": "^0.6.1",
-    "playwright": "^1.63.0",
+    "playwright": "1.63.0",
     "playwright-core": "^1.62.1",
     "supertest": "^7.3.1"
   },

@@ -31,7 +31,7 @@ function generateSecurePassword(): string {
 
 async function main() {
   console.log('========================================================================');
-  console.log('JNC-CRM PRODUCTION DATABASE BOOTSTRAPPER');
+  console.log('CRM PRODUCTION DATABASE BOOTSTRAPPER');
   console.log('Target Database: Clean Production Supabase Instance');
   console.log('========================================================================\n');
 
@@ -69,15 +69,21 @@ async function main() {
     }
 
     // 2. Validate configuration from environment
-    const ownerEmail = (process.env.OWNER_EMAIL || 'owner@jsnc.co.in').trim().toLowerCase();
-    const platformAdminEmail = (process.env.PLATFORM_ADMIN_EMAIL || 'platform@jsnc.co.in').trim().toLowerCase();
+    const ownerEmail = (process.env.OWNER_EMAIL || '').trim().toLowerCase();
+    const platformAdminEmail = (process.env.PLATFORM_ADMIN_EMAIL || '').trim().toLowerCase();
+
+    if (!ownerEmail || !platformAdminEmail) {
+      console.error('\n[CONFIG ERROR] OWNER_EMAIL and PLATFORM_ADMIN_EMAIL environment variables are required.');
+      process.exit(1);
+    }
 
     if (ownerEmail === platformAdminEmail) {
       console.error('\n[SECURITY ERROR] OWNER_EMAIL and PLATFORM_ADMIN_EMAIL must be different accounts.');
       process.exit(1);
     }
 
-    const tenantName = (process.env.TENANT_NAME || 'JNC Technologies').trim();
+    const tenantName = (process.env.TENANT_NAME || 'Primary Organization').trim();
+    const tenantCode = (process.env.TENANT_CODE || 'ORG').trim().toUpperCase();
 
     // 3. Generate high-entropy credentials
     const ownerPassword = generateSecurePassword();
@@ -91,14 +97,14 @@ async function main() {
 
     // 5. Execute creation within a single atomic database transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Create internal JNC tenant
-      const jncTenant = await tx.tenant.create({
+      // Create internal tenant
+      const primaryTenant = await tx.tenant.create({
         data: {
-          code: 'JNC',
+          code: tenantCode,
           name: tenantName,
-          slug: 'jnc',
+          slug: tenantCode.toLowerCase(),
           isInternal: true,
-          currency: 'INR',
+          currency: process.env.CURRENCY || 'INR',
           status: 'active',
           webhookKeyHash,
         },
@@ -109,11 +115,11 @@ async function main() {
         data: {
           email: ownerEmail,
           name: process.env.OWNER_NAME?.trim() || 'Owner',
-          employeeCode: 'EMP-JNC-001',
+          employeeCode: 'EMP-001',
           role: 'tenant_admin',
           passwordHash: ownerPasswordHash,
           mustResetPassword: true,
-          tenantId: jncTenant.id,
+          tenantId: primaryTenant.id,
         },
       });
 
@@ -135,13 +141,13 @@ async function main() {
         data: {
           action: 'PROD_BOOTSTRAP',
           entityName: 'Tenant',
-          entityId: jncTenant.id,
-          tenantId: jncTenant.id,
+          entityId: primaryTenant.id,
+          tenantId: primaryTenant.id,
           actorId: ownerUser.id,
           actorName: ownerUser.name,
           afterState: JSON.stringify({
             message: 'Clean production database bootstrap complete.',
-            tenantCode: 'JNC',
+            tenantCode,
             ownerEmail,
             platformAdminEmail,
             timestamp: new Date().toISOString(),
@@ -149,7 +155,7 @@ async function main() {
         },
       });
 
-      return { jncTenant, ownerUser, platformUser };
+      return { primaryTenant, ownerUser, platformUser };
     });
 
     // 6. Print credentials ONCE to console
@@ -157,10 +163,10 @@ async function main() {
     console.log('SUCCESS: PRODUCTION DATABASE INITIALIZATION COMPLETE');
     console.log('========================================================================\n');
     console.log(`Tenant Created:`);
-    console.log(`  ID:          ${result.jncTenant.id}`);
-    console.log(`  Code:        ${result.jncTenant.code}`);
-    console.log(`  Name:        ${result.jncTenant.name}`);
-    console.log(`  Internal:    ${result.jncTenant.isInternal}`);
+    console.log(`  ID:          ${result.primaryTenant.id}`);
+    console.log(`  Code:        ${result.primaryTenant.code}`);
+    console.log(`  Name:        ${result.primaryTenant.name}`);
+    console.log(`  Internal:    ${result.primaryTenant.isInternal}`);
     console.log(`  Webhook Key: ${plainWebhookKey}`);
     console.log(`\nOwner Account (Tenant Admin):`);
     console.log(`  Email:       ${ownerEmail}`);

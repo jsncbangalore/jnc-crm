@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { canStore } from '../utils/cookieConsent';
 import { useNavigate } from 'react-router-dom';
 import {
   Globe, MessageSquare, Zap, BarChart3,
@@ -26,10 +27,13 @@ export default function StartSetupPage() {
   // Active studio module tab
   const [activeTab, setActiveTab] = useState<StudioTab>('builder');
   
-  // Left Sidebar Collapsed state (Hide / Unhide)
+  // Left Sidebar Collapsed state (Hide / Unhide, persisted if consented)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('jnc_setup_sidebar_collapsed') === 'true';
+      if (canStore('preferences')) {
+        return localStorage.getItem('crm_setup_sidebar_collapsed') === 'true';
+      }
+      return false;
     } catch {
       return false;
     }
@@ -39,7 +43,9 @@ export default function StartSetupPage() {
     setIsSidebarCollapsed((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem('jnc_setup_sidebar_collapsed', String(next));
+        if (canStore('preferences')) {
+          localStorage.setItem('crm_setup_sidebar_collapsed', String(next));
+        }
       } catch {}
       return next;
     });
@@ -124,13 +130,15 @@ export default function StartSetupPage() {
             onClick={() => isSidebarCollapsed && toggleSidebar()}
             title={isSidebarCollapsed ? 'Click to expand sidebar' : undefined}
           >
-            <div className="h-9 w-9 rounded-xl bg-white dark:bg-[#1A2030] flex items-center justify-center shadow-xs border border-slate-200/90 dark:border-white/10 shrink-0">
-              <img
-                src="/jnc-logo.jpg"
-                alt="JS Network Communication"
-                className="h-5 w-auto object-contain"
-              />
-            </div>
+            {branding.companyLogoUrl ? (
+              <div className="h-9 w-9 rounded-xl bg-white dark:bg-[#1A2030] flex items-center justify-center shadow-xs border border-slate-200/90 dark:border-white/10 shrink-0">
+                <img
+                  src={branding.companyLogoUrl}
+                  alt={branding.companyDisplayName}
+                  className="h-5 w-auto object-contain"
+                />
+              </div>
+            ) : null}
             {!isSidebarCollapsed && (
               <div className="leading-tight overflow-hidden">
                 <div className="flex items-center gap-1.5">

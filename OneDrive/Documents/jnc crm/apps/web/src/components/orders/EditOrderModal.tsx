@@ -285,7 +285,7 @@ export default function EditOrderModal({
                     <input
                       type="email"
                       className="input pl-9 text-xs font-mono"
-                      placeholder="billing@customer.com"
+                      placeholder="billing@example.com"
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
                     />

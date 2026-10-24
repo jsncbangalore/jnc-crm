@@ -5,6 +5,8 @@ import AppLayout from './components/layout/AppLayout';
 import TeamPageGuard from './components/layout/TeamPageGuard';
 import ForcePasswordResetPage from './pages/ForcePasswordResetPage';
 import { isPlatformOwner, getRoleRedirectPath } from './utils/roles';
+import { getImpersonationAccessToken } from './services/api';
+import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import LeadsPage from './pages/LeadsPage';
@@ -33,6 +35,8 @@ import PlatformLoginPage from './pages/PlatformLoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import MyAccountPage from './pages/MyAccountPage';
+import CookieConsentPage from './pages/CookieConsentPage';
+import CookieConsentBanner from './components/common/CookieConsentBanner';
 import { PopupProvider } from './contexts/PopupContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { BrandingProvider } from './contexts/BrandingContext';
@@ -62,8 +66,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) {
-    const isPlatformPath = typeof window !== 'undefined' && window.location.pathname.startsWith('/platform');
-    return <Navigate to={isPlatformPath ? "/platform/login" : "/login"} replace />;
+    return <Navigate to="/login" replace />;
   }
 
   if (user?.mustResetPassword) {
@@ -107,8 +110,7 @@ function PlatformOwnerGuard({ children }: { children: React.ReactNode }) {
 
 function CrmRouteGuard({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const isImpersonating =
-    typeof window !== 'undefined' && !!sessionStorage.getItem('jnc_impersonate_token');
+  const isImpersonating = Boolean((user as any)?.isImpersonating || getImpersonationAccessToken());
 
   if ((isPlatformOwner(user) || user?.role === 'platform_super_admin') && !user?.tenantId && !isImpersonating) {
     return <Navigate to="/platform/companies" replace />;
@@ -129,6 +131,47 @@ function RootLandingRoute() {
   return <DashboardPage />;
 }
 
+function RootIndexRoute() {
+  const { isAuthenticated, isLoading, user } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-[#0F1117] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-crm-blue-DEFAULT/20 border border-crm-blue-DEFAULT/30 flex items-center justify-center">
+            <span className="text-lg font-black text-crm-blue-DEFAULT">J</span>
+          </div>
+          <div className="flex gap-1">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-1.5 h-1.5 rounded-full bg-crm-blue-DEFAULT/60 animate-bounce"
+                style={{ animationDelay: `${i * 0.15}s` }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Not logged in -> Show Landing Page immediately (index before login)
+  if (!isAuthenticated || !user) {
+    return <LandingPage />;
+  }
+
+  // Logged in -> Show AppLayout with dashboard/role home
+  return (
+    <AppLayout>
+      <TeamPageGuard pageKey="dashboard">
+        <CrmRouteGuard>
+          <RootLandingRoute />
+        </CrmRouteGuard>
+      </TeamPageGuard>
+    </AppLayout>
+  );
+}
+
 function AppRoutes() {
   const { isAuthenticated, user, isLoading } = useAuth();
 
@@ -138,33 +181,28 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route
-        path="/login"
-        element={
-          isAuthenticated ? (
-            <Navigate to={isPlatformOwner(user) ? "/platform/companies" : getRoleRedirectPath(user)} replace />
-          ) : (
-            <LoginPage />
-          )
-        }
-      />
+      {/* Front root index: Landing Page when not logged in, Dashboard when logged in */}
+      <Route path="/" element={<RootIndexRoute />} />
+
+      {/* Public Pages */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/features" element={<LandingPage />} />
+      <Route path="/solutions" element={<LandingPage />} />
+      <Route path="/pricing" element={<LandingPage />} />
+      <Route path="/landing" element={<LandingPage />} />
+      <Route path="/start" element={<Navigate to="/login" replace />} />
       <Route path="/inquiry" element={<PublicInquiryPage />} />
       <Route path="/quote-request" element={<PublicInquiryPage />} />
+      <Route path="/cookies" element={<CookieConsentPage />} />
+      <Route path="/cookie-policy" element={<CookieConsentPage />} />
       <Route path="/shared-cart" element={<SharedCartPage />} />
       <Route path="/cart-share" element={<SharedCartPage />} />
       <Route path="/cart" element={<SharedCartPage />} />
-      <Route
-        path="/platform/login"
-        element={
-          isAuthenticated ? (
-            <Navigate to={isPlatformOwner(user) ? "/platform/companies" : getRoleRedirectPath(user)} replace />
-          ) : (
-            <PlatformLoginPage />
-          )
-        }
-      />
+      <Route path="/platform/login" element={<PlatformLoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/reset-password" element={<Navigate to="/forgot-password" replace />} />
+
+      {/* Standalone Protected Settings & Setup Routes */}
       <Route
         path="/start-setup"
         element={
@@ -235,37 +273,35 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
+      {/* Authenticated Workspace Layout */}
       <Route
-        path="/"
         element={
           <ProtectedRoute>
             <AppLayout />
           </ProtectedRoute>
         }
       >
-        <Route index element={<TeamPageGuard pageKey="dashboard"><CrmRouteGuard><RootLandingRoute /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="leads" element={<TeamPageGuard pageKey="leads"><CrmRouteGuard><LeadsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="lead-flow" element={<Navigate to="/start-setup" replace />} />
-        <Route path="start-setup" element={<Navigate to="/start-setup" replace />} />
-        <Route path="lead-setup" element={<Navigate to="/start-setup" replace />} />
-        <Route path="notifications" element={<TeamPageGuard pageKey="dashboard"><CrmRouteGuard><NotificationsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="orders" element={<TeamPageGuard pageKey="orders"><CrmRouteGuard><OrdersPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="invoices" element={<TeamPageGuard pageKey="invoices"><CrmRouteGuard><InvoicesPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="inventory" element={<TeamPageGuard pageKey="inventory"><CrmRouteGuard><InventoryPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="purchase-bills" element={<TeamPageGuard pageKey="purchase_bills"><CrmRouteGuard><PurchaseBillsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="suppliers" element={<Navigate to="/purchase-bills" replace />} />
-        <Route path="shipments" element={<TeamPageGuard pageKey="shipments"><CrmRouteGuard><ShipmentsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="quotations" element={<TeamPageGuard pageKey="quotations"><CrmRouteGuard><QuotationsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="users" element={<Navigate to="/users" replace />} />
-        <Route path="platform/companies" element={<PlatformOwnerGuard><PlatformCompaniesPage /></PlatformOwnerGuard>} />
-        <Route path="platform/admins" element={<PlatformOwnerGuard><PlatformAdminsPage /></PlatformOwnerGuard>} />
-        <Route path="settings/branding" element={<Navigate to="/settings/branding" replace />} />
-        <Route path="automation" element={<TeamPageGuard pageKey="automation"><CrmRouteGuard><AutomationPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="setup/objects" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="setup/objects/:objectId" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="objects/:objectApiName" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><CustomObjectRecordsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="daily-activities" element={<TeamPageGuard pageKey="daily_activities"><CrmRouteGuard><DailyActivitiesPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="account" element={<MyAccountPage />} />
+        <Route path="/dashboard" element={<TeamPageGuard pageKey="dashboard"><CrmRouteGuard><DashboardPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/leads" element={<TeamPageGuard pageKey="leads"><CrmRouteGuard><LeadsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/lead-flow" element={<Navigate to="/start-setup" replace />} />
+        <Route path="/lead-setup" element={<Navigate to="/start-setup" replace />} />
+        <Route path="/notifications" element={<TeamPageGuard pageKey="dashboard"><CrmRouteGuard><NotificationsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/orders" element={<TeamPageGuard pageKey="orders"><CrmRouteGuard><OrdersPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/invoices" element={<TeamPageGuard pageKey="invoices"><CrmRouteGuard><InvoicesPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/inventory" element={<TeamPageGuard pageKey="inventory"><CrmRouteGuard><InventoryPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/purchase-bills" element={<TeamPageGuard pageKey="purchase_bills"><CrmRouteGuard><PurchaseBillsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/suppliers" element={<Navigate to="/purchase-bills" replace />} />
+        <Route path="/shipments" element={<TeamPageGuard pageKey="shipments"><CrmRouteGuard><ShipmentsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/quotations" element={<TeamPageGuard pageKey="quotations"><CrmRouteGuard><QuotationsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/platform/companies" element={<PlatformOwnerGuard><PlatformCompaniesPage /></PlatformOwnerGuard>} />
+        <Route path="/platform/admins" element={<PlatformOwnerGuard><PlatformAdminsPage /></PlatformOwnerGuard>} />
+        <Route path="/automation" element={<TeamPageGuard pageKey="automation"><CrmRouteGuard><AutomationPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/setup/objects" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/setup/objects/:objectId" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/objects/:objectApiName" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><CustomObjectRecordsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/daily-activities" element={<TeamPageGuard pageKey="daily_activities"><CrmRouteGuard><DailyActivitiesPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/account" element={<MyAccountPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
@@ -273,6 +309,18 @@ function AppRoutes() {
 }
 
 export default function App() {
+  React.useEffect(() => {
+    // Handle body margins, padding, and stable scrollbar gutter purely in React
+    document.body.style.margin = '0';
+    document.body.style.padding = '0';
+    document.documentElement.style.scrollbarGutter = 'stable';
+    return () => {
+      document.body.style.margin = '';
+      document.body.style.padding = '';
+      document.documentElement.style.scrollbarGutter = '';
+    };
+  }, []);
+
   return (
     <ThemeProvider>
       <AuthProvider>
@@ -280,6 +328,7 @@ export default function App() {
           <PopupProvider>
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <AppRoutes />
+              <CookieConsentBanner />
             </BrowserRouter>
           </PopupProvider>
         </BrandingProvider>

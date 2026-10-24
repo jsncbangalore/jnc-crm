@@ -507,6 +507,8 @@ export default function MailAccountsPage() {
                         <div className={`p-2.5 rounded-xl border text-xs ${
                           health.dkim.status === 'found'
                             ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40 text-emerald-900 dark:text-emerald-300'
+                            : health.dkim.status === 'not_found_common'
+                            ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40 text-amber-900 dark:text-amber-300'
                             : 'bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800/40 text-red-900 dark:text-red-300'
                         }`}>
                           <div className="flex items-center justify-between font-bold">
@@ -514,6 +516,10 @@ export default function MailAccountsPage() {
                             {health.dkim.status === 'found' ? (
                               <span className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
                                 <CheckCircle2 size={13} /> Found ({health.dkim.selector || 'default'})
+                              </span>
+                            ) : health.dkim.status === 'not_found_common' ? (
+                              <span className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                                <AlertCircle size={13} /> Not found for common names
                               </span>
                             ) : (
                               <span className="flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400 font-semibold">
@@ -614,7 +620,7 @@ export default function MailAccountsPage() {
                       <input
                         type="email"
                         className="input text-xs pl-8 font-mono"
-                        placeholder="e.g. sales@yourcompany.com or billing@yourcompany.com"
+                        placeholder="e.g. sales@example.com or billing@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         autoFocus

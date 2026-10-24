@@ -6,28 +6,26 @@
  * ----------------------------------------------------- */
 
 import axios from 'axios';
+import { acquireCrossTabRefreshLock, broadcastSessionChanged } from '../utils/crossTabSync';
+import { clearTabSessionUser } from '../utils/sessionSync';
 
 export const getApiBaseUrl = () => {
   if (typeof window !== 'undefined') {
     const isTestTwoOrigin =
       window.location.port === '4173' &&
       (window.location.search.includes('originB=3333') ||
-        sessionStorage.getItem('jnc_origin_b') === '3333' ||
         Boolean((window as any).__ORIGIN_B__));
     if (isTestTwoOrigin) {
       return `${window.location.protocol}//${window.location.hostname}:3333/api/v1`;
     }
   }
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL as string;
+  }
   if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+    return import.meta.env.VITE_API_URL as string;
   }
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === '127.0.0.1' || !host.includes('.')) {
-      return '/api/v1';
-    }
-  }
-  return 'https://api.jsnc.co.in/api/v1';
+  return '/api/v1';
 };
 
 /**
@@ -36,19 +34,22 @@ export const getApiBaseUrl = () => {
  */
 export const getPublicWebhookBaseUrl = (): string => {
   if (typeof window !== 'undefined') {
-    const customTunnel = localStorage.getItem('jnc_custom_webhook_domain');
+    const customTunnel = localStorage.getItem('crm_custom_webhook_domain');
     if (customTunnel && customTunnel.trim().startsWith('http')) {
       return customTunnel.trim().replace(/\/+$/, '');
     }
     const isDevHost = window.location.hostname.startsWith('local') || window.location.hostname === '127.0.0.1';
-    if (origin.startsWith('https://') && !isDevHost) {
-      return origin;
+    if (window.location.origin.startsWith('https://') && !isDevHost) {
+      return window.location.origin;
     }
   }
   if (import.meta.env.VITE_PUBLIC_API_URL) {
     return (import.meta.env.VITE_PUBLIC_API_URL as string).replace(/\/+$/, '');
   }
-  return 'https://admin.jsnc.co.in';
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return '';
 };
 
 const api = axios.create({
@@ -66,14 +67,18 @@ export const resolveFileUrl = (url: string | null | undefined): string => {
     return url;
   }
   const apiBase = getApiBaseUrl();
-  let apiOrigin = '';
+  let apiOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   try {
-    apiOrigin = new URL(apiBase, typeof window !== 'undefined' ? window.location.origin : 'https://api.jsnc.co.in').origin;
+    if (apiBase.startsWith('http://') || apiBase.startsWith('https://')) {
+      apiOrigin = new URL(apiBase).origin;
+    } else if (apiOrigin) {
+      apiOrigin = new URL(apiBase, apiOrigin).origin;
+    }
   } catch {
     apiOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   }
   if (url.startsWith('/')) {
-    if (url === '/jnc-logo.jpg' || url.startsWith('/assets/')) {
+    if (url.startsWith('/assets/')) {
       return url;
     }
     return `${apiOrigin}${url}`;
@@ -101,8 +106,40 @@ export const fetchPrivateFileBlobUrl = async (url: string): Promise<string> => {
   return URL.createObjectURL(res.data);
 };
 
-let _inMemoryStaffToken: string | null = null;
-let _inMemoryPlatformToken: string | null = null;
+const STAFF_TOKEN_STORAGE_KEY = 'crm_staff_token';
+const PLATFORM_TOKEN_STORAGE_KEY = 'crm_platform_token';
+const STAFF_REFRESH_KEY = 'crm_refresh_token_fb';
+const PLATFORM_REFRESH_KEY = 'platform_refresh_token_fb';
+
+let _inMemoryStaffToken: string | null =
+  typeof window !== 'undefined' ? localStorage.getItem(STAFF_TOKEN_STORAGE_KEY) : null;
+let _inMemoryPlatformToken: string | null =
+  typeof window !== 'undefined' ? localStorage.getItem(PLATFORM_TOKEN_STORAGE_KEY) : null;
+let _currentTabUserId: string | null =
+  typeof window !== 'undefined'
+    ? sessionStorage.getItem('crm_tab_user_id') || localStorage.getItem('crm_tab_user_id')
+    : null;
+
+export const setCurrentTabUserId = (id: string | null) => {
+  _currentTabUserId = id;
+  if (typeof window !== 'undefined') {
+    if (id) {
+      sessionStorage.setItem('crm_tab_user_id', id);
+      localStorage.setItem('crm_tab_user_id', id);
+    } else {
+      sessionStorage.removeItem('crm_tab_user_id');
+      localStorage.removeItem('crm_tab_user_id');
+    }
+  }
+};
+
+export const getCurrentTabUserId = (): string | null => {
+  if (_currentTabUserId) return _currentTabUserId;
+  if (typeof window !== 'undefined') {
+    return sessionStorage.getItem('crm_tab_user_id') || localStorage.getItem('crm_tab_user_id');
+  }
+  return null;
+};
 
 export const isPlatformPath = (pathname?: string): boolean => {
   const p = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
@@ -112,6 +149,11 @@ export const isPlatformPath = (pathname?: string): boolean => {
 export const isPublicRoute = (pathname?: string): boolean => {
   const p = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
   return (
+    p === '/' ||
+    p === '/features' ||
+    p === '/solutions' ||
+    p === '/pricing' ||
+    p === '/landing' ||
     p === '/login' ||
     p === '/platform/login' ||
     p === '/forgot-password' ||
@@ -124,50 +166,86 @@ export const isPublicRoute = (pathname?: string): boolean => {
   );
 };
 
+let _inMemoryImpersonateToken: string | null = null;
+
+export const setImpersonationAccessToken = (token: string | null) => {
+  _inMemoryImpersonateToken = token;
+};
+
+export const getImpersonationAccessToken = (): string | null => {
+  return _inMemoryImpersonateToken;
+};
+
 export const setAccessToken = (token: string | null, forcePlatform?: boolean) => {
   const isPlatform = forcePlatform !== undefined ? forcePlatform : isPlatformPath();
   if (isPlatform) {
-    _inMemoryPlatformToken = token;
+    setPlatformAccessToken(token);
   } else {
-    _inMemoryStaffToken = token;
+    setStaffAccessToken(token);
   }
 };
 
 export const setStaffAccessToken = (token: string | null) => {
   _inMemoryStaffToken = token;
+  if (typeof window !== 'undefined') {
+    if (token) {
+      localStorage.setItem(STAFF_TOKEN_STORAGE_KEY, token);
+    } else {
+      localStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
+    }
+  }
 };
 
 export const setPlatformAccessToken = (token: string | null) => {
   _inMemoryPlatformToken = token;
+  if (typeof window !== 'undefined') {
+    if (token) {
+      localStorage.setItem(PLATFORM_TOKEN_STORAGE_KEY, token);
+    } else {
+      localStorage.removeItem(PLATFORM_TOKEN_STORAGE_KEY);
+    }
+  }
 };
 
 export const getAccessToken = (forcePlatform?: boolean) => {
-  if (typeof window !== 'undefined') {
-    const impToken = sessionStorage.getItem('jnc_impersonate_token');
-    if (impToken) {
-      return impToken;
-    }
+  if (_inMemoryImpersonateToken) {
+    return _inMemoryImpersonateToken;
   }
   const isPlatform = forcePlatform !== undefined ? forcePlatform : isPlatformPath();
-  return isPlatform ? _inMemoryPlatformToken : _inMemoryStaffToken;
+  if (isPlatform) {
+    if (!_inMemoryPlatformToken && typeof window !== 'undefined') {
+      _inMemoryPlatformToken = localStorage.getItem(PLATFORM_TOKEN_STORAGE_KEY);
+    }
+    return _inMemoryPlatformToken;
+  } else {
+    if (!_inMemoryStaffToken && typeof window !== 'undefined') {
+      _inMemoryStaffToken = localStorage.getItem(STAFF_TOKEN_STORAGE_KEY);
+    }
+    return _inMemoryStaffToken;
+  }
 };
 
-// Refresh tokens are transported exclusively via HttpOnly, SameSite=Strict cookies.
-// Tokens are NEVER stored in localStorage or accessible to JavaScript, preventing token theft.
-const STAFF_REFRESH_KEY = 'jnc_refresh_token_fb';
-const PLATFORM_REFRESH_KEY = 'jnc_platform_refresh_token_fb';
-
-export const getStoredRefreshToken = (_isPlatform?: boolean): string | null => {
-  return null;
+export const getStoredRefreshToken = (isPlatform?: boolean): string | null => {
+  if (typeof window === 'undefined') return null;
+  const key = isPlatform ? PLATFORM_REFRESH_KEY : STAFF_REFRESH_KEY;
+  try {
+    return localStorage.getItem(key) || sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
 };
 
-export const setStoredRefreshToken = (_token: string | null, isPlatform?: boolean) => {
+export const setStoredRefreshToken = (token: string | null, isPlatform?: boolean) => {
   if (typeof window === 'undefined') return;
   const key = isPlatform ? PLATFORM_REFRESH_KEY : STAFF_REFRESH_KEY;
   try {
-    // Purge any legacy token entries from browser storage
-    sessionStorage.removeItem(key);
-    localStorage.removeItem(key);
+    if (token) {
+      localStorage.setItem(key, token);
+      sessionStorage.setItem(key, token);
+    } else {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    }
   } catch {
     // ignore
   }
@@ -196,46 +274,45 @@ export const performStaffRefresh = async (): Promise<any> => {
     return _activeStaffRefreshPromise;
   }
 
+  const expectedUserId = getCurrentTabUserId();
+
   _activeStaffRefreshPromise = (async () => {
     try {
-      const refreshUrl = `${getApiBaseUrl()}/auth/refresh`;
-      const fallbackToken = getStoredRefreshToken(false);
-      const res = await axios.post(
-        refreshUrl,
-        fallbackToken ? { refreshToken: fallbackToken } : {},
-        {
-          withCredentials: true,
-          timeout: 60000,
-          headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/json',
-          },
+      const res = await acquireCrossTabRefreshLock('staff', expectedUserId, async () => {
+        const refreshUrl = `${getApiBaseUrl()}/auth/refresh`;
+        const fallbackToken = getStoredRefreshToken(false);
+        const payload: Record<string, any> = fallbackToken ? { refreshToken: fallbackToken } : {};
+        if (expectedUserId) {
+          payload.expectedUserId = expectedUserId;
         }
-      );
+
+        return axios.post(
+          refreshUrl,
+          payload,
+          {
+            withCredentials: true,
+            timeout: 60000,
+            headers: {
+              'X-Requested-With': 'XMLHttpRequest',
+              'Content-Type': 'application/json',
+              ...(expectedUserId ? { 'X-Expected-User-Id': expectedUserId } : {}),
+            },
+          }
+        );
+      });
 
       const data = res.data;
       if (typeof window !== 'undefined' && data?.user) {
-        const tabUserId = sessionStorage.getItem('jnc_tab_user_id');
-        if (tabUserId && tabUserId !== data.user.id) {
+        if (expectedUserId && expectedUserId !== data.user.id) {
+          setStaffAccessToken(null);
+          clearTabSessionUser();
           window.dispatchEvent(
-            new CustomEvent('jnc:session-conflict', {
-              detail: {
-                expectedUser: {
-                  id: tabUserId,
-                  email: sessionStorage.getItem('jnc_tab_user_email') || '',
-                  tenantId: sessionStorage.getItem('jnc_tab_tenant_id') || '',
-                  tenantName: sessionStorage.getItem('jnc_tab_tenant_name') || '',
-                  tenantCode: sessionStorage.getItem('jnc_tab_tenant_code') || '',
-                  portal: 'staff',
-                },
-                incomingUser: data.user,
-                incomingAccessToken: data.accessToken,
-                incomingRefreshToken: data.refreshToken,
-              },
+            new CustomEvent('crm:session-conflict-reload', {
+              detail: { message: 'You signed in with another account in a different tab' },
             })
           );
-          const err = new Error('CROSS_TAB_SESSION_CONFLICT');
-          (err as any).isCrossTabConflict = true;
+          const err = new Error('SESSION_CHANGED');
+          (err as any).response = { status: 409, data: { code: 'SESSION_CHANGED' } };
           throw err;
         }
       }
@@ -246,32 +323,42 @@ export const performStaffRefresh = async (): Promise<any> => {
       if (data?.refreshToken) {
         setStoredRefreshToken(data.refreshToken, false);
       }
-      if (typeof window !== 'undefined' && data?.user && !sessionStorage.getItem('jnc_tab_user_id')) {
-        sessionStorage.setItem('jnc_tab_user_id', data.user.id);
-        sessionStorage.setItem('jnc_tab_user_email', data.user.email);
-        sessionStorage.setItem('jnc_tab_tenant_id', data.user.tenantId || '');
-        sessionStorage.setItem('jnc_tab_tenant_name', data.user.tenant?.name || '');
-        sessionStorage.setItem('jnc_tab_tenant_code', data.user.tenant?.code || '');
-        sessionStorage.setItem('jnc_tab_portal', 'staff');
+      if (typeof window !== 'undefined' && data?.user && !getCurrentTabUserId()) {
+        setCurrentTabUserId(data.user.id);
+        sessionStorage.setItem('crm_tab_user_email', data.user.email);
+        sessionStorage.setItem('crm_tab_tenant_id', data.user.tenantId || '');
+        sessionStorage.setItem('crm_tab_tenant_name', data.user.tenant?.name || '');
+        sessionStorage.setItem('crm_tab_tenant_code', data.user.tenant?.code || '');
+        sessionStorage.setItem('crm_tab_portal', 'staff');
       }
       return res;
     } catch (err: any) {
-      if (err?.isCrossTabConflict || err?.message === 'CROSS_TAB_SESSION_CONFLICT') {
+      if (err?.response?.status === 409 && (err?.response?.data?.code === 'SESSION_CHANGED' || err?.response?.data?.message?.includes('Session changed'))) {
+        setStaffAccessToken(null);
+        clearTabSessionUser();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('crm:session-conflict-reload', {
+              detail: { message: 'You signed in with another account in a different tab' },
+            })
+          );
+        }
         throw err;
       }
+
       const status = err?.response?.status;
       if (status === 401 || status === 403) {
         setStaffAccessToken(null);
         setStoredRefreshToken(null, false);
         if (typeof document !== 'undefined') {
-          document.cookie = 'jnc_session_active=; Path=/; Max-Age=0; SameSite=Lax';
+          document.cookie = 'crm_session_active=; Path=/; Max-Age=0; SameSite=Lax';
         }
         if (
           typeof window !== 'undefined' &&
           !isPublicRoute(window.location.pathname)
         ) {
           try {
-            sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');
+            sessionStorage.setItem('crm_session_expired', 'Your session has expired. Please log in again.');
           } catch {}
           window.history.replaceState(null, '', '/login?expired=1');
           window.location.href = '/login?expired=1';
@@ -291,44 +378,45 @@ export const performPlatformRefresh = async (): Promise<any> => {
     return _activePlatformRefreshPromise;
   }
 
+  const expectedUserId = getCurrentTabUserId();
+
   _activePlatformRefreshPromise = (async () => {
     try {
-      const refreshUrl = `${getApiBaseUrl()}/platform-auth/refresh`;
-      const fallbackToken = getStoredRefreshToken(true);
-      const res = await axios.post(
-        refreshUrl,
-        fallbackToken ? { refreshToken: fallbackToken } : {},
-        {
-          withCredentials: true,
-          timeout: 60000,
-          headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/json',
-          },
+      const res = await acquireCrossTabRefreshLock('platform', expectedUserId, async () => {
+        const refreshUrl = `${getApiBaseUrl()}/platform-auth/refresh`;
+        const fallbackToken = getStoredRefreshToken(true);
+        const payload: Record<string, any> = fallbackToken ? { refreshToken: fallbackToken } : {};
+        if (expectedUserId) {
+          payload.expectedUserId = expectedUserId;
         }
-      );
+
+        return axios.post(
+          refreshUrl,
+          payload,
+          {
+            withCredentials: true,
+            timeout: 60000,
+            headers: {
+              'X-Requested-With': 'XMLHttpRequest',
+              'Content-Type': 'application/json',
+              ...(expectedUserId ? { 'X-Expected-User-Id': expectedUserId } : {}),
+            },
+          }
+        );
+      });
 
       const data = res.data;
       if (typeof window !== 'undefined' && data?.user) {
-        const tabPlatformUserId = sessionStorage.getItem('jnc_tab_platform_user_id');
-        if (tabPlatformUserId && tabPlatformUserId !== data.user.id) {
+        if (expectedUserId && expectedUserId !== data.user.id) {
+          setPlatformAccessToken(null);
+          clearTabSessionUser();
           window.dispatchEvent(
-            new CustomEvent('jnc:session-conflict', {
-              detail: {
-                expectedUser: {
-                  id: tabPlatformUserId,
-                  email: sessionStorage.getItem('jnc_tab_platform_user_email') || '',
-                  tenantName: 'Platform Management',
-                  portal: 'platform',
-                },
-                incomingUser: data.user,
-                incomingAccessToken: data.accessToken,
-                incomingRefreshToken: data.refreshToken,
-              },
+            new CustomEvent('crm:session-conflict-reload', {
+              detail: { message: 'You signed in with another account in a different tab' },
             })
           );
-          const err = new Error('CROSS_TAB_SESSION_CONFLICT');
-          (err as any).isCrossTabConflict = true;
+          const err = new Error('SESSION_CHANGED');
+          (err as any).response = { status: 409, data: { code: 'SESSION_CHANGED' } };
           throw err;
         }
       }
@@ -339,29 +427,40 @@ export const performPlatformRefresh = async (): Promise<any> => {
       if (data?.refreshToken) {
         setStoredRefreshToken(data.refreshToken, true);
       }
-      if (typeof window !== 'undefined' && data?.user && !sessionStorage.getItem('jnc_tab_platform_user_id')) {
-        sessionStorage.setItem('jnc_tab_platform_user_id', data.user.id);
-        sessionStorage.setItem('jnc_tab_platform_user_email', data.user.email);
-        sessionStorage.setItem('jnc_tab_portal', 'platform');
+      if (typeof window !== 'undefined' && data?.user && !getCurrentTabUserId()) {
+        setCurrentTabUserId(data.user.id);
+        sessionStorage.setItem('crm_tab_platform_user_id', data.user.id);
+        sessionStorage.setItem('crm_tab_platform_user_email', data.user.email);
+        sessionStorage.setItem('crm_tab_portal', 'platform');
       }
       return res;
     } catch (err: any) {
-      if (err?.isCrossTabConflict || err?.message === 'CROSS_TAB_SESSION_CONFLICT') {
+      if (err?.response?.status === 409 && (err?.response?.data?.code === 'SESSION_CHANGED' || err?.response?.data?.message?.includes('Session changed'))) {
+        setPlatformAccessToken(null);
+        clearTabSessionUser();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('crm:session-conflict-reload', {
+              detail: { message: 'You signed in with another account in a different tab' },
+            })
+          );
+        }
         throw err;
       }
+
       const status = err?.response?.status;
       if (status === 401 || status === 403) {
         setPlatformAccessToken(null);
         setStoredRefreshToken(null, true);
         if (typeof document !== 'undefined') {
-          document.cookie = 'jnc_platform_session_active=; Path=/; Max-Age=0; SameSite=Lax';
+          document.cookie = 'crm_platform_session_active=; Path=/; Max-Age=0; SameSite=Lax';
         }
         if (typeof window !== 'undefined' && !isPublicRoute(window.location.pathname)) {
           try {
-            sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');
+            sessionStorage.setItem('crm_session_expired', 'Your session has expired. Please log in again.');
           } catch {}
-          window.history.replaceState(null, '', '/platform/login?expired=1');
-          window.location.href = '/platform/login?expired=1';
+          window.history.replaceState(null, '', '/login?expired=1');
+          window.location.href = '/login?expired=1';
         }
       }
       throw err;
@@ -382,13 +481,47 @@ const AUTH_NO_RETRY_URLS = [
   '/platform-auth/logout',
 ];
 
-// Auto-refresh on 401
+// Auto-refresh on 401 and detection of identity change
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // Requirement 5: No silent identity change anywhere: if /auth/me or any API response returns a user id different from the one stored for this tab, treat it as SESSION_CHANGED.
+    const incomingUser = res?.data?.user;
+    if (incomingUser && incomingUser.id) {
+      const currentTabId = getCurrentTabUserId();
+      if (currentTabId && currentTabId !== incomingUser.id) {
+        setStaffAccessToken(null);
+        setPlatformAccessToken(null);
+        clearTabSessionUser();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('crm:session-conflict-reload', {
+              detail: { message: 'You signed in with another account in a different tab' },
+            })
+          );
+        }
+      }
+    }
+    return res;
+  },
   async (err) => {
     const original = err.config;
     const url: string = original?.url || '';
     const status = err.response?.status;
+
+    // Handle 409 SESSION_CHANGED: tab identity mismatch. Do NOT wipe server cookies!
+    if (status === 409 && (err.response?.data?.code === 'SESSION_CHANGED' || err.response?.data?.message?.includes('Session changed'))) {
+      setStaffAccessToken(null);
+      setPlatformAccessToken(null);
+      clearTabSessionUser();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('crm:session-conflict-reload', {
+            detail: { message: 'You signed in with another account in a different tab' },
+          })
+        );
+      }
+      return Promise.reject(err);
+    }
 
     // Handle 401/403 directly on the refresh endpoints: session is permanently expired/invalidated
     if ((status === 401 || status === 403) && (url.includes('/auth/refresh') || url.includes('/platform-auth/refresh'))) {
@@ -397,31 +530,44 @@ api.interceptors.response.use(
         setPlatformAccessToken(null);
         setStoredRefreshToken(null, true);
         if (typeof document !== 'undefined') {
-          document.cookie = 'jnc_platform_session_active=; Path=/; Max-Age=0; SameSite=Lax';
+          document.cookie = 'crm_platform_session_active=; Path=/; Max-Age=0; SameSite=Lax';
         }
         if (typeof window !== 'undefined' && !isPublicRoute(window.location.pathname)) {
           try {
-            sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');
+            sessionStorage.setItem('crm_session_expired', 'Your session has expired. Please log in again.');
           } catch {}
-          window.location.href = '/platform/login?expired=1';
+          window.location.href = '/login?expired=1';
         }
       } else {
         setStaffAccessToken(null);
         setStoredRefreshToken(null, false);
         if (typeof document !== 'undefined') {
-          document.cookie = 'jnc_session_active=; Path=/; Max-Age=0; SameSite=Lax';
+          document.cookie = 'crm_session_active=; Path=/; Max-Age=0; SameSite=Lax';
         }
         if (
           typeof window !== 'undefined' &&
           !isPublicRoute(window.location.pathname)
         ) {
           try {
-            sessionStorage.setItem('jnc_session_expired', 'Your session has expired. Please log in again.');
+            sessionStorage.setItem('crm_session_expired', 'Your session has expired. Please log in again.');
           } catch {}
           window.location.href = '/login?expired=1';
         }
       }
       return Promise.reject(err);
+    }
+    // Requirement 6: After a 403 with pageKey, dispatch event to refresh access and navigate
+    if (err.response?.status === 403 && (err.response?.data?.pageKey || err.response?.data?.message?.includes('access'))) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('crm:page-access-revoked', {
+            detail: {
+              pageKey: err.response.data?.pageKey,
+              message: 'Your access was changed',
+            },
+          }),
+        );
+      }
     }
 
     // Never retry credentials/login endpoints — let the caller handle error displays
@@ -534,9 +680,35 @@ export const authApi = {
       api.post('/platform-auth/login', { email, password, keepSignedIn }, { timeout: 60000 })
     ),
   getPasswordPolicy: () => api.get('/auth/password-policy'),
-  forgotPasswordRequest: (email: string) =>
+  forgotPasswordStart: (lookup: string, companyCode?: string) =>
     requestWithColdStartRetry(() =>
-      api.post('/auth/forgot-password/request', { email }, { timeout: 60000 })
+      api.post('/auth/forgot-password/start', { lookup, companyCode }, { timeout: 30000 })
+    ),
+  forgotPasswordVerifyPhoneFlow: (flowId: string, phone: string) =>
+    requestWithColdStartRetry(() =>
+      api.post('/auth/forgot-password/verify-phone', { flowId, phone }, { timeout: 30000 })
+    ),
+  forgotPasswordVerifyEmailFlow: (flowId: string, email: string) =>
+    requestWithColdStartRetry(() =>
+      api.post('/auth/forgot-password/verify-email', { flowId, email }, { timeout: 30000 })
+    ),
+  forgotPasswordSendCode: (flowId: string) =>
+    requestWithColdStartRetry(() =>
+      api.post('/auth/forgot-password/send-code', { flowId }, { timeout: 60000 })
+    ),
+  forgotPasswordVerifyCodeFlow: (flowId: string, code: string) =>
+    api.post('/auth/forgot-password/verify-code', { flowId, code }),
+  forgotPasswordLookup: (identifier: string, companyCode?: string) =>
+    requestWithColdStartRetry(() =>
+      api.post('/auth/forgot-password/lookup', { identifier, companyCode }, { timeout: 30000 })
+    ),
+  forgotPasswordVerifyPhone: (lookupToken: string, phone: string) =>
+    requestWithColdStartRetry(() =>
+      api.post('/auth/forgot-password/verify-phone', { lookupToken, phone }, { timeout: 30000 })
+    ),
+  forgotPasswordRequest: (email: string, companyCode?: string, phone?: string, phoneVerifiedToken?: string) =>
+    requestWithColdStartRetry(() =>
+      api.post('/auth/forgot-password/request', { email, companyCode, phone, phoneVerifiedToken }, { timeout: 60000 })
     ),
   forgotPasswordVerify: (email: string, code: string) =>
     api.post('/auth/forgot-password/verify', { email, code }),
@@ -549,29 +721,59 @@ export const authApi = {
   resetPassword: (token: string, newPassword: string) =>
     api.post('/auth/reset-password', { token, newPassword }),
   me: () => api.get('/auth/me'),
+  checkCurrentSession: async () => {
+    return axios.get(`${getApiBaseUrl()}/auth/session-probe`, {
+      withCredentials: true,
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    });
+  },
   getRecentSignIns: () => api.get('/auth/recent-signins'),
   getSessions: () => api.get('/auth/sessions'),
   revokeSession: (id: string) => api.delete(`/auth/sessions/${id}`),
   revokeOtherSessions: () => api.delete('/auth/sessions'),
   getActivity: () => api.get('/auth/activity'),
-  requestEmailChangeOtp: (newEmail: string) =>
-    api.post('/auth/profile/email/request-otp', { newEmail }),
+  reportSuspiciousActivity: () => api.post('/auth/security-alert/signout-and-reset', {}),
+  requestEmailChangeOtp: (currentPassword: string, newEmail: string) =>
+    api.post('/auth/profile/email/request-otp', { currentPassword, newEmail }),
   verifyEmailChangeOtp: (newEmail: string, code: string) =>
     api.post('/auth/profile/email/verify-otp', { newEmail, code }),
+  requestPhoneChangeOtp: (currentPassword: string, newPhone: string) =>
+    api.post('/auth/profile/phone/request-otp', { currentPassword, newPhone }),
+  verifyPhoneChangeOtp: (newPhone: string, code: string) =>
+    api.post('/auth/profile/phone/verify-otp', { newPhone, code }),
   refresh: () => performStaffRefresh(),
-  logout: () => {
+  logout: (expectedUserId?: string) => {
+    const uid = expectedUserId || getCurrentTabUserId() || undefined;
     setStoredRefreshToken(null, false);
-    return api.post('/auth/logout', {});
+    return api.post('/auth/logout', { expectedUserId: uid });
   },
-  logoutAll: () => {
+  logoutAll: (expectedUserId?: string) => {
+    const uid = expectedUserId || getCurrentTabUserId() || undefined;
     setStoredRefreshToken(null, false);
     setStoredRefreshToken(null, true);
-    return api.post('/auth/logout-all', {});
+    return api.post('/auth/logout-all', { expectedUserId: uid });
   },
   updateProfile: (data: { name?: string; phone?: string; photoUrl?: string }) =>
     api.patch('/auth/profile', data),
   changePassword: (currentPass: string, newPass: string, logoutOthers?: boolean) =>
     api.post('/auth/change-password', { currentPass, newPass, logoutOthers: logoutOthers ?? true }),
+  // 2-Step Verification
+  verifyTwoFactor: (data: { loginTicket: string; code: string; trustDevice?: boolean }) =>
+    api.post('/auth/login/verify-2fa', data),
+  sendTwoFactorEmail: (data: { loginTicket: string }) =>
+    api.post('/auth/login/send-2fa-email', data),
+  getTwoFactorStatus: () => api.get('/auth/2fa/status'),
+  setupTwoFactor: () => api.post('/auth/2fa/setup', {}),
+  enableTwoFactor: (data: { code: string }) => api.post('/auth/2fa/enable', data),
+  regenerateBackupCodes: (data: { currentPass: string; code: string }) =>
+    api.post('/auth/2fa/backup-codes/regenerate', data),
+  disableTwoFactor: (data: { currentPass: string; code: string }) =>
+    api.post('/auth/2fa/disable', data),
+  getTrustedDevices: () => api.get('/auth/devices/trusted'),
+  revokeTrustedDevice: (id: string) => api.delete(`/auth/devices/trusted/${id}`),
+  revokeAllTrustedDevices: () => api.delete('/auth/devices/trusted'),
 };
 
 // ─── Platform Auth ───────────────────────────────────────────────────────────
@@ -580,10 +782,24 @@ export const platformAuthApi = {
     requestWithColdStartRetry(() =>
       api.post('/platform-auth/login', { email, password, keepSignedIn }, { timeout: 60000 })
     ),
+  verifyTwoFactor: (data: { loginTicket: string; code: string; trustDevice?: boolean }) =>
+    api.post('/platform-auth/verify-2fa', data),
+  sendTwoFactorEmail: (data: { loginTicket: string }) =>
+    api.post('/platform-auth/send-2fa-email', data),
+  me: () => api.get('/platform-auth/me'),
+  checkCurrentSession: async () => {
+    return axios.get(`${getApiBaseUrl()}/platform-auth/session-probe`, {
+      withCredentials: true,
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    });
+  },
   refresh: () => performPlatformRefresh(),
-  logout: () => {
+  logout: (expectedUserId?: string) => {
+    const uid = expectedUserId || getCurrentTabUserId() || undefined;
     setStoredRefreshToken(null, true);
-    return api.post('/platform-auth/logout', {});
+    return api.post('/platform-auth/logout', { expectedUserId: uid });
   },
 };
 
@@ -595,7 +811,7 @@ export const platformApi = {
   updateTenant: (id: string, data: any) => api.put(`/platform/tenants/${id}`, data),
   deleteTenant: (id: string) => api.delete(`/platform/tenants/${id}`),
   impersonateTenant: (id: string) => api.post(`/platform/tenants/${id}/impersonate`),
-  resetAdminPassword: (id: string, data?: { newPassword?: string; sendEmail?: boolean; mustResetPassword?: boolean; appUrl?: string; adminEmail?: string }) =>
+  resetAdminPassword: (id: string, data?: { newPassword?: string; sendEmail?: boolean; mustResetPassword?: boolean; appUrl?: string; adminEmail?: string; adminPhone?: string }) =>
     api.post(`/platform/tenants/${id}/reset-admin-password`, data || {}),
   listTenantUsers: (tenantId: string) => api.get(`/platform/tenants/${tenantId}/users`),
   addTenantUser: (tenantId: string, data: any) => api.post(`/platform/tenants/${tenantId}/users`, data),
@@ -613,7 +829,8 @@ export const platformApi = {
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 export const dashboardApi = {
-  getKpis: () => api.get('/dashboard/kpis'),
+  getKpis: (range?: string) => api.get('/dashboard/kpis', { params: range ? { range } : undefined }),
+  completeActivity: (id: string) => api.patch('/dashboard/activities/' + id + '/complete'),
   getConversion: () => api.get('/dashboard/conversion'),
 };
 
@@ -629,6 +846,7 @@ export const leadsApi = {
   list: (params?: Record<string, any>) => api.get('/leads', { params }),
   get: (id: string) => api.get(`/leads/${id}`),
   create: (data: any) => api.post('/leads', data),
+  createLead: (data: any) => api.post('/leads', data),
   updateStatus: (id: string, data: any) => api.patch(`/leads/${id}/status`, data),
   addActivity: (id: string, data: any) => api.post(`/leads/${id}/activities`, data),
   shareLead: (id: string, targetUserId: string) => api.post(`/leads/${id}/share`, { targetUserId }),
@@ -880,6 +1098,7 @@ export const usersApi = {
   resetCredentials: (id: string) => api.post(`/users/${id}/reset-credentials`),
   sendResetCode: (id: string) => api.post(`/users/${id}/send-reset-code`),
   revokeSessions: (id: string) => api.post(`/users/${id}/revoke-sessions`),
+  resetTwoFactor: (id: string) => api.post(`/users/${id}/reset-2fa`),
   unlock: (id: string) => api.post(`/users/${id}/unlock`),
   forceResetAllPasswords: () => api.post('/users/force-reset-all'),
   toggleActive: (id: string, isActive: boolean) =>
@@ -888,6 +1107,16 @@ export const usersApi = {
   downloadTemplate: () => api.get('/users/template-csv', { responseType: 'blob' }),
   importPreview: (records: any[]) => api.post('/users/import-preview', { records }),
   importCommit: (records: any[]) => api.post('/users/import-commit', { records }),
+  getUserAccess: (id: string) => api.get(`/users/${id}/access`),
+  updateUserAccess: (id: string, pages: string[]) => api.put(`/users/${id}/access`, { pages }),
+  resetUserAccess: (id: string) => api.delete(`/users/${id}/access`),
+  getAccessTemplates: () => api.get('/users/access-templates'),
+  createAccessTemplate: (data: { name: string; description?: string; pages: string[] }) =>
+    api.post('/users/access-templates', data),
+  updateAccessTemplate: (templateId: string, data: { name: string; description?: string; pages: string[] }) =>
+    api.put(`/users/access-templates/${templateId}`, data),
+  deleteAccessTemplate: (templateId: string) =>
+    api.delete(`/users/access-templates/${templateId}`),
 };
 
 // ─── Audit ───────────────────────────────────────────────────────────────────

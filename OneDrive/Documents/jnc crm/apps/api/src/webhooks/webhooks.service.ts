@@ -23,6 +23,7 @@ import {
   WebFormSettingsData,
   getFallbackWebFormSettings,
 } from '../settings/web-form-settings.util';
+import { parseExactOrigin } from '../common/public-cors';
 
 function stripHtml(val?: any): string | undefined {
   if (val === null || val === undefined) return undefined;
@@ -129,7 +130,7 @@ export class WebhooksService {
       }),
     ]);
 
-    const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || process.env.META_VERIFY_TOKEN || 'jnc_meta_verify_secret_2026';
+    const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || process.env.META_VERIFY_TOKEN || 'crm_meta_verify_secret_2026';
 
     return {
       hasWebhookKey: !!tenant?.webhookKeyHash,
@@ -152,19 +153,21 @@ export class WebhooksService {
 
   /**
    * Resolve pinned tenant for deprecated legacy unkeyed webhook routes.
-   * Pinned strictly to LEGACY_WEBHOOK_TENANT_CODE (default: 'JNC').
+   * Pinned strictly to LEGACY_WEBHOOK_TENANT_CODE or first internal tenant.
    * Never searches leads across tenants.
    */
   async getLegacyWebhookTenant(): Promise<{ id: string; code: string; name: string }> {
-    const legacyCode = process.env.LEGACY_WEBHOOK_TENANT_CODE || 'JNC';
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        code: { equals: legacyCode, mode: 'insensitive' },
-        deletedAt: null,
-      },
-      select: { id: true, code: true, name: true },
-    });
-    if (tenant) return tenant;
+    const legacyCode = process.env.LEGACY_WEBHOOK_TENANT_CODE;
+    if (legacyCode && legacyCode.trim()) {
+      const tenant = await this.prisma.tenant.findFirst({
+        where: {
+          code: { equals: legacyCode.trim(), mode: 'insensitive' },
+          deletedAt: null,
+        },
+        select: { id: true, code: true, name: true },
+      });
+      if (tenant) return tenant;
+    }
 
     const internalTenant = await this.prisma.tenant.findFirst({
       where: { isInternal: true, deletedAt: null },
@@ -179,7 +182,7 @@ export class WebhooksService {
     });
     if (fallback) return fallback;
 
-    throw new NotFoundException(`No active organization found matching legacy webhook tenant code "${legacyCode}".`);
+    throw new NotFoundException('No active organization found to process incoming webhook.');
   }
 
   /**
@@ -274,7 +277,7 @@ export class WebhooksService {
       const lead = await this.leadsService.createLead(
         {
           customerName,
-          customerPhone: customerPhone || '9999999999',
+          customerPhone: customerPhone || '',
           customerEmail,
           city,
           companyName,
@@ -348,7 +351,7 @@ export class WebhooksService {
       if (payload.source) leadSource = payload.source;
     }
 
-    if (!customerPhone) customerPhone = '919999999999';
+    if (!customerPhone) customerPhone = '';
     if (!customerName) customerName = leadSource === 'whatsapp' ? 'WhatsApp Lead' : 'Meta Lead';
     if (!queryMessage) queryMessage = `Inbound lead captured via ${leadSource}`;
 
@@ -434,34 +437,18 @@ export class WebhooksService {
       throw new NotFoundException('This form is not available');
     }
 
-    // 2. Origin check: If allowedOrigins is configured, enforce strict origin verification
-    const allowedOrigins = settings.allowedOrigins || [];
-    if (allowedOrigins.length > 0) {
-      const reqOrigin = (req?.headers?.origin || req?.headers?.referer || '').toString().toLowerCase();
-      if (reqOrigin) {
-        let originHost = '';
-        try {
-          originHost = new URL(reqOrigin).hostname.toLowerCase();
-        } catch {
-          originHost = reqOrigin.toLowerCase();
-        }
+    // 2. Origin check: compare exact origins (scheme, host, port)
+    const allowedOrigins = (settings.allowedOrigins || [])
+      .map((o) => parseExactOrigin(o))
+      .filter((o): o is string => Boolean(o));
 
-        const isHostedDomain =
-          originHost === 'localhost' ||
-          originHost === '127.0.0.1' ||
-          originHost.endsWith('jsnc.co.in');
-
-        const isAllowed =
-          isHostedDomain ||
-          allowedOrigins.some((allowed) => {
-            const cleanAllowed = allowed.toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-            return originHost === cleanAllowed || originHost.endsWith('.' + cleanAllowed);
-          });
-
-        if (!isAllowed) {
-          this.logger.warn(`Website lead rejected for tenant ${tenantId}: Origin '${originHost}' is not allowed`);
-          throw new ForbiddenException('Origin not permitted by form configuration.');
-        }
+    const reqOrigin = (req?.headers?.origin || '').toString().trim();
+    if (reqOrigin) {
+      const incomingOrigin = parseExactOrigin(reqOrigin);
+      const isAllowed = incomingOrigin && allowedOrigins.length > 0 && allowedOrigins.includes(incomingOrigin);
+      if (!isAllowed) {
+        this.logger.warn(`Website lead rejected for tenant ${tenantId}: Origin '${reqOrigin}' is not allowed`);
+        throw new ForbiddenException('Origin not permitted by form configuration.');
       }
     }
 

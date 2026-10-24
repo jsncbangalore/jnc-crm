@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useBranding } from '../../contexts/BrandingContext';
 import {
   LayoutDashboard, Users, Bell, ShoppingCart, Menu, X,
   Package, Building2, Truck, FileText, Shield, Zap, Boxes, LogOut, Receipt, Sun, Moon, ClipboardList
@@ -29,6 +30,7 @@ const mobileDrawerItems = [
 export default function MobileDock() {
   const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
+  const { branding } = useBranding();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -104,12 +106,22 @@ export default function MobileDock() {
               {/* Drawer Header */}
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2A3042] pb-3.5 mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="h-8 px-1.5 py-0.5 rounded-lg bg-white flex items-center justify-center shadow-sm border border-slate-200 dark:border-transparent">
-                    <img src="/jnc-logo.jpg" alt="JNC" className="h-6 w-auto object-contain" />
+                  <div className="h-8 w-8 rounded-lg bg-[#1E2A78] flex items-center justify-center shadow-sm border border-slate-200/50 dark:border-slate-700/50 overflow-hidden shrink-0">
+                    <img
+                      src="/logo-icon.png"
+                      alt="App Icon"
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (target.src !== window.location.origin + '/logo-icon.svg') {
+                          target.src = '/logo-icon.svg';
+                        }
+                      }}
+                    />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-slate-900 dark:text-white leading-tight">All Operations & Modules</h3>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Tap any module to navigate</p>
+                    <h3 className="text-xs font-bold text-slate-900 dark:text-white leading-tight">{branding.companyDisplayName}</h3>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">All Operations & Modules</p>
                   </div>
                 </div>
                 

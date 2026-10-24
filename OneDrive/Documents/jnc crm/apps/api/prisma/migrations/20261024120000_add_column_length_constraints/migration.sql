@@ -1,0 +1,68 @@
+-- Migration File: 20261024120000_add_column_length_constraints
+-- Note: MIGRATION FILE ONLY. Per explicit safety requirements, this file is authored for provenance and future application; do not execute against live DB.
+
+-- Leads Table Column Constraints
+ALTER TABLE "Lead" ALTER COLUMN "customerName" TYPE VARCHAR(100);
+ALTER TABLE "Lead" ALTER COLUMN "customerPhone" TYPE VARCHAR(20);
+ALTER TABLE "Lead" ALTER COLUMN "customerEmail" TYPE VARCHAR(254);
+ALTER TABLE "Lead" ALTER COLUMN "city" TYPE VARCHAR(100);
+ALTER TABLE "Lead" ALTER COLUMN "productName" TYPE VARCHAR(150);
+ALTER TABLE "Lead" ALTER COLUMN "productCategory" TYPE VARCHAR(100);
+ALTER TABLE "Lead" ALTER COLUMN "queryMessage" TYPE VARCHAR(1000);
+
+-- Quotations Table Column Constraints
+ALTER TABLE "Quotation" ALTER COLUMN "customerName" TYPE VARCHAR(100);
+ALTER TABLE "Quotation" ALTER COLUMN "customerPhone" TYPE VARCHAR(20);
+ALTER TABLE "Quotation" ALTER COLUMN "customerEmail" TYPE VARCHAR(254);
+ALTER TABLE "Quotation" ALTER COLUMN "shippingAddress" TYPE VARCHAR(300);
+ALTER TABLE "Quotation" ALTER COLUMN "notes" TYPE VARCHAR(1000);
+ALTER TABLE "Quotation" ALTER COLUMN "terms" TYPE VARCHAR(1000);
+
+-- Orders Table Column Constraints
+ALTER TABLE "Order" ALTER COLUMN "customerName" TYPE VARCHAR(100);
+ALTER TABLE "Order" ALTER COLUMN "customerPhone" TYPE VARCHAR(20);
+ALTER TABLE "Order" ALTER COLUMN "customerEmail" TYPE VARCHAR(254);
+ALTER TABLE "Order" ALTER COLUMN "shippingAddress" TYPE VARCHAR(300);
+ALTER TABLE "Order" ALTER COLUMN "notes" TYPE VARCHAR(1000);
+
+-- Invoices Table Column Constraints
+ALTER TABLE "Invoice" ALTER COLUMN "customerName" TYPE VARCHAR(100);
+ALTER TABLE "Invoice" ALTER COLUMN "customerPhone" TYPE VARCHAR(20);
+ALTER TABLE "Invoice" ALTER COLUMN "customerEmail" TYPE VARCHAR(254);
+ALTER TABLE "Invoice" ALTER COLUMN "customerGstin" TYPE VARCHAR(15);
+ALTER TABLE "Invoice" ALTER COLUMN "customerState" TYPE VARCHAR(100);
+ALTER TABLE "Invoice" ALTER COLUMN "billingAddress" TYPE VARCHAR(300);
+ALTER TABLE "Invoice" ALTER COLUMN "shippingAddress" TYPE VARCHAR(300);
+ALTER TABLE "Invoice" ALTER COLUMN "deliveryAddress" TYPE VARCHAR(300);
+ALTER TABLE "Invoice" ALTER COLUMN "notes" TYPE VARCHAR(1000);
+
+-- Inventory SKUs Table Column Constraints
+ALTER TABLE "Sku" ALTER COLUMN "skuCode" TYPE VARCHAR(50);
+ALTER TABLE "Sku" ALTER COLUMN "name" TYPE VARCHAR(150);
+ALTER TABLE "Sku" ALTER COLUMN "category" TYPE VARCHAR(100);
+ALTER TABLE "Sku" ALTER COLUMN "unit" TYPE VARCHAR(50);
+ALTER TABLE "Sku" ALTER COLUMN "hsnCode" TYPE VARCHAR(20);
+ALTER TABLE "Sku" ALTER COLUMN "description" TYPE VARCHAR(1000);
+
+-- Suppliers Table Column Constraints
+ALTER TABLE "Supplier" ALTER COLUMN "name" TYPE VARCHAR(100);
+ALTER TABLE "Supplier" ALTER COLUMN "contactPerson" TYPE VARCHAR(100);
+ALTER TABLE "Supplier" ALTER COLUMN "email" TYPE VARCHAR(254);
+ALTER TABLE "Supplier" ALTER COLUMN "phone" TYPE VARCHAR(20);
+ALTER TABLE "Supplier" ALTER COLUMN "gstin" TYPE VARCHAR(15);
+ALTER TABLE "Supplier" ALTER COLUMN "address" TYPE VARCHAR(300);
+ALTER TABLE "Supplier" ALTER COLUMN "city" TYPE VARCHAR(100);
+ALTER TABLE "Supplier" ALTER COLUMN "notes" TYPE VARCHAR(1000);
+
+-- Tenant Profile Constraints
+ALTER TABLE "Tenant" ALTER COLUMN "phone" TYPE VARCHAR(20);
+ALTER TABLE "Tenant" ALTER COLUMN "email" TYPE VARCHAR(254);
+ALTER TABLE "Tenant" ALTER COLUMN "address" TYPE VARCHAR(300);
+ALTER TABLE "Tenant" ALTER COLUMN "city" TYPE VARCHAR(100);
+ALTER TABLE "Tenant" ALTER COLUMN "state" TYPE VARCHAR(100);
+ALTER TABLE "Tenant" ALTER COLUMN "pincode" TYPE VARCHAR(6);
+ALTER TABLE "Tenant" ALTER COLUMN "gstin" TYPE VARCHAR(15);
+ALTER TABLE "Tenant" ALTER COLUMN "pan" TYPE VARCHAR(10);
+ALTER TABLE "Tenant" ALTER COLUMN "bankIfsc" TYPE VARCHAR(11);
+ALTER TABLE "Tenant" ALTER COLUMN "bankAccountNumber" TYPE VARCHAR(18);
+ALTER TABLE "Tenant" ALTER COLUMN "invoiceTerms" TYPE VARCHAR(1000);

@@ -5,15 +5,21 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { IsNotEmpty, IsOptional, IsString, IsArray } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsArray, MaxLength } from 'class-validator';
+import { SanitizeText, IsValidName } from '../../common/validation.transformers';
 
 export class CreateProjectDto {
+  @SanitizeText()
   @IsNotEmpty()
   @IsString()
+  @MaxLength(100)
+  @IsValidName()
   name: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   description?: string;
 
   @IsOptional()
@@ -22,12 +28,17 @@ export class CreateProjectDto {
 }
 
 export class UpdateProjectDto {
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
+  @IsValidName()
   name?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   description?: string;
 
   @IsOptional()
@@ -42,7 +53,9 @@ export class AssignMembersDto {
 }
 
 export class UploadLogDto {
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   taskSummary?: string;
 }

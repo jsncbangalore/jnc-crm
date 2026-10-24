@@ -11,6 +11,7 @@ import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePopup } from '../../contexts/PopupContext';
 import { leadsApi, usersApi, getApiBaseUrl, webhooksApi } from '../../services/api';
+import { getProductName } from '../../config/brand';
 import { User as UserType } from '../../types';
 
 export interface LeadSetupViewProps {
@@ -45,8 +46,8 @@ export function LeadSetupView({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [employees, setEmployees] = useState<UserType[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [tenantWebhookKey, setTenantWebhookKey] = useState<string>(() => localStorage.getItem('jnc_tenant_webhook_key') || '');
-  const [webhookVerifyToken, setWebhookVerifyToken] = useState<string>('jnc_meta_verify_secret_2026');
+  const [tenantWebhookKey, setTenantWebhookKey] = useState<string>(() => localStorage.getItem('crm_tenant_webhook_key') || '');
+  const [webhookVerifyToken, setWebhookVerifyToken] = useState<string>('meta_verify_token');
 
   // Form states for routing configuration
   const [assignmentMode, setAssignmentMode] = useState<'round_robin' | 'direct' | 'claim'>('round_robin');
@@ -59,7 +60,7 @@ export function LeadSetupView({
   // Webhook and API URLs (Guaranteed full absolute HTTPS URLs with tenant key)
   const origin = typeof window !== 'undefined'
     ? (import.meta.env.VITE_PUBLIC_API_URL || window.location.origin)
-    : 'https://admin.jsnc.co.in';
+    : '';
   const isDevHost = typeof window !== 'undefined' && (window.location.hostname.startsWith('local') || window.location.hostname === '127.0.0.1');
 
   const publicInquiryUrl = `${origin}/inquiry`;
@@ -69,7 +70,7 @@ export function LeadSetupView({
   const liveSubmitUrl = `${origin}/api/v1/webhooks/website/${tenantWebhookKey || 'whk_tenant_key'}`;
 
   // Custom Web-to-Lead Form Generator states
-  const [generatorCompany, setGeneratorCompany] = useState<string>('JS Network Communication');
+  const [generatorCompany, setGeneratorCompany] = useState<string>(() => getProductName());
   const [generatorPhone, setGeneratorPhone] = useState<string>('');
   const [generatorEmail, setGeneratorEmail] = useState<string>('');
   const [generatorButtonText, setGeneratorButtonText] = useState<string>('Submit Requirement for Quotation');
@@ -146,7 +147,7 @@ export function LeadSetupView({
       .then((res: any) => {
         if (res.data?.webhookKey) {
           setTenantWebhookKey(res.data.webhookKey);
-          localStorage.setItem('jnc_tenant_webhook_key', res.data.webhookKey);
+          localStorage.setItem('crm_tenant_webhook_key', res.data.webhookKey);
         }
         if (res.data?.verifyToken) {
           setWebhookVerifyToken(res.data.verifyToken);
@@ -167,7 +168,7 @@ export function LeadSetupView({
      ${generatorCompany} Web-to-Lead Form
      Live Ingestion Endpoint: ${liveSubmitUrl}
 ========================================== -->
-<div id="jnc-lead-form-wrapper" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 640px; margin: 20px auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); color: #0f172a; box-sizing: border-box;">
+<div id="crm-lead-form-wrapper" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 640px; margin: 20px auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); color: #0f172a; box-sizing: border-box;">
   <div style="margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px;">
     <h3 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800; color: #0f172a;">${generatorCompany}</h3>
     <p style="margin: 0; font-size: 13px; color: #64748b;">Request an official commercial quotation or project consultation.</p>
@@ -178,7 +179,7 @@ export function LeadSetupView({
     </div>` : ''}
   </div>
 
-  <form id="jnc-inquiry-form" onsubmit="handleJncFormSubmit(event)" autocomplete="off">
+  <form id="crm-inquiry-form" onsubmit="handleCrmFormSubmit(event)" autocomplete="off">
     <input type="text" name="_hp_company_trap" style="display:none !important;" tabindex="-1" autocomplete="off" />
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
@@ -191,7 +192,7 @@ export function LeadSetupView({
       ${formFields.phone ? `
       <div>
         <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">Phone Number *</label>
-        <input type="tel" name="phone" required autocomplete="off" placeholder="e.g. 9845012345" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
+        <input type="tel" name="phone" required autocomplete="off" placeholder="Phone Number" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
       </div>` : ''}
     </div>
 
@@ -200,7 +201,7 @@ export function LeadSetupView({
       ${formFields.email ? `
       <div>
         <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">Email Address</label>
-        <input type="email" name="email" placeholder="name@company.com" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
+        <input type="email" name="email" placeholder="name@example.com" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
       </div>` : ''}
       ${formFields.company ? `
       <div>
@@ -222,7 +223,7 @@ export function LeadSetupView({
       ${formFields.city ? `
       <div>
         <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">City / Site Location</label>
-        <input type="text" name="city" placeholder="e.g. Bengaluru, Karnataka" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
+        <input type="text" name="city" placeholder="e.g. City Name, State" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
       </div>` : ''}
       ${formFields.quantity ? `
       <div>
@@ -247,19 +248,19 @@ export function LeadSetupView({
       <textarea name="message" rows="3" placeholder="Provide any model numbers, site details, or special features needed..." style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; resize: vertical; outline: none;"></textarea>
     </div>` : ''}
 
-    <button type="submit" id="jnc-submit-btn" style="width: 100%; background-color: ${generatorThemeColor}; color: #ffffff; border: none; border-radius: 8px; padding: 12px 18px; font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity 0.2s; box-shadow: 0 4px 12px ${generatorThemeColor}40;">
+    <button type="submit" id="crm-submit-btn" style="width: 100%; background-color: ${generatorThemeColor}; color: #ffffff; border: none; border-radius: 8px; padding: 12px 18px; font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity 0.2s; box-shadow: 0 4px 12px ${generatorThemeColor}40;">
       ${generatorButtonText}
     </button>
 
-    <div id="jnc-status-msg" style="display: none; margin-top: 14px; padding: 12px; border-radius: 8px; font-size: 13px; text-align: center;"></div>
+    <div id="crm-status-msg" style="display: none; margin-top: 14px; padding: 12px; border-radius: 8px; font-size: 13px; text-align: center;"></div>
   </form>
 
   <script>
-    function handleJncFormSubmit(e) {
+    function handleCrmFormSubmit(e) {
       e.preventDefault();
       var form = e.target;
-      var btn = document.getElementById('jnc-submit-btn');
-      var status = document.getElementById('jnc-status-msg');
+      var btn = document.getElementById('crm-submit-btn');
+      var status = document.getElementById('crm-status-msg');
       var originalBtnText = btn.innerText;
 
       btn.disabled = true;
@@ -329,11 +330,11 @@ export function LeadSetupView({
 
       const payload = {
         customerName: `Contact ${randomSuffix}`,
-        customerPhone: `98450${randomSuffix}`,
-        customerEmail: `lead${randomSuffix}@testdomain.com`,
+        customerPhone: '',
+        customerEmail: '',
         companyName: `${pickedCompany} #${randomSuffix}`,
-        city: 'Bengaluru',
-        productCategory: 'Commercial PA System',
+        city: '',
+        productCategory: 'Commercial Systems',
         estimatedValue: 45000 + (randomSuffix % 5) * 10000,
         urgency: randomSuffix % 2 === 0 ? 'urgent' : 'standard',
         source,
@@ -770,7 +771,7 @@ export function LeadSetupView({
                             type="text"
                             value={generatorCompany}
                             onChange={(e) => setGeneratorCompany(e.target.value)}
-                            placeholder="e.g. JS Network Communication"
+                            placeholder="e.g. Acme Corporation"
                             className="input text-xs"
                           />
                         </div>
@@ -782,7 +783,7 @@ export function LeadSetupView({
                               type="text"
                               value={generatorPhone}
                               onChange={(e) => setGeneratorPhone(e.target.value)}
-                              placeholder="e.g. +91 9952835331"
+                              placeholder="e.g. +91 98000 00000"
                               className="input text-xs"
                             />
                           </div>
@@ -792,7 +793,7 @@ export function LeadSetupView({
                               type="email"
                               value={generatorEmail}
                               onChange={(e) => setGeneratorEmail(e.target.value)}
-                              placeholder="e.g. sales@company.com"
+                              placeholder="e.g. sales@example.com"
                               className="input text-xs"
                             />
                           </div>
@@ -1096,7 +1097,7 @@ export function LeadSetupView({
                             </div>
                             <div>
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">Phone Number *</label>
-                              <input type="tel" readOnly placeholder="e.g. 9845012345" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
+                              <input type="tel" readOnly placeholder="Phone Number" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
                             </div>
                           </div>
 
@@ -1105,7 +1106,7 @@ export function LeadSetupView({
                               {formFields.email && (
                                 <div>
                                   <label className="block text-[11px] font-bold text-slate-700 mb-1">Email Address</label>
-                                  <input type="email" readOnly placeholder="name@company.com" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
+                                  <input type="email" readOnly placeholder="name@example.com" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
                                 </div>
                               )}
                               {formFields.company && (
@@ -1132,7 +1133,7 @@ export function LeadSetupView({
                               {formFields.city && (
                                 <div>
                                   <label className="block text-[11px] font-bold text-slate-700 mb-1">City / Location</label>
-                                  <input type="text" readOnly placeholder="Bengaluru" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
+                                  <input type="text" readOnly placeholder="City" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
                                 </div>
                               )}
                               {formFields.quantity && (

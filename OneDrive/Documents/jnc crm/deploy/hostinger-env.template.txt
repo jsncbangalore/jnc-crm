@@ -31,8 +31,8 @@ JWT_REFRESH_SECRET=<REPLACE_WITH_64_CHAR_HEX_SECRET>
 TRUST_PROXY=1
 
 # Allowed Web Application Origin
-FRONTEND_URL=https://admin.jsnc.co.in
-ALLOWED_ORIGINS=https://admin.jsnc.co.in
+FRONTEND_URL=https://admin.example.com
+ALLOWED_ORIGINS=https://admin.example.com
 
 # ------------------------------------------------------------------------------
 # SMTP EMAIL NOTIFICATIONS (HOSTINGER / CUSTOM SMTP)
@@ -40,6 +40,6 @@ ALLOWED_ORIGINS=https://admin.jsnc.co.in
 SMTP_HOST=smtp.hostinger.com
 SMTP_PORT=465
 SMTP_SECURE=true
-SMTP_USER=noreply@jsnc.co.in
+SMTP_USER=noreply@example.com
 SMTP_PASS=<REPLACE_WITH_SMTP_PASSWORD>
-SMTP_FROM="JNC CRM Notifications" <noreply@jsnc.co.in>
+SMTP_FROM="CRM Notifications" <noreply@example.com>

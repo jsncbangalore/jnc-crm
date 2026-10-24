@@ -13,23 +13,42 @@ import {
   IsArray,
   IsBoolean,
   Min,
+  Max,
+  MaxLength,
 } from 'class-validator';
+import {
+  SanitizeText,
+  TrimString,
+  IsValidName,
+  IsValidSku,
+  IsValidProductName,
+  IsValidUnitRate,
+} from '../../common/validation.transformers';
 
 export class CreateWarehouseDto {
+  @SanitizeText()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
+  @IsValidName()
   name: string;
 
+  @TrimString()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(50)
   code: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(300)
   address?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   city?: string;
 }
 
@@ -47,68 +66,105 @@ export class RecordMovementDto {
   type: string; // IN, OUT, ADJUSTMENT, RETURN
 
   @IsNumber()
+  @Min(0.0001)
+  @Max(100000)
   quantity: number;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(1000)
   reason?: string;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   reference?: string;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   batchNumber?: string;
 }
 
 export class CreateSkuDto {
+  @TrimString()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(50)
+  @IsValidSku()
   skuCode: string;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(50)
   code?: string;
 
+  @SanitizeText()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(150)
+  @IsValidProductName()
   name: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(1000)
   description?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   category?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(50)
   unit?: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsOptional()
+  @Min(0)
+  @Max(100000000)
+  @IsValidUnitRate()
   price?: number;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsOptional()
+  @Min(0)
+  @Max(100000000)
+  @IsValidUnitRate()
   unitPrice?: number;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsOptional()
+  @Min(0)
+  @Max(100000000)
+  @IsValidUnitRate()
   costPrice?: number;
 
   @IsNumber()
   @IsOptional()
+  @Min(0)
+  @Max(100000)
   reorderPoint?: number;
 
   @IsNumber()
   @IsOptional()
+  @Min(0)
+  @Max(100000)
   reorderLevel?: number;
 
   @IsNumber()
   @IsOptional()
+  @Min(0)
+  @Max(100000)
   reorderQty?: number;
 
   @IsString()
@@ -117,22 +173,30 @@ export class CreateSkuDto {
 
   @IsNumber()
   @IsOptional()
+  @Min(0)
+  @Max(100000)
   initialStock?: number;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(20)
   hsnCode?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(50)
   packageType?: string;
 
   @IsString()
   @IsOptional()
   preferredSupplierId?: string;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(50)
   binCode?: string;
 
   @IsNumber()
@@ -141,44 +205,69 @@ export class CreateSkuDto {
 }
 
 export class UpdateSkuDto {
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(50)
   code?: string;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(50)
+  @IsValidSku()
   skuCode?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(150)
+  @IsValidProductName()
   name?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(1000)
   description?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   category?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(50)
   unit?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(50)
   packageType?: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsOptional()
+  @Min(0)
+  @Max(100000000)
+  @IsValidUnitRate()
   price?: number;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsOptional()
+  @Min(0)
+  @Max(100000000)
+  @IsValidUnitRate()
   unitPrice?: number;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsOptional()
+  @Min(0)
+  @Max(100000000)
+  @IsValidUnitRate()
   costPrice?: number;
 
   @IsNumber()

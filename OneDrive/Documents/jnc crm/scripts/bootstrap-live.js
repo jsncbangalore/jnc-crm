@@ -11,9 +11,9 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { PrismaClient } = require('@prisma/client');
 
-const secretsPath = 'C:\\dev\\jnc-secrets\\live.env';
+const secretsPath = process.env.SECRETS_FILE || path.resolve(__dirname, '../.env');
 if (!fs.existsSync(secretsPath)) {
-  console.error('[BOOTSTRAP FAIL] Missing secrets file C:\\dev\\jnc-secrets\\live.env');
+  console.error('[BOOTSTRAP FAIL] Missing secrets file ' + secretsPath);
   process.exit(1);
 }
 
@@ -87,8 +87,8 @@ async function runBootstrap() {
   try {
     await prisma.$connect();
 
-    const superAdminEmail = 'platform@jsnc.co.in'.trim().toLowerCase();
-    const tenantAdminEmail = 'tenantadmin@jsnc.co.in'.trim().toLowerCase();
+    const superAdminEmail = 'platform@example.com'.trim().toLowerCase();
+    const tenantAdminEmail = 'tenantadmin@example.com'.trim().toLowerCase();
 
     // Check existing users
     const existingUsers = await prisma.user.findMany({
@@ -130,11 +130,11 @@ async function runBootstrap() {
       },
     });
 
-    const jncTenant = await prisma.tenant.create({
+    const primaryTenant = await prisma.tenant.create({
       data: {
-        code: 'JNC',
-        name: 'JNC Networking & Communications',
-        slug: 'jnc',
+        code: process.env.PRIMARY_TENANT_CODE || 'PRIMARY',
+        name: process.env.PRIMARY_TENANT_NAME || 'Primary Organization',
+        slug: 'primary',
         status: 'active',
         planTier: 'enterprise',
         isInternal: true,
@@ -144,10 +144,10 @@ async function runBootstrap() {
 
     await prisma.user.create({
       data: {
-        tenantId: jncTenant.id,
+        tenantId: primaryTenant.id,
         email: tenantAdminEmail,
         passwordHash: tenantHash,
-        name: 'JNC Administrator',
+        name: 'Tenant Administrator',
         role: 'tenant_admin',
         employeeCode: 'EMP-ADM-001',
         mustResetPassword: true,
@@ -155,7 +155,7 @@ async function runBootstrap() {
     });
 
     console.log('========================================================================');
-    console.log(`JNC-CRM OWNER ACCOUNT BOOTSTRAP COMPLETED SUCCESSFULLY (Ref: ${actualRef})`);
+    console.log(`CRM OWNER ACCOUNT BOOTSTRAP COMPLETED SUCCESSFULLY (Ref: ${actualRef})`);
     console.log('========================================================================');
     console.log('ONE-TIME INITIAL CREDENTIALS (COPY & SAVE SAFELY NOW, NOT SAVED TO DISK):');
     console.log('------------------------------------------------------------------------');
@@ -164,8 +164,8 @@ async function runBootstrap() {
     console.log(`   Password:   ${platformPassword}`);
     console.log(`   Role:       platform_super_admin (tenantId: null)`);
     console.log('------------------------------------------------------------------------');
-    console.log(`2. TENANT ADMIN (JNC):`);
-    console.log(`   Company:    JNC Networking & Communications (Code: JNC)`);
+    console.log(`2. TENANT ADMIN:`);
+    console.log(`   Company:    ${process.env.PRIMARY_TENANT_NAME || 'Primary Organization'}`);
     console.log(`   Email:      ${tenantAdminEmail}`);
     console.log(`   Password:   ${tenantPassword}`);
     console.log(`   Role:       tenant_admin`);

@@ -70,7 +70,7 @@ async function runLoginTests() {
     id: 'user-platform-admin',
     tenantId: null,
     tenant: null,
-    email: 'superadmin@jsnc.co.in',
+    email: 'superadmin@example.com',
     employeeCode: 'PSA-001',
     role: 'platform_super_admin',
     passwordHash,
@@ -127,7 +127,7 @@ async function runLoginTests() {
           if (!where.tenantId || where.tenantId === 'tenant-alpha') results.push(userAlpha);
           if (!where.tenantId || where.tenantId === 'tenant-beta') results.push(userBeta);
         }
-        if (rawEmail === 'superadmin@jsnc.co.in') {
+        if (rawEmail === 'superadmin@example.com') {
           results.push(platformAdmin);
         }
         if (rawEmail === 'inactive@example.com') {
@@ -139,7 +139,7 @@ async function runLoginTests() {
         return results;
       },
       findFirst: async ({ where }: any) => {
-        if (where.role === 'platform_super_admin' && where.email?.equals === 'superadmin@jsnc.co.in') {
+        if (where.role === 'platform_super_admin' && where.email?.equals === 'superadmin@example.com') {
           return platformAdmin;
         }
         if (where.id?.in) {
@@ -243,7 +243,7 @@ async function runLoginTests() {
   let psaBlockedOnStaff = false;
   try {
     await authService.login({
-      identifier: 'superadmin@jsnc.co.in',
+      identifier: 'superadmin@example.com',
       password: 'CorrectPass@123',
     });
   } catch (e: any) {
@@ -256,7 +256,7 @@ async function runLoginTests() {
   // ─── Test 7: platform_super_admin on /platform-auth/login -> logs in ───────
   console.log('\n--- 7. PLATFORM ADMIN ON /platform-auth/login ---');
   const psaResult = await authService.platformLogin({
-    email: 'superadmin@jsnc.co.in',
+    email: 'superadmin@example.com',
     password: 'CorrectPass@123',
   });
   assert(

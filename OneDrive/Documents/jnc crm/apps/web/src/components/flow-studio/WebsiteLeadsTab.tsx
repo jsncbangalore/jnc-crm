@@ -87,6 +87,7 @@ export default function WebsiteLeadsTab({ onLeadIngested }: { onLeadIngested?: (
   const [editingProdCat, setEditingProdCat] = useState('');
 
   const [newDomain, setNewDomain] = useState('');
+  const [originError, setOriginError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isSubmittingTest, setIsSubmittingTest] = useState(false);
   const [testLeadSuccess, setTestLeadSuccess] = useState(false);
@@ -115,9 +116,9 @@ export default function WebsiteLeadsTab({ onLeadIngested }: { onLeadIngested?: (
 
         if (configRes?.data?.webhookKey) {
           setTenantKey(configRes.data.webhookKey);
-          localStorage.setItem('jnc_tenant_webhook_key', configRes.data.webhookKey);
+          localStorage.setItem('crm_tenant_webhook_key', configRes.data.webhookKey);
         } else {
-          const cached = localStorage.getItem('jnc_tenant_webhook_key');
+          const cached = localStorage.getItem('crm_tenant_webhook_key');
           if (cached) setTenantKey(cached);
         }
 
@@ -259,7 +260,7 @@ window.addEventListener('message', function(e) {
       const res = await webFormApi.regenerateKey();
       if (res.data?.webhookKey) {
         setTenantKey(res.data.webhookKey);
-        localStorage.setItem('jnc_tenant_webhook_key', res.data.webhookKey);
+        localStorage.setItem('crm_tenant_webhook_key', res.data.webhookKey);
       }
     } catch (err: any) {
       alert('Failed to regenerate key: ' + (err?.response?.data?.message || err.message));
@@ -317,18 +318,44 @@ window.addEventListener('message', function(e) {
   };
 
   const handleAddOrigin = () => {
-    if (!newDomain.trim()) return;
-    let domain = newDomain.trim().toLowerCase();
+    setOriginError(null);
+    const raw = newDomain.trim();
+    if (!raw) return;
+
+    if (raw.includes('*')) {
+      setOriginError('Wildcards (*) are not permitted. Please specify the exact website origin.');
+      return;
+    }
+
+    let parsed: URL;
     try {
-      if (domain.startsWith('http://') || domain.startsWith('https://')) {
-        domain = new URL(domain).hostname;
-      }
-    } catch {}
-    domain = domain.replace(/\/.*$/, '');
-    if (!settings.allowedOrigins.includes(domain)) {
+      parsed = new URL(raw);
+    } catch {
+      setOriginError('Please enter a valid website origin starting with https:// (e.g. https://client.example.com).');
+      return;
+    }
+
+    const isLocalDev = (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1');
+    if (parsed.protocol !== 'https:' && !isLocalDev) {
+      setOriginError('Allowed website must use secure HTTPS (starting with https://).');
+      return;
+    }
+
+    if (parsed.pathname && parsed.pathname !== '/') {
+      setOriginError(`Paths are not permitted (${parsed.pathname}). Specify only the website origin (e.g. https://client.example.com).`);
+      return;
+    }
+
+    if (parsed.search || parsed.hash) {
+      setOriginError('Query parameters and fragments are not allowed in website origins.');
+      return;
+    }
+
+    const normalized = `${parsed.protocol}//${parsed.host}`.toLowerCase();
+    if (!settings.allowedOrigins.includes(normalized)) {
       setSettings((prev) => ({
         ...prev,
-        allowedOrigins: [...prev.allowedOrigins, domain],
+        allowedOrigins: [...prev.allowedOrigins, normalized],
       }));
     }
     setNewDomain('');
@@ -366,10 +393,10 @@ window.addEventListener('message', function(e) {
 
       await leadsApi.create({
         customerName: `Web Visitor #${suffix}`,
-        customerPhone: `98765${suffix}`,
-        customerEmail: `visitor${suffix}@company.in`,
-        companyName: `Apex Solutions #${suffix}`,
-        city: 'Bengaluru',
+        customerPhone: '',
+        customerEmail: '',
+        companyName: `Company #${suffix}`,
+        city: '',
         productName: chosenProduct,
         productCategory: chosenProduct,
         source: 'web',
@@ -471,7 +498,7 @@ window.addEventListener('message', function(e) {
           { id: 'settings', label: 'Branding & Copy', icon: Palette },
           { id: 'products', label: `Products (${settings.products.length})`, icon: Package },
           { id: 'fields', label: 'Fields', icon: Sliders },
-          { id: 'security', label: `Allowed Domains (${settings.allowedOrigins.length})`, icon: Shield },
+          { id: 'security', label: `Allowed websites (${settings.allowedOrigins.length})`, icon: Shield },
           { id: 'preview', label: 'Live Preview', icon: Eye },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1131,16 +1158,16 @@ window.addEventListener('message', function(e) {
         </div>
       )}
 
-      {/* ─── TAB 5: ALLOWED ORIGINS / SECURITY ─── */}
+      {/* ─── TAB 5: ALLOWED WEBSITES / SECURITY ─── */}
       {activeTab === 'security' && (
         <div className="bg-white dark:bg-[#121622] border border-slate-200/80 dark:border-[#22293A] rounded-2xl p-6 shadow-xs space-y-5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                Website Origin Allowlist (Anti-Spam / Anti-Scraping)
+                Allowed websites
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Restrict form submissions so that only your client website can submit leads through this form.
+                Configure authorized client websites that may embed and submit leads through this public form.
               </p>
             </div>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
@@ -1149,13 +1176,16 @@ window.addEventListener('message', function(e) {
           </div>
 
           <div className="p-4 bg-slate-50 dark:bg-[#0F121C] rounded-xl border border-slate-200/80 dark:border-[#22293A] space-y-3">
-            <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300">Add Allowed Website Domain</h3>
+            <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300">Add Allowed Website (HTTPS only, no wildcard, no path)</h3>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={newDomain}
-                onChange={(e) => setNewDomain(e.target.value)}
-                placeholder="e.g. clientcompany.in or www.mywebsite.com"
+                onChange={(e) => {
+                  setNewDomain(e.target.value);
+                  if (originError) setOriginError(null);
+                }}
+                placeholder="e.g. https://client.example.com"
                 className="flex-1 text-xs bg-white dark:bg-[#171D2B] border border-slate-200 dark:border-[#2A3042] rounded-xl px-3.5 py-2 text-slate-800 dark:text-slate-200 outline-none"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -1169,17 +1199,25 @@ window.addEventListener('message', function(e) {
                 onClick={handleAddOrigin}
                 className="px-4 py-2 rounded-xl bg-crm-blue hover:bg-crm-blue-hover text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
               >
-                <Plus size={14} /> Add Domain
+                <Plus size={14} /> Add Website
               </button>
             </div>
+            {originError && (
+              <p className="text-xs text-rose-500 font-medium">
+                {originError}
+              </p>
+            )}
+            <p className="text-[11px] text-slate-400">
+              Must include <code className="text-slate-600 dark:text-slate-300 font-mono">https://</code> with no wildcards or paths (e.g. <code className="text-slate-600 dark:text-slate-300 font-mono">https://example.com</code>).
+            </p>
           </div>
 
           {settings.allowedOrigins.length === 0 ? (
             <div className="p-5 rounded-xl border border-dashed border-slate-200 dark:border-[#22293A] text-center space-y-1">
               <ShieldCheck size={20} className="text-slate-400 mx-auto" />
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Open Origin Policy</p>
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">No allowed websites configured</p>
               <p className="text-[11px] text-slate-400 max-w-md mx-auto">
-                No domain restrictions configured. The form accepts submissions from any hosted website or iframe. Add your domain above to restrict submissions exclusively to your own site.
+                When this list is empty, browser requests from other origins are rejected. Server-to-server calls without an Origin header stay allowed with the key. Add your website above to allow browser form submissions.
               </p>
             </div>
           ) : (

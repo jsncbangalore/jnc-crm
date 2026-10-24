@@ -11,7 +11,7 @@ const { execSync } = require('child_process');
 const AdmZip = require('adm-zip');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const ZIP_PATH = path.join(REPO_ROOT, 'deploy-release/jnc-api-bundle.zip');
+const ZIP_PATH = path.join(REPO_ROOT, 'deploy-release/api-bundle.zip');
 const TEST_DIR = path.join(REPO_ROOT, 'deploy-release/test-bundle-engines');
 
 function getDirSize(d) {
@@ -68,7 +68,7 @@ async function run() {
   }
   fs.mkdirSync(TEST_DIR, { recursive: true });
 
-  console.log('[1/4] Extracting jnc-api-bundle.zip ...');
+  console.log('[1/4] Extracting api-bundle.zip ...');
   const zip = new AdmZip(ZIP_PATH);
   zip.extractAllTo(TEST_DIR, true);
 

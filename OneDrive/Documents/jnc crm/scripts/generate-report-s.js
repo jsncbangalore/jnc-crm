@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const secretsPath = 'C:\\dev\\jnc-secrets\\live.env';
+const secretsPath = 'C:\\dev\\secrets\\live.env';
 if (!fs.existsSync(secretsPath)) {
   console.error('Missing secrets file');
   process.exit(1);
@@ -40,7 +40,7 @@ function maskSecrets(str) {
 }
 
 async function run() {
-  const reportPath = 'C:\\dev\\jnc-crm\\evidence\\report-2026-10-06s.txt';
+  const reportPath = 'C:\\dev\\crm\\evidence\\report-2026-10-06s.txt';
   let reportText = '';
 
   function append(text) {
@@ -50,10 +50,10 @@ async function run() {
   const nowIso = new Date().toISOString();
 
   append('================================================================================');
-  append('JNC-CRM GO-LIVE EVIDENCE & AUDIT REPORT');
+  append('CRM GO-LIVE EVIDENCE & AUDIT REPORT');
   append('Report ID: report-2026-10-06s');
   append('Timestamp: ' + nowIso);
-  append('Repository: C:\\dev\\jnc-crm');
+  append('Repository: C:\\dev\\crm');
   append('Target Database Ref: ' + env.NEW_PROJECT_REF + ' (ap-south-1)');
   append('Untouched Old Ref: ' + (env.OLD_PROJECT_REF || 'hbzlelktcfagwvmyusvw'));
   append('================================================================================\n');
@@ -65,7 +65,7 @@ async function run() {
   append('Issue Diagnosed: Previously, PrismaClient instantiation without explicit datasources');
   append('parameter resolved process.env.DATABASE_URL from apps/api/.env (defaulting to localhost:5432).');
   append('Fix Applied in scripts/live-reset-account.js:');
-  append('1. Reads C:\\dev\\jnc-secrets\\live.env explicitly and parses DIRECT_URL.');
+  append('1. Reads C:\\dev\\secrets\\live.env explicitly and parses DIRECT_URL.');
   append('2. Overrides process.env.DATABASE_URL and process.env.DIRECT_URL in memory.');
   append('3. Asserts directUrl contains NEW_PROJECT_REF ("aybysdzuwwtqhnzhgiwp") and NOT OLD_PROJECT_REF ("hbzlelktcfagwvmyusvw").');
   append('4. Logs connection line: "[Database] project aybysdzuwwtqhnzhgiwp @ aws-0-ap-south-1.pooler.supabase.com:5432".');
@@ -79,7 +79,7 @@ async function run() {
   append('--------------------------------------------------------------------------------');
   append('COMMAND [A]: npm run live:reset-account -- --role owner --dry-run');
   try {
-    const ownerDryOut = execSync('npm run live:reset-account -- --role owner --dry-run', { cwd: 'C:\\dev\\jnc-crm', shell: true }).toString();
+    const ownerDryOut = execSync('npm run live:reset-account -- --role owner --dry-run', { cwd: 'C:\\dev\\crm', shell: true }).toString();
     append(maskSecrets(ownerDryOut));
   } catch (err) {
     append('EXECUTION ERROR: ' + (err.stdout ? err.stdout.toString() : err.message));
@@ -87,7 +87,7 @@ async function run() {
   append('');
   append('COMMAND [B]: npm run live:reset-account -- --role platform --dry-run');
   try {
-    const platformDryOut = execSync('npm run live:reset-account -- --role platform --dry-run', { cwd: 'C:\\dev\\jnc-crm', shell: true }).toString();
+    const platformDryOut = execSync('npm run live:reset-account -- --role platform --dry-run', { cwd: 'C:\\dev\\crm', shell: true }).toString();
     append(maskSecrets(platformDryOut));
   } catch (err) {
     append('EXECUTION ERROR: ' + (err.stdout ? err.stdout.toString() : err.message));
@@ -102,38 +102,38 @@ async function run() {
   append('');
   append('1. scripts/live-reset-account.js:');
   append('   - Client Type: PrismaClient({ datasources: { db: { url: directUrl } } })');
-  append('   - Config Source: C:\\dev\\jnc-secrets\\live.env (DIRECT_URL)');
+  append('   - Config Source: C:\\dev\\secrets\\live.env (DIRECT_URL)');
   append('   - Guard Assertion: Asserts directUrl contains "aybysdzuwwtqhnzhgiwp" and NOT "hbzlelktcfagwvmyusvw"');
   append('   - Console Audit Line: [Database] project aybysdzuwwtqhnzhgiwp @ aws-0-ap-south-1.pooler.supabase.com:5432');
   append('   - Status: VERIFIED & PROVED');
   append('');
   append('2. scripts/live-status.js:');
-  append('   - Client Type: pg.Client({ connectionString: cleanUrl, ssl: { rejectUnauthorized: false } })');
-  append('   - Config Source: C:\\dev\\jnc-secrets\\live.env (DIRECT_URL)');
+  append('   - Client Type: pg.Client({ connectionString: cleanUrl, ssl: true })');
+  append('   - Config Source: C:\\dev\\secrets\\live.env (DIRECT_URL)');
   append('   - Guard Assertion: Asserts NEW_PROJECT_REF === "aybysdzuwwtqhnzhgiwp" and verifies 44 schema tables');
   append('   - Status: VERIFIED & PROVED');
   append('');
   append('3. scripts/db-backup.js:');
   append('   - Client Type: pg_dump CLI tool');
-  append('   - Config Source: C:\\dev\\jnc-secrets\\live.env (DIRECT_URL)');
+  append('   - Config Source: C:\\dev\\secrets\\live.env (DIRECT_URL)');
   append('   - Guard Assertion: Asserts directUrl contains "aybysdzuwwtqhnzhgiwp" and NOT "hbzlelktcfagwvmyusvw"');
   append('   - Status: VERIFIED & PROVED');
   append('');
   append('4. scripts/bootstrap-live.js:');
   append('   - Client Type: PrismaClient({ datasources: { db: { url: databaseUrl } } })');
-  append('   - Config Source: C:\\dev\\jnc-secrets\\live.env (DATABASE_URL)');
+  append('   - Config Source: C:\\dev\\secrets\\live.env (DATABASE_URL)');
   append('   - Guard Assertion: Asserts databaseUrl contains "aybysdzuwwtqhnzhgiwp" and NOT "hbzlelktcfagwvmyusvw"');
   append('   - Status: VERIFIED & PROVED');
   append('');
   append('5. scripts/dev-live.js:');
   append('   - Client Type: Spawns NestJS API & Vite Web dev processes');
-  append('   - Config Source: C:\\dev\\jnc-secrets\\live.env');
+  append('   - Config Source: C:\\dev\\secrets\\live.env');
   append('   - Guard Assertion: Asserts databaseUrl contains "aybysdzuwwtqhnzhgiwp" and NOT "hbzlelktcfagwvmyusvw"');
   append('   - Status: VERIFIED & PROVED');
   append('');
   append('6. scripts/db-preflight-live.js:');
-  append('   - Client Type: pg.Client({ connectionString: cleanUrl, ssl: { rejectUnauthorized: false } })');
-  append('   - Config Source: C:\\dev\\jnc-secrets\\live.env (DIRECT_URL)');
+  append('   - Client Type: pg.Client({ connectionString: cleanUrl, ssl: true })');
+  append('   - Config Source: C:\\dev\\secrets\\live.env (DIRECT_URL)');
   append('   - Guard Assertion: Asserts host and username contain "aybysdzuwwtqhnzhgiwp" and NOT "hbzlelktcfagwvmyusvw"');
   append('   - Status: VERIFIED & PROVED');
   append('--------------------------------------------------------------------------------\n');
@@ -143,7 +143,7 @@ async function run() {
   append('GENERATED BY SCRIPT scripts/live-status.js AT ' + nowIso);
   append('--------------------------------------------------------------------------------');
   try {
-    const liveStatusOut = execSync('node scripts/live-status.js', { cwd: 'C:\\dev\\jnc-crm', shell: true }).toString();
+    const liveStatusOut = execSync('node scripts/live-status.js', { cwd: 'C:\\dev\\crm', shell: true }).toString();
     append(maskSecrets(liveStatusOut));
   } catch (err) {
     append('EXECUTION ERROR: ' + (err.stdout ? err.stdout.toString() : err.message));
@@ -155,7 +155,7 @@ async function run() {
   append('GENERATED BY SCRIPT scripts/generate-report-s.js AT ' + nowIso);
   append('--------------------------------------------------------------------------------');
   try {
-    const verifyOut = execSync('node scripts/verify-live.js', { cwd: 'C:\\dev\\jnc-crm', shell: true }).toString();
+    const verifyOut = execSync('node scripts/verify-live.js', { cwd: 'C:\\dev\\crm', shell: true }).toString();
     append(maskSecrets(verifyOut));
   } catch (err) {
     const out = err.stdout ? err.stdout.toString() : (err.stderr ? err.stderr.toString() : err.message);

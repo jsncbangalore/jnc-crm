@@ -12,6 +12,8 @@ import {
   FilePlus, ShoppingBag, Box, UserCheck, HelpCircle, Layers, Bookmark, Sliders, User
 } from 'lucide-react';
 import { isPlatformOwner as checkIsPlatformOwner } from '../../utils/roles';
+import CreateLeadModal from '../leads/CreateLeadModal';
+import CreateQuotationModal from '../quotations/CreateQuotationModal';
 
 // ─── NAV ITEM INTERFACE ──────────────────────────────────────────────────────
 interface NavTabItem {
@@ -149,6 +151,8 @@ export default function Navbar() {
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [appLauncherOpen, setAppLauncherOpen] = useState(false);
   const [activeTabDropdown, setActiveTabDropdown] = useState<string | null>(null);
+  const [quickLeadModalOpen, setQuickLeadModalOpen] = useState(false);
+  const [quickQuoteModalOpen, setQuickQuoteModalOpen] = useState(false);
 
   // Global search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -159,11 +163,29 @@ export default function Navbar() {
 
   const isPlatformOwner = checkIsPlatformOwner(user);
 
-  const isAdmin = isPlatformOwner || user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
+  const hasPage = (key: string): boolean => {
+    if (isPlatformOwner) return false;
+    if (user?.role === 'tenant_admin') return true;
+    if (Array.isArray(user?.effectivePages)) {
+      return user.effectivePages.includes(key);
+    }
+    if (user?.teamId && user?.teamRef) {
+      const allowedPages = typeof user.teamRef.allowedPages === 'string'
+        ? JSON.parse(user.teamRef.allowedPages || '[]')
+        : user.teamRef.allowedPages || [];
+      return allowedPages.includes(key);
+    }
+    return false;
+  };
+
+  const isAdmin = isPlatformOwner || user?.role === 'tenant_admin' || hasPage('users');
 
   const visibleNavItems = isPlatformOwner
     ? platformMasterNavItems
-    : clientOrgNavItems.filter((item) => !item.roles || item.roles.includes(user?.role || ''));
+    : clientOrgNavItems.filter((item) => {
+        if (!item.pageKey) return true;
+        return hasPage(item.pageKey);
+      });
 
   // Close dropdowns on click outside
   useEffect(() => {
@@ -299,19 +321,27 @@ export default function Navbar() {
             to={isPlatformOwner ? "/platform/companies" : "/"}
             className="flex items-center gap-2.5 group"
           >
-            <div className="h-7 px-1.5 py-0.5 rounded-md bg-white flex items-center justify-center shadow-xs border border-slate-200 dark:border-transparent">
+            {/* App Icon in front */}
+            <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0">
               <img
-                src="/jnc-logo.jpg"
-                alt="JS Network Communication"
-                className="h-5 w-auto object-contain"
+                src="/logo-icon.png"
+                alt="App Icon"
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (target.src !== window.location.origin + '/logo-icon.svg') {
+                    target.src = '/logo-icon.svg';
+                  }
+                }}
               />
             </div>
+
             <div className="flex flex-col text-left">
-              <span className="text-xs font-bold text-slate-900 dark:text-white tracking-tight leading-none truncate max-w-[170px]">
-                {branding.companyDisplayName}
+              <span className="text-xs font-bold text-slate-900 dark:text-white tracking-tight leading-none truncate max-w-[200px]">
+                {user?.tenant?.name || branding.companyDisplayName}
               </span>
               <span className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
-                {isPlatformOwner ? 'Platform Admin' : 'Enterprise CRM Portal'}
+                {isPlatformOwner ? 'Platform Admin' : 'CRM Portal'}
               </span>
             </div>
           </NavLink>
@@ -411,26 +441,50 @@ export default function Navbar() {
                     className="absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xl p-2 z-50 space-y-1"
                   >
                     <p className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quick Actions</p>
-                    <NavLink to="/invoices?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-emerald-500/10 text-slate-800 dark:text-slate-200 hover:text-emerald-600 transition-colors">
-                      <Receipt size={14} className="text-emerald-500" />
-                      <span>New Tax Invoice</span>
-                    </NavLink>
-                    <NavLink to="/leads?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-crm-blue/10 text-slate-800 dark:text-slate-200 hover:text-crm-blue transition-colors">
-                      <Users size={14} className="text-crm-blue" />
-                      <span>New Lead / Customer</span>
-                    </NavLink>
-                    <NavLink to="/orders?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-amber-500/10 text-slate-800 dark:text-slate-200 hover:text-amber-600 transition-colors">
-                      <ShoppingCart size={14} className="text-amber-500" />
-                      <span>New Customer Order</span>
-                    </NavLink>
-                    <NavLink to="/quotations?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-indigo-500/10 text-slate-800 dark:text-slate-200 hover:text-indigo-600 transition-colors">
-                      <FileText size={14} className="text-indigo-500" />
-                      <span>New Quotation</span>
-                    </NavLink>
-                    <NavLink to="/inventory?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-purple-500/10 text-slate-800 dark:text-slate-200 hover:text-purple-600 transition-colors">
-                      <Package size={14} className="text-purple-500" />
-                      <span>Add Inventory Component</span>
-                    </NavLink>
+                    {hasPage('invoices') && (
+                      <NavLink to="/invoices?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-emerald-500/10 text-slate-800 dark:text-slate-200 hover:text-emerald-600 transition-colors">
+                        <Receipt size={14} className="text-emerald-500" />
+                        <span>New Tax Invoice</span>
+                      </NavLink>
+                    )}
+                    {hasPage('leads') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuickCreateOpen(false);
+                          setQuickLeadModalOpen(true);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-crm-blue/10 text-slate-800 dark:text-slate-200 hover:text-crm-blue transition-colors text-left"
+                      >
+                        <Users size={14} className="text-crm-blue" />
+                        <span>New Lead / Customer</span>
+                      </button>
+                    )}
+                    {hasPage('orders') && (
+                      <NavLink to="/orders?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-amber-500/10 text-slate-800 dark:text-slate-200 hover:text-amber-600 transition-colors">
+                        <ShoppingCart size={14} className="text-amber-500" />
+                        <span>New Customer Order</span>
+                      </NavLink>
+                    )}
+                    {hasPage('quotations') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuickCreateOpen(false);
+                          setQuickQuoteModalOpen(true);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-indigo-500/10 text-slate-800 dark:text-slate-200 hover:text-indigo-600 transition-colors text-left"
+                      >
+                        <FileText size={14} className="text-indigo-500" />
+                        <span>New Quotation</span>
+                      </button>
+                    )}
+                    {hasPage('inventory') && (
+                      <NavLink to="/inventory?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-purple-500/10 text-slate-800 dark:text-slate-200 hover:text-purple-600 transition-colors">
+                        <Package size={14} className="text-purple-500" />
+                        <span>Add Inventory Component</span>
+                      </NavLink>
+                    )}
                     {isAdmin && (
                       <NavLink to="/users?action=create" onClick={() => setQuickCreateOpen(false)} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-blue-500/10 text-slate-800 dark:text-slate-200 hover:text-blue-600 transition-colors border-t border-slate-100 dark:border-white/5 pt-2">
                         <UserPlus size={14} className="text-blue-500" />
@@ -674,6 +728,27 @@ export default function Navbar() {
         </div>
 
       </div>
+
+      {/* Quick Add In-Place Modals */}
+      <CreateLeadModal
+        isOpen={quickLeadModalOpen}
+        onClose={() => setQuickLeadModalOpen(false)}
+        onSuccess={(_lead, action) => {
+          if (action === 'close') {
+            navigate('/leads');
+          }
+        }}
+      />
+
+      <CreateQuotationModal
+        isOpen={quickQuoteModalOpen}
+        onClose={() => setQuickQuoteModalOpen(false)}
+        onSuccess={(_quote, action) => {
+          if (action === 'close') {
+            navigate('/quotations');
+          }
+        }}
+      />
     </header>
   );
 }

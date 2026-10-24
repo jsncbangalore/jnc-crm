@@ -11,7 +11,7 @@ const { execSync } = require('child_process');
 
 function generateReportW() {
   const rootDir = path.resolve(__dirname, '..');
-  const targetDir = 'C:\\dev\\jnc-crm\\evidence';
+  const targetDir = 'C:\\dev\\crm\\evidence';
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
@@ -21,7 +21,7 @@ function generateReportW() {
   console.log(`Generating comprehensive evidence report at ${reportPath}...`);
 
   let reportContent = `================================================================================
-JNC-CRM GOVERNANCE, ARCHITECTURAL SECURITY & PRODUCTION AUDIT REPORT
+CRM GOVERNANCE, ARCHITECTURAL SECURITY & PRODUCTION AUDIT REPORT
 GENERATED AT: ${now}
 TARGET DATABASE PROJECT: aybysdzuwwtqhnzhgiwp @ aws-0-ap-south-1.pooler.supabase.com
 ================================================================================

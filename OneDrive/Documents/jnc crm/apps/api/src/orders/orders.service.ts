@@ -15,8 +15,67 @@ import { parsePagination } from '../common/pagination.util';
 import { BRAND_CONFIG } from '../common/brand';
 import { sanitizeHtml } from '../common/html-sanitize.util';
 import { LiveCourierTrackerService, LiveTrackingResult } from './live-courier-tracker.service';
+import { Type } from 'class-transformer';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsArray,
+  IsNumber,
+  Min,
+  Max,
+  MaxLength,
+  ValidateNested,
+  ArrayMinSize,
+  ArrayMaxSize,
+} from 'class-validator';
+import {
+  SanitizeText,
+  TrimString,
+  IsValidName,
+  IsValidPhone,
+  IsValidEmail,
+  IsValidProductName,
+  IsValidUnitRate,
+  IsValidHttpsUrl,
+  IsValidCustomDate,
+} from '../common/validation.transformers';
+import { roundCurrency } from '@crm/shared-validation';
 
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsNumber } from 'class-validator';
+export class OrderLineItemDto {
+  @IsString()
+  @IsOptional()
+  skuId?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  @IsValidProductName()
+  name: string;
+
+  @IsNumber()
+  @Min(0.0001)
+  @Max(100000)
+  quantity: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(100000000)
+  @IsValidUnitRate()
+  unitPrice: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  discount?: number;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  notes?: string;
+}
 
 export class CreateOrderDto {
   @IsString()
@@ -27,27 +86,44 @@ export class CreateOrderDto {
   @IsOptional()
   contactId?: string;
 
+  @SanitizeText()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
+  @IsValidName()
   customerName: string;
 
+  @TrimString()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(20)
+  @IsValidPhone()
   customerPhone: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(254)
+  @IsValidEmail()
   customerEmail?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(300)
   shippingAddress?: string;
 
   @IsArray()
-  lines: any[];
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => OrderLineItemDto)
+  lines: OrderLineItemDto[];
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(1000)
   notes?: string;
 
   @IsString()
@@ -112,20 +188,29 @@ export class CreateShipmentDto {
   @IsNotEmpty()
   orderId: string;
 
+  @SanitizeText()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   courierName: string;
 
+  @TrimString()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   trackingNumber: string;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(500)
+  @IsValidHttpsUrl()
   trackingUrl?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(1000)
   notes?: string;
 }
 
@@ -136,43 +221,62 @@ export class UpdateShipmentStatusDto {
 }
 
 export class UpdateShipmentDto {
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   courierName?: string;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   trackingNumber?: string;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(500)
+  @IsValidHttpsUrl()
   trackingUrl?: string;
 
   @IsString()
   @IsOptional()
   status?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(1000)
   notes?: string;
 }
 
 export class VerifyLiveTrackingUrlDto {
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(500)
+  @IsValidHttpsUrl()
   trackingUrl?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   courierName?: string;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   trackingNumber?: string;
 }
 
 export class RecordOrderPaymentDto {
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(100000000)
+  @IsValidUnitRate()
   amount: number;
 
   @IsString()
@@ -183,16 +287,21 @@ export class RecordOrderPaymentDto {
   @IsOptional()
   paymentMethod?: string;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   transactionRef?: string;
 
   @IsString()
   @IsOptional()
+  @IsValidCustomDate()
   paymentDate?: string;
 
+  @SanitizeText()
   @IsString()
   @IsOptional()
+  @MaxLength(1000)
   notes?: string;
 }
 
@@ -343,10 +452,12 @@ export class OrdersService {
       });
     }
 
-    // Calculate totals
-    const subtotal = resolvedLines.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
-    const taxAmount = subtotal * 0.18;
-    const totalAmount = subtotal + taxAmount;
+    // Calculate totals server-side (ignoring any browser-submitted totals)
+    const subtotal = roundCurrency(
+      resolvedLines.reduce((sum, l) => sum + roundCurrency(l.quantity * l.unitPrice), 0)
+    );
+    const taxAmount = roundCurrency(subtotal * 0.18);
+    const totalAmount = roundCurrency(subtotal + taxAmount);
 
     const order = await this.prisma.order.create({
       data: {
@@ -732,7 +843,9 @@ export class OrdersService {
     const tenantId = requireTenantId(user);
     const order = await this.findOne(dto.orderId, user);
     const count = await this.prisma.shipment.count({ where: { tenantId } });
-    const shipmentNumber = `JNC-SHIP-${String(count + 1).padStart(5, '0')}`;
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { code: true } });
+    const tenantPrefix = (tenant?.code || 'SHIP').toUpperCase();
+    const shipmentNumber = `${tenantPrefix}-SHIP-${String(count + 1).padStart(5, '0')}`;
 
     // Perform initial live tracking probe
     let initialLiveTracking: LiveTrackingResult | null = null;
@@ -794,7 +907,7 @@ export class OrdersService {
         await this.notificationsService.sendEmail({
           tenantId,
           to: order.customerEmail,
-          subject: `Your Order ${order.orderNumber} Has Been Dispatched - ${branding?.companyDisplayName || 'JNC'}`,
+          subject: `Your Order ${order.orderNumber} Has Been Dispatched - ${branding?.companyDisplayName || process.env.PRODUCT_NAME || 'Order'}`,
           html: this.buildDispatchEmailHtml(order, shipment, branding),
           relatedEntityType: 'shipment',
           relatedEntityId: shipment.id,
@@ -860,7 +973,7 @@ export class OrdersService {
           await this.notificationsService.sendEmail({
             tenantId,
             to: shipment.order.customerEmail,
-            subject: `Your Order ${shipment.order.orderNumber} Has Been Delivered - ${branding?.companyDisplayName || 'JNC'}`,
+            subject: `Your Order ${shipment.order.orderNumber} Has Been Delivered - ${branding?.companyDisplayName || process.env.PRODUCT_NAME || 'Order'}`,
             html: this.buildDeliveryEmailHtml(shipment.order, branding),
             relatedEntityType: 'order',
             relatedEntityId: shipment.orderId,

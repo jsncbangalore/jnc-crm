@@ -65,8 +65,8 @@ const testCases = [
 
   // General Host & Local Tests:
   { name: 'localhost', url: 'postgresql://user:pass@localhost:5432/fake_db', allowedHosts: '', blockedRefs: '', allowedRefs: '' },
-  { name: 'host in list passes', url: 'postgresql://user:pass@staging-db.jnc-crm.internal:5432/staging_db', allowedHosts: 'staging-db.jnc-crm.internal', blockedRefs: '', allowedRefs: '' },
-  { name: 'host not in list refused', url: 'postgresql://user:pass@unauthorized-host.net:5432/db', allowedHosts: 'staging-db.jnc-crm.internal', blockedRefs: '', allowedRefs: '' },
+  { name: 'host in list passes', url: 'postgresql://user:pass@staging-db.crm.internal:5432/staging_db', allowedHosts: 'staging-db.crm.internal', blockedRefs: '', allowedRefs: '' },
+  { name: 'host not in list refused', url: 'postgresql://user:pass@unauthorized-host.net:5432/db', allowedHosts: 'staging-db.crm.internal', blockedRefs: '', allowedRefs: '' },
   { name: 'empty', url: '', allowedHosts: '', blockedRefs: '', allowedRefs: '' },
   { name: 'garbage', url: 'not-a-url', allowedHosts: '', blockedRefs: '', allowedRefs: '' },
 ];

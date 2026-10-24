@@ -245,7 +245,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                   value={transactionRef}
                   onChange={(e) => setTransactionRef(e.target.value)}
                   className="w-full px-3 py-2 bg-white dark:bg-[#141722] border border-slate-300 dark:border-[#2A3042] rounded-xl text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-400 dark:placeholder:text-slate-600"
-                  placeholder="e.g. KARB2026083100192"
+                  placeholder="e.g. UTR-BANK-REF-001"
                 />
               </div>
             </div>

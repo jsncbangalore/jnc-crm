@@ -39,7 +39,7 @@ export default function DirectPrintModal({
   profile,
   signatoryConfig,
   activeTemplate = 'tax_invoice',
-  invoiceLogo = '/jnc-logo.jpg',
+  invoiceLogo = '',
   onDownloadPdf,
 }: DirectPrintModalProps) {
   const [copyType, setCopyType] = useState<GstCopyType>('original');
@@ -109,14 +109,14 @@ export default function DirectPrintModal({
   const effectiveLogoUrl =
     invoiceLogo && !invoiceLogo.startsWith('data:') && invoiceLogo.trim() !== ''
       ? invoiceLogo
-      : '/jnc-logo.jpg';
-  const effectiveAddress1 = profile?.addressLine1 || 'No, 18/19, 2nd Floor, Coconut Avenue,';
-  const effectiveAddress2 = profile ? `${profile.addressLine2}, ${profile.city} ${profile.pincode}.` : '3rd cross, 8th Phase JP Nagar, Bangalore 76.';
-  const effectiveGstin = profile?.gstin || '29ABCDE1234F1Z5';
-  const effectiveUdyam = profile?.msmeUdyamNo || 'UDYAM-KR-03-0123456';
-  const effectiveState = profile?.state || 'Karnataka';
-  const effectiveStateCode = profile?.stateCode || '29';
-  const effectiveEmail = profile?.email || 'info@jsnc.co.in | accounts@jsnc.co.in';
+      : (profile?.logoUrl || BRAND_CONFIG.logoUrl || '');
+  const effectiveAddress1 = profile?.addressLine1 || profile?.address || '';
+  const effectiveAddress2 = profile ? `${profile.addressLine2 || ''} ${profile.city || ''} ${profile.pincode || ''}`.trim() : '';
+  const effectiveGstin = profile?.gstin || '';
+  const effectiveUdyam = profile?.msmeUdyamNo || '';
+  const effectiveState = profile?.state || '';
+  const effectiveStateCode = profile?.stateCode || '';
+  const effectiveEmail = profile?.email || '';
 
   const isCreditNote = activeTemplate === 'credit_note';
   const isPO = activeTemplate === 'purchase_order';
@@ -147,6 +147,22 @@ export default function DirectPrintModal({
   const amountInWords = numberToIndianWords(effectiveTotal);
   const advancePercent = invoice.advancePercent || 50;
   const advanceAmount = invoice.advanceAmount || Number(((effectiveTotal * advancePercent) / 100).toFixed(2));
+
+  const hasAdvanceAdjusted = !isProforma && !isDC && !isCreditNote && Number(invoice.advanceAdjusted || 0) > 0;
+  let totalsRowCount = 1; // Sub Total row
+  if (isSEZ || isInterState) {
+    totalsRowCount += 1;
+  } else {
+    totalsRowCount += 2; // CGST + SGST
+  }
+  if (isProforma) {
+    totalsRowCount += 2; // Advance + Balance
+  }
+  totalsRowCount += 1; // Round off
+  totalsRowCount += 1; // Total
+  if (hasAdvanceAdjusted) {
+    totalsRowCount += 2; // Less Advance + Net Balance Due
+  }
 
   const formatDateDMY = (dateStr?: string) => {
     if (!dateStr) return '-';
@@ -217,9 +233,11 @@ export default function DirectPrintModal({
         ${includeHeader ? `
           <div class="grid grid-cols-2 border-b border-black divide-x divide-black bg-white text-black">
             <div class="p-1.5 space-y-0.5 text-[10px]">
-              <div style="margin-bottom: 3px; display: flex; align-items: center;">
-                <img src="${effectiveLogoUrl}" alt="JNC Logo" style="max-height: 38px !important; max-width: 150px !important; width: auto !important; height: auto !important; object-fit: contain !important; display: block !important;" />
-              </div>
+              ${effectiveLogoUrl ? `
+                <div style="margin-bottom: 3px; display: flex; align-items: center;">
+                  <img src="${effectiveLogoUrl}" alt="${effectiveCompanyName}" style="max-height: 38px !important; max-width: 150px !important; width: auto !important; height: auto !important; object-fit: contain !important; display: block !important;" />
+                </div>
+              ` : ''}
               <p class="font-bold text-[11px] text-black leading-tight">${effectiveCompanyName}</p>
               <p class="text-black font-medium leading-tight">${effectiveAddress1}</p>
               <p class="text-black font-medium leading-tight">${effectiveAddress2}</p>
@@ -263,8 +281,8 @@ export default function DirectPrintModal({
                   ${(isSEZ || isCreditNote) ? `
                     <tr class="border-t border-black">
                       <td colspan="2" class="p-1.5 bg-gray-50">
-                        <p class="font-bold">LUT/Bond No : <span class="font-mono font-bold">${invoice.lutBondNo || (isSEZ ? (profile?.lutBondNo || 'AD290525013648T') : '')}</span></p>
-                        ${isSEZ ? `<p class="font-semibold">${invoice.lutValidity || profile?.lutValidity || 'From : 10/05/2025 To: 09/05/2026'}</p>` : ''}
+                        <p class="font-bold">LUT/Bond No : <span class="font-mono font-bold">${invoice.lutBondNo || (isSEZ ? (profile?.lutBondNo || '') : '')}</span></p>
+                        ${isSEZ ? `<p class="font-semibold">${invoice.lutValidity || profile?.lutValidity || ''}</p>` : ''}
                       </td>
                     </tr>
                   ` : ''}
@@ -367,53 +385,63 @@ export default function DirectPrintModal({
                 </tr>
               ` : `
                 <tr class="border-t border-black font-bold">
-                  <td colspan="5" style="text-align: right; border-right: 1px solid #000;">Sub Total</td>
+                  <td colspan="4" rowspan="${totalsRowCount}" style="border-right: 1px solid #000; background: #ffffff;"></td>
+                  <td style="text-align: right; border-right: 1px solid #000;">Sub Total</td>
                   <td style="text-align: center; font-family: monospace; border-right: 1px solid #000;">${totalQty}</td>
                   <td style="text-align: right; font-family: monospace;">${(effectiveSubtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
                 </tr>
 
                 ${isSEZ ? `
-                  <tr class="border-t border-black">
-                    <td colspan="6" style="text-align: right; border-right: 1px solid #000; font-style: italic; font-size: 10px;">Nill - IGST 18% Tax by LUT</td>
-                    <td style="text-align: right; font-family: monospace; font-weight: bold;">-</td>
+                  <tr>
+                    <td colspan="2" style="text-align: right; border-top: 1px solid #000; border-right: 1px solid #000; font-style: italic; font-size: 10px;">Nill - IGST 18% Tax by LUT</td>
+                    <td style="text-align: right; border-top: 1px solid #000; font-family: monospace; font-weight: bold;">-</td>
                   </tr>
                 ` : isInterState ? `
-                  <tr class="border-t border-black">
-                    <td colspan="6" style="text-align: right; border-right: 1px solid #000; font-weight: bold;">IGST 18%</td>
-                    <td style="text-align: right; font-family: monospace; font-weight: bold;">${(invoice.igstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                  <tr>
+                    <td colspan="2" style="text-align: right; border-top: 1px solid #000; border-right: 1px solid #000; font-weight: bold;">IGST 18%</td>
+                    <td style="text-align: right; border-top: 1px solid #000; font-family: monospace; font-weight: bold;">${(invoice.igstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
                   </tr>
                 ` : `
-                  <tr class="border-t border-black">
-                    <td colspan="6" style="text-align: right; border-right: 1px solid #000; font-weight: bold;">CGST 9%</td>
-                    <td style="text-align: right; font-family: monospace; font-weight: bold;">${(invoice.cgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                  <tr>
+                    <td colspan="2" style="text-align: right; border-top: 1px solid #000; border-right: 1px solid #000; font-weight: bold;">CGST 9%</td>
+                    <td style="text-align: right; border-top: 1px solid #000; font-family: monospace; font-weight: bold;">${(invoice.cgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
                   </tr>
-                  <tr class="border-t border-black">
-                    <td colspan="6" style="text-align: right; border-right: 1px solid #000; font-weight: bold;">SGST 9%</td>
-                    <td style="text-align: right; font-family: monospace; font-weight: bold;">${(invoice.sgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                  <tr>
+                    <td colspan="2" style="text-align: right; border-top: 1px solid #000; border-right: 1px solid #000; font-weight: bold;">SGST 9%</td>
+                    <td style="text-align: right; border-top: 1px solid #000; font-family: monospace; font-weight: bold;">${(invoice.sgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
                   </tr>
                 `}
 
                 ${isProforma ? `
-                  <tr class="border-t border-black bg-emerald-50">
-                    <td colspan="6" style="text-align: right; border-right: 1px solid #000; font-weight: bold; color: #064e3b;">Advance ${advancePercent}% with PO</td>
-                    <td style="text-align: right; font-family: monospace; font-weight: bold; color: #064e3b;">${advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                  <tr style="background: #ecfdf5;">
+                    <td colspan="2" style="text-align: right; border-top: 1px solid #000; border-right: 1px solid #000; font-weight: bold; color: #064e3b;">Advance ${advancePercent}% with PO</td>
+                    <td style="text-align: right; border-top: 1px solid #000; font-family: monospace; font-weight: bold; color: #064e3b;">${advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="text-align: right; border-top: 1px solid #000; border-right: 1px solid #000; font-weight: bold; color: #334155; font-style: italic; font-size: 10px;">Balance ${100 - advancePercent}% on Dispatch / Delivery</td>
+                    <td style="text-align: right; border-top: 1px solid #000; font-family: monospace; font-weight: 600; color: #334155;">${(effectiveTotal - advanceAmount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
                   </tr>
                 ` : ''}
 
-                <tr class="border-t border-black font-bold text-xs bg-gray-100">
-                  <td colspan="5" style="text-align: right; border-right: 1px solid #000;">Total</td>
-                  <td style="text-align: center; font-family: monospace; border-right: 1px solid #000;">${totalQty}</td>
-                  <td style="text-align: right; font-family: monospace; font-weight: 900;">${Math.round(effectiveTotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                <tr>
+                  <td colspan="2" style="text-align: right; border-top: 1px solid #000; border-right: 1px solid #000; font-weight: bold;">Round off</td>
+                  <td style="text-align: right; border-top: 1px solid #000; font-family: monospace; font-weight: bold;">${(invoice.roundOff !== undefined && invoice.roundOff !== 0 ? (invoice.roundOff > 0 ? `+${invoice.roundOff.toFixed(2)}` : invoice.roundOff.toFixed(2)) : '-')}</td>
                 </tr>
 
-                ${(!isProforma && !isDC && !isCreditNote && invoice.advanceAdjusted && invoice.advanceAdjusted > 0) ? `
-                  <tr class="border-t border-black bg-emerald-50">
-                    <td colspan="6" style="text-align: right; border-right: 1px solid #000; font-weight: bold; color: #064e3b;">Less: Advance Received</td>
-                    <td style="text-align: right; font-family: monospace; font-weight: bold; color: #064e3b;">- ${invoice.advanceAdjusted.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                <tr class="font-bold text-xs" style="background: #f3f4f6;">
+                  <td style="text-align: right; border-top: 1px solid #000; border-right: 1px solid #000;">Total</td>
+                  <td style="text-align: center; border-top: 1px solid #000; font-family: monospace; border-right: 1px solid #000;">${totalQty}</td>
+                  <td style="text-align: right; border-top: 1px solid #000; font-family: monospace; font-weight: 900;">${Math.round(effectiveTotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                </tr>
+
+                ${hasAdvanceAdjusted ? `
+                  <tr style="background: #ecfdf5;">
+                    <td colspan="2" style="text-align: right; border-top: 1px solid #000; border-right: 1px solid #000; font-weight: bold; color: #064e3b;">Less: Advance Received</td>
+                    <td style="text-align: right; border-top: 1px solid #000; font-family: monospace; font-weight: bold; color: #064e3b;">- ${(invoice.advanceAdjusted || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
                   </tr>
-                  <tr class="border-t border-black font-bold text-xs bg-emerald-100">
-                    <td colspan="6" style="text-align: right; border-right: 1px solid #000; font-weight: bold;">Net Balance Payable / Due</td>
-                    <td style="text-align: right; font-family: monospace; font-weight: 900;">${(invoice.balanceDue ?? Math.max(0, effectiveTotal - invoice.advanceAdjusted)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                  <tr class="font-bold text-xs" style="background: #d1fae5;">
+                    <td colspan="2" style="text-align: right; border-top: 1px solid #000; border-right: 1px solid #000; font-weight: bold;">Net Balance Payable / Due</td>
+                    <td style="text-align: right; border-top: 1px solid #000; font-family: monospace; font-weight: 900;">${(invoice.balanceDue ?? Math.max(0, effectiveTotal - (invoice.advanceAdjusted || 0))).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
                   </tr>
                 ` : ''}
               `}
@@ -463,8 +491,8 @@ export default function DirectPrintModal({
               <ol style="padding-left: 14px; margin-top: 4px; line-height: 1.25;">
                 <li>Any complaints should be reported within 2 days of material receipt.</li>
                 <li>Goods once sold will not be exchanged or taken back.</li>
-                <li>Payment should be made strictly as per agreed terms. Subject to Bangalore Jurisdiction.</li>
-                <li>${BRAND_CONFIG.displayName} holds lien on equipment until final payment settlement.</li>
+                <li>Payment should be made strictly as per agreed terms. Subject to ${profile?.city || 'Local'} Jurisdiction.</li>
+                <li>${effectiveCompanyName} holds lien on equipment until final payment settlement.</li>
               </ol>
             ` : `
               <div style="height: 60px; color: #888; font-style: italic; padding-top: 20px;">
@@ -478,10 +506,10 @@ export default function DirectPrintModal({
             ${includeBankDetails && !isDC ? `
               <div class="p-2 border-b border-black space-y-0.5 text-[10px]">
                 <p class="font-bold text-[10.5px]">Company's Bank Details</p>
-                <p><span>A/C Holder : </span><strong>${profile?.bankDetails?.accountHolderName || BRAND_CONFIG.displayName}</strong></p>
-                <p><span>Bank Name : </span><strong>${profile?.bankDetails?.bankName || 'Karnataka Bank'}</strong></p>
-                <p><span>A/c No : </span><strong class="font-mono">${profile?.bankDetails?.accountNumber || '9222000100091501'}</strong></p>
-                <p><span>Branch & IFS Code : </span><strong>${profile?.bankDetails?.branch || 'J P Nagar 7th Phase'} & ${profile?.bankDetails?.ifscCode || 'KARB0000922'}</strong></p>
+                <p><span>A/C Holder : </span><strong>${profile?.bankDetails?.accountHolderName || effectiveCompanyName}</strong></p>
+                <p><span>Bank Name : </span><strong>${profile?.bankDetails?.bankName || ''}</strong></p>
+                <p><span>A/c No : </span><strong class="font-mono">${profile?.bankDetails?.accountNumber || ''}</strong></p>
+                <p><span>Branch & IFS Code : </span><strong>${profile?.bankDetails?.branch || ''} ${profile?.bankDetails?.ifscCode ? `& ${profile.bankDetails.ifscCode}` : ''}</strong></p>
               </div>
             ` : `
               <div class="p-2 border-b border-black text-[10px] text-gray-500 italic">
@@ -508,7 +536,7 @@ export default function DirectPrintModal({
 
         ${/* Computer Generated Notice */ ''}
         <div class="text-center text-[9px] py-0.5 text-black font-medium bg-white">
-          This is a Computer Generated ${docTitle} • Powered by JNC Direct Print Hub
+          This is a Computer Generated ${docTitle}
         </div>
       </div>
     `;
@@ -599,24 +627,26 @@ export default function DirectPrintModal({
           className="bg-white dark:bg-[#12151F] border border-slate-200 dark:border-[#262B3C] rounded-2xl w-full max-w-6xl max-h-[96vh] flex flex-col shadow-2xl overflow-hidden"
         >
           {/* ═══════════════════════════════════════════════════════════════════
-              JNC DIRECT PRINTER CONNECTION HEADER
+              DIRECT PRINTER CONNECTION HEADER
              ═══════════════════════════════════════════════════════════════════ */}
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-[#262B3C] bg-gradient-to-r from-slate-50 via-white to-blue-50/30 dark:from-[#171B27] dark:via-[#131622] dark:to-[#171E30]">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-white dark:bg-white/10 p-1 border border-slate-200 dark:border-white/10 shadow-sm flex items-center justify-center overflow-hidden">
-                <img
-                  src={effectiveLogoUrl}
-                  alt="JNC Logo"
-                  className="h-full w-full object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/jnc-logo.jpg';
-                  }}
-                />
-              </div>
+              {effectiveLogoUrl ? (
+                <div className="h-10 w-10 rounded-xl bg-white dark:bg-white/10 p-1 border border-slate-200 dark:border-white/10 shadow-sm flex items-center justify-center overflow-hidden">
+                  <img
+                    src={effectiveLogoUrl}
+                    alt={effectiveCompanyName}
+                    className="h-full w-full object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              ) : null}
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-base font-black tracking-tight text-slate-900 dark:text-white">
-                    JNC Direct Print Hub
+                    Direct Print Hub
                   </h2>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -624,7 +654,7 @@ export default function DirectPrintModal({
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                  {profile?.companyName || 'JNC Network & Power Solutions'} • {docTitle} #{invoice.invoiceNumber}
+                  {effectiveCompanyName} • {docTitle} #{invoice.invoiceNumber}
                 </p>
               </div>
             </div>
@@ -714,17 +744,22 @@ export default function DirectPrintModal({
                       </span>
                     </div>
 
-                    {/* JNC Header */}
+                    {/* Company Header */}
                     {includeHeader ? (
                       <div className="grid grid-cols-2 border-b border-black divide-x divide-black bg-white text-black">
                         <div className="p-2 space-y-0.5 text-[10px]">
-                          <div className="mb-1 flex items-center">
-                            <img
-                              src={effectiveLogoUrl}
-                              alt="JNC Logo"
-                              style={{ maxHeight: '38px', maxWidth: '150px', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }}
-                            />
-                          </div>
+                          {effectiveLogoUrl ? (
+                            <div className="mb-1 flex items-center">
+                              <img
+                                src={effectiveLogoUrl}
+                                alt={effectiveCompanyName}
+                                style={{ maxHeight: '38px', maxWidth: '150px', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }}
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                            </div>
+                          ) : null}
                           <p className="font-bold text-[11px] text-black leading-tight">{effectiveCompanyName}</p>
                           <p className="text-black font-medium leading-tight">{effectiveAddress1}</p>
                           <p className="text-black font-medium leading-tight">{effectiveAddress2}</p>
@@ -771,7 +806,7 @@ export default function DirectPrintModal({
                       </div>
                     ) : (
                       <div className="p-3 border-b border-black text-center text-xs font-semibold text-slate-400 bg-gray-50 italic">
-                        [Header & JNC Logo hidden for Pre-Printed Stationery / Letterhead]
+                        [Header & Logo hidden for Pre-Printed Stationery / Letterhead]
                       </div>
                     )}
 
@@ -780,7 +815,7 @@ export default function DirectPrintModal({
                       <div className="p-2 text-[10.5px]">
                         <p className="font-bold">Billing Address :</p>
                         <p className="font-bold text-xs">{invoice.customerName}</p>
-                        <p className="font-medium">{invoice.billingAddress || `${invoice.customerState || 'Karnataka'}, India`}</p>
+                        <p className="font-medium">{invoice.billingAddress || `${invoice.customerState || ''}, India`}</p>
                         {!isDC && <p className="font-bold pt-0.5">GSTIN: {invoice.customerGstin || '-'}</p>}
                       </div>
                       <div className="p-2 text-[10.5px]">
@@ -788,7 +823,7 @@ export default function DirectPrintModal({
                           <>
                             <p className="font-bold">Delivery Address :</p>
                             <p className="font-bold text-xs">{invoice.customerName}</p>
-                            <p className="font-medium">{invoice.deliveryAddress || invoice.billingAddress || `${invoice.customerState || 'Karnataka'}, India`}</p>
+                            <p className="font-medium">{invoice.deliveryAddress || invoice.billingAddress || `${invoice.customerState || ''}, India`}</p>
                           </>
                         ) : (
                           <p className="text-gray-400 italic text-[10px]">Delivery address hidden</p>
@@ -839,7 +874,7 @@ export default function DirectPrintModal({
                       {includeTerms ? (
                         <>
                           <p className="font-bold">Declaration & Terms:</p>
-                          <p className="text-[9.5px]">Standard warranty and payment terms apply. Subject to Bangalore Jurisdiction.</p>
+                          <p className="text-[9.5px]">Standard warranty and payment terms apply. Subject to ${profile?.city || 'Local'} Jurisdiction.</p>
                         </>
                       ) : (
                         <p className="text-gray-400 italic">[Terms hidden]</p>

@@ -10,6 +10,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { decryptAtRest } from '../common/encryption.util';
 import { BRAND_CONFIG } from '../common/brand';
 import * as nodemailer from 'nodemailer';
+import * as dns from 'dns';
+import { isPrivateOrBlockedIp, isInternalHostname } from '../common/ssrf.util';
 
 export type MailDeliveryStatus = 'sent' | 'failed' | 'not_configured';
 
@@ -216,6 +218,26 @@ export class NotificationsService {
    * Dynamically retrieves the isolated nodemailer Transporter for a specific tenant.
    * If a tenant has a custom MailAccount registered in DB, keep using SMTP for that tenant.
    */
+  private async resolveAndValidateSmtpHost(host: string, port: number): Promise<string> {
+    if (![465, 587, 2525].includes(port)) {
+      throw new Error(`Port ${port} is not allowed. Only secure ports 465, 587, or 2525 are permitted.`);
+    }
+    if (isInternalHostname(host)) {
+      throw new Error(`Host "${host}" is an internal address and is prohibited.`);
+    }
+    const lookups = await dns.promises.lookup(host, { all: true });
+    const ips = lookups.map((l) => l.address);
+    if (ips.length === 0) {
+      throw new Error(`Host "${host}" could not be resolved in DNS.`);
+    }
+    for (const ip of ips) {
+      if (isPrivateOrBlockedIp(ip)) {
+        throw new Error(`Host "${host}" resolves to prohibited address ${ip}.`);
+      }
+    }
+    return ips[0];
+  }
+
   private async getTenantTransporter(tenantId?: string, senderType: 'primary' | 'invoice' | 'sales' = 'primary'): Promise<{
     transporter: nodemailer.Transporter | null;
     fromEmail: string;
@@ -241,19 +263,68 @@ export class NotificationsService {
       });
 
       if (mailAccount) {
-        const isSsl = mailAccount.encryption === 'ssl' || mailAccount.isSecure || mailAccount.smtpPort === 465;
-        const cacheKey = `${mailAccount.id}_${mailAccount.smtpHost}_${mailAccount.smtpPort}_${isSsl}_${mailAccount.smtpUser}`;
+        try {
+          const checkedIp = await this.resolveAndValidateSmtpHost(mailAccount.smtpHost, mailAccount.smtpPort);
+          const isSsl = mailAccount.encryption === 'ssl' || mailAccount.isSecure || mailAccount.smtpPort === 465;
+          const cacheKey = `${mailAccount.id}_${checkedIp}_${mailAccount.smtpPort}_${isSsl}_${mailAccount.smtpUser}`;
+          let transporter = this.transporterCache.get(cacheKey);
+          if (!transporter) {
+            transporter = nodemailer.createTransport({
+              host: checkedIp,
+              port: mailAccount.smtpPort,
+              secure: isSsl,
+              requireTLS: !isSsl,
+              tls: {
+                servername: mailAccount.smtpHost,
+              },
+              auth: {
+                user: mailAccount.smtpUser,
+                pass: decryptAtRest(mailAccount.smtpPass) || mailAccount.smtpPass,
+              },
+              connectionTimeout: 10000,
+              greetingTimeout: 10000,
+              socketTimeout: 10000,
+            } as any);
+            this.transporterCache.set(cacheKey, transporter);
+          }
+
+          return {
+            transporter,
+            fromEmail: mailAccount.email,
+            senderName: mailAccount.senderName || mailAccount.name,
+            isCustomTenantAccount: true,
+          };
+        } catch (err: any) {
+          this.logger.error(`[MAIL_SECURITY] Tenant SMTP security validation failed: ${err.message}`);
+        }
+      }
+    }
+
+    // 2. Fallback to system env SMTP configuration
+    const primaryUser = process.env.SMTP_USER || '';
+    const primaryPass = process.env.SMTP_PASS || '';
+    const primaryFrom = process.env.EMAIL_FROM || primaryUser;
+
+    if (primaryUser && primaryPass) {
+      const isGmail = primaryUser.toLowerCase().includes('gmail.com');
+      const host = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost');
+      const port = Number(process.env.SMTP_PORT) || (isGmail ? 465 : 587);
+      const isSsl = port === 465;
+
+      try {
+        const checkedIp = await this.resolveAndValidateSmtpHost(host, port);
+        const cacheKey = `default_root_smtp_${checkedIp}_${port}_${isSsl}`;
         let transporter = this.transporterCache.get(cacheKey);
         if (!transporter) {
           transporter = nodemailer.createTransport({
-            host: mailAccount.smtpHost,
-            port: mailAccount.smtpPort,
+            host: checkedIp,
+            port,
             secure: isSsl,
             requireTLS: !isSsl,
-            auth: {
-              user: mailAccount.smtpUser,
-              pass: decryptAtRest(mailAccount.smtpPass) || mailAccount.smtpPass,
+            tls: {
+              servername: host,
             },
+            auth: { user: primaryUser, pass: primaryPass },
             connectionTimeout: 10000,
             greetingTimeout: 10000,
             socketTimeout: 10000,
@@ -263,52 +334,19 @@ export class NotificationsService {
 
         return {
           transporter,
-          fromEmail: mailAccount.email,
-          senderName: mailAccount.senderName || mailAccount.name,
-          isCustomTenantAccount: true,
+          fromEmail: primaryFrom,
+          senderName: process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM',
+          isCustomTenantAccount: false,
         };
+      } catch (err: any) {
+        this.logger.error(`[MAIL_SECURITY] System root SMTP security validation failed: ${err.message}`);
       }
-    }
-
-    // 2. Fallback to system env SMTP configuration
-    const primaryUser = process.env.SMTP_USER || '';
-    const primaryPass = process.env.SMTP_PASS || '';
-    const primaryFrom = process.env.EMAIL_FROM || process.env.PRIMARY_EMAIL_FROM || primaryUser || 'noreply@jsnc.co.in';
-
-    if (primaryUser && primaryPass) {
-      const isGmail = primaryUser.toLowerCase().includes('@gmail.com');
-      const host = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'smtpout.secureserver.net');
-      const port = Number(process.env.SMTP_PORT) || (isGmail ? 465 : 587);
-      const isSsl = port === 465;
-
-      const cacheKey = `default_root_smtp_${host}_${port}_${isSsl}`;
-      let transporter = this.transporterCache.get(cacheKey);
-      if (!transporter) {
-        transporter = nodemailer.createTransport({
-          host,
-          port,
-          secure: isSsl,
-          requireTLS: !isSsl,
-          auth: { user: primaryUser, pass: primaryPass },
-          connectionTimeout: 10000,
-          greetingTimeout: 10000,
-          socketTimeout: 10000,
-        } as any);
-        this.transporterCache.set(cacheKey, transporter);
-      }
-
-      return {
-        transporter,
-        fromEmail: primaryFrom,
-        senderName: BRAND_CONFIG.displayName,
-        isCustomTenantAccount: false,
-      };
     }
 
     return {
       transporter: null,
       fromEmail: primaryFrom,
-      senderName: BRAND_CONFIG.displayName,
+      senderName: process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM',
       isCustomTenantAccount: false,
     };
   }
@@ -374,7 +412,7 @@ export class NotificationsService {
 
     const configuredFrom = process.env.RESEND_FROM;
     let fromFormatted = configuredFrom
-      ? (configuredFrom.includes('<') ? configuredFrom : `"${senderName || 'JNC CRM'}" <${configuredFrom}>`)
+      ? (configuredFrom.includes('<') ? configuredFrom : `"${senderName || process.env.PRODUCT_NAME || 'CRM'}" <${configuredFrom}>`)
       : (senderName ? `"${senderName}" <${fromEmail}>` : fromEmail);
 
     const payload = {
@@ -398,30 +436,6 @@ export class NotificationsService {
       let data = await res.json().catch(() => ({}));
       if (res.ok && data.id) {
         return { success: true, messageId: data.id };
-      }
-
-      // If domain verification failed or 403 on custom domain, retry with Resend default sandbox sender
-      if (res.status === 403 || (data.message && data.message.toLowerCase().includes('domain'))) {
-        this.logger.warn(`Resend domain '${fromFormatted}' not verified. Falling back to default onboarding@resend.dev...`);
-        const fallbackPayload = {
-          ...payload,
-          from: `JNC CRM <onboarding@resend.dev>`,
-        };
-        const fallbackRes = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey.trim()}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(fallbackPayload),
-        });
-        const fallbackData = await fallbackRes.json().catch(() => ({}));
-        if (fallbackRes.ok && fallbackData.id) {
-          return { success: true, messageId: fallbackData.id };
-        }
-        const fallbackErr = fallbackData.message || fallbackData.name || data.message || `Resend HTTP ${fallbackRes.status}`;
-        const fallbackReason = mapProviderError('resend', fallbackRes.status, fallbackErr);
-        return { success: false, error: fallbackErr, reason: fallbackReason, status: fallbackRes.status };
       }
 
       const errMsg = data.message || data.name || `Resend HTTP ${res.status}`;
@@ -451,29 +465,31 @@ export class NotificationsService {
         });
         if (tenant) {
           return {
-            companyDisplayName: tenant.name || 'JNC CRM',
-            companyPhone: tenant.phone || '+91 9876543210',
-            companyLogoUrl: tenant.logoUrl || '/jnc-logo.jpg',
+            companyDisplayName: tenant.name || (process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM'),
+            companyPhone: tenant.phone || '',
+            companyLogoUrl: tenant.logoUrl || process.env.PRODUCT_LOGO_URL || '',
           };
         }
       } catch {}
     }
 
+    const defaultName = process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM';
+    const defaultLogo = process.env.PRODUCT_LOGO_URL || '';
+
     return {
-      companyDisplayName: BRAND_CONFIG.displayName,
-      companyPhone: '+91 9876543210',
-      companyLogoUrl: '/jnc-logo.jpg',
+      companyDisplayName: defaultName,
+      companyPhone: '',
+      companyLogoUrl: defaultLogo,
     };
   }
 
   private async resolveNotificationTenantId(tenantId?: string): Promise<string> {
     if (tenantId && tenantId.trim()) return tenantId;
-    const jnc = await this.prisma.tenant.findFirst({
-      where: { code: 'JNC' },
+    const anyTenant = await this.prisma.tenant.findFirst({
+      where: { deletedAt: null },
       select: { id: true },
+      orderBy: { createdAt: 'asc' },
     });
-    if (jnc) return jnc.id;
-    const anyTenant = await this.prisma.tenant.findFirst({ select: { id: true } });
     return anyTenant?.id || '';
   }
 
@@ -491,8 +507,45 @@ export class NotificationsService {
       isInvoice ? 'invoice' : (options.senderType || 'primary')
     );
 
-    const fromEmail = options.from || process.env.EMAIL_FROM || process.env.PRIMARY_EMAIL_FROM || tenantTransporterInfo.fromEmail;
-    const senderName = options.from ? branding.companyDisplayName : tenantTransporterInfo.senderName;
+    // Purpose-based routing: System sender vs Business mail account
+    const SYSTEM_ALLOWED_PURPOSES = new Set([
+      'login_code',
+      'two_factor_code',
+      'password_reset_code',
+      'password_reset',
+      'security_alert',
+      'password_changed',
+      'welcome_credentials',
+      'user_invite',
+      'test_mail',
+      'mail_test',
+    ]);
+
+    const isSystemMail = Boolean(options.purpose && SYSTEM_ALLOWED_PURPOSES.has(options.purpose));
+
+    // Business mails (quotations, invoices, follow-ups, customer automations) must use company's own mail account
+    if (!isSystemMail && (!tenantTransporterInfo.isCustomTenantAccount || !tenantTransporterInfo.transporter)) {
+      const errMsg = 'Connect your company mail account in Settings';
+      this.logger.warn(`[BUSINESS_MAIL_BLOCKED] Tenant '${tenantId}' has no active mail account. Blocked business mail with purpose '${options.purpose || options.relatedEntityType || 'business'}'.`);
+      if (options.throwOnError !== false) {
+        throw new BadRequestException(errMsg);
+      }
+      return {
+        status: 'not_configured',
+        reason: 'missing_configuration',
+        provider: 'tenant-mail',
+        recipient: options.to,
+        error: errMsg,
+        success: false,
+      };
+    }
+
+    const fromEmail = tenantTransporterInfo.isCustomTenantAccount
+      ? tenantTransporterInfo.fromEmail
+      : (process.env.EMAIL_FROM || process.env.SMTP_USER || '');
+    const senderName = tenantTransporterInfo.isCustomTenantAccount
+      ? (tenantTransporterInfo.senderName || branding.companyDisplayName)
+      : (process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM');
     const mailProvider = this.getMailProvider();
 
     let status: MailDeliveryStatus = 'failed';
@@ -578,6 +631,7 @@ export class NotificationsService {
         try {
           const info = await tenantTransporterInfo.transporter.sendMail({
             from: `"${senderName}" <${fromEmail}>`,
+            replyTo: process.env.REPLY_TO_EMAIL || fromEmail,
             to: options.to,
             subject: options.subject,
             html: options.html,
@@ -719,7 +773,8 @@ export class NotificationsService {
    */
   async sendTestMail(targetEmail: string, requestId?: string): Promise<MailTestResult> {
     const provider = this.getMailProvider();
-    const testSubject = `[JNC CRM] Mail Provider Test (${provider.toUpperCase()})`;
+    const prodName = process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM';
+    const testSubject = `[${prodName}] Mail Provider Test (${provider.toUpperCase()})`;
     const testHtml = `
       <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
         <h2>Mail Provider Operational Test</h2>
@@ -734,7 +789,7 @@ export class NotificationsService {
       html: testHtml,
       text: `Mail Provider Test (${provider.toUpperCase()}) - ${new Date().toISOString()}`,
       requestId,
-      purpose: 'mail_test',
+      purpose: 'test_mail',
       throwOnError: false,
     });
 
@@ -752,7 +807,7 @@ export class NotificationsService {
    */
   async getMailStatus() {
     const provider = this.getMailProvider();
-    const fromEmail = process.env.EMAIL_FROM || process.env.PRIMARY_EMAIL_FROM || 'noreply@jsnc.co.in';
+    const fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER || '';
     const domainMatch = fromEmail.match(/@(.+)$/);
     const senderDomain = domainMatch ? domainMatch[1] : 'unknown';
 

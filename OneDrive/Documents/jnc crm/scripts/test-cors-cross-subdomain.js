@@ -12,17 +12,17 @@ async function runCorsTests() {
   console.log('========================================================================');
   console.log('TEST 4: CROSS-SUBDOMAIN CORS & PRODUCTION COOKIE VERIFICATION');
   console.log('Target API: http://localhost:3333');
-  console.log('Allowed Origin: https://admin.jsnc.co.in');
+  console.log('Allowed Origin: https://admin.example.com');
   console.log('Blocked Origin: https://evil.example');
   console.log('========================================================================\n');
 
   const serverUrl = 'http://localhost:3333';
 
   // 1. Preflight OPTIONS request with allowed origin
-  console.log('[1/4] Preflight OPTIONS request with Origin: https://admin.jsnc.co.in ...');
+  console.log('[1/4] Preflight OPTIONS request with Origin: https://admin.example.com ...');
   const preflightRes = await request(serverUrl)
     .options('/api/v1/platform-auth/login')
-    .set('Origin', 'https://admin.jsnc.co.in')
+    .set('Origin', 'https://admin.example.com')
     .set('Access-Control-Request-Method', 'POST')
     .set('Access-Control-Request-Headers', 'Content-Type, X-Requested-With');
 
@@ -43,15 +43,15 @@ async function runCorsTests() {
   console.log('Access-Control-Allow-Origin:', evilRes.headers['access-control-allow-origin'] || '(NONE - Header Absent)');
   console.log('Access-Control-Allow-Credentials:', evilRes.headers['access-control-allow-credentials'] || '(NONE - Header Absent)');
 
-  // 3. POST Login with allowed origin https://admin.jsnc.co.in
-  console.log('\n[3/4] POST Login request with Origin: https://admin.jsnc.co.in ...');
+  // 3. POST Login with allowed origin https://admin.example.com
+  console.log('\n[3/4] POST Login request with Origin: https://admin.example.com ...');
   const loginRes = await request(serverUrl)
     .post('/api/v1/platform-auth/login')
-    .set('Origin', 'https://admin.jsnc.co.in')
+    .set('Origin', 'https://admin.example.com')
     .set('X-Requested-With', 'XMLHttpRequest')
     .set('Content-Type', 'application/json')
     .send({
-      email: 'platform@jsnc.co.in',
+      email: 'platform@example.com',
       password: 'type-your-own-long-password',
     });
 
@@ -87,11 +87,11 @@ async function runCorsTests() {
 
   const prodRes = await request(httpServer)
     .post('/api/v1/platform-auth/login')
-    .set('Origin', 'https://admin.jsnc.co.in')
+    .set('Origin', 'https://admin.example.com')
     .set('X-Requested-With', 'XMLHttpRequest')
     .set('Content-Type', 'application/json')
     .send({
-      email: 'platform@jsnc.co.in',
+      email: 'platform@example.com',
       password: 'type-your-own-long-password',
     });
 
@@ -102,11 +102,11 @@ async function runCorsTests() {
   // Also test staff login cookie in production mode
   const prodStaffRes = await request(httpServer)
     .post('/api/v1/auth/login')
-    .set('Origin', 'https://admin.jsnc.co.in')
+    .set('Origin', 'https://admin.example.com')
     .set('X-Requested-With', 'XMLHttpRequest')
     .set('Content-Type', 'application/json')
     .send({
-      identifier: 'tenantadmin@jsnc.co.in',
+      identifier: 'tenantadmin@example.com',
       password: 'type-your-own-long-password',
     });
 
@@ -118,7 +118,7 @@ async function runCorsTests() {
   process.env.NODE_ENV = prevEnv;
 
   // Assertions
-  const allowOriginMatch = preflightRes.headers['access-control-allow-origin'] === 'https://admin.jsnc.co.in';
+  const allowOriginMatch = preflightRes.headers['access-control-allow-origin'] === 'https://admin.example.com';
   const allowCredsMatch = preflightRes.headers['access-control-allow-credentials'] === 'true';
   const evilBlocked = evilRes.headers['access-control-allow-origin'] === undefined;
   const prodCookieMatch = prodCookies.some((c) =>
@@ -131,14 +131,14 @@ async function runCorsTests() {
   console.log('\n========================================================================');
   console.log('CROSS-SUBDOMAIN ASSERTIONS SUMMARY');
   console.log('========================================================================');
-  console.log('1. Allowed Origin exact match (https://admin.jsnc.co.in)  :', allowOriginMatch ? 'PASS' : 'FAIL');
+  console.log('1. Allowed Origin exact match (https://admin.example.com)  :', allowOriginMatch ? 'PASS' : 'FAIL');
   console.log('2. Allow-Credentials is true                              :', allowCredsMatch ? 'PASS' : 'FAIL');
   console.log('3. Disallowed Origin (https://evil.example) gets NO CORS  :', evilBlocked ? 'PASS' : 'FAIL');
   console.log('4. Production Set-Cookie: HttpOnly; Secure; SameSite=Strict; Path :', prodCookieMatch ? 'PASS' : 'FAIL');
   console.log('========================================================================\n');
 
-  console.log('WHY SameSite=Strict WORKS BETWEEN admin.jsnc.co.in AND api.jsnc.co.in:');
-  console.log('Under the Public Suffix List, both admin.jsnc.co.in and api.jsnc.co.in share the exact same effective top-level domain plus one (eTLD+1), which is jsnc.co.in.');
+  console.log('WHY SameSite=Strict WORKS BETWEEN admin.example.com AND api.example.com:');
+  console.log('Under the Public Suffix List, both admin.example.com and api.example.com share the exact same effective top-level domain plus one (eTLD+1), which is example.com.');
   console.log('Because browser cookie specifications define a "site" strictly as scheme plus eTLD+1, cross-subdomain requests within the same apex domain are classified as same-site rather than cross-site, allowing SameSite=Strict cookies to be safely sent and received.');
   console.log('========================================================================\n');
 }

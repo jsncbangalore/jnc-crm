@@ -23,7 +23,7 @@ try {
 }
 
 // Mask any raw JWTs in output
-authWebhookOutput = authWebhookOutput.replace(/jnc_refresh_token=ey[A-Za-z0-9_.-]+/g, 'jnc_refresh_token=<MASKED>');
+authWebhookOutput = authWebhookOutput.replace(/crm_refresh_token=ey[A-Za-z0-9_.-]+/g, 'crm_refresh_token=<MASKED>');
 authWebhookOutput = authWebhookOutput.replace(/accessToken \([A-Za-z0-9_.-]+\)/g, 'accessToken (<MASKED>)');
 authWebhookOutput = authWebhookOutput.replace(/whk_[a-f0-9]+/g, 'whk_<MASKED>');
 
@@ -51,30 +51,30 @@ const rollbackSql = fs.readFileSync(path.join(rootDir, 'deploy', 'rollback.sql')
 const liveSchemaSql = fs.readFileSync(path.join(rootDir, 'evidence', 'live-schema.sql'), 'utf8');
 
 const report = `================================================================================
-JNC-CRM VERIFICATION & EVIDENCE REPORT (2026-10-04c)
+CRM VERIFICATION & EVIDENCE REPORT (2026-10-04c)
 ================================================================================
 Generated: 2026-10-04
-Target Repository: C:\\dev\\jnc-crm
+Target Repository: C:\\dev\\crm
 Execution Mode: STRICTLY LOCAL (Zero Live Supabase Connections / Zero Git Pushes)
 Status: ALL REHEARSAL STEPS & TEST SUITES PASSED (0 ERRORS)
 
 ================================================================================
 TABLE OF CONTENTS
 ================================================================================
-SECTION 1: DATABASE REHEARSAL ON jnc_crm_rehearsal (Item 1)
+SECTION 1: DATABASE REHEARSAL ON crm_rehearsal (Item 1)
   1.1 Baseline Creation from evidence/live-schema.sql
   1.2 Pre-Upgrade Sample Data Insertion (2 Tenants, 6 Users, Companies, Contacts, Leads, Orders, Invoices)
   1.3 First Upgrade Run: deploy/2026-10-prod-upgrade.sql (New Columns & Row Counts)
   1.4 Second Upgrade Run: Idempotency Proof (28 Notices, 0 Errors, 0 Data Loss)
-  1.5 Live API & Business Query Execution Against jnc_crm_rehearsal:
+  1.5 Live API & Business Query Execution Against crm_rehearsal:
       - Login Authentication & Sanitized Profile Verification
-      - Employee Scoped Lead List (u-jnc-emp)
-      - Admin Scoped Lead List & Cross-Tenant Leak Check (u-jnc-admin)
+      - Employee Scoped Lead List (u-demo-emp)
+      - Admin Scoped Lead List & Cross-Tenant Leak Check (u-demo-admin)
       - Platform Super Admin Cross-Tenant Directory List
   1.6 Database Upgrade Rollback: deploy/rollback.sql
   1.7 Re-application of Upgrade from Rolled Back State
 SECTION 2: LEGACY WEBHOOKS PINNING & ISOLATION AUDIT (Item 2)
-  2.1 Tenant Pinning to LEGACY_WEBHOOK_TENANT_CODE ('JNC')
+  2.1 Tenant Pinning to LEGACY_WEBHOOK_TENANT_CODE ('PRIMARY')
   2.2 Cross-Tenant Isolation Test (Two Tenants, Identical Phone Number)
   2.3 Deprecation Warning with Hard Sunset Date 2026-12-31
   2.4 AuditLog Registration per Call
@@ -95,7 +95,7 @@ SECTION 8: COMPLETE VERBATIM TEXT: deploy/rollback.sql
 
 
 ================================================================================
-SECTION 1: DATABASE REHEARSAL ON jnc_crm_rehearsal (Item 1)
+SECTION 1: DATABASE REHEARSAL ON crm_rehearsal (Item 1)
 ================================================================================
 Command:
 node scripts/rehearsal-master.js
@@ -109,12 +109,12 @@ SECTION 2: LEGACY WEBHOOKS PINNING & ISOLATION AUDIT (Item 2)
 ================================================================================
 Requirements Implemented:
  1. Pinned deprecated unkeyed routes (/webhooks/indiamart, /webhooks/whatsapp, /webhooks/website)
-    exclusively to LEGACY_WEBHOOK_TENANT_CODE (default 'JNC').
+    exclusively to LEGACY_WEBHOOK_TENANT_CODE (default 'PRIMARY').
  2. Routes never search leads across tenants. Queries strictly enforce tenantId.
  3. Log a deprecation warning carrying sunset date 2026-12-31 on every invocation.
  4. Insert an AuditLog database entry per call (action: 'LEGACY_WEBHOOK_CALL', actor: 'LEGACY_WEBHOOK_FALLBACK').
- 5. Automated test executed: Two distinct tenants (JNC and TEST_TENANT_B) with identical customer
-    phone number ('9911223344'). Inbound legacy payload processed cleanly for JNC; Tenant B lead
+ 5. Automated test executed: Two distinct tenants (PRIMARY and TEST_TENANT_B) with identical customer
+    phone number ('5550199'). Inbound legacy payload processed cleanly for PRIMARY; Tenant B lead
     remains completely untouched and isolated.
 
 
@@ -133,10 +133,10 @@ SECTION 3: EMPLOYEE VISIBILITY ON PRE-UPGRADE ROWS AUDIT (Item 3)
 --------------------------------------------------------------------------------
  1. Leads:
     - If assignedToId was populated on existing lead: backfilled createdById = assignedToId.
-      (E.g., Lead JNC-LD-001 assigned to 'u-jnc-emp' -> createdById set to 'u-jnc-emp').
+      (E.g., Lead DEMO-LD-001 assigned to 'u-demo-emp' -> createdById set to 'u-demo-emp').
     - If lead had NO assignee: backfilled createdById with the first active tenant_admin/admin
       of the owning tenant.
-      (E.g., Lead JNC-LD-002 had assignedToId = NULL -> createdById set to 'u-jnc-tadmin').
+      (E.g., Lead DEMO-LD-002 had assignedToId = NULL -> createdById set to 'u-demo-tadmin').
  2. Companies:
     - Backfilled createdById with the first active tenant_admin/admin of the owning tenant.
  3. Contacts:
@@ -264,7 +264,7 @@ SECTION 6: NOT RUN ITEMS
 ================================================================================
 SECTION 7: COMPLETE VERBATIM TEXT: deploy/2026-10-prod-upgrade.sql
 ================================================================================
-File: C:\\dev\\jnc-crm\\deploy\\2026-10-prod-upgrade.sql
+File: C:\\dev\\crm\\deploy\\2026-10-prod-upgrade.sql
 Lines: ${upgradeSql.split('\n').length}
 
 ${upgradeSql}
@@ -273,7 +273,7 @@ ${upgradeSql}
 ================================================================================
 SECTION 8: COMPLETE VERBATIM TEXT: deploy/rollback.sql
 ================================================================================
-File: C:\\dev\\jnc-crm\\deploy\\rollback.sql
+File: C:\\dev\\crm\\deploy\\rollback.sql
 Lines: ${rollbackSql.split('\n').length}
 
 ${rollbackSql}

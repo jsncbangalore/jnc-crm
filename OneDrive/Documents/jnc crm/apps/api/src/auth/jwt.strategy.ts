@@ -18,8 +18,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ignoreExpiration: false,
       secretOrKey: process.env.JWT_SECRET,
       algorithms: ['HS256'],
-      issuer: 'jnc-crm-api',
-      audience: 'jnc-crm-client',
+      issuer: process.env.JWT_ISSUER || 'crm-api',
+      audience: process.env.JWT_AUDIENCE || 'crm-client',
     });
   }
 

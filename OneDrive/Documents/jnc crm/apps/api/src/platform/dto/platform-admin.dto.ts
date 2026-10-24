@@ -38,6 +38,10 @@ export class ResetTenantAdminPasswordDto {
   @IsOptional()
   @IsString()
   appUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  adminPhone?: string;
 }
 
 export class CreatePlatformAdminDto {

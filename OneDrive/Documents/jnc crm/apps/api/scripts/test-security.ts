@@ -32,7 +32,7 @@ function assert(condition: boolean, testName: string, failureDetail?: string) {
 
 async function runTests() {
   console.log('\n================================================================');
-  console.log('       JNC-CRM SECURITY HARDENING AUTOMATED TEST SUITE          ');
+  console.log('       CRM SECURITY HARDENING AUTOMATED TEST SUITE              ');
   console.log('================================================================\n');
 
   // Test 1: Encryption at Rest (AES-256-GCM)
@@ -74,7 +74,7 @@ async function runTests() {
 
     let userInfoRejected = false;
     try {
-      validatePasswordPolicy('rajesh123456789!', { email: 'rajesh@jsnc.co.in', name: 'Rajesh Sharma' });
+      validatePasswordPolicy('rajesh123456789!', { email: 'rajesh@example.com', name: 'Rajesh Sharma' });
     } catch {
       userInfoRejected = true;
     }
@@ -82,14 +82,14 @@ async function runTests() {
 
     let strongAccepted = true;
     try {
-      validatePasswordPolicy('JncSecure#2026!ShieldX99');
+      validatePasswordPolicy('CrmSecure#2026!ShieldX99');
     } catch {
       strongAccepted = false;
     }
     assert(strongAccepted, 'Test 2.4: Accepts compliant high-entropy password (>=12 chars)');
 
     // Bcrypt cost factor verification
-    const hashedCost12 = await bcrypt.hash('JncSecure#2026!ShieldX99', 12);
+    const hashedCost12 = await bcrypt.hash('CrmSecure#2026!ShieldX99', 12);
     assert(hashedCost12.startsWith('$2a$12$') || hashedCost12.startsWith('$2b$12$'), 'Test 2.5: Hashes with bcrypt cost 12');
 
     const cost10Hash = await bcrypt.hash('LegacyPassword123!', 10);
@@ -104,7 +104,7 @@ async function runTests() {
     const sensitivePayload = {
       id: 'usr_test_123',
       name: 'Admin User',
-      email: 'admin@jsnc.co.in',
+      email: 'admin@example.com',
       passwordHash: '$2a$12$eX4mpleH4shNotT0BeLe4ked...',
       smtpPass: 'enc:iv:tag:data',
       imapPass: 'enc:iv:tag:data',
@@ -212,9 +212,9 @@ async function runTests() {
         data: {
           tenantId: testTenant.id,
           employeeCode: 'TST-001',
-          email: 'tst-sec@jsnc.co.in',
+          email: 'tst-sec@example.com',
           name: 'Security Test User',
-          passwordHash: await bcrypt.hash('JncSecure#2026!ShieldX99', 12),
+          passwordHash: await bcrypt.hash('CrmSecure#2026!ShieldX99', 12),
           role: 'admin',
         },
       });

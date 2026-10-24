@@ -5,6 +5,14 @@ import { suppliersApi, inventoryApi } from '../services/api';
 import { Supplier } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import SupplierPurchaseModal from '../components/inventory/SupplierPurchaseModal';
+import FormField, { filterPhoneInput, filterGstinInput, filterIntegerInput, filterTextOnlyInput } from '../components/common/FormField';
+import {
+  validatePersonOrCompanyName,
+  validatePhone,
+  validateEmail,
+  validateGstin,
+  validateAddress,
+} from '@crm/shared-validation';
 
 export default function SuppliersPage() {
   const { user } = useAuth();
@@ -38,8 +46,43 @@ export default function SuppliersPage() {
     notes: '',
   });
 
-  // Edit Supplier Modal state
   const [editingSupplier, setEditingSupplier] = useState<any | null>(null);
+
+  // Validation States
+  const [addErrors, setAddErrors] = useState<Record<string, string>>({});
+  const [addTouched, setAddTouched] = useState<Record<string, boolean>>({});
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const [editTouched, setEditTouched] = useState<Record<string, boolean>>({});
+
+  const validateSupplierFields = (vals: {
+    name: string;
+    phone?: string;
+    email?: string;
+    gstin?: string;
+    address?: string;
+  }) => {
+    const errs: Record<string, string> = {};
+    const nameRes = validatePersonOrCompanyName(vals.name);
+    if (!nameRes.valid) errs.name = nameRes.error!;
+
+    if (vals.phone && vals.phone.trim()) {
+      const phoneRes = validatePhone(vals.phone);
+      if (!phoneRes.valid) errs.phone = phoneRes.error!;
+    }
+    if (vals.email && vals.email.trim()) {
+      const emailRes = validateEmail(vals.email);
+      if (!emailRes.valid) errs.email = emailRes.error!;
+    }
+    if (vals.gstin && vals.gstin.trim()) {
+      const gstinRes = validateGstin(vals.gstin);
+      if (!gstinRes.valid) errs.gstin = gstinRes.error!;
+    }
+    if (vals.address && vals.address.trim()) {
+      const addrRes = validateAddress(vals.address);
+      if (!addrRes.valid) errs.address = addrRes.error!;
+    }
+    return errs;
+  };
 
   // Delete Supplier Modal state
   const [supplierToDelete, setSupplierToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -81,6 +124,22 @@ export default function SuppliersPage() {
   // Create Supplier submit
   const handleCreateSupplierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const errs = validateSupplierFields(newSupplier);
+    if (Object.keys(errs).length > 0) {
+      setAddErrors(errs);
+      setAddTouched({
+        name: true,
+        phone: true,
+        email: true,
+        gstin: true,
+        address: true,
+      });
+      const firstKey = Object.keys(errs)[0];
+      const el = document.getElementById(`new-supplier-${firstKey}`);
+      el?.focus();
+      return;
+    }
+
     try {
       await suppliersApi.create(newSupplier);
       setShowAddModal(false);
@@ -95,9 +154,16 @@ export default function SuppliersPage() {
         leadTimeDays: 7,
         notes: '',
       });
+      setAddErrors({});
+      setAddTouched({});
       await fetchSuppliers();
     } catch (err: any) {
-      alert('Failed to add supplier: ' + (err?.response?.data?.message || err.message));
+      const serverMsg = err?.response?.data?.message;
+      if (Array.isArray(serverMsg)) {
+        alert('Validation error: ' + serverMsg.join(', '));
+      } else {
+        alert('Failed to add supplier: ' + (serverMsg || err.message));
+      }
     }
   };
 
@@ -105,12 +171,35 @@ export default function SuppliersPage() {
   const handleUpdateSupplierSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSupplier) return;
+    const errs = validateSupplierFields(editingSupplier);
+    if (Object.keys(errs).length > 0) {
+      setEditErrors(errs);
+      setEditTouched({
+        name: true,
+        phone: true,
+        email: true,
+        gstin: true,
+        address: true,
+      });
+      const firstKey = Object.keys(errs)[0];
+      const el = document.getElementById(`edit-supplier-${firstKey}`);
+      el?.focus();
+      return;
+    }
+
     try {
       await suppliersApi.update(editingSupplier.id, editingSupplier);
       setEditingSupplier(null);
+      setEditErrors({});
+      setEditTouched({});
       await fetchSuppliers();
     } catch (err: any) {
-      alert('Failed to update supplier: ' + (err?.response?.data?.message || err.message));
+      const serverMsg = err?.response?.data?.message;
+      if (Array.isArray(serverMsg)) {
+        alert('Validation error: ' + serverMsg.join(', '));
+      } else {
+        alert('Failed to update supplier: ' + (serverMsg || err.message));
+      }
     }
   };
 
@@ -361,98 +450,153 @@ export default function SuppliersPage() {
               </div>
 
               <form onSubmit={handleCreateSupplierSubmit} className="p-6 space-y-4">
-                <div>
-                  <label className="label">Company / Supplier Name *</label>
-                  <input
-                    className="input text-xs"
-                    placeholder="Enter supplier or vendor name"
-                    value={newSupplier.name}
-                    onChange={(e) => setNewSupplier({ ...newSupplier, name: e.target.value })}
-                    required
+                <FormField
+                  id="new-supplier-name"
+                  label="Company / Supplier Name"
+                  required
+                  placeholder="Enter supplier or vendor name"
+                  value={newSupplier.name}
+                  onChange={(e) => {
+                    setNewSupplier({ ...newSupplier, name: e.target.value });
+                    if (addTouched.name) {
+                      const res = validatePersonOrCompanyName(e.target.value);
+                      setAddErrors((prev) => ({ ...prev, name: res.valid ? '' : res.error! }));
+                    }
+                  }}
+                  onBlur={() => {
+                    setAddTouched((prev) => ({ ...prev, name: true }));
+                    const res = validatePersonOrCompanyName(newSupplier.name);
+                    setAddErrors((prev) => ({ ...prev, name: res.valid ? '' : res.error! }));
+                  }}
+                  error={addTouched.name ? addErrors.name : null}
+                  maxLength={100}
+                  showCount
+                />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    id="new-supplier-contactPerson"
+                    label="Contact Person"
+                    placeholder="Enter contact person"
+                    value={newSupplier.contactPerson}
+                    onChange={(e) => setNewSupplier({ ...newSupplier, contactPerson: filterTextOnlyInput(e.target.value) })}
+                    maxLength={100}
+                  />
+                  <FormField
+                    id="new-supplier-phone"
+                    label="Phone Number"
+                    type="tel"
+                    inputMode="tel"
+                    placeholder="+91 98765 43210"
+                    value={newSupplier.phone}
+                    onChange={(e) => {
+                      const filtered = filterPhoneInput(e.target.value);
+                      setNewSupplier({ ...newSupplier, phone: filtered });
+                      if (addTouched.phone && filtered) {
+                        const res = validatePhone(filtered);
+                        setAddErrors((prev) => ({ ...prev, phone: res.valid ? '' : res.error! }));
+                      }
+                    }}
+                    onBlur={() => {
+                      setAddTouched((prev) => ({ ...prev, phone: true }));
+                      if (newSupplier.phone) {
+                        const res = validatePhone(newSupplier.phone);
+                        setAddErrors((prev) => ({ ...prev, phone: res.valid ? '' : res.error! }));
+                      }
+                    }}
+                    error={addTouched.phone ? addErrors.phone : null}
+                    maxLength={20}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">Contact Person</label>
-                    <input
-                      className="input text-xs"
-                      placeholder="Enter contact person"
-                      value={newSupplier.contactPerson}
-                      onChange={(e) =>
-                        setNewSupplier({ ...newSupplier, contactPerson: e.target.value })
+                  <FormField
+                    id="new-supplier-email"
+                    label="Email Address"
+                    type="email"
+                    inputMode="email"
+                    placeholder="sales@example.com"
+                    value={newSupplier.email}
+                    onChange={(e) => {
+                      setNewSupplier({ ...newSupplier, email: e.target.value });
+                      if (addTouched.email && e.target.value) {
+                        const res = validateEmail(e.target.value);
+                        setAddErrors((prev) => ({ ...prev, email: res.valid ? '' : res.error! }));
                       }
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Phone Number</label>
-                    <input
-                      className="input text-xs"
-                      placeholder="Enter phone number"
-                      value={newSupplier.phone}
-                      onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">Email Address</label>
-                    <input
-                      type="email"
-                      className="input text-xs"
-                      placeholder="sales@vendor.com"
-                      value={newSupplier.email}
-                      onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">GSTIN / Tax ID</label>
-                    <input
-                      className="input text-xs font-mono"
-                      placeholder="e.g. 29ABCDE1234F1Z5"
-                      value={newSupplier.gstin}
-                      onChange={(e) => setNewSupplier({ ...newSupplier, gstin: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">City / Location</label>
-                    <input
-                      className="input text-xs"
-                      placeholder="Enter city or location"
-                      value={newSupplier.city}
-                      onChange={(e) => setNewSupplier({ ...newSupplier, city: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Lead Time (Days)</label>
-                    <input
-                      type="number"
-                      className="input text-xs"
-                      placeholder="7"
-                      value={newSupplier.leadTimeDays}
-                      onChange={(e) =>
-                        setNewSupplier({
-                          ...newSupplier,
-                          leadTimeDays: parseInt(e.target.value, 10) || 7,
-                        })
+                    }}
+                    onBlur={() => {
+                      setAddTouched((prev) => ({ ...prev, email: true }));
+                      if (newSupplier.email) {
+                        const res = validateEmail(newSupplier.email);
+                        setAddErrors((prev) => ({ ...prev, email: res.valid ? '' : res.error! }));
                       }
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="label">Full Address / Warehouse Location</label>
-                  <input
-                    className="input text-xs"
-                    placeholder="Enter street address"
-                    value={newSupplier.address}
-                    onChange={(e) => setNewSupplier({ ...newSupplier, address: e.target.value })}
+                    }}
+                    error={addTouched.email ? addErrors.email : null}
+                    maxLength={254}
+                  />
+                  <FormField
+                    id="new-supplier-gstin"
+                    label="GSTIN / Tax ID"
+                    placeholder="e.g. 29ABCDE1234F1Z5"
+                    value={newSupplier.gstin}
+                    onChange={(e) => {
+                      const filtered = filterGstinInput(e.target.value);
+                      setNewSupplier({ ...newSupplier, gstin: filtered });
+                      if (addTouched.gstin && filtered) {
+                        const res = validateGstin(filtered);
+                        setAddErrors((prev) => ({ ...prev, gstin: res.valid ? '' : res.error! }));
+                      }
+                    }}
+                    onBlur={() => {
+                      setAddTouched((prev) => ({ ...prev, gstin: true }));
+                      if (newSupplier.gstin) {
+                        const res = validateGstin(newSupplier.gstin);
+                        setAddErrors((prev) => ({ ...prev, gstin: res.valid ? '' : res.error! }));
+                      }
+                    }}
+                    error={addTouched.gstin ? addErrors.gstin : null}
+                    maxLength={15}
+                    showCount
                   />
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    id="new-supplier-city"
+                    label="City / Location"
+                    placeholder="Enter city or location"
+                    value={newSupplier.city}
+                    onChange={(e) => setNewSupplier({ ...newSupplier, city: e.target.value })}
+                    maxLength={100}
+                  />
+                  <FormField
+                    id="new-supplier-leadTimeDays"
+                    label="Lead Time (Days)"
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="7"
+                    value={newSupplier.leadTimeDays}
+                    onChange={(e) => {
+                      const clean = filterIntegerInput(e.target.value);
+                      setNewSupplier({
+                        ...newSupplier,
+                        leadTimeDays: parseInt(clean, 10) || 0,
+                      });
+                    }}
+                    min={0}
+                    max={365}
+                  />
+                </div>
+
+                <FormField
+                  id="new-supplier-address"
+                  label="Full Address / Warehouse Location"
+                  placeholder="Enter street address"
+                  value={newSupplier.address}
+                  onChange={(e) => setNewSupplier({ ...newSupplier, address: e.target.value })}
+                  maxLength={300}
+                  showCount
+                />
 
                 <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#2A3042]">
                   <button
@@ -498,108 +642,144 @@ export default function SuppliersPage() {
               </div>
 
               <form onSubmit={handleUpdateSupplierSubmit} className="p-6 space-y-4">
-                <div>
-                  <label className="label">Company Name *</label>
-                  <input
-                    className="input text-xs"
-                    value={editingSupplier.name}
-                    onChange={(e) =>
-                      setEditingSupplier({ ...editingSupplier, name: e.target.value })
+                <FormField
+                  id="edit-supplier-name"
+                  label="Company Name"
+                  required
+                  value={editingSupplier.name}
+                  onChange={(e) => {
+                    setEditingSupplier({ ...editingSupplier, name: e.target.value });
+                    if (editTouched.name) {
+                      const res = validatePersonOrCompanyName(e.target.value);
+                      setEditErrors((prev) => ({ ...prev, name: res.valid ? '' : res.error! }));
                     }
-                    required
+                  }}
+                  onBlur={() => {
+                    setEditTouched((prev) => ({ ...prev, name: true }));
+                    const res = validatePersonOrCompanyName(editingSupplier.name);
+                    setEditErrors((prev) => ({ ...prev, name: res.valid ? '' : res.error! }));
+                  }}
+                  error={editTouched.name ? editErrors.name : null}
+                  maxLength={100}
+                  showCount
+                />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    id="edit-supplier-contactPerson"
+                    label="Contact Person"
+                    value={editingSupplier.contactPerson || ''}
+                    onChange={(e) =>
+                      setEditingSupplier({ ...editingSupplier, contactPerson: e.target.value })
+                    }
+                    maxLength={100}
+                  />
+                  <FormField
+                    id="edit-supplier-phone"
+                    label="Phone Number"
+                    type="tel"
+                    inputMode="tel"
+                    value={editingSupplier.phone || ''}
+                    onChange={(e) => {
+                      const filtered = filterPhoneInput(e.target.value);
+                      setEditingSupplier({ ...editingSupplier, phone: filtered });
+                      if (editTouched.phone && filtered) {
+                        const res = validatePhone(filtered);
+                        setEditErrors((prev) => ({ ...prev, phone: res.valid ? '' : res.error! }));
+                      }
+                    }}
+                    onBlur={() => {
+                      setEditTouched((prev) => ({ ...prev, phone: true }));
+                      if (editingSupplier.phone) {
+                        const res = validatePhone(editingSupplier.phone);
+                        setEditErrors((prev) => ({ ...prev, phone: res.valid ? '' : res.error! }));
+                      }
+                    }}
+                    error={editTouched.phone ? editErrors.phone : null}
+                    maxLength={20}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">Contact Person</label>
-                    <input
-                      className="input text-xs"
-                      value={editingSupplier.contactPerson || ''}
-                      onChange={(e) =>
-                        setEditingSupplier({ ...editingSupplier, contactPerson: e.target.value })
+                  <FormField
+                    id="edit-supplier-email"
+                    label="Email Address"
+                    type="email"
+                    inputMode="email"
+                    value={editingSupplier.email || ''}
+                    onChange={(e) => {
+                      setEditingSupplier({ ...editingSupplier, email: e.target.value });
+                      if (editTouched.email && e.target.value) {
+                        const res = validateEmail(e.target.value);
+                        setEditErrors((prev) => ({ ...prev, email: res.valid ? '' : res.error! }));
                       }
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Phone Number</label>
-                    <input
-                      className="input text-xs"
-                      value={editingSupplier.phone || ''}
-                      onChange={(e) =>
-                        setEditingSupplier({ ...editingSupplier, phone: e.target.value })
+                    }}
+                    onBlur={() => {
+                      setEditTouched((prev) => ({ ...prev, email: true }));
+                      if (editingSupplier.email) {
+                        const res = validateEmail(editingSupplier.email);
+                        setEditErrors((prev) => ({ ...prev, email: res.valid ? '' : res.error! }));
                       }
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">Email Address</label>
-                    <input
-                      type="email"
-                      className="input text-xs"
-                      value={editingSupplier.email || ''}
-                      onChange={(e) =>
-                        setEditingSupplier({ ...editingSupplier, email: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="label">City / Location</label>
-                    <input
-                      className="input text-xs"
-                      value={editingSupplier.city || ''}
-                      onChange={(e) =>
-                        setEditingSupplier({ ...editingSupplier, city: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">Lead Time (Days)</label>
-                    <input
-                      type="number"
-                      className="input text-xs"
-                      value={editingSupplier.leadTimeDays || 7}
-                      onChange={(e) =>
-                        setEditingSupplier({
-                          ...editingSupplier,
-                          leadTimeDays: parseInt(e.target.value, 10) || 7,
-                        })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Status</label>
-                    <select
-                      className="input text-xs"
-                      value={editingSupplier.isActive ? 'true' : 'false'}
-                      onChange={(e) =>
-                        setEditingSupplier({
-                          ...editingSupplier,
-                          isActive: e.target.value === 'true',
-                        })
-                      }
-                    >
-                      <option value="true">Active Vendor</option>
-                      <option value="false">Inactive Vendor</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="label">Address</label>
-                  <input
-                    className="input text-xs"
-                    value={editingSupplier.address || ''}
+                    }}
+                    error={editTouched.email ? editErrors.email : null}
+                    maxLength={254}
+                  />
+                  <FormField
+                    id="edit-supplier-city"
+                    label="City / Location"
+                    value={editingSupplier.city || ''}
                     onChange={(e) =>
-                      setEditingSupplier({ ...editingSupplier, address: e.target.value })
+                      setEditingSupplier({ ...editingSupplier, city: e.target.value })
                     }
+                    maxLength={100}
                   />
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    id="edit-supplier-leadTimeDays"
+                    label="Lead Time (Days)"
+                    type="number"
+                    inputMode="numeric"
+                    value={editingSupplier.leadTimeDays || 7}
+                    onChange={(e) => {
+                      const clean = filterIntegerInput(e.target.value);
+                      setEditingSupplier({
+                        ...editingSupplier,
+                        leadTimeDays: parseInt(clean, 10) || 0,
+                      });
+                    }}
+                    min={0}
+                    max={365}
+                  />
+                  <FormField
+                    id="edit-supplier-status"
+                    label="Vendor Status"
+                    as="select"
+                    value={editingSupplier.isActive ? 'true' : 'false'}
+                    onChange={(e) =>
+                      setEditingSupplier({
+                        ...editingSupplier,
+                        isActive: e.target.value === 'true',
+                      })
+                    }
+                    options={[
+                      { label: 'Active Vendor', value: 'true' },
+                      { label: 'Inactive Vendor', value: 'false' },
+                    ]}
+                  />
+                </div>
+
+                <FormField
+                  id="edit-supplier-address"
+                  label="Address"
+                  value={editingSupplier.address || ''}
+                  onChange={(e) =>
+                    setEditingSupplier({ ...editingSupplier, address: e.target.value })
+                  }
+                  maxLength={300}
+                  showCount
+                />
 
                 <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#2A3042]">
                   <button

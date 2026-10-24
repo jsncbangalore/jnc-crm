@@ -410,7 +410,7 @@ export default function PublicInquiryPage() {
                     <input
                       type="tel"
                       required={isFieldRequired('phone', true)}
-                      placeholder="e.g. 9845012345"
+                      placeholder="Phone Number"
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                       className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"
@@ -467,7 +467,7 @@ export default function PublicInquiryPage() {
                       <input
                         type="text"
                         required={isFieldRequired('city', false)}
-                        placeholder="e.g. Bengaluru"
+                        placeholder="e.g. City"
                         value={formData.city}
                         onChange={(e) => setFormData({ ...formData, city: e.target.value })}
                         className="w-full text-xs bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition-all"

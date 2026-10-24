@@ -55,8 +55,8 @@ async function main() {
   console.log('--------------------------------------------------\n');
 
   const summary = {
-    jncTenantAction: 'none',
-    jncTenantId: '',
+    primaryTenantAction: 'none',
+    primaryTenantId: '',
     bossUserUpdated: false,
     platformAdminCreated: false,
     platformAdminEmail: '',
@@ -71,107 +71,109 @@ async function main() {
     console.warn('[Schema] Failed to execute raw ALTER TABLE:', e);
   }
 
-  // 1. Ensure Tenant with code 'JNC' exists
-  let jncTenant = await prisma.tenant.findFirst({
+  const primaryCode = (process.env.PRIMARY_TENANT_CODE || 'PRIMARY').trim().toUpperCase();
+  const primaryName = (process.env.PRIMARY_TENANT_NAME || 'Primary Organization').trim();
+  const primaryPrefix = (process.env.PRIMARY_INVOICE_PREFIX || 'INV').trim();
+
+  // 1. Ensure Tenant exists
+  let primaryTenant = await prisma.tenant.findFirst({
     where: {
       OR: [
-        { code: 'JNC' },
-        { code: 'JNC-ORG-001' },
+        { code: primaryCode },
         { id: 'default-tenant-id' },
       ],
     },
   });
 
-  if (!jncTenant) {
-    summary.jncTenantAction = 'create';
-    console.log('[Tenant] No JNC tenant found. Creating tenant with code JNC...');
+  if (!primaryTenant) {
+    summary.primaryTenantAction = 'create';
+    console.log(`[Tenant] No primary tenant found. Creating tenant with code ${primaryCode}...`);
     if (!isDryRun) {
-      jncTenant = await prisma.tenant.create({
+      primaryTenant = await prisma.tenant.create({
         data: {
-          code: 'JNC',
-          name: 'JSNC Network & Power Solutions',
-          slug: 'jnc',
+          code: primaryCode,
+          name: primaryName,
+          slug: primaryCode.toLowerCase(),
           status: 'active',
           planTier: 'enterprise',
           maxUsers: 100,
-          city: 'Bengaluru',
+          city: '',
           state: 'Karnataka',
-          invoicePrefix: 'JNC-INV',
+          invoicePrefix: primaryPrefix,
         },
       });
-      summary.jncTenantId = jncTenant.id;
+      summary.primaryTenantId = primaryTenant.id;
     }
   } else {
-    summary.jncTenantId = jncTenant.id;
-    if (jncTenant.code !== 'JNC') {
-      summary.jncTenantAction = `update code from ${jncTenant.code} to JNC`;
-      console.log(`[Tenant] Updating tenant ${jncTenant.id} code to JNC...`);
+    summary.primaryTenantId = primaryTenant.id;
+    if (primaryTenant.code !== primaryCode) {
+      summary.primaryTenantAction = `update code from ${primaryTenant.code} to ${primaryCode}`;
+      console.log(`[Tenant] Updating tenant ${primaryTenant.id} code to ${primaryCode}...`);
       if (!isDryRun) {
-        jncTenant = await prisma.tenant.update({
-          where: { id: jncTenant.id },
+        primaryTenant = await prisma.tenant.update({
+          where: { id: primaryTenant.id },
           data: {
-            code: 'JNC',
-            slug: 'jnc',
-            name: jncTenant.name || 'JSNC Network & Power Solutions',
+            code: primaryCode,
+            slug: primaryCode.toLowerCase(),
+            name: primaryTenant.name || primaryName,
             isInternal: true,
           },
         });
       }
     } else {
-      summary.jncTenantAction = 'already exists (code: JNC)';
-      console.log(`[Tenant] JNC tenant verified: ${jncTenant.id} (code: JNC)`);
+      summary.primaryTenantAction = `already exists (code: ${primaryCode})`;
+      console.log(`[Tenant] Primary tenant verified: ${primaryTenant.id} (code: ${primaryCode})`);
     }
 
-    // Ensure isInternal column exists and update JNC tenant
+    // Ensure isInternal column exists and update primary tenant
     try {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "isInternal" BOOLEAN NOT NULL DEFAULT false;`);
     } catch (e) {}
 
-    if (jncTenant && !jncTenant.isInternal) {
-      console.log(`[Tenant] Marking JNC tenant (${jncTenant.id}) as internal (isInternal = true)...`);
+    if (primaryTenant && !primaryTenant.isInternal) {
+      console.log(`[Tenant] Marking primary tenant (${primaryTenant.id}) as internal (isInternal = true)...`);
       if (!isDryRun) {
-        jncTenant = await prisma.tenant.update({
-          where: { id: jncTenant.id },
+        primaryTenant = await prisma.tenant.update({
+          where: { id: primaryTenant.id },
           data: { isInternal: true },
         });
       }
     }
   }
 
-  // 2. Move Boss Account JNC-SA-001 into the JNC tenant as tenant_admin
+  // 2. Move Admin / Owner Account into the primary tenant as tenant_admin
   const boss = await prisma.user.findFirst({
     where: {
       OR: [
-        { employeeCode: 'JNC-SA-001' },
-        { email: 'Jayarajjnc@gmail.com' },
-        { email: 'owner@jncnetwork.com' },
+        { role: 'tenant_admin' },
+        { role: 'admin' },
       ],
     },
   });
 
   if (boss) {
-    const needsUpdate = boss.role !== 'tenant_admin' || boss.tenantId !== jncTenant?.id;
+    const needsUpdate = boss.role !== 'tenant_admin' || boss.tenantId !== primaryTenant?.id;
     if (needsUpdate) {
-      console.log(`[Boss User] Moving user ${boss.employeeCode} (${boss.email}) to role tenant_admin in tenant ${jncTenant?.id}...`);
-      if (!isDryRun && jncTenant) {
+      console.log(`[Admin User] Moving user ${boss.employeeCode} (${boss.email}) to role tenant_admin in tenant ${primaryTenant?.id}...`);
+      if (!isDryRun && primaryTenant) {
         await prisma.user.update({
           where: { id: boss.id },
           data: {
             role: 'tenant_admin',
-            tenantId: jncTenant.id,
+            tenantId: primaryTenant.id,
           },
         });
       }
       summary.bossUserUpdated = true;
     } else {
-      console.log(`[Boss User] ${boss.employeeCode} (${boss.email}) is already tenant_admin in JNC tenant.`);
+      console.log(`[Admin User] ${boss.employeeCode} (${boss.email}) is already tenant_admin in primary tenant.`);
     }
   } else {
-    console.log('[Boss User] Notice: User JNC-SA-001 not found.');
+    console.log('[Admin User] Notice: Existing admin user not found.');
   }
 
   // 3. Create platform_super_admin user with tenantId = null
-  const platformEmail = (process.env.PLATFORM_ADMIN_EMAIL || 'platform@jsnc.co.in').trim().toLowerCase();
+  const platformEmail = (process.env.PLATFORM_ADMIN_EMAIL || 'platform@example.com').trim().toLowerCase();
   const platformCode = (process.env.PLATFORM_ADMIN_CODE || 'PSA-001').trim().toUpperCase();
   summary.platformAdminEmail = platformEmail;
   summary.platformAdminCode = platformCode;
@@ -208,7 +210,7 @@ async function main() {
     }
 
     console.log('\n=============================================================');
-    console.log('🚨 NEW PLATFORM SUPER ADMIN CREATED (ONE-TIME DISPLAY)');
+    console.log('[NOTICE] NEW PLATFORM SUPER ADMIN CREATED (ONE-TIME DISPLAY)');
     console.log('=============================================================');
     console.log(`  Email:             ${platformEmail}`);
     console.log(`  Employee Code:     ${platformCode}`);
@@ -242,7 +244,7 @@ async function main() {
   if (remainingSuperAdmins.length > 0) {
     console.log(`[Legacy Migration] Found ${remainingSuperAdmins.length} users with legacy role 'super_admin'.`);
     for (const legacyUser of remainingSuperAdmins) {
-      const assignedTenantId = legacyUser.tenantId || jncTenant?.id;
+      const assignedTenantId = legacyUser.tenantId || primaryTenant?.id;
       console.log(`  -> Converting ${legacyUser.employeeCode} (${legacyUser.email}) to tenant_admin (tenantId: ${assignedTenantId})...`);
       if (!isDryRun && assignedTenantId) {
         await prisma.user.update({

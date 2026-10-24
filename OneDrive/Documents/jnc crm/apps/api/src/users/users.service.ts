@@ -19,12 +19,25 @@ import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
 import { parsePagination } from '../common/pagination.util';
 import { ROLE_RANKS, isPlatformOwner, ALL_ROLES, UserRole } from '../auth/roles';
+import { getEffectivePagesForUser } from '../auth/effective-page-access';
+import { ALL_COMPANY_PAGE_KEYS, isPlatformPageKey, isValidCompanyPageKey } from '../auth/page-registry';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 
 export { CreateUserDto, UpdateUserDto };
+
+export const ADMIN_PAGES = [
+  'users',
+  'teams',
+  'access_templates',
+  'audit_logs',
+  'automation',
+  'branding',
+  'mail_settings',
+  'custom_objects',
+];
 
 export function generateSecurePassword(length = 14): string {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -105,25 +118,21 @@ export class UsersService {
       : null;
 
     const rawCode = (tenant?.code || 'DEFAULT').toUpperCase();
-    const cleanTenantCode = rawCode.startsWith('JNC-') ? rawCode.replace('JNC-', '') : rawCode;
+    const cleanTenantCode = rawCode.trim();
     const roleCode = ROLE_CODE_MAP[role] || 'EMP';
-    const standardPrefix = `JNC-${cleanTenantCode}-${roleCode}`;
-    const legacyPrefix = `${cleanTenantCode}-${roleCode}`;
+    const standardPrefix = `${cleanTenantCode}-${roleCode}`;
 
     const users = await db.user.findMany({
       where: {
         tenantId,
-        OR: [
-          { employeeCode: { startsWith: standardPrefix } },
-          { employeeCode: { startsWith: legacyPrefix } },
-        ],
+        employeeCode: { contains: `${cleanTenantCode}-${roleCode}` },
       },
       select: { employeeCode: true },
     });
 
     let maxSeq = 0;
     for (const u of users) {
-      const match = u.employeeCode.match(new RegExp(`(?:${standardPrefix}|${legacyPrefix})-(\\d+)$`));
+      const match = u.employeeCode.match(/(\d+)$/);
       if (match) {
         const num = parseInt(match[1], 10);
         if (!isNaN(num) && num > maxSeq) maxSeq = num;
@@ -311,22 +320,45 @@ export class UsersService {
 
     try {
       const branding = await this.notificationsService.getBranding(tenantId);
+      const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/+$/, '');
+      const loginUrl = `${frontendUrl}/login?company=${encodeURIComponent(tenant?.code || '')}&identifier=${encodeURIComponent(newUser.employeeCode)}`;
       const mailRes = await this.notificationsService.sendEmail({
         tenantId,
         to: newUser.email,
         subject: `Welcome to ${branding.companyDisplayName} - Your Login Credentials [${newUser.employeeCode}]`,
         html: `
-          <h3>Welcome to ${branding.companyDisplayName}</h3>
-          <p>Dear ${newUser.name},</p>
-          <p>Your company workspace account has been created.</p>
-          <p><strong>Login Details:</strong></p>
-          <ul>
-            <li><strong>Company Code:</strong> <code>${tenant?.code || 'JNC'}</code></li>
-            <li><strong>Username / Employee Code:</strong> <code>${newUser.employeeCode}</code></li>
-            <li><strong>Temporary Password:</strong> <code>${tempPassword}</code></li>
-          </ul>
-          <p><em>Note: You will be prompted to set your password upon first login.</em></p>
+          <div style="font-family: Arial, sans-serif; max-width: 540px; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+            <h2 style="color: #0f172a; margin-top: 0;">Welcome to ${branding.companyDisplayName}</h2>
+            <p style="color: #475569;">Hello <strong>${newUser.name}</strong>,</p>
+            <p style="color: #475569;">Your company workspace account has been created. Below are your login credentials:</p>
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <tr>
+                  <td style="padding: 6px 0; color: #64748b; width: 140px; font-weight: 600;">Company Code:</td>
+                  <td style="padding: 6px 0; color: #0f172a; font-weight: 700; font-family: monospace;">${tenant?.code || 'DEFAULT'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Username / ID:</td>
+                  <td style="padding: 6px 0; color: #2563eb; font-weight: 700; font-family: monospace;">${newUser.employeeCode}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Login Email:</td>
+                  <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">${newUser.email}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Temporary Password:</td>
+                  <td style="padding: 6px 0; color: #b91c1c; font-weight: 700; font-family: monospace;">${tempPassword}</td>
+                </tr>
+              </table>
+            </div>
+            <div style="text-align: center; margin: 24px 0 16px;">
+              <a href="${loginUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px; display: inline-block;">Log In to Your Account</a>
+            </div>
+            <p style="font-size: 12px; color: #64748b; margin-top: 12px;">Direct login link: <a href="${loginUrl}" style="color: #2563eb; word-break: break-all;">${loginUrl}</a></p>
+            <p style="font-size: 12px; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 12px; margin-top: 16px;"><em>For security, you will be prompted to choose a new password upon first login.</em></p>
+          </div>
         `,
+        text: `Hello ${newUser.name},\n\nYour account has been created at ${branding.companyDisplayName}:\n\nCompany Code: ${tenant?.code || 'DEFAULT'}\nUsername: ${newUser.employeeCode}\nEmail: ${newUser.email}\nTemporary Password: ${tempPassword}\n\nLog in here: ${loginUrl}\n\nPlease set your password upon first login.`,
         relatedEntityType: 'user',
         relatedEntityId: newUser.id,
         purpose: 'user_invite',
@@ -445,6 +477,12 @@ export class UsersService {
               id: true,
               code: true,
               name: true,
+            },
+          },
+          twoFactor: {
+            select: {
+              enabledAt: true,
+              method: true,
             },
           },
         },
@@ -625,13 +663,8 @@ export class UsersService {
   }
 
   async resetCredentials(id: string, modifier: ScopedUser) {
+    const user = await this.validateUserActionTarget(id, modifier);
     const isPlatform = isPlatformOwner(modifier);
-    const where: any = isPlatform
-      ? { id, deletedAt: null }
-      : { id, tenantId: requireTenantId(modifier), deletedAt: null };
-
-    const user = await this.prisma.user.findFirst({ where });
-    if (!user) throw new NotFoundException('User not found');
 
     // Hierarchy check
     if (!isPlatform && user.id !== modifier.id) {
@@ -700,7 +733,7 @@ export class UsersService {
           <p>Your password for ${branding.companyDisplayName} has been reset by an administrator.</p>
           <p><strong>Your Temporary Credentials:</strong></p>
           <ul>
-            <li><strong>Company Code:</strong> <code>${tenant?.code || 'JNC'}</code></li>
+            <li><strong>Company Code:</strong> <code>${tenant?.code || 'DEFAULT'}</code></li>
             <li><strong>Employee Code:</strong> <code>${user.employeeCode}</code></li>
             <li><strong>New Temporary Password:</strong> <code>${tempPassword}</code></li>
           </ul>
@@ -945,8 +978,8 @@ export class UsersService {
         seenBatchEmails.add(email);
         const roleShort = ROLE_CODE_MAP[role] || 'EMP';
         const rawCode = (tenant.code || 'DEFAULT').toUpperCase();
-        const cleanTenant = rawCode.startsWith('JNC-') ? rawCode.replace('JNC-', '') : rawCode;
-        const previewCode = `JNC-${cleanTenant}-${roleShort}-${String(simulatedSeq).padStart(3, '0')}`;
+        const cleanTenant = rawCode.trim();
+        const previewCode = `${cleanTenant}-${roleShort}-${String(simulatedSeq).padStart(3, '0')}`;
         simulatedSeq++;
 
         valid.push({
@@ -1050,14 +1083,34 @@ export class UsersService {
 
   // ─── Admin User Actions: Reset Code, Session Revocation & Unlock ────────────
 
-  async sendResetCode(id: string, admin: ScopedUser, clientIp?: string, userAgent?: string) {
-    const isPlatform = isPlatformOwner(admin);
-    const where: any = isPlatform
-      ? { id, deletedAt: null }
-      : { id, tenantId: requireTenantId(admin), deletedAt: null };
+  private async validateUserActionTarget(id: string, admin: ScopedUser) {
+    const target = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+      include: { tenant: true },
+    });
+    if (!target) {
+      throw new NotFoundException('User not found');
+    }
 
-    const user = await this.prisma.user.findFirst({ where });
-    if (!user) throw new NotFoundException('User not found');
+    if (isPlatformOwner(admin)) {
+      if (target.tenantId) {
+        throw new ForbiddenException('Platform administrators must manage company users through the platform portal.');
+      }
+    } else {
+      if (target.role === 'platform_super_admin' || !target.tenantId) {
+        throw new ForbiddenException('You cannot perform actions on a platform administrator.');
+      }
+      const adminTenantId = requireTenantId(admin);
+      if (target.tenantId !== adminTenantId) {
+        throw new ForbiddenException('Cannot perform administrative actions on users belonging to another company');
+      }
+    }
+
+    return target;
+  }
+
+  async sendResetCode(id: string, admin: ScopedUser, clientIp?: string, userAgent?: string) {
+    const user = await this.validateUserActionTarget(id, admin);
     if (!user.email) throw new BadRequestException('User does not have an email address configured.');
 
     const lower = user.email.trim().toLowerCase();
@@ -1071,7 +1124,7 @@ export class UsersService {
 
     const code = crypto.randomInt(100000, 1000000).toString();
     const challengeId = crypto.randomUUID();
-    const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'jnc-otp-secret-key-2026';
+    const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'crm-otp-secret-key-2026';
     const codeHash = crypto.createHmac('sha256', otpSecret + challengeId).update(code).digest('hex');
 
     await this.prisma.otpChallenge.create({
@@ -1092,7 +1145,7 @@ export class UsersService {
       this.notificationsService.sendEmail({
         tenantId: user.tenantId || undefined,
         to: lower,
-        subject: `${code} is your JNC CRM verification code`,
+        subject: `${code} is your ${branding.companyDisplayName || 'verification'} code`,
         text: `Hello ${user.name || 'User'},\n\nAn administrator has initiated a password reset for your account.\nYour verification code is: ${code}\nThis code expires in 10 minutes. Never share this code with anyone.`,
         html: `<div style="font-family: Arial, sans-serif; max-width: 520px; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
           <h2 style="color: #0f172a; margin-top: 0;">Password Reset Code</h2>
@@ -1102,6 +1155,8 @@ export class UsersService {
           </div>
           <p style="color: #475569; font-size: 13px;">This code expires in <strong>10 minutes</strong>. For your security, <strong>never share this code with anyone</strong>.</p>
         </div>`,
+        purpose: 'password_reset_code',
+        throwOnError: false,
       }).catch(() => {});
     }
 
@@ -1122,13 +1177,7 @@ export class UsersService {
   }
 
   async revokeUserSessions(id: string, admin: ScopedUser) {
-    const isPlatform = isPlatformOwner(admin);
-    const where: any = isPlatform
-      ? { id, deletedAt: null }
-      : { id, tenantId: requireTenantId(admin), deletedAt: null };
-
-    const user = await this.prisma.user.findFirst({ where });
-    if (!user) throw new NotFoundException('User not found');
+    const user = await this.validateUserActionTarget(id, admin);
 
     await this.prisma.user.update({
       where: { id },
@@ -1153,13 +1202,7 @@ export class UsersService {
   }
 
   async unlockUser(id: string, admin: ScopedUser) {
-    const isPlatform = isPlatformOwner(admin);
-    const where: any = isPlatform
-      ? { id, deletedAt: null }
-      : { id, tenantId: requireTenantId(admin), deletedAt: null };
-
-    const user = await this.prisma.user.findFirst({ where });
-    if (!user) throw new NotFoundException('User not found');
+    const user = await this.validateUserActionTarget(id, admin);
 
     await this.prisma.user.update({
       where: { id },
@@ -1188,5 +1231,476 @@ export class UsersService {
     });
 
     return { success: true, message: 'User account has been unlocked.' };
+  }
+
+  async resetTwoFactor(targetUserId: string, actor: ScopedUser, clientIp?: string) {
+    const targetUser = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      include: { tenant: true },
+    });
+    if (!targetUser) throw new NotFoundException('Target user not found');
+
+    if (targetUser.role === 'platform_super_admin') {
+      throw new ForbiddenException('Platform administrator 2-step verification cannot be reset via web console.');
+    }
+
+    const isPlatform = isPlatformOwner(actor);
+    if (!isPlatform && actor.tenantId !== targetUser.tenantId) {
+      throw new ForbiddenException('Cannot reset 2-step verification for users in another company.');
+    }
+
+    if (actor.role !== 'tenant_admin' && !isPlatform && actor.role !== 'admin') {
+      throw new ForbiddenException('Insufficient permissions to reset 2-step verification.');
+    }
+
+    await this.prisma.userTwoFactor.deleteMany({
+      where: { userId: targetUserId },
+    });
+
+    await this.prisma.trustedDevice.deleteMany({
+      where: { userId: targetUserId },
+    });
+
+    await this.prisma.refreshSession.updateMany({
+      where: { userId: targetUserId },
+      data: { isRevoked: true },
+    });
+
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        tokenVersion: { increment: 1 },
+        firstLoginAfter2FaReleaseAt: null, // resets grace period
+      },
+    });
+
+    await this.auditService.log({
+      tenantId: targetUser.tenantId,
+      actorId: actor.id,
+      actorName: actor.employeeCode || actor.id,
+      action: '2FA_RESET_BY_ADMIN',
+      entityName: 'UserTwoFactor',
+      entityId: targetUserId,
+      afterState: {
+        targetUserId,
+        targetEmail: targetUser.email,
+        resetBy: actor.employeeCode || actor.id,
+        ipAddress: clientIp,
+      },
+    });
+
+    return {
+      success: true,
+      message: `2-Step verification has been reset for ${targetUser.name || targetUser.email}. All sessions and trusted devices have been revoked.`,
+    };
+  }
+
+  /**
+   * Retrieves the current page access configuration for a user.
+   */
+  async getUserAccess(userId: string, actor: ScopedUser) {
+    const tenantId = requireTenantId(actor);
+    const targetUser = await this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        ...(isPlatformOwner(actor) ? {} : { tenantId }),
+      },
+      include: {
+        teamRef: true,
+        pageAccess: true,
+      },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const effectivePages = await getEffectivePagesForUser(this.prisma, targetUser);
+
+    let customPages: string[] | null = null;
+    if (targetUser.pageAccess && targetUser.pageAccess.pages) {
+      try {
+        const parsed = JSON.parse(targetUser.pageAccess.pages);
+        if (Array.isArray(parsed)) {
+          customPages = parsed;
+        }
+      } catch {}
+    }
+
+    let teamPages: string[] = [];
+    if (targetUser.teamRef && targetUser.teamRef.allowedPages) {
+      try {
+        const parsed = JSON.parse(targetUser.teamRef.allowedPages);
+        if (Array.isArray(parsed)) {
+          teamPages = parsed;
+        }
+      } catch {}
+    }
+
+    return {
+      userId: targetUser.id,
+      name: targetUser.name,
+      email: targetUser.email,
+      role: targetUser.role,
+      teamId: targetUser.teamId,
+      teamName: targetUser.teamRef?.name || null,
+      teamPages,
+      customPages,
+      hasCustomAccess: customPages !== null,
+      effectivePages,
+    };
+  }
+
+  /**
+   * Updates a user's explicit page access list, enforcing all security rules.
+   */
+  async updateUserAccess(userId: string, pages: string[], actor: ScopedUser) {
+    const tenantId = requireTenantId(actor);
+    const targetUser = await this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        ...(isPlatformOwner(actor) ? {} : { tenantId }),
+      },
+      include: {
+        pageAccess: true,
+      },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundException('User not found.');
+    }
+
+    // Rule 8.4: Platform pages cannot be granted
+    if (!Array.isArray(pages)) {
+      throw new BadRequestException('Pages must be an array of page keys.');
+    }
+
+    if (pages.some((p) => isPlatformPageKey(p))) {
+      throw new BadRequestException('Platform pages cannot be granted to company users.');
+    }
+
+    const invalidPages = pages.filter((p) => !isValidCompanyPageKey(p));
+    if (invalidPages.length > 0) {
+      throw new BadRequestException(`Invalid company page keys: ${invalidPages.join(', ')}`);
+    }
+
+    // Rule 8.2: A sub-admin cannot edit users of equal or higher rank
+    const actorRank = ROLE_RANKS[actor.role] || 0;
+    const targetRank = ROLE_RANKS[targetUser.role] || 0;
+    if (!isPlatformOwner(actor) && actor.role !== 'tenant_admin') {
+      if (actorRank <= targetRank) {
+        throw new ForbiddenException('You cannot modify page access permissions for a user of equal or higher rank.');
+      }
+    }
+
+    // Rule 8.1: Nobody can grant a page they do not have themselves
+    if (!isPlatformOwner(actor) && actor.role !== 'tenant_admin') {
+      const actorEffectivePages = await getEffectivePagesForUser(this.prisma, actor);
+      const unheldPages = pages.filter((p) => !actorEffectivePages.includes(p));
+      if (unheldPages.length > 0) {
+        throw new ForbiddenException(
+          `You cannot grant page access permissions that you do not hold yourself: ${unheldPages.join(', ')}`,
+        );
+      }
+    }
+
+    // Rule 8.5: Only tenant_admin and admin may grant administrative pages
+    const requestedAdminPages = pages.filter((p) => ADMIN_PAGES.includes(p));
+    if (requestedAdminPages.length > 0 && !isPlatformOwner(actor) && actor.role !== 'tenant_admin' && actor.role !== 'admin') {
+      throw new ForbiddenException(
+        `Only company administrators may grant administrative pages: ${requestedAdminPages.join(', ')}`,
+      );
+    }
+
+    // Rule 8.3: The last company admin cannot be reduced
+    if (targetUser.role === 'tenant_admin' || targetUser.role === 'admin') {
+      const activeAdmins = await this.prisma.user.count({
+        where: {
+          tenantId: targetUser.tenantId || tenantId,
+          role: { in: ['tenant_admin', 'admin'] },
+          isActive: true,
+        },
+      });
+      if (activeAdmins <= 1 && pages.length < ALL_COMPANY_PAGE_KEYS.length) {
+        throw new BadRequestException('The last company administrator cannot have their access reduced.');
+      }
+    }
+
+    // Read before-state
+    let beforePages: string[] | null = null;
+    if (targetUser.pageAccess && targetUser.pageAccess.pages) {
+      try {
+        beforePages = JSON.parse(targetUser.pageAccess.pages);
+      } catch {}
+    }
+
+    // Upsert UserPageAccess
+    await this.prisma.userPageAccess.upsert({
+      where: { userId: targetUser.id },
+      create: {
+        userId: targetUser.id,
+        tenantId: targetUser.tenantId || tenantId,
+        pages: JSON.stringify(pages),
+      },
+      update: {
+        pages: JSON.stringify(pages),
+      },
+    });
+
+    // Rule 8.5: Every change is written to audit log with before and after
+    await this.auditService.log({
+      tenantId: targetUser.tenantId || tenantId,
+      actorId: actor.id,
+      actorName: actor.employeeCode || actor.id,
+      action: 'USER_ACCESS_UPDATE',
+      entityName: 'UserPageAccess',
+      entityId: targetUser.id,
+      beforeState: JSON.stringify({ pages: beforePages }),
+      afterState: JSON.stringify({ pages }),
+    });
+
+    const effectivePages = await getEffectivePagesForUser(this.prisma, targetUser);
+
+    return {
+      success: true,
+      userId: targetUser.id,
+      pages,
+      effectivePages,
+      message: 'User page access permissions updated successfully.',
+    };
+  }
+
+  /**
+   * Resets a user's page access back to their team's default (clears UserPageAccess)
+   */
+  async clearUserCustomAccess(userId: string, actor: ScopedUser) {
+    const tenantId = requireTenantId(actor);
+    const targetUser = await this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        ...(isPlatformOwner(actor) ? {} : { tenantId }),
+      },
+      include: {
+        pageAccess: true,
+      },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundException('User not found.');
+    }
+
+    // Rule 8.2: Sub-admin ranking check
+    const actorRank = ROLE_RANKS[actor.role] || 0;
+    const targetRank = ROLE_RANKS[targetUser.role] || 0;
+    if (!isPlatformOwner(actor) && actor.role !== 'tenant_admin') {
+      if (actorRank <= targetRank) {
+        throw new ForbiddenException('You cannot modify page access permissions for a user of equal or higher rank.');
+      }
+    }
+
+    // Rule 8.3: Last admin protection
+    if (targetUser.role === 'tenant_admin' || targetUser.role === 'admin') {
+      const activeAdmins = await this.prisma.user.count({
+        where: {
+          tenantId: targetUser.tenantId || tenantId,
+          role: { in: ['tenant_admin', 'admin'] },
+          isActive: true,
+        },
+      });
+      if (activeAdmins <= 1) {
+        throw new BadRequestException('The last company administrator cannot have their access removed.');
+      }
+    }
+
+    let beforePages = null;
+    if (targetUser.pageAccess) {
+      beforePages = targetUser.pageAccess.pages;
+      await this.prisma.userPageAccess.delete({
+        where: { userId: targetUser.id },
+      });
+    }
+
+    await this.auditService.log({
+      tenantId: targetUser.tenantId || tenantId,
+      actorId: actor.id,
+      actorName: actor.employeeCode || actor.id,
+      action: 'USER_ACCESS_RESET',
+      entityName: 'UserPageAccess',
+      entityId: targetUser.id,
+      beforeState: JSON.stringify({ pages: beforePages }),
+      afterState: JSON.stringify({ pages: 'INHERIT_TEAM' }),
+    });
+
+    const effectivePages = await getEffectivePagesForUser(this.prisma, targetUser);
+
+    return {
+      success: true,
+      userId: targetUser.id,
+      hasCustomAccess: false,
+      effectivePages,
+      message: 'Custom access removed. User will inherit team permissions.',
+    };
+  }
+
+  // ─── ACCESS TEMPLATES ────────────────────────────────────────────────────────
+
+  async getAccessTemplates(actor: ScopedUser) {
+    const tenantId = requireTenantId(actor);
+    const templates = await this.prisma.accessTemplate.findMany({
+      where: { tenantId },
+      orderBy: { name: 'asc' },
+    });
+
+    return templates.map((t) => ({
+      ...t,
+      pages: typeof t.pages === 'string' ? JSON.parse(t.pages || '[]') : t.pages,
+    }));
+  }
+
+  async createAccessTemplate(dto: { name: string; description?: string; pages: string[] }, actor: ScopedUser) {
+    const tenantId = requireTenantId(actor);
+    if (!dto.name || !dto.name.trim()) {
+      throw new BadRequestException('Template name is required.');
+    }
+    const pages = dto.pages || [];
+    if (pages.some((p) => isPlatformPageKey(p))) {
+      throw new BadRequestException('Platform pages cannot be granted in access templates.');
+    }
+    const invalidPages = pages.filter((p) => !isValidCompanyPageKey(p));
+    if (invalidPages.length > 0) {
+      throw new BadRequestException(`Invalid company page keys: ${invalidPages.join(', ')}`);
+    }
+
+    // Actor cannot grant unheld pages
+    if (!isPlatformOwner(actor) && actor.role !== 'tenant_admin') {
+      const actorPages = await getEffectivePagesForUser(this.prisma, actor);
+      const unheld = pages.filter((p) => !actorPages.includes(p));
+      if (unheld.length > 0) {
+        throw new ForbiddenException(`You cannot create a template with pages you do not hold: ${unheld.join(', ')}`);
+      }
+    }
+
+    // Only tenant_admin and admin may grant administrative pages
+    const templateAdminPages = pages.filter((p) => ADMIN_PAGES.includes(p));
+    if (templateAdminPages.length > 0 && !isPlatformOwner(actor) && actor.role !== 'tenant_admin' && actor.role !== 'admin') {
+      throw new ForbiddenException(
+        `Only company administrators may include administrative pages in access templates: ${templateAdminPages.join(', ')}`,
+      );
+    }
+
+    const template = await this.prisma.accessTemplate.create({
+      data: {
+        tenantId,
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        pages: JSON.stringify(pages),
+      },
+    });
+
+    await this.auditService.log({
+      tenantId,
+      actorId: actor.id,
+      actorName: actor.employeeCode || actor.id,
+      action: 'ACCESS_TEMPLATE_CREATE',
+      entityName: 'AccessTemplate',
+      entityId: template.id,
+      afterState: JSON.stringify(dto),
+    });
+
+    return {
+      ...template,
+      pages,
+    };
+  }
+
+  async updateAccessTemplate(
+    templateId: string,
+    dto: { name?: string; description?: string; pages?: string[] },
+    actor: ScopedUser,
+  ) {
+    const tenantId = requireTenantId(actor);
+    const existing = await this.prisma.accessTemplate.findFirst({
+      where: { id: templateId, tenantId },
+    });
+    if (!existing) {
+      throw new NotFoundException('Access template not found.');
+    }
+
+    if (dto.pages) {
+      if (dto.pages.some((p) => isPlatformPageKey(p))) {
+        throw new BadRequestException('Platform pages cannot be granted in access templates.');
+      }
+      const invalidPages = dto.pages.filter((p) => !isValidCompanyPageKey(p));
+      if (invalidPages.length > 0) {
+        throw new BadRequestException(`Invalid company page keys: ${invalidPages.join(', ')}`);
+      }
+
+      if (!isPlatformOwner(actor) && actor.role !== 'tenant_admin') {
+        const actorPages = await getEffectivePagesForUser(this.prisma, actor);
+        const unheld = dto.pages.filter((p) => !actorPages.includes(p));
+        if (unheld.length > 0) {
+          throw new ForbiddenException(`You cannot grant pages you do not hold: ${unheld.join(', ')}`);
+        }
+      }
+
+      // Only tenant_admin and admin may grant administrative pages
+      const templateAdminPages = dto.pages.filter((p) => ADMIN_PAGES.includes(p));
+      if (templateAdminPages.length > 0 && !isPlatformOwner(actor) && actor.role !== 'tenant_admin' && actor.role !== 'admin') {
+        throw new ForbiddenException(
+          `Only company administrators may include administrative pages in access templates: ${templateAdminPages.join(', ')}`,
+        );
+      }
+    }
+
+    const updated = await this.prisma.accessTemplate.update({
+      where: { id: templateId },
+      data: {
+        ...(dto.name ? { name: dto.name.trim() } : {}),
+        ...(dto.description !== undefined ? { description: dto.description ? dto.description.trim() : null } : {}),
+        ...(dto.pages ? { pages: JSON.stringify(dto.pages) } : {}),
+      },
+    });
+
+    await this.auditService.log({
+      tenantId,
+      actorId: actor.id,
+      actorName: actor.employeeCode || actor.id,
+      action: 'ACCESS_TEMPLATE_UPDATE',
+      entityName: 'AccessTemplate',
+      entityId: templateId,
+      beforeState: JSON.stringify(existing),
+      afterState: JSON.stringify(dto),
+    });
+
+    return {
+      ...updated,
+      pages: typeof updated.pages === 'string' ? JSON.parse(updated.pages) : updated.pages,
+    };
+  }
+
+  async deleteAccessTemplate(templateId: string, actor: ScopedUser) {
+    const tenantId = requireTenantId(actor);
+    const existing = await this.prisma.accessTemplate.findFirst({
+      where: { id: templateId, tenantId },
+    });
+    if (!existing) {
+      throw new NotFoundException('Access template not found.');
+    }
+
+    await this.prisma.accessTemplate.delete({
+      where: { id: templateId },
+    });
+
+    await this.auditService.log({
+      tenantId,
+      actorId: actor.id,
+      actorName: actor.employeeCode || actor.id,
+      action: 'ACCESS_TEMPLATE_DELETE',
+      entityName: 'AccessTemplate',
+      entityId: templateId,
+      beforeState: JSON.stringify(existing),
+    });
+
+    return { success: true, message: 'Access template deleted successfully.' };
   }
 }

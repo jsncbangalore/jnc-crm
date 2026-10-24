@@ -88,11 +88,11 @@ export function parseLutEndDate(lutValidity?: string): { expiryDate: Date | null
  * relative to the invoice generation date (or today).
  */
 export function validateLutStatus(
-  lutBondNo: string = 'AD290525013648T',
+  lutBondNo: string = '',
   lutValidity?: string,
   referenceDate: Date | string = new Date()
 ): LutValidationResult {
-  const bondNo = (lutBondNo || 'AD290525013648T').trim();
+  const bondNo = (lutBondNo || '').trim();
   const refDate = referenceDate ? new Date(referenceDate) : new Date();
   const { expiryDate, expiryDateStr } = parseLutEndDate(lutValidity);
 

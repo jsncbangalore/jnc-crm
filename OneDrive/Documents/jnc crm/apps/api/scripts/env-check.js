@@ -38,7 +38,7 @@ const targetEnv = process.argv[2]
 loadEnvFile(targetEnv);
 
 console.log('========================================================================');
-console.log('JNC-CRM ENVIRONMENT HEALTH & SECURITY CHECK (env:check)');
+console.log('CRM ENVIRONMENT HEALTH & SECURITY CHECK (env:check)');
 console.log(`Source File: ${targetEnv} (exists: ${fs.existsSync(targetEnv)})`);
 console.log('Mode: Unified Validator Shared with Server Startup Guard');
 console.log('========================================================================\n');

@@ -74,8 +74,8 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
   const [deliverySchedule, setDeliverySchedule] = useState('');
 
   // SEZ LUT State
-  const [lutBondNo, setLutBondNo] = useState('AD290525013648T');
-  const [lutValidity, setLutValidity] = useState('From : 10/05/2025 To: 09/05/2026');
+  const [lutBondNo, setLutBondNo] = useState('');
+  const [lutValidity, setLutValidity] = useState('');
   const [lutAcknowledged, setLutAcknowledged] = useState(false);
 
   // Customer State
@@ -126,8 +126,8 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         setIsCustomPaymentTerms(!!terms && !PAYMENT_TERMS_OPTIONS.includes(terms));
         setPaymentStatus((editInvoice.paymentStatus as any) || 'unpaid');
         setDeliverySchedule(editInvoice.deliverySchedule || '');
-        setLutBondNo(editInvoice.lutBondNo || 'AD290525013648T');
-        setLutValidity(editInvoice.lutValidity || 'From : 10/05/2025 To: 09/05/2026');
+        setLutBondNo(editInvoice.lutBondNo || '');
+        setLutValidity(editInvoice.lutValidity || '');
         setCustomerName(editInvoice.customerName || '');
         setCustomerPhone(editInvoice.customerPhone || '');
         setCustomerEmail(editInvoice.customerEmail || '');
@@ -350,7 +350,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         paymentStatus: !isDC ? paymentStatus : 'unpaid',
         deliverySchedule: docType === 'purchase_order' ? deliverySchedule.trim() : undefined,
         customerName: customerName.trim(),
-        customerPhone: customerPhone.trim() || '9999999999',
+        customerPhone: customerPhone.trim() || '',
         customerEmail: customerEmail.trim() || undefined,
         customerGstin: customerGstin.trim() || undefined,
         customerState,
@@ -525,7 +525,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 </label>
                 <input
                   type="text"
-                  name="jnc_tax_doc_number"
+                  name="doc_number"
                   autoComplete="off"
                   autoCorrect="off"
                   spellCheck={false}
@@ -543,7 +543,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
               <FullCalendarPicker
                 label="Document Date"
                 required
-                name="jnc_tax_doc_date"
+                name="doc_date"
                 value={invoiceDate}
                 onChange={(val) => setInvoiceDate(val)}
                 placeholder="YYYY-MM-DD"
@@ -566,7 +566,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                     </span>
                   </label>
                   <select
-                    name="jnc_tax_doc_paystatus"
+                    name="doc_paystatus"
                     className="input text-xs font-bold"
                     value={paymentStatus}
                     onChange={(e) => setPaymentStatus(e.target.value as any)}
@@ -585,7 +585,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 </label>
                 <div className="space-y-2">
                   <select
-                    name="jnc_tax_doc_payterms_select"
+                    name="doc_payterms_select"
                     className="input text-xs font-bold cursor-pointer"
                     value={
                       PAYMENT_TERMS_OPTIONS.includes(paymentTerms)
@@ -641,7 +641,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                     <input
                       ref={paymentTermsInputRef}
                       type="text"
-                      name="jnc_tax_doc_payterms"
+                      name="doc_payterms"
                       autoComplete="off"
                       data-lpignore="true"
                       data-1p-ignore="true"
@@ -678,7 +678,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
 
               <FullCalendarPicker
                 label="Due Date (Optional)"
-                name="jnc_tax_doc_duedate"
+                name="doc_duedate"
                 value={dueDate}
                 onChange={(val) => setDueDate(val)}
                 placeholder="Optional due date"
@@ -690,7 +690,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">{isDC ? 'PO Order No.' : isCreditNote ? 'Buyer PO Ref' : isPO ? 'Internal Ref' : "Buyer's Order No. / PO"}</label>
                 <input
                   type="text"
-                  name="jnc_tax_doc_buyerpo"
+                  name="doc_buyerpo"
                   autoComplete="off"
                   data-lpignore="true"
                   data-1p-ignore="true"
@@ -704,7 +704,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
 
               <FullCalendarPicker
                 label={isDC ? 'Order-Dated' : 'PO-Dated'}
-                name="jnc_tax_doc_podate"
+                name="doc_podate"
                 value={poDate}
                 onChange={(val) => setPoDate(val)}
                 placeholder="Optional PO date"
@@ -716,7 +716,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">{isCreditNote ? 'Original Invoice No. & Date *' : 'Reference No. & Date'}</label>
                 <input
                   type="text"
-                  name="jnc_tax_doc_refnum"
+                  name="doc_refnum"
                   autoComplete="off"
                   data-lpignore="true"
                   data-1p-ignore="true"
@@ -874,7 +874,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">{isPO ? 'Vendor / Supplier Name *' : 'Customer / Company Name *'}</label>
                 <input
                   type="text"
-                  name="jnc_cust_company_name"
+                  name="cust_company_name"
                   autoComplete="off"
                   data-lpignore="true"
                   data-1p-ignore="true"
@@ -891,7 +891,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">Customer Phone</label>
                 <input
                   type="text"
-                  name="jnc_cust_company_phone"
+                  name="cust_company_phone"
                   autoComplete="off"
                   data-lpignore="true"
                   data-1p-ignore="true"
@@ -907,13 +907,13 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">Customer Email (For Invoice Dispatch)</label>
                 <input
                   type="email"
-                  name="jnc_cust_company_email"
+                  name="cust_company_email"
                   autoComplete="off"
                   data-lpignore="true"
                   data-1p-ignore="true"
                   data-form-type="other"
                   className="input text-xs font-mono"
-                  placeholder="billing@customer.com"
+                  placeholder="billing@example.com"
                   value={customerEmail}
                   onChange={(e) => setCustomerEmail(e.target.value)}
                 />
@@ -923,7 +923,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">GST Number (GSTIN)</label>
                 <input
                   type="text"
-                  name="jnc_cust_company_gstin"
+                  name="cust_company_gstin"
                   autoComplete="off"
                   data-lpignore="true"
                   data-1p-ignore="true"

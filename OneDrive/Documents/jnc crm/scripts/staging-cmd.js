@@ -12,16 +12,16 @@ const path = require('path');
 function enforceFolderGuard() {
   const currentPath = process.cwd();
   const scriptDir = __dirname;
-  const prohibited = [/onedrive/i, /&/, /jnc crm/i];
+  const prohibited = [/onedrive/i, /&/];
 
   for (const pattern of prohibited) {
     if (pattern.test(currentPath) || pattern.test(scriptDir)) {
       console.error(`\n========================================================================`);
-      console.error(`❌ FOLDER GUARD REFUSAL ERROR: Prohibited path detected.`);
+      console.error(`[ERROR] FOLDER GUARD REFUSAL ERROR: Prohibited path detected.`);
       console.error(`Current directory: "${currentPath}"`);
       console.error(`Script directory:  "${scriptDir}"`);
       console.error(`Prohibited pattern: ${pattern}`);
-      console.error(`Execution is strictly required inside 'C:\\dev\\jnc-crm'. Aborting immediately.`);
+      console.error(`Execution is strictly required inside clean repository root. Aborting immediately.`);
       console.error(`========================================================================\n`);
       process.exit(1);
     }
@@ -53,8 +53,8 @@ function loadEnvFile(filePath) {
   return envData;
 }
 
-const stagingEnv = loadEnvFile('C:\\dev\\jnc-secrets\\staging.env');
-const STAGING_PROJECT_REF = process.env.TEST_STAGING_REF || stagingEnv.STAGING_PROJECT_REF || 'staging-jnc-ref-001';
+const stagingEnv = loadEnvFile(process.env.STAGING_ENV_PATH || 'C:\\dev\\secrets\\staging.env');
+const STAGING_PROJECT_REF = process.env.TEST_STAGING_REF || stagingEnv.STAGING_PROJECT_REF || 'staging-ref-001';
 
 function parseProjectRef(dbUrl) {
   if (!dbUrl) return null;
@@ -90,7 +90,7 @@ async function runStagingGuard() {
       process.exit(1);
     }
 
-    console.log(`✅ STAGING GUARD PASSED: Project ref "${detectedRef || STAGING_PROJECT_REF}" matches allowed staging target.`);
+    console.log(`[PASS] STAGING GUARD PASSED: Project ref "${detectedRef || STAGING_PROJECT_REF}" matches allowed staging target.`);
     if (command === 'migrate') {
       console.log(`[STAGING MIGRATE] Simulated staging migration dry-run completed cleanly.`);
     } else {

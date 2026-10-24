@@ -8,4 +8,11 @@
 import { SetMetadata } from '@nestjs/common';
 
 export const PAGE_ACCESS_KEY = 'page_access';
-export const PageAccess = (pageKey: string) => SetMetadata(PAGE_ACCESS_KEY, pageKey);
+export const PageAccess = (...pageKeys: string[]) =>
+  SetMetadata(PAGE_ACCESS_KEY, pageKeys.length === 1 ? pageKeys[0] : pageKeys);
+
+export const IS_PUBLIC_KEY = 'is_public_endpoint';
+export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
+
+export const AUTH_ONLY_KEY = 'is_auth_only_endpoint';
+export const AuthOnly = () => SetMetadata(AUTH_ONLY_KEY, true);

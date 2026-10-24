@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "WebFormSettings" (
+CREATE TABLE IF NOT EXISTS "WebFormSettings" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
     "logoUrl" TEXT,
@@ -21,10 +21,14 @@ CREATE TABLE "WebFormSettings" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "WebFormSettings_tenantId_key" ON "WebFormSettings"("tenantId");
+CREATE UNIQUE INDEX IF NOT EXISTS "WebFormSettings_tenantId_key" ON "WebFormSettings"("tenantId");
 
 -- CreateIndex
-CREATE INDEX "WebFormSettings_tenantId_idx" ON "WebFormSettings"("tenantId");
+CREATE INDEX IF NOT EXISTS "WebFormSettings_tenantId_idx" ON "WebFormSettings"("tenantId");
 
 -- AddForeignKey
-ALTER TABLE "WebFormSettings" ADD CONSTRAINT "WebFormSettings_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'WebFormSettings_tenantId_fkey') THEN
+    ALTER TABLE "WebFormSettings" ADD CONSTRAINT "WebFormSettings_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;

@@ -12,7 +12,7 @@ import * as bcrypt from 'bcryptjs';
 const TOP_COMMON_PASSWORDS = new Set([
   'password', 'password123', '123456789012', 'admin12345678', 'welcome12345',
   'administrator', 'qwertyuiop12', 'iloveyou1234', 'changeme1234', 'letmein12345',
-  'jncnetwork123', 'crmadmin1234', 'company12345', 'supersecret1', 'passw0rd1234',
+  'networkadmin123', 'crmadmin1234', 'company12345', 'supersecret1', 'passw0rd1234',
   '1234567890123', 'abcdefghijklm', '098765432112', 'pass12345678', 'system123456',
   'master123456', 'trustno11234', 'dragon123456', 'football1234', 'monkey123456',
   'sunshine1234', 'princess1234', 'solo12345678', 'starwars1234', 'shadow123456'
@@ -32,7 +32,7 @@ export interface PasswordPolicyDto {
   minLength: number;
   maxLength: number;
   rules: PasswordPolicyRule[];
-  senderEmail: string;
+  senderEmail?: string;
 }
 
 export function getPasswordPolicy(): PasswordPolicyDto {
@@ -44,7 +44,6 @@ export function getPasswordPolicy(): PasswordPolicyDto {
       { id: 'notCommon', label: 'Cannot be a commonly guessed password' },
       { id: 'noPersonalInfo', label: 'Cannot contain parts of your name or email' },
     ],
-    senderEmail: process.env.EMAIL_FROM || process.env.PRIMARY_EMAIL_FROM || 'jayaraj@jsnc.co.in',
   };
 }
 

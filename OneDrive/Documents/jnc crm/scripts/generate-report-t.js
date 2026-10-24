@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const secretsPath = 'C:\\dev\\jnc-secrets\\live.env';
+const secretsPath = 'C:\\dev\\secrets\\live.env';
 if (!fs.existsSync(secretsPath)) {
   console.error('Missing secrets file');
   process.exit(1);
@@ -42,7 +42,7 @@ function maskSecrets(str) {
 function runTest(cmd, envOverrides = {}) {
   const procEnv = { ...process.env, ...envOverrides };
   try {
-    const stdout = execSync(cmd, { cwd: 'C:\\dev\\jnc-crm', env: procEnv, shell: true, stdio: ['pipe', 'pipe', 'pipe'] }).toString();
+    const stdout = execSync(cmd, { cwd: 'C:\\dev\\crm', env: procEnv, shell: true, stdio: ['pipe', 'pipe', 'pipe'] }).toString();
     return { exitCode: 0, output: maskSecrets(stdout) };
   } catch (err) {
     const stdoutStr = err.stdout ? err.stdout.toString() : '';
@@ -53,7 +53,7 @@ function runTest(cmd, envOverrides = {}) {
 }
 
 async function generateReport() {
-  const reportPath = 'C:\\dev\\jnc-crm\\evidence\\report-2026-10-06t.txt';
+  const reportPath = 'C:\\dev\\crm\\evidence\\report-2026-10-06t.txt';
   let reportText = '';
 
   function append(text) {
@@ -63,10 +63,10 @@ async function generateReport() {
   const nowIso = new Date().toISOString();
 
   append('================================================================================');
-  append('JNC-CRM STRICT PROJECT REF USERNAME PARSING & PROOF AUDIT REPORT');
+  append('CRM STRICT PROJECT REF USERNAME PARSING & PROOF AUDIT REPORT');
   append('Report ID: report-2026-10-06t');
   append('Timestamp: ' + nowIso);
-  append('Repository: C:\\dev\\jnc-crm');
+  append('Repository: C:\\dev\\crm');
   append('Target Database Ref: ' + secrets.NEW_PROJECT_REF + ' (ap-south-1)');
   append('Untouched Old Ref: ' + (secrets.OLD_PROJECT_REF || 'hbzlelktcfagwvmyusvw'));
   append('================================================================================\n');

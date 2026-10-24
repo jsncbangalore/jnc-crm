@@ -13,16 +13,16 @@ const { PrismaClient } = require('@prisma/client');
 function enforceFolderGuard() {
   const currentPath = process.cwd();
   const scriptDir = __dirname;
-  const prohibited = [/onedrive/i, /&/, /jnc crm/i];
+  const prohibited = [/onedrive/i, /&/];
 
   for (const pattern of prohibited) {
     if (pattern.test(currentPath) || pattern.test(scriptDir)) {
       console.error(`\n========================================================================`);
-      console.error(`❌ FOLDER GUARD REFUSAL ERROR: Prohibited path detected.`);
+      console.error(`[ERROR] FOLDER GUARD REFUSAL ERROR: Prohibited path detected.`);
       console.error(`Current directory: "${currentPath}"`);
       console.error(`Script directory:  "${scriptDir}"`);
       console.error(`Prohibited pattern: ${pattern}`);
-      console.error(`Execution is strictly required inside 'C:\\dev\\jnc-crm'. Aborting immediately.`);
+      console.error(`Execution is strictly required inside clean repository root. Aborting immediately.`);
       console.error(`========================================================================\n`);
       process.exit(1);
     }
@@ -33,7 +33,7 @@ enforceFolderGuard();
 
 // ─── 2. SECRETS & PROJECT REF ───────────────────────────────────────────────
 const secrets = {};
-['C:\\dev\\jnc-secrets\\live.env', 'C:\\dev\\jnc-secrets\\hostinger.env'].forEach(secretsPath => {
+['C:\\dev\\secrets\\live.env', 'C:\\dev\\secrets\\hostinger.env'].forEach(secretsPath => {
   if (fs.existsSync(secretsPath)) {
     const envContent = fs.readFileSync(secretsPath, 'utf8');
     envContent.split('\n').forEach(line => {
@@ -110,15 +110,15 @@ async function runRlsCheck() {
     console.log('\n--- ANON ROLE ACCESS DENIAL TEST ---');
     try {
       await prisma.$queryRawUnsafe(`SET ROLE anon; SELECT * FROM "User" LIMIT 1;`);
-      console.error('❌ ANON ACCESS TEST FAILED: "anon" role was able to query "User" table!');
+      console.error('[ERROR] ANON ACCESS TEST FAILED: "anon" role was able to query "User" table!');
     } catch (anonErr) {
-      console.log(`✅ ANON ACCESS TEST PASSED: Anonymous query rejected with expected error: permission denied.`);
+      console.log(`[PASS] ANON ACCESS TEST PASSED: Anonymous query rejected with expected error: permission denied.`);
     }
 
     if (unsecureTables === 0) {
-      console.log('\n✅ ALL DATABASE TABLES HAVE ROW LEVEL SECURITY ENABLED!');
+      console.log('\n[PASS] ALL DATABASE TABLES HAVE ROW LEVEL SECURITY ENABLED!');
     } else {
-      console.error(`\n❌ SECURITY AUDIT FAILED: ${unsecureTables} table(s) lack Row Level Security!`);
+      console.error(`\n[ERROR] SECURITY AUDIT FAILED: ${unsecureTables} table(s) lack Row Level Security!`);
       process.exit(1);
     }
   } catch (err) {

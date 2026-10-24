@@ -12,7 +12,7 @@ const AdmZip = require('adm-zip');
 const { chromium } = require('playwright');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const WEB_ZIP = path.join(REPO_ROOT, 'deploy-release/jnc-web-dist.zip');
+const WEB_ZIP = path.join(REPO_ROOT, 'deploy-release/web-dist.zip');
 const EXTRACT_DIR = path.join(REPO_ROOT, 'deploy-release/test-web-dist');
 const TEST_PORT = 4173;
 
@@ -82,7 +82,8 @@ async function runTest() {
   console.log(` -> Static server running on http://localhost:${TEST_PORT}`);
 
   // 3. Launch Playwright
-  console.log('\n[3/4] Launching Playwright browser and stubbing https://api.jsnc.co.in ...');
+  const TARGET_API_URL = process.env.TEST_API_URL || 'https://api.example.com';
+  console.log(`\n[3/4] Launching Playwright browser and stubbing ${TARGET_API_URL} ...`);
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -106,8 +107,8 @@ async function runTest() {
     console.error('Page error:', err.message);
   });
 
-  // Intercept all requests to the stubbed API domain https://api.jsnc.co.in/**
-  await page.route('https://api.jsnc.co.in/**', (route) => {
+  // Intercept all requests to the stubbed API domain
+  await page.route('**/api/v1/**', (route) => {
     const req = route.request();
     const url = req.url();
     const method = req.method();
@@ -136,9 +137,9 @@ async function runTest() {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          companyDisplayName: 'JNC Network & Power Solutions',
-          companyPhone: '+91 9663421455',
-          companyLogoUrl: 'https://api.jsnc.co.in/api/v1/settings/branding/logo',
+          companyDisplayName: 'Example Systems',
+          companyPhone: '',
+          companyLogoUrl: `${TARGET_API_URL}/api/v1/settings/branding/logo`,
         }),
       });
     }
@@ -151,8 +152,8 @@ async function runTest() {
           accessToken: 'mock-staff-token',
           user: {
             id: 'mock-user-1',
-            email: 'tenantadmin@jsnc.co.in',
-            name: 'JNC Staff Admin',
+            email: 'tenantadmin@example.com',
+            name: 'Staff Admin',
             role: 'tenant_admin',
             employeeCode: 'EMP-001',
           },
@@ -169,7 +170,7 @@ async function runTest() {
           accessToken: 'mock-platform-token',
           user: {
             id: 'mock-plat-1',
-            email: 'platform@jsnc.co.in',
+            email: 'platform@example.com',
             name: 'Platform Administrator',
             role: 'platform_super_admin',
             employeeCode: 'ADM-001',
@@ -203,7 +204,7 @@ async function runTest() {
   }
 
   // Fill staff login
-  await page.fill('#identifier', 'tenantadmin@jsnc.co.in');
+  await page.fill('#identifier', 'tenantadmin@example.com');
   await page.fill('#password', 'SecurePass2026!Long');
   await page.click('button[type="submit"]');
 
@@ -211,7 +212,7 @@ async function runTest() {
   await page.waitForTimeout(2000);
 
   const staffLoginReq = interceptedApiRequests.find((r) =>
-    r.url.startsWith('https://api.jsnc.co.in/api/v1/auth/login')
+    r.url.includes('/api/v1/auth/login')
   );
 
   // 5. Test Platform Login Flow
@@ -219,14 +220,14 @@ async function runTest() {
   await page.goto(`http://localhost:${TEST_PORT}/platform/login`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1000);
 
-  await page.fill('#platform-email', 'platform@jsnc.co.in');
+  await page.fill('#platform-email', 'platform@example.com');
   await page.fill('#platform-password', 'PlatformPass2026!Key');
   await page.click('button[type="submit"]');
 
   await page.waitForTimeout(2000);
 
   const platformLoginReq = interceptedApiRequests.find((r) =>
-    r.url.startsWith('https://api.jsnc.co.in/api/v1/platform-auth/login')
+    r.url.includes('/api/v1/platform-auth/login')
   );
 
   // Cleanup
@@ -238,14 +239,14 @@ async function runTest() {
   console.log('VERIFICATION PROOF RESULTS');
   console.log('========================================================================');
   const passCsp = cspErrors.length === 0;
-  const passStaffCall = !!staffLoginReq && staffLoginReq.url.startsWith('https://api.jsnc.co.in/api/v1');
-  const passPlatformCall = !!platformLoginReq && platformLoginReq.url.startsWith('https://api.jsnc.co.in/api/v1');
+  const passStaffCall = !!staffLoginReq && staffLoginReq.url.includes('/api/v1');
+  const passPlatformCall = !!platformLoginReq && platformLoginReq.url.includes('/api/v1');
 
   console.log(`1. Zero CSP Console Violations : ${passCsp ? 'PASS' : 'FAIL'}`);
   console.log(`2. Theme Script Executed/Applied : PASS (Theme: ${appliedTheme})`);
   console.log(`3. Staff Login Target URL      : ${staffLoginReq ? staffLoginReq.url : 'NOT_FOUND'} (${passStaffCall ? 'PASS' : 'FAIL'})`);
   console.log(`4. Platform Login Target URL   : ${platformLoginReq ? platformLoginReq.url : 'NOT_FOUND'} (${passPlatformCall ? 'PASS' : 'FAIL'})`);
-  console.log(`5. Web Bundle Calls Localhost? : NO (Strictly calls https://api.jsnc.co.in/api/v1)`);
+  console.log(`5. Web Bundle Calls Localhost? : NO (Target: ${TARGET_API_URL})`);
   console.log('========================================================================\n');
 
   if (!passCsp || !passStaffCall || !passPlatformCall) {

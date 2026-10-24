@@ -11,101 +11,171 @@ import {
   IsBoolean,
   IsNumber,
   IsEmail,
+  MaxLength,
 } from 'class-validator';
+import {
+  SanitizeText,
+  TrimString,
+  IsValidName,
+  IsValidPhone,
+  IsValidEmail,
+  IsValidPin,
+  IsValidGstin,
+  IsValidPan,
+  IsValidIfsc,
+  IsValidBankAccount,
+  IsValidHttpsUrl,
+} from '../../common/validation.transformers';
 
 export class UpdateBrandingDto {
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
+  @IsValidName()
   companyDisplayName?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(20)
+  @IsValidPhone()
   companyPhone?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   companyLogoUrl?: string | null;
 }
 
 export class UpdateCompanyProfileDto {
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
+  @IsValidName()
   name?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(20)
+  @IsValidPhone()
   phone?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(254)
+  @IsValidEmail()
   email?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(300)
   address?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   city?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   state?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(6)
+  @IsValidPin()
   pincode?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(500)
+  @IsValidHttpsUrl()
   website?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(15)
+  @IsValidGstin()
   gstin?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(10)
+  @IsValidPan()
   pan?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   lutBondNo?: string;
 
   @IsOptional()
   @IsString()
   lutValidity?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(20)
   invoicePrefix?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   invoiceTerms?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   bankName?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(18)
+  @IsValidBankAccount()
   bankAccountNumber?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(11)
+  @IsValidIfsc()
   bankIfsc?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   bankBranch?: string;
 
+  @TrimString()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   bankUpi?: string;
 
+  @SanitizeText()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
+  @IsValidName()
   signatoryName?: string;
 
   @IsOptional()
@@ -123,6 +193,10 @@ export class UpdateCompanyProfileDto {
   @IsOptional()
   @IsString()
   logoUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  requireTwoFactor?: boolean;
 }
 
 export class DetectMailProviderDto {

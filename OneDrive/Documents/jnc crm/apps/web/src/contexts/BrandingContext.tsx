@@ -2,12 +2,15 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { BrandingSettings } from '../types';
 import { brandingApi, resolveFileUrl } from '../services/api';
 import { useAuth } from './AuthContext';
+import { getProductName, getProductLogoUrl } from '../config/brand';
 
-const DEFAULT_BRANDING: BrandingSettings = {
-  companyDisplayName: 'JS Communication',
-  companyPhone: '+91 9663421455',
-  companyLogoUrl: '/jnc-logo.jpg',
-};
+const BRANDING_STORAGE_KEY = 'app_branding';
+
+const getDefaultBranding = (): BrandingSettings => ({
+  companyDisplayName: getProductName(),
+  companyPhone: '',
+  companyLogoUrl: getProductLogoUrl(),
+});
 
 interface BrandingContextType {
   branding: BrandingSettings;
@@ -17,17 +20,17 @@ interface BrandingContextType {
 }
 
 const BrandingContext = createContext<BrandingContextType>({
-  branding: DEFAULT_BRANDING,
+  branding: getDefaultBranding(),
   loading: false,
   refreshBranding: async () => {},
-  updateBranding: async () => DEFAULT_BRANDING,
+  updateBranding: async () => getDefaultBranding(),
 });
 
 const sanitizeCompanyLogo = (url?: string | null): string => {
-  if (!url || typeof url !== 'string') return '/jnc-logo.jpg';
-  if (url.startsWith('data:') || url.length > 500) return '/jnc-logo.jpg';
+  if (!url || typeof url !== 'string') return getProductLogoUrl();
+  if (url.startsWith('data:') || url.length > 500) return getProductLogoUrl();
   const resolved = resolveFileUrl(url);
-  if (!resolved || resolved.startsWith('data:') || resolved.length > 500) return '/jnc-logo.jpg';
+  if (!resolved || resolved.startsWith('data:') || resolved.length > 500) return getProductLogoUrl();
   return resolved;
 };
 
@@ -35,11 +38,11 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { user } = useAuth();
   const [branding, setBranding] = useState<BrandingSettings>(() => {
     try {
-      const cached = localStorage.getItem('jnc_branding');
+      const cached = localStorage.getItem(BRANDING_STORAGE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed.companyLogoUrl?.startsWith('data:')) {
-          localStorage.removeItem('jnc_branding');
+          localStorage.removeItem(BRANDING_STORAGE_KEY);
         } else if (parsed.companyLogoUrl && !parsed.companyLogoUrl.includes('/settings/branding/logo')) {
           return {
             ...parsed,
@@ -48,7 +51,7 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
     } catch {}
-    return DEFAULT_BRANDING;
+    return getDefaultBranding();
   });
   const [loading, setLoading] = useState(true);
 
@@ -59,12 +62,12 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (data && data.companyDisplayName) {
         const resolvedLogo = sanitizeCompanyLogo(data.companyLogoUrl);
         const brandObj: BrandingSettings = {
-          companyDisplayName: data.companyDisplayName || DEFAULT_BRANDING.companyDisplayName,
-          companyPhone: data.companyPhone || DEFAULT_BRANDING.companyPhone,
+          companyDisplayName: data.companyDisplayName || getDefaultBranding().companyDisplayName,
+          companyPhone: data.companyPhone || '',
           companyLogoUrl: resolvedLogo,
         };
         setBranding(brandObj);
-        localStorage.setItem('jnc_branding', JSON.stringify(brandObj));
+        localStorage.setItem(BRANDING_STORAGE_KEY, JSON.stringify(brandObj));
       }
     } catch (err) {
       console.warn('Failed to load branding from API, using default branding', err);
@@ -78,11 +81,11 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const resolvedLogo = sanitizeCompanyLogo(user.tenant.logoUrl);
       const brandObj: BrandingSettings = {
         companyDisplayName: user.tenant.name,
-        companyPhone: user.tenant.phone || DEFAULT_BRANDING.companyPhone,
+        companyPhone: user.tenant.phone || '',
         companyLogoUrl: resolvedLogo,
       };
       setBranding(brandObj);
-      localStorage.setItem('jnc_branding', JSON.stringify(brandObj));
+      localStorage.setItem(BRANDING_STORAGE_KEY, JSON.stringify(brandObj));
     }
     refreshBranding();
   }, [user?.tenant?.name, user?.tenant?.phone, user?.tenant?.logoUrl, refreshBranding]);
@@ -91,12 +94,12 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const { data } = await brandingApi.update(dto);
     const resolvedLogo = sanitizeCompanyLogo(data.companyLogoUrl);
     const newBranding: BrandingSettings = {
-      companyDisplayName: data.companyDisplayName || DEFAULT_BRANDING.companyDisplayName,
-      companyPhone: data.companyPhone || DEFAULT_BRANDING.companyPhone,
+      companyDisplayName: data.companyDisplayName || getDefaultBranding().companyDisplayName,
+      companyPhone: data.companyPhone || '',
       companyLogoUrl: resolvedLogo,
     };
     setBranding(newBranding);
-    localStorage.setItem('jnc_branding', JSON.stringify(newBranding));
+    localStorage.setItem(BRANDING_STORAGE_KEY, JSON.stringify(newBranding));
     return newBranding;
   };
 

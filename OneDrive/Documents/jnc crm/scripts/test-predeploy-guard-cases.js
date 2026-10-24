@@ -10,13 +10,13 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
-const SECRETS_DIR = 'C:\\dev\\jnc-secrets';
-const TEMP_SECRETS_DIR = 'C:\\dev\\jnc-secrets_TEMP_BACKUP';
+const SECRETS_DIR = process.env.SECRETS_DIR || 'C:\\dev\\secrets';
+const TEMP_SECRETS_DIR = SECRETS_DIR + '_TEMP_BACKUP';
 
 let renamed = false;
 
 try {
-  // 1. Rename C:\dev\jnc-secrets if it exists
+  // 1. Rename secrets dir if it exists
   if (fs.existsSync(SECRETS_DIR)) {
     fs.renameSync(SECRETS_DIR, TEMP_SECRETS_DIR);
     renamed = true;
@@ -46,7 +46,7 @@ try {
       env: {
         ...process.env,
         DIRECT_URL: 'postgresql://postgres:password@localhost:5432/postgres',
-        NEW_PROJECT_REF: 'aybysdzuwwtqhnzhgiwp',
+        NEW_PROJECT_REF: 'testprojectref123',
       },
       encoding: 'utf8',
     });

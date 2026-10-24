@@ -10,17 +10,25 @@ import { Logger } from '@nestjs/common';
 const logger = new Logger('CORS');
 const rejectedOriginsSet = new Set<string>();
 
-export const ALLOWED_ORIGIN_LIST = [
-  'https://admin.jsnc.co.in',
-  'http://admin.jsnc.co.in',
-  'https://api.jsnc.co.in',
-  'http://api.jsnc.co.in',
+export const DEV_DEFAULT_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:4173',
   'http://localhost:3000',
   'http://localhost:3333',
 ];
 
+/**
+ * NOTE ON CLIENT / TENANT MARKETING WEBSITES:
+ * Client marketing websites that host or embed public inquiry forms must NEVER
+ * be added to ALLOWED_ORIGINS.
+ *
+ * ALLOWED_ORIGINS is reserved strictly for authenticated CRM portals (e.g. portal.domain.com)
+ * where session cookies, HttpOnly refresh tokens, and Authorization credentials are permitted.
+ *
+ * Public endpoints (/public-inquiry, /webhooks/website/:key, /webhooks/inquiry-info)
+ * have their own isolated CORS handling (handlePublicCors) that reads WebFormSettings.allowedOrigins
+ * per company, strictly disallows credentials, and never sets cookies.
+ */
 export function getAllowedCorsOrigins(): string[] {
   const envOrigins = [
     ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : []),
@@ -31,7 +39,8 @@ export function getAllowedCorsOrigins(): string[] {
     .map((u) => u.trim())
     .filter(Boolean);
 
-  return Array.from(new Set([...ALLOWED_ORIGIN_LIST, ...envOrigins]));
+  const baseList = process.env.NODE_ENV === 'production' ? [] : DEV_DEFAULT_ORIGINS;
+  return Array.from(new Set([...baseList, ...envOrigins]));
 }
 
 export function getCorsOriginsCount(): number {
@@ -52,34 +61,31 @@ export function getAllowedCorsHosts(): string[] {
 
 /**
  * Validates if an incoming origin header is permitted by CORS.
- * Accepts exact matches to allowed domains/local dev ports, or wildcard subdomain *.jsnc.co.in.
+ * Accepts exact matches to allowed domains/local dev ports.
  */
 export function isAllowedOrigin(origin?: string, frontendUrlEnv?: string): boolean {
   if (!origin) {
     return true; // Non-browser / same-origin / health check requests
   }
 
-  // Always allow localhost & loopback IP on any port (development and local testing)
-  if (
-    origin.startsWith('http://localhost:') ||
-    origin === 'http://localhost' ||
-    origin.startsWith('https://localhost:') ||
-    origin === 'https://localhost' ||
-    origin.startsWith('http://127.0.0.1:') ||
-    origin === 'http://127.0.0.1' ||
-    origin.startsWith('https://127.0.0.1:') ||
-    origin === 'https://127.0.0.1'
-  ) {
-    return true;
+  // Allow localhost & loopback IP on any port in development
+  if (process.env.NODE_ENV !== 'production') {
+    if (
+      origin.startsWith('http://localhost:') ||
+      origin === 'http://localhost' ||
+      origin.startsWith('https://localhost:') ||
+      origin === 'https://localhost' ||
+      origin.startsWith('http://127.0.0.1:') ||
+      origin === 'http://127.0.0.1' ||
+      origin.startsWith('https://127.0.0.1:') ||
+      origin === 'https://127.0.0.1'
+    ) {
+      return true;
+    }
   }
 
   const configuredOrigins = getAllowedCorsOrigins();
-
-  if (configuredOrigins.includes(origin) || origin.endsWith('.jsnc.co.in')) {
-    return true;
-  }
-
-  return false;
+  return configuredOrigins.includes(origin);
 }
 
 /**

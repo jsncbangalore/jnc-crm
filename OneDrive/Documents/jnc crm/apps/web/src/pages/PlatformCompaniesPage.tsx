@@ -12,7 +12,7 @@ import {
   Plus, Search, RefreshCw, KeyRound, Lock, Power, Settings,
   CheckCircle2, X, Copy, Check, Users, Send, Trash2
 } from 'lucide-react';
-import { platformApi, setAccessToken, getAccessToken } from '../services/api';
+import { platformApi, setAccessToken, getAccessToken, setImpersonationAccessToken, setCurrentTabUserId } from '../services/api';
 import { Tenant } from '../types';
 import { usePopup } from '../contexts/PopupContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,8 +40,8 @@ export default function PlatformCompaniesPage() {
     adminEmail: '',
     adminPhone: '',
     adminPassword: '',
-    city: 'Bengaluru',
-    state: 'Karnataka',
+    city: '',
+    state: '',
     gstin: '',
     sendEmail: true,
   });
@@ -85,6 +85,7 @@ export default function PlatformCompaniesPage() {
     role?: string;
   } | null>(null);
   const [resetAdminEmail, setResetAdminEmail] = useState('');
+  const [resetAdminPhone, setResetAdminPhone] = useState('');
   const [loadingResetAdmin, setLoadingResetAdmin] = useState(false);
   const [resetCustomPassword, setResetCustomPassword] = useState('');
   const [resetSendEmail, setResetSendEmail] = useState(true);
@@ -104,7 +105,7 @@ export default function PlatformCompaniesPage() {
     phone: '',
     role: 'employee',
     employeeCode: '',
-    password: 'Jsnc@2024jsn',
+    password: '',
   });
 
   const handleDeleteTenant = (tenant: Tenant) => {
@@ -135,7 +136,7 @@ export default function PlatformCompaniesPage() {
       await platformApi.addTenantUser(viewingTenant.id, empForm);
       showAlert('Employee Added', `Employee "${empForm.name}" added to ${viewingTenant.name} successfully.`, 'success');
       setShowAddEmpModal(false);
-      setEmpForm({ name: '', email: '', phone: '', role: 'employee', employeeCode: '', password: 'Jsnc@2024jsn' });
+      setEmpForm({ name: '', email: '', phone: '', role: 'employee', employeeCode: '', password: '' });
       handleViewTenantUsers(viewingTenant.id);
       fetchTenants();
     } catch (err: any) {
@@ -279,13 +280,13 @@ export default function PlatformCompaniesPage() {
       async () => {
         try {
           const { data } = await platformApi.impersonateTenant(tenant.id);
-          const currentToken = getAccessToken();
-          if (currentToken) sessionStorage.setItem('jnc_master_token', currentToken);
-          sessionStorage.setItem('jnc_impersonate_token', data.accessToken);
-
+          setImpersonationAccessToken(data.accessToken);
           setAccessToken(data.accessToken);
           if (data.user) {
             updateUser(data.user);
+            if (data.user.id) {
+              setCurrentTabUserId(data.user.id);
+            }
           }
           navigate('/');
         } catch (err: any) {
@@ -313,6 +314,7 @@ export default function PlatformCompaniesPage() {
         data.users?.[0];
       const targetEmail = tenant.email || admin?.email || '';
       setResetAdminEmail(targetEmail);
+      setResetAdminPhone(admin?.phone || tenant.phone || '');
       if (admin) {
         setResetAdminDetail({
           employeeCode: admin.employeeCode,
@@ -321,23 +323,24 @@ export default function PlatformCompaniesPage() {
           role: admin.role,
         });
       } else {
-        const fallbackCode = tenant.code.startsWith('JNC-') ? `${tenant.code}-SA-001` : `JNC-${tenant.code}-SA-001`;
+        const fallbackCode = `${tenant.code}-SA-001`;
         setResetAdminDetail({
           employeeCode: fallbackCode,
           name: `${tenant.name} Admin`,
-          email: targetEmail || 'admin@client.com',
+          email: targetEmail || 'admin@example.com',
           role: 'tenant_admin',
         });
       }
     } catch {
-      const fallbackCode = tenant.code.startsWith('JNC-') ? `${tenant.code}-SA-001` : `JNC-${tenant.code}-SA-001`;
+      const fallbackCode = `${tenant.code}-SA-001`;
       setResetAdminDetail({
         employeeCode: fallbackCode,
         name: `${tenant.name} Admin`,
-        email: tenant.email || 'admin@client.com',
+        email: tenant.email || 'admin@example.com',
         role: 'tenant_admin',
       });
       setResetAdminEmail(tenant.email || '');
+      setResetAdminPhone(tenant.phone || '');
     } finally {
       setLoadingResetAdmin(false);
     }
@@ -362,6 +365,7 @@ export default function PlatformCompaniesPage() {
       const { data } = await platformApi.resetAdminPassword(resetModalTenant.id, {
         newPassword: resetCustomPassword.trim() || undefined,
         adminEmail: resetAdminEmail.trim() || undefined,
+        adminPhone: resetAdminPhone.trim() || undefined,
         sendEmail: resetSendEmail,
         mustResetPassword: resetMustChangePassword,
         appUrl: window.location.origin + '/login',
@@ -401,7 +405,7 @@ export default function PlatformCompaniesPage() {
   };
 
   // Filter list by client companies only (excluding internal platform owner)
-  const clientTenants = tenants.filter((t: any) => !t.isInternal && t.code !== 'JNC' && t.code !== 'JNC-ORG-001' && t.id !== 'default-tenant-id');
+  const clientTenants = tenants.filter((t: any) => !t.isInternal && t.id !== 'default-tenant-id');
 
   // Filter list by search query and status
   const filteredTenants = clientTenants.filter((t) => {
@@ -445,8 +449,8 @@ export default function PlatformCompaniesPage() {
               adminEmail: '',
               adminPhone: '',
               adminPassword: '',
-              city: 'Bengaluru',
-              state: 'Karnataka',
+              city: '',
+              state: '',
               gstin: '',
               sendEmail: true,
             });
@@ -570,8 +574,8 @@ export default function PlatformCompaniesPage() {
                           adminEmail: '',
                           adminPhone: '',
                           adminPassword: '',
-                          city: 'Bengaluru',
-                          state: 'Karnataka',
+                          city: '',
+                          state: '',
                           gstin: '',
                           sendEmail: true,
                         });
@@ -798,7 +802,7 @@ export default function PlatformCompaniesPage() {
                       <input
                         type="email"
                         className="input text-xs"
-                        placeholder="ramesh@vertexsolutions.in"
+                        placeholder="admin@example.com"
                         value={form.adminEmail}
                         onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
                         required
@@ -812,7 +816,7 @@ export default function PlatformCompaniesPage() {
                       <input
                         type="text"
                         className="input text-xs"
-                        placeholder="+91 9845012345"
+                        placeholder="Phone Number"
                         value={form.adminPhone}
                         onChange={(e) => setForm({ ...form, adminPhone: e.target.value })}
                       />
@@ -1078,7 +1082,7 @@ export default function PlatformCompaniesPage() {
                           <input
                             type="email"
                             className="input text-xs font-mono"
-                            placeholder="anand@client.com"
+                            placeholder="employee@example.com"
                             value={empForm.email}
                             onChange={(e) => setEmpForm({ ...empForm, email: e.target.value })}
                             required
@@ -1461,13 +1465,29 @@ export default function PlatformCompaniesPage() {
                       <input
                         type="email"
                         className="input text-xs font-mono"
-                        placeholder="e.g. admin@company.com"
+                        placeholder="e.g. admin@example.com"
                         value={resetAdminEmail}
                         onChange={(e) => setResetAdminEmail(e.target.value)}
                         required
                       />
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                         Updates the login email and delivers the reset credentials.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="label text-xs mb-1 text-slate-700 dark:text-slate-300 font-semibold">
+                        Admin Mobile Number (10 digits)
+                      </label>
+                      <input
+                        type="tel"
+                        className="input text-xs font-mono"
+                        placeholder="10-digit mobile number"
+                        value={resetAdminPhone}
+                        onChange={(e) => setResetAdminPhone(e.target.value)}
+                      />
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        Registered phone number used for mobile verification and forgot password recovery.
                       </p>
                     </div>
                   </div>

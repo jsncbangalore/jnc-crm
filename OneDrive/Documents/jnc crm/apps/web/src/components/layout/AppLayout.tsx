@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, Link } from 'react-router-dom';
 import Navbar from './Navbar';
 import MobileDock from './MobileDock';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBranding } from '../../contexts/BrandingContext';
-import { authApi, setAccessToken } from '../../services/api';
+import { getProductName } from '../../config/brand';
+import { authApi, setAccessToken, setImpersonationAccessToken, getImpersonationAccessToken, setCurrentTabUserId } from '../../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { KeyRound, ShieldAlert, CheckCircle2, Lock } from 'lucide-react';
+import { openCookiePreferencesPanel } from '../../utils/cookieConsent';
 
-export default function AppLayout() {
+export default function AppLayout({ children }: { children?: React.ReactNode } = {}) {
   const { user, updateUser, logout } = useAuth();
   const { branding } = useBranding();
 
@@ -51,25 +53,13 @@ export default function AppLayout() {
   const navigate = useNavigate();
 
   const handleExitImpersonation = async () => {
-    const masterToken = sessionStorage.getItem('jnc_master_token');
-    sessionStorage.removeItem('jnc_master_token');
-    sessionStorage.removeItem('jnc_master_user');
-    sessionStorage.removeItem('jnc_impersonate_token');
-    if (masterToken) {
-      setAccessToken(masterToken);
-      try {
-        const meRes = await authApi.me();
-        if (meRes.data) {
-          updateUser(meRes.data);
-        }
-      } catch {
-        // ignore
-      }
-    }
+    setImpersonationAccessToken(null);
+    setAccessToken(null);
+    setCurrentTabUserId(null);
     navigate('/platform/companies');
   };
 
-  const isImpersonating = (user as any)?.isImpersonating || !!sessionStorage.getItem('jnc_master_token');
+  const isImpersonating = Boolean((user as any)?.isImpersonating || getImpersonationAccessToken());
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0F1117] text-slate-900 dark:text-slate-100 overflow-x-hidden pb-16 lg:pb-0">
@@ -91,11 +81,21 @@ export default function AppLayout() {
       {/* Mobile-only slim top bar — dynamic branding */}
       <div className="lg:hidden flex items-center justify-between px-4 py-2.5 bg-white/95 dark:bg-[#181B26]/95 backdrop-blur-md border-b border-slate-200 dark:border-[#2A3042] sticky top-0 z-40 shrink-0">
         <div className="flex items-center gap-2">
-          <div className="h-8 px-1.5 py-0.5 rounded-lg bg-white flex items-center justify-center shadow-sm border border-slate-200 dark:border-transparent">
-            <img src="/jnc-logo.jpg" alt="JS Network Communication" className="h-6 w-auto object-contain" />
+          <div className="h-8 w-8 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+            <img
+              src="/logo-icon.png"
+              alt="App Icon"
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (target.src !== window.location.origin + '/logo-icon.svg') {
+                  target.src = '/logo-icon.svg';
+                }
+              }}
+            />
           </div>
           <span className="text-xs font-bold text-slate-900 dark:text-white tracking-tight truncate max-w-[180px]">
-            {branding.companyDisplayName}
+            {user?.tenant?.name || branding.companyDisplayName}
           </span>
         </div>
         {branding.companyPhone && (
@@ -108,7 +108,7 @@ export default function AppLayout() {
       <Navbar />
       <main className="flex-1 overflow-y-auto overflow-x-hidden w-full">
         <div className="p-3 sm:p-5 lg:p-6 max-w-[1700px] mx-auto w-full">
-          <Outlet />
+          {children || <Outlet />}
         </div>
       </main>
 
@@ -118,6 +118,19 @@ export default function AppLayout() {
           <span className="font-semibold text-slate-700 dark:text-slate-300">{branding.companyDisplayName}</span>
           <span>•</span>
           <span>All Rights Reserved &copy; {new Date().getFullYear()}</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => openCookiePreferencesPanel()}
+            className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer text-xs"
+          >
+            Cookie settings
+          </button>
+          <span>•</span>
+          <Link to="/cookies" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+            Cookie details
+          </Link>
         </div>
       </footer>
 
@@ -139,7 +152,7 @@ export default function AppLayout() {
                 </div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">Action Required: Change Temporary Password</h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  For your account security, you must set a new personal password before accessing the JSNC-CRM portal.
+                  For your account security, you must set a new personal password before accessing the {getProductName(branding)} portal.
                 </p>
               </div>
 

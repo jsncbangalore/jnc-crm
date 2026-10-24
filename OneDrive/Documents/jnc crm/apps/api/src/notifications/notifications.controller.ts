@@ -12,6 +12,9 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PageAccess, Public } from '../auth/page-access.decorator';
+import { getEffectivePagesForUser } from '../auth/effective-page-access';
+import { isPlatformOwner } from '../auth/roles';
 
 @Controller('notifications')
 export class NotificationsController {
@@ -22,21 +25,51 @@ export class NotificationsController {
 
   @Get()
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('notifications')
   async getNotifications(
     @CurrentUser() user: ScopedUser,
     @Query('channel') channel?: string,
     @Query('search') search?: string,
   ) {
     const where: any = {};
+    if (user.tenantId) {
+      where.tenantId = user.tenantId;
+    }
+
+    if (!isPlatformOwner(user) && user.role !== 'tenant_admin') {
+      const effectivePages = await getEffectivePagesForUser(this.prisma, user);
+      const allowedEntityTypes: string[] = ['general', 'system'];
+      if (effectivePages.includes('leads') || effectivePages.includes('lead_flow')) allowedEntityTypes.push('lead');
+      if (effectivePages.includes('orders')) allowedEntityTypes.push('order');
+      if (effectivePages.includes('invoices')) allowedEntityTypes.push('invoice');
+      if (effectivePages.includes('quotations')) allowedEntityTypes.push('quotation');
+      if (effectivePages.includes('shipments')) allowedEntityTypes.push('shipment');
+      if (effectivePages.includes('inventory')) allowedEntityTypes.push('sku', 'inventory');
+      if (effectivePages.includes('suppliers') || effectivePages.includes('purchase_bills')) allowedEntityTypes.push('supplier', 'purchase_bill');
+      if (effectivePages.includes('daily_activities')) allowedEntityTypes.push('daily_activity');
+      if (effectivePages.includes('users')) allowedEntityTypes.push('user');
+
+      where.OR = [
+        { relatedEntityType: null },
+        { relatedEntityType: { in: allowedEntityTypes } },
+      ];
+    }
+
     if (channel && channel !== 'all') {
       where.channel = channel;
     }
     if (search) {
-      where.OR = [
+      const searchConditions = [
         { recipient: { contains: search } },
         { subject: { contains: search } },
         { body: { contains: search } },
       ];
+      if (where.OR) {
+        where.AND = [{ OR: where.OR }, { OR: searchConditions }];
+        delete where.OR;
+      } else {
+        where.OR = searchConditions;
+      }
     }
 
     const items = await this.prisma.messageLog.findMany({
@@ -56,6 +89,7 @@ export class NotificationsController {
    */
   @Post('sync-godaddy')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('notifications')
   async syncGoDaddy(@CurrentUser() user: ScopedUser) {
     return this.notificationsService.syncGoDaddyInbox();
   }
@@ -64,6 +98,7 @@ export class NotificationsController {
    * Webhook endpoint to receive incoming email reply payload / forward from GoDaddy / email server
    */
   @Post('inbound-email')
+  @Public()
   async handleInboundEmail(
     @Body()
     body: {
@@ -96,7 +131,7 @@ export class NotificationsController {
     const messageLog = await this.prisma.messageLog.create({
       data: {
         channel: 'email_inbound',
-        recipient: 'jayaraj@jsnc.co.in',
+        recipient: body.to || process.env.EMAIL_FROM || 'system-inbound',
         subject: body.subject || `Reply from ${cleanFrom}`,
         body: content,
         status: 'received',
