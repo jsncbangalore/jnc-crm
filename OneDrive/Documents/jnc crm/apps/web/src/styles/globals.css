@@ -1,5 +1,54 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Great+Vibes&family=Kaushan+Script&family=Parisienne&display=swap');
 
+/* RNDI Type Foundry (Nuvetra & Naratama) Font Definitions */
+@font-face {
+  font-family: 'Nuvetra';
+  src: local('Nuvetra'), local('RNDI Nuvetra'), local('Naratama'), local('RNDI Naratama'), url('/fonts/Nuvetra-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Nuvetra';
+  src: local('Nuvetra Medium'), local('RNDI Nuvetra Medium'), local('Naratama Medium'), url('/fonts/Nuvetra-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Nuvetra';
+  src: local('Nuvetra SemiBold'), local('RNDI Nuvetra SemiBold'), local('Naratama SemiBold'), url('/fonts/Nuvetra-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Nuvetra';
+  src: local('Nuvetra Bold'), local('RNDI Nuvetra Bold'), local('Naratama Bold'), url('/fonts/Nuvetra-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Naratama';
+  src: local('Naratama'), local('RNDI Naratama'), local('Nuvetra'), url('/fonts/Naratama-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Naratama';
+  src: local('Naratama Bold'), local('RNDI Naratama Bold'), local('Nuvetra Bold'), url('/fonts/Naratama-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -35,7 +84,7 @@
 
   body {
     @apply bg-[#F4F6FB] text-slate-900 dark:bg-[#0F1117] dark:text-slate-100 font-sans antialiased;
-    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-family: 'Nuvetra', 'Naratama', 'RNDI', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 
   /* Prevent browser pale-blue autofill */

@@ -62,7 +62,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['"Nuvetra"', '"Naratama"', '"RNDI"', '"Plus Jakarta Sans"', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'monospace'],
         fancy: ['"Great Vibes"', 'cursive'],
         brush: ['"Kaushan Script"', 'cursive'],
