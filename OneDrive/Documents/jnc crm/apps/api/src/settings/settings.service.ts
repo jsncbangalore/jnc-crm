@@ -70,7 +70,7 @@ export class SettingsService {
             companyDisplayName: tenant.name || DEFAULT_BRANDING.companyDisplayName,
             companyPhone: tenant.phone || DEFAULT_BRANDING.companyPhone,
             companyLogoUrl:
-              tenant.logoUrl && !tenant.logoUrl.startsWith('data:') && tenant.logoUrl.trim() !== ''
+              tenant.logoUrl && tenant.logoUrl.trim() !== ''
                 ? tenant.logoUrl
                 : (process.env.PRODUCT_LOGO_URL || '/logo.png'),
             portalLogoUrl: tenant.portalLogoUrl || null,
@@ -105,9 +105,7 @@ export class SettingsService {
     }
 
     let sanitizedLogoUrl = dto.companyLogoUrl;
-    if (sanitizedLogoUrl && sanitizedLogoUrl.startsWith('data:')) {
-      sanitizedLogoUrl = process.env.PRODUCT_LOGO_URL || '/logo.png';
-    } else if (!sanitizedLogoUrl || sanitizedLogoUrl.trim() === '') {
+    if (!sanitizedLogoUrl || sanitizedLogoUrl.trim() === '') {
       sanitizedLogoUrl = process.env.PRODUCT_LOGO_URL || '/logo.png';
     }
 
@@ -119,7 +117,7 @@ export class SettingsService {
 
     if (dto.portalLogoUrl !== undefined) {
       updateData.portalLogoUrl =
-        dto.portalLogoUrl && !dto.portalLogoUrl.startsWith('data:') && dto.portalLogoUrl.trim() !== ''
+        dto.portalLogoUrl && dto.portalLogoUrl.trim() !== ''
           ? dto.portalLogoUrl.trim()
           : null;
     }
@@ -150,38 +148,14 @@ export class SettingsService {
       throw new BadRequestException('Invalid file upload. Image buffer is missing.');
     }
 
-    const logoFile = process.env.PRODUCT_LOGO_PATH || 'logo.png';
-    const destinations = [
-      path.resolve(process.cwd(), 'apps/web/public', logoFile),
-      path.resolve(process.cwd(), 'apps/api/assets', logoFile),
-      path.resolve(process.cwd(), 'assets', logoFile),
-      path.resolve(process.cwd(), 'apps/web/src/assets', logoFile),
-    ];
-
-    const distLogo = path.resolve(process.cwd(), 'apps/web/dist', logoFile);
-    if (fs.existsSync(path.dirname(distLogo))) {
-      destinations.push(distLogo);
-    }
-
-    for (const dest of destinations) {
-      try {
-        const dir = path.dirname(dest);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(dest, file.buffer);
-      } catch (e: any) {
-        this.logger.warn(`Could not write logo to ${dest}: ${e.message}`);
-      }
-    }
-
-    const logoPath = `/${logoFile}`;
+    const mime = file.mimetype || 'image/png';
+    const dataUrl = `data:${mime};base64,${file.buffer.toString('base64')}`;
 
     if (user?.tenantId) {
       await this.prisma.tenant.update({
         where: { id: user.tenantId },
         data: {
-          logoUrl: logoPath,
+          logoUrl: dataUrl,
         },
       });
     }
@@ -191,7 +165,7 @@ export class SettingsService {
     return {
       success: true,
       message: 'Document logo uploaded successfully. Used for invoices, quotations, and documents.',
-      logoUrl: logoPath,
+      logoUrl: dataUrl,
       timestamp: Date.now(),
     };
   }
@@ -208,37 +182,13 @@ export class SettingsService {
       throw new ForbiddenException('Tenant context required.');
     }
 
-    const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
-    const cleanExt = ['.png', '.jpg', '.jpeg', '.svg', '.webp'].includes(ext) ? ext : '.png';
-    const filename = `portal-logo-${user.tenantId}${cleanExt}`;
-
-    const destinations = [
-      path.resolve(process.cwd(), 'apps/web/public', filename),
-      path.resolve(process.cwd(), 'apps/api/assets', filename),
-    ];
-    const distTarget = path.resolve(process.cwd(), 'apps/web/dist', filename);
-    if (fs.existsSync(path.dirname(distTarget))) {
-      destinations.push(distTarget);
-    }
-
-    for (const dest of destinations) {
-      try {
-        const dir = path.dirname(dest);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(dest, file.buffer);
-      } catch (e: any) {
-        this.logger.warn(`Could not write portal logo to ${dest}: ${e.message}`);
-      }
-    }
-
-    const portalLogoPath = `/${filename}`;
+    const mime = file.mimetype || 'image/png';
+    const dataUrl = `data:${mime};base64,${file.buffer.toString('base64')}`;
 
     await this.prisma.tenant.update({
       where: { id: user.tenantId },
       data: {
-        portalLogoUrl: portalLogoPath,
+        portalLogoUrl: dataUrl,
       },
     });
 
@@ -247,7 +197,7 @@ export class SettingsService {
     return {
       success: true,
       message: 'Portal logo uploaded successfully. Shown in the portal header after sign-in.',
-      portalLogoUrl: portalLogoPath,
+      portalLogoUrl: dataUrl,
       timestamp: Date.now(),
     };
   }
@@ -340,9 +290,7 @@ export class SettingsService {
     }
 
     let sanitizedLogo = dto.logoUrl;
-    if (sanitizedLogo && sanitizedLogo.startsWith('data:')) {
-      sanitizedLogo = process.env.PRODUCT_LOGO_URL || '/logo.png';
-    } else if (!sanitizedLogo || sanitizedLogo.trim() === '') {
+    if (!sanitizedLogo || sanitizedLogo.trim() === '') {
       sanitizedLogo = process.env.PRODUCT_LOGO_URL || '/logo.png';
     }
 
@@ -1269,6 +1217,16 @@ export class SettingsService {
 
     const imgVal = tenant?.portalLogoUrl;
     if (imgVal) {
+      if (imgVal.startsWith('data:image/')) {
+        const matches = imgVal.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const contentType = matches[1];
+          const buffer = Buffer.from(matches[2], 'base64');
+          res.setHeader('Content-Type', contentType);
+          return res.send(buffer);
+        }
+      }
+
       const cleanVal = imgVal.replace(/^\/+/, '');
       const candidatePaths = [
         path.resolve(process.cwd(), 'apps/web/public', cleanVal),

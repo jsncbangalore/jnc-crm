@@ -108,9 +108,9 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
         </div>
 
         {/* Mobile Header (Hidden on lg+) */}
-        <div className="w-full flex justify-center pt-1 pb-2 lg:hidden">
+        <div className="w-full flex justify-center pt-6 pb-4 sm:pt-4 sm:pb-3 lg:hidden shrink-0">
           <Link to="/" aria-label={`${productName} home`}>
-            <BrandLogo size={28} reversed={false} showText={true} productOnly={true} />
+            <BrandLogo size={32} reversed={false} showText={true} productOnly={true} />
           </Link>
         </div>
 

@@ -328,6 +328,7 @@ export default function Navbar() {
                 alt={user?.tenant?.name || branding.companyDisplayName}
                 className="h-7 max-w-[120px] object-contain shrink-0"
                 data-testid="portal-header-logo"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
               />
             ) : null}
 

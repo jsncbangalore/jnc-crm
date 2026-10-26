@@ -836,7 +836,7 @@ export class InvoicingService {
           bankAccountHolder: tenant.name || '',
           lutBondNo: tenant.lutBondNo || '',
           logoUrl:
-            tenant.logoUrl && !tenant.logoUrl.startsWith('data:') && tenant.logoUrl.trim() !== ''
+            tenant.logoUrl && tenant.logoUrl.trim() !== ''
               ? tenant.logoUrl
               : (process.env.PRODUCT_LOGO_URL || ''),
           invoicePrefix: tenant.invoicePrefix || 'INV',

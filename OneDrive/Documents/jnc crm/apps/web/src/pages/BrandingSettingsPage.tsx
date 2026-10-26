@@ -80,13 +80,15 @@ export default function BrandingSettingsPage() {
         if (data) {
           if (data.name) setCompanyName(data.name);
           if (data.phone) setCompanyPhone(data.phone);
-          if (data.logoUrl && !data.logoUrl.startsWith('data:')) {
+          if (data.logoUrl) {
             setLogoPreview(data.logoUrl);
           } else {
             setLogoPreview(null);
           }
-          if (data.portalLogoUrl && !data.portalLogoUrl.startsWith('data:')) {
+          if (data.portalLogoUrl) {
             setPortalLogoPreview(data.portalLogoUrl);
+          } else {
+            setPortalLogoPreview(null);
           }
           if (data.email) setEmail(data.email);
           if (data.address) setAddress(data.address);
