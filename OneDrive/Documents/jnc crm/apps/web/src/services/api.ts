@@ -9,6 +9,8 @@ import axios from 'axios';
 import { acquireCrossTabRefreshLock, broadcastSessionChanged } from '../utils/crossTabSync';
 import { clearTabSessionUser } from '../utils/sessionSync';
 
+export const RENDER_DIRECT_BACKUP_URL = 'https://jnc-crm-backend.onrender.com/api/v1';
+
 export const getApiBaseUrl = () => {
   if (typeof window !== 'undefined') {
     // 1. Runtime window global override (e.g. window.__CRM_API_URL__ in index.html for custom backend URL)
@@ -603,6 +605,15 @@ api.interceptors.response.use(
   },
   async (err) => {
     const original = err.config;
+    if (!err?.response && typeof window !== 'undefined' && (!api.defaults.baseURL || api.defaults.baseURL.includes('api.jsnc.co.in'))) {
+      api.defaults.baseURL = RENDER_DIRECT_BACKUP_URL;
+      try { localStorage.setItem('crm_api_base_url', RENDER_DIRECT_BACKUP_URL); } catch {}
+      if (original && !original._failoverRetry) {
+        original._failoverRetry = true;
+        original.baseURL = RENDER_DIRECT_BACKUP_URL;
+        return api(original);
+      }
+    }
     const url: string = original?.url || '';
     const status = err.response?.status;
 
@@ -755,7 +766,11 @@ export async function requestWithColdStartRetry<T>(
         [502, 503, 504].includes(err.response?.status);
 
       if (isNetworkOrTimeout && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 2000));
+        if (typeof window !== 'undefined' && (!api.defaults.baseURL || api.defaults.baseURL.includes('api.jsnc.co.in'))) {
+          api.defaults.baseURL = RENDER_DIRECT_BACKUP_URL;
+          try { localStorage.setItem('crm_api_base_url', RENDER_DIRECT_BACKUP_URL); } catch {}
+        }
+        await new Promise((r) => setTimeout(r, 1500));
         continue;
       }
       break;
