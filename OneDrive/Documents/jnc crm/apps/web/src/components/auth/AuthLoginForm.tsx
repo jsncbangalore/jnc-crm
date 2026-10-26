@@ -40,6 +40,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [companyCode, setCompanyCode] = useState('');
+  const [showCompanyCode, setShowCompanyCode] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [capsLockOn, setCapsLockOn] = useState(false);
@@ -358,6 +359,52 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
             <span>{error}</span>
           </div>
         )}
+        {/* Company Code Field (Company Portal Only) - Kept in DOM, hidden by default */}
+        {!isPlatform && (
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <button
+                type="button"
+                onClick={() => setShowCompanyCode((prev) => !prev)}
+                className="text-[12px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center gap-1 cursor-pointer focus:outline-none"
+              >
+                <span>{showCompanyCode ? '− Hide company code' : '+ Have a company code?'}</span>
+              </button>
+            </div>
+            <div className={showCompanyCode ? 'block space-y-1' : 'hidden'} aria-hidden={!showCompanyCode}>
+              <label
+                htmlFor="company-code-input"
+                className="block text-[13px] font-semibold text-slate-800 dark:text-slate-200"
+              >
+                Company code (optional)
+              </label>
+              <div className="relative flex items-center">
+                <Building2
+                  size={18}
+                  className="absolute left-[14px] text-slate-400 dark:text-slate-500 pointer-events-none"
+                  aria-hidden="true"
+                />
+                <input
+                  id="company-code-input"
+                  name="companyCode"
+                  type="text"
+                  autoComplete="organization"
+                  value={companyCode}
+                  onChange={(e) => {
+                    setCompanyCode(e.target.value);
+                    if (error) setError('');
+                  }}
+                  placeholder="e.g. ACME"
+                  className="w-full h-[44px] rounded-[10px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] text-slate-900 dark:text-white pl-[42px] pr-4 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors uppercase tracking-wider font-mono text-sm"
+                />
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Only needed if your email is used in more than one company
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Identifier Field */}
         <div>
           <label

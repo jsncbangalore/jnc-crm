@@ -73,6 +73,7 @@ export default function ForgotPasswordPage() {
   // Form inputs
   const [email, setEmail] = useState('');
   const [companyCode, setCompanyCode] = useState('');
+  const [showCompanyCode, setShowCompanyCode] = useState(false);
   const [phone, setPhone] = useState('');
 
   // Flow token & verification state
@@ -514,6 +515,43 @@ export default function ForgotPasswordPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     autoFocus
                   />
+                </div>
+              </div>
+
+              {/* Company Code (Optional) - Kept in DOM, hidden by default */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowCompanyCode((prev) => !prev)}
+                    className="text-[12px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center gap-1 cursor-pointer focus:outline-none"
+                  >
+                    <span>{showCompanyCode ? '− Hide company code' : '+ Have a company code?'}</span>
+                  </button>
+                </div>
+                <div className={showCompanyCode ? 'block space-y-1' : 'hidden'} aria-hidden={!showCompanyCode}>
+                  <label
+                    htmlFor="forgot-company-code"
+                    className="block text-[14px] font-semibold text-slate-800 dark:text-slate-200"
+                  >
+                    Company code (optional)
+                  </label>
+                  <div className="relative flex items-center">
+                    <Building2 size={20} className="absolute left-[14px] text-slate-400 dark:text-slate-500 pointer-events-none" aria-hidden="true" />
+                    <input
+                      id="forgot-company-code"
+                      name="company"
+                      type="text"
+                      autoComplete="organization"
+                      className="w-full h-[48px] pl-[44px] pr-4 text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors uppercase font-mono tracking-wider text-sm"
+                      placeholder="e.g. ACME"
+                      value={companyCode}
+                      onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                    Only needed if your email is used in more than one company
+                  </p>
                 </div>
               </div>
 
