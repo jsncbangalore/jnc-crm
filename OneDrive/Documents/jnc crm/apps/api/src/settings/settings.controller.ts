@@ -77,7 +77,9 @@ export class SettingsController {
 
   /**
    * GET /settings/branding/logo
-   * Public tenant branding logo with Cross-Origin-Resource-Policy: cross-origin
+   * Document Logo route with Cross-Origin-Resource-Policy: cross-origin.
+   * STRICT NOTE: Returns ONLY the Document logo (used for invoices, quotations, challans, PDFs).
+   * Must NOT be used for pre-login pages or portal header.
    */
   @Get('branding/logo')
   @Public()
@@ -91,6 +93,10 @@ export class SettingsController {
     return this.settingsService.servePublicBrandingImage('logo', tenantKey, res);
   }
 
+  /**
+   * POST /settings/branding/logo
+   * Upload Document logo (invoices, quotations, challans, PDFs).
+   */
   @Post('branding/logo')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('branding')
@@ -108,6 +114,66 @@ export class SettingsController {
     validateUploadedFile(file, 'document_or_image', 5 * 1024 * 1024);
 
     return this.settingsService.uploadLogo(file, user);
+  }
+
+  /**
+   * GET /settings/branding/portal-logo
+   * Get Portal logo for the current tenant or by tenantKey.
+   */
+  @Get('branding/portal-logo')
+  @Public()
+  async getPortalLogoDefault(@Req() req: any, @Res() res: Response) {
+    let tenantKey = undefined;
+    if (req?.headers?.authorization) {
+      try {
+        const token = req.headers.authorization.replace(/^Bearer\s+/i, '');
+        const decoded = jwt.decode(token) as any;
+        if (decoded?.tenantId) tenantKey = decoded.tenantId;
+      } catch {}
+    }
+    return this.settingsService.servePortalLogo(tenantKey, res);
+  }
+
+  @Get('branding/portal-logo/:tenantKey')
+  @Public()
+  async getPortalLogo(@Param('tenantKey') tenantKey: string, @Res() res: Response) {
+    return this.settingsService.servePortalLogo(tenantKey, res);
+  }
+
+  /**
+   * POST /settings/branding/portal-logo
+   * Upload Portal logo (shown in the portal header after login only).
+   */
+  @Post('branding/portal-logo')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('branding')
+  @Roles('tenant_admin', 'admin')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    }),
+  )
+  async uploadPortalLogo(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    if (!file) throw new BadRequestException('Portal logo image file is required');
+    validateUploadedFile(file, 'document_or_image', 5 * 1024 * 1024);
+
+    return this.settingsService.uploadPortalLogo(file, user);
+  }
+
+  /**
+   * DELETE /settings/branding/portal-logo
+   * Remove Portal logo (resets header back to company name text).
+   */
+  @Delete('branding/portal-logo')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('branding')
+  @Roles('tenant_admin', 'admin')
+  @HttpCode(HttpStatus.OK)
+  async deletePortalLogo(@CurrentUser() user: ScopedUser) {
+    return this.settingsService.deletePortalLogo(user);
   }
 
   @Post('branding/favicon')

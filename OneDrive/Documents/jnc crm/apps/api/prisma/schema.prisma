@@ -26,6 +26,7 @@ model Tenant {
 
   // Isolated Company Branding & Configuration
   logoUrl             String?
+  portalLogoUrl       String?
   phone               String?
   email               String?
   address             String?

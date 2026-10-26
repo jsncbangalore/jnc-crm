@@ -19,6 +19,7 @@ import {
   UsePipes,
   ValidationPipe,
   ForbiddenException,
+  HttpException,
   UnauthorizedException,
   ConflictException,
   HttpCode,
@@ -283,23 +284,49 @@ export class AuthController {
     return this.authService.forgotPasswordReset(dto, ip);
   }
 
-  /** Forgot password backward compatible endpoint */
+  /**
+   * Forgot password backward compatible endpoint.
+   * Controlled by LEGACY_RESET_ENABLED (default false in production).
+   * Scheduled for removal in v2.1.
+   */
   @Throttle({ default: { limit: 15, ttl: 900000 } })
   @Post('forgot-password')
   @Public()
   async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
+    if (process.env.LEGACY_RESET_ENABLED !== 'true') {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.GONE,
+          message: 'This endpoint has been deprecated. Please use the updated password reset flow.',
+        },
+        HttpStatus.GONE,
+      );
+    }
     const ip = req.ip || req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'] as string | undefined;
-    return this.authService.forgotPassword(dto, ip, userAgent);
+    return this.authService.legacyForgotPassword(dto, ip, userAgent);
   }
 
-  /** Reset password endpoint (kept backward-compatible for one release) */
+  /**
+   * Reset password endpoint (kept backward-compatible for one release).
+   * Controlled by LEGACY_RESET_ENABLED (default false in production).
+   * Scheduled for removal in v2.1.
+   */
   @Throttle({ default: { limit: 5, ttl: 900000 } })
   @Post('reset-password')
   @Public()
   async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    if (process.env.LEGACY_RESET_ENABLED !== 'true') {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.GONE,
+          message: 'This endpoint has been deprecated. Please use the updated password reset flow.',
+        },
+        HttpStatus.GONE,
+      );
+    }
     const ip = req.ip || req.socket?.remoteAddress;
-    return this.authService.resetPassword(dto, ip);
+    return this.authService.legacyResetPassword(dto, ip);
   }
 
   /** Refresh token rotation with CSRF protection */

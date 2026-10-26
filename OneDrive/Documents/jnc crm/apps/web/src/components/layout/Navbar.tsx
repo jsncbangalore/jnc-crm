@@ -321,23 +321,18 @@ export default function Navbar() {
             to={isPlatformOwner ? "/platform/companies" : "/"}
             className="flex items-center gap-2.5 group"
           >
-            {/* App Icon in front */}
-            <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0">
+            {/* Portal Logo (only when uploaded; otherwise omitted) */}
+            {branding.portalLogoUrl ? (
               <img
-                src="/logo-icon.png"
-                alt="App Icon"
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  if (target.src !== window.location.origin + '/favicon.svg') {
-                    target.src = '/favicon.svg';
-                  }
-                }}
+                src={branding.portalLogoUrl}
+                alt={user?.tenant?.name || branding.companyDisplayName}
+                className="h-7 max-w-[120px] object-contain shrink-0"
+                data-testid="portal-header-logo"
               />
-            </div>
+            ) : null}
 
             <div className="flex flex-col text-left">
-              <span className="text-xs font-bold text-slate-900 dark:text-white tracking-tight leading-none truncate max-w-[200px]">
+              <span className="text-xs font-bold text-slate-900 dark:text-white tracking-tight leading-none truncate max-w-[200px]" data-testid="portal-company-name">
                 {user?.tenant?.name || branding.companyDisplayName}
               </span>
               <span className="text-[9.5px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">

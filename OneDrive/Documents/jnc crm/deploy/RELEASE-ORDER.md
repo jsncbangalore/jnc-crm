@@ -167,3 +167,54 @@ Perform end-to-end smoke tests against the live deployment:
 | `v1.1.0` | `v1.1.0+` | **Compatible** | All features operational. |
 | `v1.1.0` | `v1.0.0` (outdated) | **Protected** | Shows maintenance notice: *"We are updating the system. Please try again in a few minutes."* Disables forms to prevent failed submits. |
 | `v1.0.0` (previous) | `v1.1.0` (new) | **Backward Compatible** | Legacy routes (`POST /auth/login`, `POST /auth/refresh`, `POST /auth/forgot-password`, `POST /auth/reset-password`) are fully serviced without 410 errors. |
+
+---
+
+## Deploy Safety Startup Guard & Auto-Deploy Policy
+
+### 1. Startup Migration Guard (Production)
+The production backend binary includes an automated startup safety guard that executes before listening on the network port:
+- Compares compiled migration directories in `prisma/migrations` with the `_prisma_migrations` database table.
+- If unapplied (pending) migrations exist, the backend **refuses to start** and exits with code `1`, printing:
+  `[STARTUP BLOCKED] Migration safety check failed: X pending database migration(s) detected.`
+- This prevents schema mismatch errors, missing column crashes, and table lockup under live user traffic.
+
+### 2. Auto-Deploy Policy
+- **CRITICAL:** **Turn OFF Auto-Deploy** on Render / hosting services for the backend repository.
+- Auto-deploy triggers backend compilation before database migrations are applied, which activates the startup guard block and triggers an outage loop.
+- **Always execute migrations (Step 2) first**, verify with `prisma migrate status`, and only then trigger manual deployment or push to the backend repository.
+
+---
+
+## Legacy Password Reset Deprecation (`LEGACY_RESET_ENABLED`)
+
+- **Environment Variable:** `LEGACY_RESET_ENABLED`
+- **Default:** `false` in production.
+- **Behavior when `false`:**
+  - Old link-based routes `POST /api/v1/auth/forgot-password` and `POST /api/v1/auth/reset-password` return `HTTP 410 Gone`:
+    `{"statusCode": 410, "message": "This endpoint has been deprecated. Please use the updated password reset flow."}`
+- **Behavior when `true` (temporary grace period):**
+  - Allows non-privileged staff accounts to request/reset passwords via the legacy format.
+  - Strictly refuses privileged accounts (`platform_super_admin`, `tenant_admin`, `admin`) with `HTTP 403 Forbidden`:
+    `{"statusCode": 403, "message": "Admin accounts must use the secure reset flow."}`
+  - Enforces all existing IP throttling limits (`@Throttle`).
+  - Writes high-priority audit log entries for all legacy reset attempts.
+- **Scheduled Removal:** Legacy routes and the `LEGACY_RESET_ENABLED` shim are **scheduled for permanent removal in v2.1**.
+
+---
+
+## Branding Architecture: Document Logo vs. Portal Logo
+
+- **Document Logo:**
+  - Used for official financial documents: Invoices, Quotations, Delivery Challans, Credit Notes, Purchase Orders, print templates, and outgoing transactional emails.
+  - Stored in `Tenant.logoUrl`.
+  - Accessible via `GET /api/v1/settings/branding/logo`.
+  - **STRICT RULE:** The public logo endpoint serves only the Document logo and must NOT be used on pre-login or portal header pages.
+- **Portal Logo (Optional):**
+  - Displayed exclusively in the application portal header after user login.
+  - Stored in `Tenant.portalLogoUrl` (added via migration `20261026120000_add_portal_logo_to_tenant`).
+  - When unset (default), the portal header displays the company display name as plain text.
+  - Managed via `POST /api/v1/settings/branding/portal-logo` and `DELETE /api/v1/settings/branding/portal-logo`.
+- **Pre-Login Pages:**
+  - The login, platform login, forgot password, reset password, 2-step verification, and already-signed-in pages use ONLY the product brand from build-time configuration (`BRAND_CONFIG`).
+  - Pre-login pages NEVER query tenant branding or use cached company data.

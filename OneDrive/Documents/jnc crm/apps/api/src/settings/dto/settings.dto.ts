@@ -47,6 +47,12 @@ export class UpdateBrandingDto {
   @IsString()
   @MaxLength(500)
   companyLogoUrl?: string | null;
+
+  @TrimString()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  portalLogoUrl?: string | null;
 }
 
 export class UpdateCompanyProfileDto {

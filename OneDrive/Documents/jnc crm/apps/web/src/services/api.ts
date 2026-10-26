@@ -1127,6 +1127,7 @@ export const brandingApi = {
     companyDisplayName?: string;
     companyPhone?: string;
     companyLogoUrl?: string | null;
+    portalLogoUrl?: string | null;
   }) => api.post('/settings/branding', data),
   getProfile: () => api.get('/settings/company-profile'),
   updateProfile: (data: any) => api.post('/settings/company-profile', data),
@@ -1137,6 +1138,17 @@ export const brandingApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  uploadPortalLogo: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post<{ success: boolean; message: string; portalLogoUrl: string }>('/settings/branding/portal-logo', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  deletePortalLogo: () => {
+    return api.delete<{ success: boolean; message: string }>('/settings/branding/portal-logo');
+  },
+  getPortalLogoUrl: () => `${getApiBaseUrl()}/settings/branding/portal-logo`,
   uploadFavicon: (file: File) => {
     const fd = new FormData();
     fd.append('file', file);

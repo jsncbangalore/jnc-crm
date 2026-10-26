@@ -267,6 +267,7 @@ export interface BrandingSettings {
   companyDisplayName: string;
   companyPhone: string;
   companyLogoUrl: string | null;
+  portalLogoUrl?: string | null;
   privacyEmail?: string;
   supportEmail?: string;
 }

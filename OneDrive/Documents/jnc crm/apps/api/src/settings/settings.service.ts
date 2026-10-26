@@ -29,13 +29,15 @@ import { UpdateWebFormSettingsDto, TestMailAccountDto } from './dto/settings.dto
 export interface CompanyBrandingConfig {
   companyDisplayName: string;
   companyPhone: string;
-  companyLogoUrl: string | null;
+  companyLogoUrl: string | null; // Document logo (invoices, quotations, PDFs, challans, etc.)
+  portalLogoUrl?: string | null;  // Portal logo (optional, header after login only)
 }
 
 export const DEFAULT_BRANDING: CompanyBrandingConfig = {
   companyDisplayName: BRAND_CONFIG.displayName,
   companyPhone: (process.env.DEFAULT_COMPANY_PHONE || '').trim(),
   companyLogoUrl: '/api/v1/settings/branding/logo',
+  portalLogoUrl: null,
 };
 
 @Injectable()
@@ -60,7 +62,7 @@ export class SettingsService {
               { slug: { equals: cleanId.toLowerCase(), mode: 'insensitive' } },
             ],
           },
-          select: { name: true, phone: true, logoUrl: true },
+          select: { name: true, phone: true, logoUrl: true, portalLogoUrl: true },
         });
 
         if (tenant) {
@@ -71,6 +73,7 @@ export class SettingsService {
               tenant.logoUrl && !tenant.logoUrl.startsWith('data:') && tenant.logoUrl.trim() !== ''
                 ? tenant.logoUrl
                 : (process.env.PRODUCT_LOGO_URL || '/logo.png'),
+            portalLogoUrl: tenant.portalLogoUrl || null,
           };
         }
       }
@@ -89,6 +92,7 @@ export class SettingsService {
       companyDisplayName?: string;
       companyPhone?: string;
       companyLogoUrl?: string | null;
+      portalLogoUrl?: string | null;
     },
   ): Promise<CompanyBrandingConfig> {
     if (!user.tenantId) {
@@ -107,13 +111,22 @@ export class SettingsService {
       sanitizedLogoUrl = process.env.PRODUCT_LOGO_URL || '/logo.png';
     }
 
+    const updateData: any = {
+      name: dto.companyDisplayName?.trim(),
+      phone: dto.companyPhone?.trim(),
+      logoUrl: sanitizedLogoUrl,
+    };
+
+    if (dto.portalLogoUrl !== undefined) {
+      updateData.portalLogoUrl =
+        dto.portalLogoUrl && !dto.portalLogoUrl.startsWith('data:') && dto.portalLogoUrl.trim() !== ''
+          ? dto.portalLogoUrl.trim()
+          : null;
+    }
+
     const updatedTenant = await this.prisma.tenant.update({
       where: { id: tenantId },
-      data: {
-        name: dto.companyDisplayName?.trim(),
-        phone: dto.companyPhone?.trim(),
-        logoUrl: sanitizedLogoUrl,
-      },
+      data: updateData,
     });
 
     this.logger.log(
@@ -124,11 +137,13 @@ export class SettingsService {
       companyDisplayName: updatedTenant.name,
       companyPhone: updatedTenant.phone || DEFAULT_BRANDING.companyPhone,
       companyLogoUrl: updatedTenant.logoUrl || DEFAULT_BRANDING.companyLogoUrl,
+      portalLogoUrl: updatedTenant.portalLogoUrl || null,
     };
   }
 
   /**
-   * Upload company logo file and persist across web, api, and database
+   * Upload Document logo file and persist across web, api, and database.
+   * Used for invoices, quotations, delivery challans, credit notes, and PDFs.
    */
   async uploadLogo(file: Express.Multer.File, user: ScopedUser) {
     if (!file || !file.buffer) {
@@ -171,13 +186,92 @@ export class SettingsService {
       });
     }
 
-    this.logger.log(`Branding logo updated by ${user.employeeCode || user.id}`);
+    this.logger.log(`Document logo updated by ${user.employeeCode || user.id}`);
 
     return {
       success: true,
-      message: 'Company logo uploaded and updated successfully across all invoices and documents.',
+      message: 'Document logo uploaded successfully. Used for invoices, quotations, and documents.',
       logoUrl: logoPath,
       timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Upload Portal logo file (optional, shown only in the portal header after sign-in).
+   * Not used for documents or invoices.
+   */
+  async uploadPortalLogo(file: Express.Multer.File, user: ScopedUser) {
+    if (!file || !file.buffer) {
+      throw new BadRequestException('Invalid file upload. Image buffer is missing.');
+    }
+    if (!user?.tenantId) {
+      throw new ForbiddenException('Tenant context required.');
+    }
+
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.png';
+    const cleanExt = ['.png', '.jpg', '.jpeg', '.svg', '.webp'].includes(ext) ? ext : '.png';
+    const filename = `portal-logo-${user.tenantId}${cleanExt}`;
+
+    const destinations = [
+      path.resolve(process.cwd(), 'apps/web/public', filename),
+      path.resolve(process.cwd(), 'apps/api/assets', filename),
+    ];
+    const distTarget = path.resolve(process.cwd(), 'apps/web/dist', filename);
+    if (fs.existsSync(path.dirname(distTarget))) {
+      destinations.push(distTarget);
+    }
+
+    for (const dest of destinations) {
+      try {
+        const dir = path.dirname(dest);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(dest, file.buffer);
+      } catch (e: any) {
+        this.logger.warn(`Could not write portal logo to ${dest}: ${e.message}`);
+      }
+    }
+
+    const portalLogoPath = `/${filename}`;
+
+    await this.prisma.tenant.update({
+      where: { id: user.tenantId },
+      data: {
+        portalLogoUrl: portalLogoPath,
+      },
+    });
+
+    this.logger.log(`Portal logo updated for tenant ${user.tenantId} by ${user.employeeCode || user.id}`);
+
+    return {
+      success: true,
+      message: 'Portal logo uploaded successfully. Shown in the portal header after sign-in.',
+      portalLogoUrl: portalLogoPath,
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Remove Portal logo (resets header back to displaying company name as text)
+   */
+  async deletePortalLogo(user: ScopedUser) {
+    if (!user?.tenantId) {
+      throw new ForbiddenException('Tenant context required.');
+    }
+
+    await this.prisma.tenant.update({
+      where: { id: user.tenantId },
+      data: {
+        portalLogoUrl: null,
+      },
+    });
+
+    this.logger.log(`Portal logo removed for tenant ${user.tenantId}`);
+
+    return {
+      success: true,
+      message: 'Portal logo removed. Portal header will display company name as text.',
     };
   }
 
@@ -1072,7 +1166,9 @@ export class SettingsService {
   }
 
   /**
-   * Serve public tenant-keyed branding image (logo or stamp)
+   * Serve public tenant-keyed branding image (Document logo or stamp).
+   * Note: The public logo route returns ONLY the Document logo (used by documents, PDFs, and emails).
+   * It must NOT be used by any pre-login or portal page.
    * Public route with Cross-Origin-Resource-Policy: cross-origin and long cache
    */
   async servePublicBrandingImage(type: 'logo' | 'stamp', tenantKey: string | undefined, res: any) {
@@ -1147,6 +1243,49 @@ export class SettingsService {
     }
 
     return res.status(404).send('Branding image not found');
+  }
+
+  /**
+   * Serve Portal logo (optional header logo after sign-in).
+   * Returns 404 when no portal logo has been uploaded.
+   */
+  async servePortalLogo(tenantKey: string | undefined, res: any) {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    let tenant: any = null;
+    try {
+      if (tenantKey) {
+        tenant = await this.prisma.tenant.findFirst({
+          where: {
+            OR: [{ id: tenantKey }, { code: tenantKey }, { slug: tenantKey }],
+            deletedAt: null,
+          },
+          select: { portalLogoUrl: true },
+        });
+      }
+    } catch {}
+
+    const imgVal = tenant?.portalLogoUrl;
+    if (imgVal) {
+      const cleanVal = imgVal.replace(/^\/+/, '');
+      const candidatePaths = [
+        path.resolve(process.cwd(), 'apps/web/public', cleanVal),
+        path.resolve(process.cwd(), 'apps/api/assets', cleanVal),
+        path.resolve(process.cwd(), cleanVal),
+      ];
+      for (const candidate of candidatePaths) {
+        if (fs.existsSync(candidate)) {
+          const ext = path.extname(candidate).toLowerCase();
+          const mime = ext === '.png' ? 'image/png' : ext === '.svg' ? 'image/svg+xml' : 'image/jpeg';
+          res.setHeader('Content-Type', mime);
+          return res.sendFile(path.resolve(candidate));
+        }
+      }
+    }
+
+    return res.status(404).json({ message: 'No portal logo set for this tenant' });
   }
 
   /**

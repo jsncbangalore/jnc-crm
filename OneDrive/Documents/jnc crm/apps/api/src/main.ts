@@ -62,6 +62,72 @@ import { parseTrustProxy } from './common/trust-proxy.util';
 import { handlePublicCors, isPublicInquiryRoute } from './common/public-cors';
 import { PrismaService } from './prisma/prisma.service';
 
+
+/**
+ * Deploy Safety Startup Guard (Production).
+ * Compares migration folders in the build against applied migrations in _prisma_migrations table.
+ * Refuses to start if migrations are pending to prevent schema mismatch / runtime errors.
+ */
+async function verifyMigrationsAppliedOrExit(prisma: PrismaService) {
+  if (process.env.NODE_ENV !== 'production' && process.env.ENFORCE_MIGRATION_CHECK !== 'true') {
+    return;
+  }
+
+  try {
+    const candidates = [
+      path.resolve(process.cwd(), 'apps/api/prisma/migrations'),
+      path.resolve(process.cwd(), 'prisma/migrations'),
+      path.resolve(__dirname, '../prisma/migrations'),
+      path.resolve(__dirname, '../../prisma/migrations'),
+    ];
+
+    const migrationsDir = candidates.find((d) => fs.existsSync(d) && fs.statSync(d).isDirectory());
+    if (!migrationsDir) {
+      console.warn('[MIGRATION GUARD] Warning: migrations directory not found in candidate paths. Skipping check.');
+      return;
+    }
+
+    const builtMigrations = fs.readdirSync(migrationsDir).filter((file) => {
+      const fullPath = path.join(migrationsDir, file);
+      return fs.statSync(fullPath).isDirectory() && fs.existsSync(path.join(fullPath, 'migration.sql'));
+    });
+
+    if (builtMigrations.length === 0) {
+      return;
+    }
+
+    const appliedRows: any[] = await (prisma as any).$queryRawUnsafe(
+      'SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL',
+    );
+
+    const appliedSet = new Set((appliedRows || []).map((r: any) => r.migration_name));
+    const pendingMigrations = builtMigrations.filter((m) => !appliedSet.has(m));
+
+    if (pendingMigrations.length > 0) {
+      console.error(
+        `[STARTUP BLOCKED] Migration safety check failed: ${pendingMigrations.length} pending database migration(s) detected.\n` +
+        `Pending migrations: ${pendingMigrations.length} / ${builtMigrations.length} total.\n` +
+        'ACTION REQUIRED: Run database migrations before starting the application.\n' +
+        'CRITICAL: Disable auto-deploy in Render/Hostinger until migrations are applied.\n' +
+        'The server will now shut down to prevent runtime errors and data corruption.',
+      );
+      process.exit(1);
+    }
+
+    console.log(`[MIGRATION GUARD] OK: All ${builtMigrations.length} migrations have been applied.`);
+  } catch (err: any) {
+    if (err?.message?.includes('does not exist') || err?.code === '42P01') {
+      console.error(
+        '[STARTUP BLOCKED] Database migration table "_prisma_migrations" does not exist.\n' +
+        'ACTION REQUIRED: Initialize database migrations before starting the application.\n' +
+        'CRITICAL: Disable auto-deploy in Render/Hostinger until migrations are applied.',
+      );
+      process.exit(1);
+    }
+    console.warn(`[MIGRATION GUARD] Warning during migration check: ${err.message}`);
+  }
+}
+
 async function bootstrap() {
   const nodeEnv = process.env.NODE_ENV || 'development';
   const mailProvider = (process.env.MAIL_PROVIDER || 'smtp').trim().toLowerCase();
@@ -239,6 +305,9 @@ async function bootstrap() {
 
   // 10. CORS Configuration: Dedicated handling for public endpoints vs authenticated app
   const prismaService = app.get(PrismaService);
+
+  // Deploy Safety Guard: Refuse to start in production if migrations are pending
+  await verifyMigrationsAppliedOrExit(prismaService);
   const mainCorsMiddleware = cors({
     origin: corsOriginCallback,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

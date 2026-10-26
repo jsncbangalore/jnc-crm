@@ -98,6 +98,8 @@ function clearStorageExceptTheme() {
   try {
     const consent = localStorage.getItem('crm_cookie_consent');
     const savedTheme = localStorage.getItem('crm_theme');
+    localStorage.removeItem('app_branding');
+    sessionStorage.removeItem('app_branding');
     localStorage.clear();
     if (consent) {
       localStorage.setItem('crm_cookie_consent', consent);
@@ -748,6 +750,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStoredRefreshToken(data.refreshToken, false);
     }
     if (data.user) {
+      try {
+        localStorage.removeItem('app_branding');
+        sessionStorage.removeItem('app_branding');
+      } catch {}
       setStaffUserWithStorage(data.user);
       setCurrentTabUserId(data.user.id);
       broadcastSignIn(data.user.id, 'staff');
@@ -829,6 +835,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStoredRefreshToken(data.refreshToken, false);
     }
     if (data.user) {
+      try {
+        localStorage.removeItem('app_branding');
+        sessionStorage.removeItem('app_branding');
+      } catch {}
       setStaffUserWithStorage(data.user);
       setCurrentTabUserId(data.user.id);
       broadcastSignIn(data.user.id, 'staff');

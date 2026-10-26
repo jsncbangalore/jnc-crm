@@ -2801,6 +2801,69 @@ export class AuthService {
     return this.forgotPasswordRequest({ email: dto.email }, clientIp, userAgent);
   }
 
+  /**
+   * Legacy forgot password handler (invoked when LEGACY_RESET_ENABLED is true).
+   * Refuses admin/tenant_admin/platform_super_admin accounts, keeps limits, writes audit logs.
+   * Scheduled for removal in v2.1.
+   */
+  async legacyForgotPassword(dto: ForgotPasswordDto, clientIp?: string, userAgent?: string) {
+    const rawLookup = (dto?.email || '').trim().toLowerCase();
+    if (rawLookup) {
+      const existingUser = await this.prisma.user.findFirst({
+        where: { email: rawLookup, isActive: true, deletedAt: null },
+        select: { id: true, role: true, email: true },
+      });
+      if (existingUser && ['platform_super_admin', 'tenant_admin', 'admin'].includes(existingUser.role)) {
+        this.logger.warn(
+          `[AUDIT] Legacy forgot-password rejected for privileged role '${existingUser.role}' (user ${existingUser.id}) from IP ${clientIp || 'unknown'}`,
+        );
+        throw new ForbiddenException('Admin accounts must use the secure reset flow.');
+      }
+    }
+    this.logger.warn(`[AUDIT] Legacy forgot-password invoked for identifier '${rawLookup}' from IP ${clientIp || 'unknown'}`);
+    return this.forgotPasswordRequest({ email: dto.email }, clientIp, userAgent);
+  }
+
+  /**
+   * Legacy reset password handler (invoked when LEGACY_RESET_ENABLED is true).
+   * Refuses admin/tenant_admin/platform_super_admin accounts, keeps limits, writes audit logs.
+   * Scheduled for removal in v2.1.
+   */
+  async legacyResetPassword(dto: ResetPasswordDto, ipAddress?: string) {
+    if (!dto || !dto.token || !dto.newPassword) {
+      throw new BadRequestException('Token and new password are required');
+    }
+
+    try {
+      const tokenHash = crypto.createHash('sha256').update(dto.token.trim()).digest('hex');
+      const now = new Date();
+      const resetRecord = await this.prisma.passwordResetToken.findFirst({
+        where: {
+          OR: [{ tokenHash }, { id: dto.token.trim() }],
+          usedAt: null,
+          expiresAt: { gt: now },
+        },
+        include: { user: true },
+      });
+
+      if (resetRecord && resetRecord.user) {
+        if (['platform_super_admin', 'tenant_admin', 'admin'].includes(resetRecord.user.role)) {
+          this.logger.warn(
+            `[AUDIT] Legacy reset-password rejected for privileged role '${resetRecord.user.role}' (user ${resetRecord.user.id}) from IP ${ipAddress || 'unknown'}`,
+          );
+          throw new ForbiddenException('Admin accounts must use the secure reset flow.');
+        }
+        this.logger.warn(
+          `[AUDIT] Legacy reset-password executed for non-admin user ${resetRecord.user.id} from IP ${ipAddress || 'unknown'}`,
+        );
+      }
+    } catch (e) {
+      if (e instanceof ForbiddenException) throw e;
+    }
+
+    return this.resetPassword(dto, ipAddress);
+  }
+
   // Backward compatible reset password endpoint (kept functional for release compatibility; no 410)
   async resetPassword(dto: ResetPasswordDto, ipAddress?: string) {
     if (!dto || !dto.token || !dto.newPassword) {

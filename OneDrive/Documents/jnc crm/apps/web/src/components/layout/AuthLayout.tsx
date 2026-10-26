@@ -20,7 +20,7 @@ interface AuthLayoutProps {
 export default function AuthLayout({ children }: AuthLayoutProps) {
   const { isDark, toggleTheme } = useTheme();
   const { branding } = useBranding();
-  const productName = branding.companyDisplayName || getProductName();
+  const productName = getProductName();
   const legalLinks = getBrandLegalLinks();
   const features = getBrandFeatures();
 
@@ -52,7 +52,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
         {/* Top: Brand Logo & Product Name */}
         <div className="relative z-10 flex items-center gap-3">
           <Link to="/" aria-label={`${productName} home`} className="inline-block">
-            <BrandLogo size={36} reversed={true} showText={true} />
+            <BrandLogo size={36} reversed={true} showText={true} productOnly={true} />
           </Link>
         </div>
 
@@ -110,7 +110,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
         {/* Mobile Header (Hidden on lg+) */}
         <div className="w-full flex justify-center pt-1 pb-2 lg:hidden">
           <Link to="/" aria-label={`${productName} home`}>
-            <BrandLogo size={28} reversed={false} showText={true} />
+            <BrandLogo size={28} reversed={false} showText={true} productOnly={true} />
           </Link>
         </div>
 

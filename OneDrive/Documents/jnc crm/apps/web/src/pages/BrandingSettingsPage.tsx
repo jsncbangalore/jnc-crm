@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, Phone, Upload, Image as ImageIcon, CheckCircle2,
-  Trash2, ShieldCheck, RefreshCw, Sparkles, AlertCircle, ArrowLeft
+  Trash2, ShieldCheck, RefreshCw, Sparkles, AlertCircle, ArrowLeft, Layout
 } from 'lucide-react';
 import { useBranding } from '../contexts/BrandingContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,10 +18,18 @@ export default function BrandingSettingsPage() {
 
   const [companyName, setCompanyName] = useState(branding.companyDisplayName);
   const [companyPhone, setCompanyPhone] = useState(branding.companyPhone);
+  
+  // Document Logo (invoices and quotations)
   const [logoPreview, setLogoPreview] = useState<string | null>(
     branding.companyLogoUrl || null
   );
   const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  // Portal Logo (optional, header after sign-in)
+  const [portalLogoPreview, setPortalLogoPreview] = useState<string | null>(
+    branding.portalLogoUrl || null
+  );
+  const [uploadingPortalLogo, setUploadingPortalLogo] = useState(false);
 
   // Invoicing & Tax Profile Fields
   const [email, setEmail] = useState('');
@@ -56,13 +64,13 @@ export default function BrandingSettingsPage() {
   const [errorMessage, setErrorMessage] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const sigInputRef = useRef<HTMLInputElement>(null);
-  const stampInputRef = useRef<HTMLInputElement>(null);
+  const portalFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setCompanyName(branding.companyDisplayName);
     setCompanyPhone(branding.companyPhone);
     setLogoPreview(branding.companyLogoUrl || null);
+    setPortalLogoPreview(branding.portalLogoUrl || null);
 
     // Fetch full company invoicing profile
     const loadProfile = async () => {
@@ -76,6 +84,9 @@ export default function BrandingSettingsPage() {
             setLogoPreview(data.logoUrl);
           } else {
             setLogoPreview(null);
+          }
+          if (data.portalLogoUrl && !data.portalLogoUrl.startsWith('data:')) {
+            setPortalLogoPreview(data.portalLogoUrl);
           }
           if (data.email) setEmail(data.email);
           if (data.address) setAddress(data.address);
@@ -109,6 +120,7 @@ export default function BrandingSettingsPage() {
     loadProfile();
   }, [branding]);
 
+  // Document Logo Handlers
   const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -131,10 +143,10 @@ export default function BrandingSettingsPage() {
       if (data?.logoUrl) {
         setLogoPreview(data.logoUrl);
       }
-      setSuccessMessage('Company Logo uploaded and updated successfully across all invoices, printouts, and headers.');
+      setSuccessMessage('Document Logo updated successfully! It will appear on all invoices, quotations, and document PDFs.');
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (err: any) {
-      setErrorMessage(err?.response?.data?.message || 'Failed to upload logo.');
+      setErrorMessage(err?.response?.data?.message || 'Failed to upload document logo.');
     } finally {
       setUploadingLogo(false);
       if (fileInputRef.current) {
@@ -143,17 +155,64 @@ export default function BrandingSettingsPage() {
     }
   };
 
-  const handleRemoveLogo = () => {
+  const handleResetToDefaultLogo = () => {
     setLogoPreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
-  const handleResetToDefaultLogo = () => {
-    setLogoPreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+  // Portal Logo Handlers
+  const handlePortalLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMessage('Please select a valid image file (PNG, JPG, SVG, WebP).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage('Portal logo file size must be under 5MB.');
+      return;
+    }
+
+    setErrorMessage('');
+    setUploadingPortalLogo(true);
+    try {
+      const { data } = await brandingApi.uploadPortalLogo(file);
+      await refreshBranding();
+      if (data?.portalLogoUrl) {
+        setPortalLogoPreview(data.portalLogoUrl);
+      }
+      setSuccessMessage('Portal Logo uploaded successfully! Displayed in the top portal header after sign-in.');
+      setTimeout(() => setSuccessMessage(''), 5000);
+    } catch (err: any) {
+      setErrorMessage(err?.response?.data?.message || 'Failed to upload portal logo.');
+    } finally {
+      setUploadingPortalLogo(false);
+      if (portalFileInputRef.current) {
+        portalFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemovePortalLogo = async () => {
+    setUploadingPortalLogo(true);
+    setErrorMessage('');
+    try {
+      await brandingApi.deletePortalLogo();
+      await refreshBranding();
+      setPortalLogoPreview(null);
+      setSuccessMessage('Portal logo removed. The portal header will now show your company name as text.');
+      setTimeout(() => setSuccessMessage(''), 5000);
+    } catch (err: any) {
+      setErrorMessage(err?.response?.data?.message || 'Failed to remove portal logo.');
+    } finally {
+      setUploadingPortalLogo(false);
+      if (portalFileInputRef.current) {
+        portalFileInputRef.current.value = '';
+      }
     }
   };
 
@@ -178,12 +237,14 @@ export default function BrandingSettingsPage() {
         companyDisplayName: companyName.trim(),
         companyPhone: companyPhone.trim(),
         companyLogoUrl: logoPreview || '',
+        portalLogoUrl: portalLogoPreview || null,
       });
 
       await brandingApi.updateProfile({
         name: companyName.trim(),
         phone: companyPhone.trim() || undefined,
         logoUrl: logoPreview || undefined,
+        portalLogoUrl: portalLogoPreview || undefined,
         email: email.trim() || undefined,
         address: address.trim() || undefined,
         city: city.trim() || undefined,
@@ -207,10 +268,10 @@ export default function BrandingSettingsPage() {
         requireTwoFactor,
       });
 
-      setSuccessMessage('Company Business Details & Invoicing Profile successfully updated! All tax invoices, headers, and documents are synchronized.');
+      setSuccessMessage('Company details and branding updated successfully!');
       setTimeout(() => setSuccessMessage(''), 4000);
     } catch (err: any) {
-      setErrorMessage(err?.response?.data?.message || 'Failed to update company profile settings.');
+      setErrorMessage(err?.response?.data?.message || 'Failed to update company settings.');
     } finally {
       setSaving(false);
     }
@@ -245,7 +306,7 @@ export default function BrandingSettingsPage() {
             <div>
               <h1 className="text-2xl font-black text-slate-950 dark:text-white">Company Branding Settings</h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Centralized branding configuration driving UI chrome (header/footer) and all outgoing email templates.
+                Manage your document logo for invoices/quotations, and optional portal header logo.
               </p>
             </div>
           </div>
@@ -289,7 +350,7 @@ export default function BrandingSettingsPage() {
       </AnimatePresence>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* ─── BRANDING DETAILS CARD ───────────────────────────────────────── */}
+        {/* ─── GENERAL ORGANIZATION IDENTITY ──────────────────────────────── */}
         <div className="card space-y-5">
           <div className="border-b border-slate-200 dark:border-[#2A3042] pb-3">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -297,7 +358,7 @@ export default function BrandingSettingsPage() {
               General Organization Identity
             </h2>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              These details appear across the CRM portal header, mobile dock, footer, invoices, and automated notifications.
+              These details configure your company identity across the system.
             </p>
           </div>
 
@@ -317,8 +378,8 @@ export default function BrandingSettingsPage() {
                 />
                 <Building2 size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Used in header logos, page titles, dispatch notifications, and PDF billing summaries.
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Used in the portal header and in documents.
               </p>
             </div>
 
@@ -334,47 +395,66 @@ export default function BrandingSettingsPage() {
                 />
                 <Phone size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Included in outbound customer emails and the footer support hotline.
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Included in outbound customer emails and documents.
               </p>
             </div>
           </div>
         </div>
 
-        {/* ─── INVOICE LOGO ASSET & PREVIEW CARD ──────────────────────────────────── */}
+        {/* ─── CARD 1: DOCUMENT LOGO ───────────────────────────────────────── */}
         <div className="card space-y-5">
           <div className="border-b border-slate-200 dark:border-[#2A3042] pb-3">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <ImageIcon size={16} className="text-crm-teal" />
-              Invoice & Quotation Custom Logo
+              Document logo (invoices and quotations). Not shown on the login page.
             </h2>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Upload your custom logo to appear across Tax Invoices, Quotations, and Documents.
+              Used on invoices, quotations, delivery challans, credit notes, purchase orders, their PDFs and emails.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-            {/* Live Preview Box */}
-            <div className="md:col-span-5 flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed border-slate-200 dark:border-[#2A3042] bg-slate-50/50 dark:bg-[#1E2230]/40 text-center">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">Invoice Logo Preview</div>
-              <div className="h-16 w-48 px-4 py-2 rounded-xl bg-white flex items-center justify-center shadow-md border border-slate-200">
-                {logoPreview ? (
-                  <img
-                    src={logoPreview}
-                    alt={companyName || 'Company Logo'}
-                    className="max-h-12 max-w-full object-contain"
-                    onError={() => setLogoPreview(null)}
-                  />
-                ) : (
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{companyName || 'No Logo'}</span>
-                )}
+            {/* Invoice Header Preview */}
+            <div className="md:col-span-6 flex flex-col p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] bg-white dark:bg-[#1E2230]/60 text-left shadow-xs">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center justify-between">
+                <span>Invoice Header Preview</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">PDF / PRINT</span>
               </div>
-              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-3">{companyName || 'Company Name'}</p>
-              <p className="text-[10px] text-slate-500 font-mono">{companyPhone || 'No Phone'}</p>
+              
+              <div className="p-3.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 flex items-start justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="h-10 max-w-[140px] flex items-center">
+                    {logoPreview ? (
+                      <img
+                        src={logoPreview}
+                        alt="Document Logo Preview"
+                        className="max-h-10 max-w-[140px] object-contain"
+                        onError={() => setLogoPreview(null)}
+                      />
+                    ) : (
+                      <div className="text-xs font-black tracking-tight text-slate-800 dark:text-slate-100">
+                        {companyName || 'Company Name'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-slate-600 dark:text-slate-400 leading-tight">
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">{companyName || 'Company Display Name'}</p>
+                    <p>{address ? address.slice(0, 30) + '...' : 'Address / City / GSTIN'}</p>
+                    <p className="font-mono">{companyPhone || '+91 ••••• •••••'}</p>
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <div className="text-xs font-black uppercase text-blue-600 dark:text-blue-400">TAX INVOICE</div>
+                  <div className="text-[9px] font-mono text-slate-500 dark:text-slate-400 mt-1">INV-2026-0001</div>
+                  <div className="text-[9px] text-slate-500 dark:text-slate-400">Date: 26/10/2026</div>
+                </div>
+              </div>
             </div>
 
-            {/* Uploader Controls */}
-            <div className="md:col-span-7 space-y-3">
+            {/* Document Logo Controls */}
+            <div className="md:col-span-6 space-y-3">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -388,26 +468,128 @@ export default function BrandingSettingsPage() {
                   type="button"
                   disabled={uploadingLogo}
                   onClick={() => fileInputRef.current?.click()}
-                  className="btn-primary text-xs flex items-center gap-1.5 shadow-glow-blue disabled:opacity-50"
+                  className="btn-primary text-xs flex items-center gap-1.5 shadow-glow-blue disabled:opacity-50 cursor-pointer"
                 >
                   <Upload size={14} className={uploadingLogo ? 'animate-spin' : ''} />
-                  {uploadingLogo ? 'Uploading Logo...' : 'Upload Company Logo'}
+                  {uploadingLogo ? 'Uploading...' : 'Upload Document Logo'}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleResetToDefaultLogo}
-                  className="btn-secondary text-xs flex items-center gap-1.5"
-                  title="Remove company logo"
-                >
-                  <RefreshCw size={13} /> Remove Logo
-                </button>
+                {logoPreview && (
+                  <button
+                    type="button"
+                    onClick={handleResetToDefaultLogo}
+                    className="btn-secondary text-xs flex items-center gap-1.5 cursor-pointer"
+                    title="Remove custom logo"
+                  >
+                    <RefreshCw size={13} /> Reset
+                  </button>
+                )}
               </div>
 
               <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
-                <p>• Recommended dimension: <strong>300x80px</strong> or proportional aspect ratio.</p>
-                <p>• Max file size: <strong>2 MB</strong>.</p>
-                <p>• This logo appears on Tax Invoices, Quotations, and printable documents.</p>
+                <p>• Used exclusively in <strong>Invoices, Quotations, Challans, and PDFs</strong>.</p>
+                <p>• Recommended dimension: <strong>300x80px</strong> (PNG with transparent background).</p>
+                <p>• <strong>Strict Privacy:</strong> This logo is never rendered on pre-login or platform login screens.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ─── CARD 2: PORTAL LOGO (OPTIONAL) ──────────────────────────────── */}
+        <div className="card space-y-5">
+          <div className="border-b border-slate-200 dark:border-[#2A3042] pb-3">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Layout size={16} className="text-indigo-500" />
+              Portal logo (optional, shown in the portal header after sign-in)
+            </h2>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              Shown in the portal header after login only. Empty by default (displays company name as text).
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+            {/* Portal Header Preview */}
+            <div className="md:col-span-6 flex flex-col p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] bg-white dark:bg-[#1E2230]/60 text-left shadow-xs">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center justify-between">
+                <span>Portal Header Preview</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-mono">PORTAL NAVBAR</span>
+              </div>
+
+              <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center gap-3">
+                <div className="h-7 w-7 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                  <Building2 size={15} />
+                </div>
+
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {portalLogoPreview ? (
+                    <img
+                      src={portalLogoPreview}
+                      alt="Portal Logo Preview"
+                      className="h-7 max-w-[120px] object-contain shrink-0"
+                      onError={() => setPortalLogoPreview(null)}
+                    />
+                  ) : null}
+
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                      {companyName || 'Company Name'}
+                    </span>
+                    <span className="text-[9px] text-slate-500 dark:text-slate-400">
+                      CRM Portal
+                    </span>
+                  </div>
+                </div>
+
+                <div className="h-6 w-16 rounded bg-slate-100 dark:bg-slate-800 shrink-0 flex items-center justify-center text-[9px] text-slate-400 font-mono">
+                  Search...
+                </div>
+              </div>
+
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2">
+                {portalLogoPreview
+                  ? 'Custom portal logo is set. It appears alongside your company name in the top navbar.'
+                  : 'No portal logo uploaded. The portal header displays your company name as text.'}
+              </p>
+            </div>
+
+            {/* Portal Logo Controls */}
+            <div className="md:col-span-6 space-y-3">
+              <input
+                ref={portalFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={handlePortalLogoFileChange}
+                className="hidden"
+              />
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={uploadingPortalLogo}
+                  onClick={() => portalFileInputRef.current?.click()}
+                  className="btn-secondary text-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                >
+                  <Upload size={14} className={uploadingPortalLogo ? 'animate-spin' : ''} />
+                  {uploadingPortalLogo ? 'Uploading...' : 'Upload Portal Logo'}
+                </button>
+
+                {portalLogoPreview && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePortalLogo}
+                    disabled={uploadingPortalLogo}
+                    className="btn-secondary text-xs flex items-center gap-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                    title="Remove portal logo and display company name as text"
+                  >
+                    <Trash2 size={13} /> Remove
+                  </button>
+                )}
+              </div>
+
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
+                <p>• <strong>Optional:</strong> Displayed only in the authenticated portal header.</p>
+                <p>• If not set, the header displays the company name as text.</p>
+                <p>• Recommended dimension: <strong>120x32px</strong> or compact horizontal icon/mark.</p>
               </div>
             </div>
           </div>
@@ -459,97 +641,94 @@ export default function BrandingSettingsPage() {
                 />
               </div>
               <div>
-                <label className="label">PIN Code</label>
+                <label className="label">Pincode</label>
                 <input
                   type="text"
                   className="input text-xs font-mono"
-                  placeholder="Enter PIN code"
+                  placeholder="Pincode"
                   value={pincode}
                   onChange={(e) => setPincode(e.target.value)}
                 />
               </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="label">GSTIN / Tax ID</label>
-              <input
-                type="text"
-                className="input text-xs uppercase font-mono"
-                placeholder="Enter 15-digit GSTIN"
-                value={gstin}
-                onChange={(e) => setGstin(e.target.value.toUpperCase())}
-              />
-            </div>
-
-            <div>
-              <label className="label">PAN Number</label>
-              <input
-                type="text"
-                className="input text-xs uppercase font-mono"
-                placeholder="Enter 10-digit PAN"
-                value={pan}
-                onChange={(e) => setPan(e.target.value.toUpperCase())}
-              />
-            </div>
-
-            <div>
-              <label className="label">Invoice Prefix</label>
-              <input
-                type="text"
-                className="input text-xs uppercase font-mono"
-                placeholder="Enter invoice prefix (e.g. INV)"
-                value={invoicePrefix}
-                onChange={(e) => setInvoicePrefix(e.target.value.toUpperCase())}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="label">Official Billing Email</label>
               <input
                 type="email"
                 className="input text-xs"
-                placeholder="Enter billing email address"
+                placeholder="billing@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
 
             <div>
-              <label className="label">Website</label>
+              <label className="label">Website / Portal URL</label>
               <input
                 type="text"
                 className="input text-xs"
-                placeholder="Enter website URL"
+                placeholder="https://example.com"
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="label">Company GSTIN</label>
+              <input
+                type="text"
+                className="input text-xs font-mono uppercase"
+                placeholder="29AAAAA0000A1Z5"
+                value={gstin}
+                onChange={(e) => setGstin(e.target.value.toUpperCase())}
+              />
+            </div>
+
+            <div>
+              <label className="label">Company PAN</label>
+              <input
+                type="text"
+                className="input text-xs font-mono uppercase"
+                placeholder="AAAAA0000A"
+                value={pan}
+                onChange={(e) => setPan(e.target.value.toUpperCase())}
               />
             </div>
           </div>
         </div>
 
-        {/* ─── BANK DETAILS FOR INVOICES CARD ─────────────────────────────── */}
+        {/* ─── INVOICE PREFIX & BANKING DETAILS CARD ───────────────────────── */}
         <div className="card space-y-5">
           <div className="border-b border-slate-200 dark:border-[#2A3042] pb-3">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Building2 size={16} className="text-emerald-600" />
-              Bank Account Details (Printed on Invoices & Quotes)
+              <ShieldCheck size={16} className="text-emerald-500" />
+              Invoice Sequences & Bank Settlement Account
             </h2>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Customers will see these bank credentials for NEFT/RTGS wire transfers and UPI payments.
+              Settlement banking details printed on customer invoices for RTGS/NEFT/UPI remittance.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
+              <label className="label">Invoice Number Prefix</label>
+              <input
+                type="text"
+                className="input text-xs font-mono uppercase"
+                placeholder="INV"
+                value={invoicePrefix}
+                onChange={(e) => setInvoicePrefix(e.target.value.toUpperCase())}
+              />
+              <p className="text-[10px] text-slate-400 mt-1">e.g. INV-2026-XXXX</p>
+            </div>
+
+            <div>
               <label className="label">Bank Name</label>
               <input
                 type="text"
                 className="input text-xs"
-                placeholder="Enter bank name"
+                placeholder="e.g. HDFC Bank Ltd."
                 value={bankName}
                 onChange={(e) => setBankName(e.target.value)}
               />
@@ -560,7 +739,7 @@ export default function BrandingSettingsPage() {
               <input
                 type="text"
                 className="input text-xs font-mono"
-                placeholder="Enter account number"
+                placeholder="Bank account number"
                 value={bankAccountNumber}
                 onChange={(e) => setBankAccountNumber(e.target.value)}
               />
@@ -570,32 +749,30 @@ export default function BrandingSettingsPage() {
               <label className="label">IFSC Code</label>
               <input
                 type="text"
-                className="input text-xs uppercase font-mono"
-                placeholder="Enter IFSC code"
+                className="input text-xs font-mono uppercase"
+                placeholder="HDFC0001234"
                 value={bankIfsc}
                 onChange={(e) => setBankIfsc(e.target.value.toUpperCase())}
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="label">Branch Name</label>
               <input
                 type="text"
                 className="input text-xs"
-                placeholder="Enter branch name"
+                placeholder="Branch name"
                 value={bankBranch}
                 onChange={(e) => setBankBranch(e.target.value)}
               />
             </div>
 
             <div>
-              <label className="label">UPI ID (Optional)</label>
+              <label className="label">UPI ID / VPA</label>
               <input
                 type="text"
                 className="input text-xs font-mono"
-                placeholder="Enter UPI ID (optional)"
+                placeholder="company@bank"
                 value={bankUpi}
                 onChange={(e) => setBankUpi(e.target.value)}
               />
@@ -603,100 +780,22 @@ export default function BrandingSettingsPage() {
           </div>
         </div>
 
-        {/* ─── AUTHORIZED SIGNATORY CARD ──────────────────────────────────── */}
-        <div className="card space-y-5">
-          <div className="border-b border-slate-200 dark:border-[#2A3042] pb-3">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <ShieldCheck size={16} className="text-purple-600" />
-              Authorized Signatory & Seal
-            </h2>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Appears on the legal signature section at the bottom of generated PDF invoices.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="label">Signatory Full Name</label>
-              <input
-                type="text"
-                className="input text-xs"
-                placeholder="Enter signatory full name"
-                value={signatoryName}
-                onChange={(e) => setSignatoryName(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label className="label">Designation / Title</label>
-              <input
-                type="text"
-                className="input text-xs"
-                placeholder="Enter designation / title"
-                value={signatoryDesignation}
-                onChange={(e) => setSignatoryDesignation(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ─── SECURITY & 2-STEP VERIFICATION POLICY ───────────────────────── */}
-        <div className="card space-y-4">
-          <div className="border-b border-slate-200 dark:border-[#2A3042] pb-3">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <ShieldCheck size={16} className="text-blue-600" />
-              Security & 2-Step Verification Policy
-            </h2>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Enforce company-wide authentication standards and multi-factor requirements.
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800">
-            <div className="space-y-0.5 pr-4">
-              <label htmlFor="require-2fa-switch" className="text-xs font-bold text-slate-900 dark:text-white cursor-pointer">
-                Require 2-step verification for all users
-              </label>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                When enabled, all employees, managers, and administrators in this company must configure an authenticator app (TOTP) to sign in.
-              </p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer shrink-0">
-              <input
-                id="require-2fa-switch"
-                type="checkbox"
-                checked={requireTwoFactor}
-                onChange={(e) => setRequireTwoFactor(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-            </label>
-          </div>
-        </div>
-
-        {/* ─── ACTION BUTTONS ─────────────────────────────────────────────── */}
-        <div className="flex items-center justify-end gap-3 pt-2">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="btn-ghost text-xs px-4"
-          >
-            Cancel
-          </button>
+        {/* ─── ACTION BUTTONS ──────────────────────────────────────────────── */}
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-[#2A3042]">
           <button
             type="submit"
             disabled={saving}
-            className="btn-primary text-xs px-6 py-2.5 shadow-glow-blue flex items-center gap-2"
+            className="btn-primary text-xs px-6 py-2.5 shadow-glow-blue disabled:opacity-50 flex items-center gap-2 cursor-pointer"
           >
             {saving ? (
               <>
                 <RefreshCw size={14} className="animate-spin" />
-                <span>Saving Invoicing & Branding Profile...</span>
+                <span>Saving Changes...</span>
               </>
             ) : (
               <>
-                <ShieldCheck size={16} />
-                <span>Save Company Profile & Settings</span>
+                <CheckCircle2 size={14} />
+                <span>Save All Settings</span>
               </>
             )}
           </button>

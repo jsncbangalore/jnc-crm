@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useBranding } from '../../contexts/BrandingContext';
-import { BRAND_ASSETS } from '../../config/brand';
+import { BRAND_ASSETS, getProductName } from '../../config/brand';
 
 export interface BrandLogoProps {
   size?: number;
@@ -8,6 +8,7 @@ export interface BrandLogoProps {
   className?: string;
   showText?: boolean;
   variant?: 'full' | 'icon';
+  productOnly?: boolean;
 }
 
 export const BrandLogo: React.FC<BrandLogoProps> = ({
@@ -16,13 +17,16 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   className = '',
   showText = true,
   variant = 'full',
+  productOnly = false,
 }) => {
   const { branding } = useBranding();
   const [imgError, setImgError] = useState(false);
-  const customLogoUrl = branding.companyLogoUrl;
-  const displayName = branding.companyDisplayName || 'CRM';
 
-  // Determine fallback image based on variant and reversed (dark/light)
+  // If productOnly is set (e.g. on AuthLayout pre-login screens), NEVER use tenant/cached branding
+  const customLogoUrl = productOnly ? null : branding.companyLogoUrl;
+  const displayName = productOnly ? getProductName() : (branding.companyDisplayName || getProductName());
+
+  // Determine fallback image from build-time brand config
   const defaultLogoSrc = variant === 'icon' || !showText
     ? BRAND_ASSETS.logoIcon
     : reversed
@@ -30,6 +34,17 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
       : BRAND_ASSETS.logoLight;
 
   const logoSrc = customLogoUrl && !imgError ? customLogoUrl : defaultLogoSrc;
+
+  // If no logo image or image error in productOnly mode, render product name as text
+  if (imgError || !logoSrc) {
+    return (
+      <div className={`inline-flex items-center gap-2 ${className}`}>
+        <span className={`font-black tracking-tight text-base sm:text-lg ${reversed ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+          {displayName}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className={`inline-flex items-center gap-2.5 ${className}`}>
