@@ -47,5 +47,21 @@ if (fs.existsSync(envPath)) {
   }
 }
 
+// Automatically apply pending Prisma migrations on startup if DATABASE_URL is present
+if (process.env.DATABASE_URL && process.env.SKIP_MIGRATE !== 'true') {
+  try {
+    console.log('[STARTUP] Applying database migrations via prisma migrate deploy...');
+    const { execSync } = require('child_process');
+    execSync('npx prisma migrate deploy', {
+      stdio: 'inherit',
+      cwd: __dirname,
+      env: process.env,
+    });
+    console.log('[STARTUP] Database migrations completed.');
+  } catch (err) {
+    console.error('[STARTUP] Note: prisma migrate deploy finished with warning:', err.message);
+  }
+}
+
 // Require the compiled NestJS entry point
 require('./dist/main.js');
