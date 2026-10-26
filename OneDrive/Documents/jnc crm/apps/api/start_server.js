@@ -49,9 +49,22 @@ if (fs.existsSync(envPath)) {
 
 // Automatically apply pending Prisma migrations on startup if DATABASE_URL is present
 if (process.env.DATABASE_URL && process.env.SKIP_MIGRATE !== 'true') {
+  const { execSync } = require('child_process');
+  
+  // Resolve any previously stalled/failed migration entry in _prisma_migrations
+  try {
+    console.log('[STARTUP] Checking for stalled migrations to resolve...');
+    execSync('npx prisma migrate resolve --applied 20261024120000_add_column_length_constraints', {
+      stdio: 'inherit',
+      cwd: __dirname,
+      env: process.env,
+    });
+  } catch (err) {
+    // Already marked applied or not in failed state
+  }
+
   try {
     console.log('[STARTUP] Applying database migrations via prisma migrate deploy...');
-    const { execSync } = require('child_process');
     execSync('npx prisma migrate deploy', {
       stdio: 'inherit',
       cwd: __dirname,
