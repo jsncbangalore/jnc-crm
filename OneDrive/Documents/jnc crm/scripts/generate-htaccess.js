@@ -1,10 +1,3 @@
-/* --- C2PA CONTENT CREDENTIALS & PROVENANCE NOTICE ---
- * c2pa.action: 'c2pa.created'
- * c2pa.ai_training: 'disallowed'
- * c2pa.do_not_train: true
- * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
- * ----------------------------------------------------- */
-
 const fs = require('fs');
 const path = require('path');
 
@@ -16,13 +9,13 @@ const TARGET_DIST = path.resolve(ROOT, 'apps/web/dist/.htaccess');
 function resolveApiOrigin() {
   const envUrl = process.env.VITE_API_BASE_URL || process.env.API_ORIGIN || process.env.VITE_API_URL || '';
   if (!envUrl || envUrl.startsWith('/')) {
-    return '';
+    return 'https:';
   }
   try {
     const parsed = new URL(envUrl);
-    return parsed.origin;
+    return `${parsed.origin} https:`;
   } catch {
-    return '';
+    return 'https:';
   }
 }
 
@@ -35,14 +28,14 @@ function generateHtaccess() {
   const rawTemplate = fs.readFileSync(TEMPLATE_PATH, 'utf8');
   const apiOrigin = resolveApiOrigin();
 
-  // Replace {{API_ORIGIN}} cleanly
+  // Replace {{API_ORIGIN}} cleanly with allowed origins including https:
   const rendered = rawTemplate.replace(
     /connect-src 'self' \{\{API_ORIGIN\}\};/g,
-    apiOrigin ? `connect-src 'self' ${apiOrigin};` : `connect-src 'self';`
+    `connect-src 'self' ${apiOrigin};`
   );
 
   fs.writeFileSync(TARGET_PUBLIC, rendered, 'utf8');
-  console.log(`[OK] Generated apps/web/public/.htaccess (API Origin: "${apiOrigin || 'same-origin'}")`);
+  console.log(`[OK] Generated apps/web/public/.htaccess (API Origin: "${apiOrigin}")`);
 
   if (fs.existsSync(path.dirname(TARGET_DIST))) {
     fs.writeFileSync(TARGET_DIST, rendered, 'utf8');
