@@ -253,7 +253,14 @@ export const isPublicRoute = (pathname?: string): boolean => {
     p === '/quote-request' ||
     p === '/shared-cart' ||
     p === '/cart-share' ||
-    p === '/cart'
+    p === '/cart' ||
+    p === '/help' ||
+    p === '/privacy' ||
+    p === '/privacy-policy' ||
+    p === '/terms' ||
+    p === '/terms-of-service' ||
+    p === '/contact' ||
+    p === '/contact-us'
   );
 };
 

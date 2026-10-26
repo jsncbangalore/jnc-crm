@@ -159,28 +159,37 @@ function Navbar() {
           <BrandLogo size={36} reversed={isDark} showText={true} />
         </Link>
 
-        <nav className="hidden items-center gap-8 md:flex">
-          <button
-            type="button"
-            onClick={() => scrollTo('features')}
+        <nav className="hidden items-center gap-7 md:flex">
+          <Link
+            to="/features"
             className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition"
           >
             Features
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTo('solutions')}
+          </Link>
+          <Link
+            to="/solutions"
             className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition"
           >
             Solutions
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTo('pricing')}
+          </Link>
+          <Link
+            to="/pricing"
             className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition"
           >
             Pricing
-          </button>
+          </Link>
+          <Link
+            to="/help"
+            className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition"
+          >
+            Help
+          </Link>
+          <Link
+            to="/contact"
+            className="text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition"
+          >
+            Contact
+          </Link>
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
@@ -280,27 +289,41 @@ function Navbar() {
         </div>
 
         <nav className="mt-6 flex flex-col gap-1">
-          <button
-            type="button"
-            onClick={() => scrollTo('features')}
+          <Link
+            to="/features"
+            onClick={() => setOpen(false)}
             className="rounded-lg px-3 py-2.5 text-left text-base font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Features
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTo('solutions')}
+          </Link>
+          <Link
+            to="/solutions"
+            onClick={() => setOpen(false)}
             className="rounded-lg px-3 py-2.5 text-left text-base font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Solutions
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollTo('pricing')}
+          </Link>
+          <Link
+            to="/pricing"
+            onClick={() => setOpen(false)}
             className="rounded-lg px-3 py-2.5 text-left text-base font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Pricing
-          </button>
+          </Link>
+          <Link
+            to="/help"
+            onClick={() => setOpen(false)}
+            className="rounded-lg px-3 py-2.5 text-left text-base font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
+            Help
+          </Link>
+          <Link
+            to="/contact"
+            onClick={() => setOpen(false)}
+            className="rounded-lg px-3 py-2.5 text-left text-base font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
+            Contact
+          </Link>
         </nav>
 
         <div className="mt-auto flex flex-col gap-2">
@@ -874,25 +897,25 @@ function Footer() {
 
         {/* Center: Essential Navigation Links */}
         <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
-          <a href="#features" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
+          <Link to="/features" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
             Features
-          </a>
-          <a href="#solutions" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
+          </Link>
+          <Link to="/solutions" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
             Solutions
-          </a>
-          <a href="#pricing" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
+          </Link>
+          <Link to="/pricing" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
             Pricing
-          </a>
-          <Link to="/login" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
+          </Link>
+          <Link to="/help" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
             Help
           </Link>
-          <Link to="/login" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
+          <Link to="/privacy" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
             Privacy
           </Link>
-          <Link to="/login" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
+          <Link to="/terms" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
             Terms
           </Link>
-          <Link to="/login" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
+          <Link to="/contact" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
             Contact
           </Link>
         </nav>

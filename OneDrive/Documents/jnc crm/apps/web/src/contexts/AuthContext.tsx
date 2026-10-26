@@ -158,7 +158,14 @@ export function isPublicPath(path: string): boolean {
     p === '/cart-share' ||
     p === '/cart' ||
     p === '/cookies' ||
-    p === '/cookie-policy'
+    p === '/cookie-policy' ||
+    p === '/help' ||
+    p === '/privacy' ||
+    p === '/privacy-policy' ||
+    p === '/terms' ||
+    p === '/terms-of-service' ||
+    p === '/contact' ||
+    p === '/contact-us'
   );
 }
 

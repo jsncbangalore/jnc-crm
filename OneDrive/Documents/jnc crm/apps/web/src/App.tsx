@@ -36,6 +36,13 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import MyAccountPage from './pages/MyAccountPage';
 import CookieConsentPage from './pages/CookieConsentPage';
+import FeaturesPage from './pages/FeaturesPage';
+import SolutionsPage from './pages/SolutionsPage';
+import PricingPage from './pages/PricingPage';
+import HelpPage from './pages/HelpPage';
+import PrivacyPage from './pages/PrivacyPage';
+import TermsPage from './pages/TermsPage';
+import ContactPage from './pages/ContactPage';
 import CookieConsentBanner from './components/common/CookieConsentBanner';
 import { PopupProvider } from './contexts/PopupContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -191,9 +198,16 @@ function AppRoutes() {
 
       {/* Public Pages */}
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/features" element={<LandingPage />} />
-      <Route path="/solutions" element={<LandingPage />} />
-      <Route path="/pricing" element={<LandingPage />} />
+      <Route path="/features" element={<FeaturesPage />} />
+      <Route path="/solutions" element={<SolutionsPage />} />
+      <Route path="/pricing" element={<PricingPage />} />
+      <Route path="/help" element={<HelpPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/privacy-policy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/terms-of-service" element={<TermsPage />} />
+      <Route path="/contact" element={<ContactPage />} />
+      <Route path="/contact-us" element={<ContactPage />} />
       <Route path="/landing" element={<LandingPage />} />
       <Route path="/start" element={<Navigate to="/login" replace />} />
       <Route path="/inquiry" element={<PublicInquiryPage />} />
