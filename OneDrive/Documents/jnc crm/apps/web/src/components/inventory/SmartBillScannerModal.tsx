@@ -168,7 +168,7 @@ async function preprocessImageForOcr(dataUrl: string): Promise<string> {
       try {
         const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const d = imgData.data;
-        const contrast = 1.35; // +35% contrast boost
+        const contrast = 1.35; // Contrast multiplier factor
         const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
 
         for (let i = 0; i < d.length; i += 4) {

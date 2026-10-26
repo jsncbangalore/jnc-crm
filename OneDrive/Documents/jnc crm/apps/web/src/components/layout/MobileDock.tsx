@@ -113,8 +113,8 @@ export default function MobileDock() {
                       className="w-full h-full object-contain"
                       onError={(e) => {
                         const target = e.currentTarget;
-                        if (target.src !== window.location.origin + '/logo-icon.svg') {
-                          target.src = '/logo-icon.svg';
+                        if (target.src !== window.location.origin + '/favicon.svg') {
+                          target.src = '/favicon.svg';
                         }
                       }}
                     />

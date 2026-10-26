@@ -61,7 +61,7 @@ export function LeadSetupView({
   const origin = typeof window !== 'undefined'
     ? (import.meta.env.VITE_PUBLIC_API_URL || window.location.origin)
     : '';
-  const isDevHost = typeof window !== 'undefined' && (window.location.hostname.startsWith('local') || window.location.hostname === '127.0.0.1');
+  const isDevHost = typeof window !== 'undefined' && (window.location.hostname.startsWith('local') || window.location.hostname.startsWith('127.'));
 
   const publicInquiryUrl = `${origin}/inquiry`;
   const metaWebhookUrl = `${origin}/api/v1/webhooks/meta/${tenantWebhookKey || 'whk_tenant_key'}`;
@@ -186,7 +186,7 @@ export function LeadSetupView({
       ${formFields.name ? `
       <div>
         <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">Your Name *</label>
-        <input type="text" name="name" required autocomplete="off" placeholder="e.g. Rajesh Kumar" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
+        <input type="text" name="name" required autocomplete="off" placeholder="Full Name" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
       </div>` : ''}
 
       ${formFields.phone ? `
@@ -206,7 +206,7 @@ export function LeadSetupView({
       ${formFields.company ? `
       <div>
         <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">Company / Firm Name</label>
-        <input type="text" name="company" placeholder="e.g. Acme Tech Solutions" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
+        <input type="text" name="company" placeholder="Company Name" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
       </div>` : ''}
     </div>` : ''}
 
@@ -325,11 +325,10 @@ export function LeadSetupView({
     setIsSimulating(true);
     try {
       const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      const testNames = ['Rajesh Electronics', 'Metro Infrastructure', 'Apex Hospital PA Setup', 'Pioneer Engineering'];
-      const pickedCompany = testNames[Math.floor(Math.random() * testNames.length)];
+      const pickedCompany = `Test Account ${randomSuffix}`;
 
       const payload = {
-        customerName: `Contact ${randomSuffix}`,
+        customerName: `Test Lead ${randomSuffix}`,
         customerPhone: '',
         customerEmail: '',
         companyName: `${pickedCompany} #${randomSuffix}`,
@@ -771,7 +770,7 @@ export function LeadSetupView({
                             type="text"
                             value={generatorCompany}
                             onChange={(e) => setGeneratorCompany(e.target.value)}
-                            placeholder="e.g. Acme Corporation"
+                            placeholder="Company Name"
                             className="input text-xs"
                           />
                         </div>
@@ -783,7 +782,7 @@ export function LeadSetupView({
                               type="text"
                               value={generatorPhone}
                               onChange={(e) => setGeneratorPhone(e.target.value)}
-                              placeholder="e.g. +91 98000 00000"
+                              placeholder="10-digit mobile number"
                               className="input text-xs"
                             />
                           </div>
@@ -1093,7 +1092,7 @@ export function LeadSetupView({
                           <div className="grid grid-cols-2 gap-2.5">
                             <div>
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">Your Name *</label>
-                              <input type="text" readOnly placeholder="e.g. Rajesh Kumar" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
+                              <input type="text" readOnly placeholder="Full Name" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
                             </div>
                             <div>
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">Phone Number *</label>
@@ -1112,7 +1111,7 @@ export function LeadSetupView({
                               {formFields.company && (
                                 <div>
                                   <label className="block text-[11px] font-bold text-slate-700 mb-1">Company / Firm Name</label>
-                                  <input type="text" readOnly placeholder="Acme Tech Solutions" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
+                                  <input type="text" readOnly placeholder="Company Name" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
                                 </div>
                               )}
                             </div>

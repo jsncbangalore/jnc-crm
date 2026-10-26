@@ -319,7 +319,7 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
             onChange={(e) => handleChange('customerName', e.target.value)}
             onBlur={() => handleBlur('customerName')}
             error={touched.customerName ? errors.customerName : null}
-            placeholder="e.g. Rajesh Kumar"
+            placeholder="Contact Name"
             maxLength={100}
             showCount
           />
@@ -334,7 +334,7 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
             onChange={(e) => handleChange('customerPhone', e.target.value)}
             onBlur={() => handleBlur('customerPhone')}
             error={touched.customerPhone ? errors.customerPhone : null}
-            placeholder="10-digit mobile or +country"
+            placeholder="10-digit mobile number"
             maxLength={20}
           />
         </div>
@@ -348,7 +348,7 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
             onChange={(e) => handleChange('companyName', e.target.value)}
             onBlur={() => handleBlur('companyName')}
             error={touched.companyName ? errors.companyName : null}
-            placeholder="e.g. Apex Industrial Pvt Ltd"
+            placeholder="Company Name"
             maxLength={100}
           />
 
@@ -361,7 +361,7 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
             onChange={(e) => handleChange('customerEmail', e.target.value)}
             onBlur={() => handleBlur('customerEmail')}
             error={touched.customerEmail ? errors.customerEmail : null}
-            placeholder="contact@company.com"
+            placeholder="contact@example.com"
             maxLength={254}
           />
         </div>

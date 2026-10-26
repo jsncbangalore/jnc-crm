@@ -18,8 +18,8 @@ Configure these settings under **Settings -> Branding & Profile** or via the Pla
 | **Logo Image URL** | `Tenant.logoUrl` | UI, PDF Documents | Public URL or uploaded PNG/SVG for document headers and portal logo. |
 | **Digital Stamp URL** | `Tenant.stampUrl` | Invoices & Quotations | Optional signature/stamp overlay applied to generated PDFs. |
 | **Contact Phone** | `Tenant.phone` | Quotation/Invoice footers | Primary official contact telephone or mobile number. |
-| **Contact Email** | `Tenant.email` | Document headers | Official inquiry email (e.g., `contact@yourcompany.com`). |
-| **Website** | `Tenant.website` | Document footers | Official corporate website URL (e.g., `https://yourcompany.com`). |
+| **Contact Email** | `Tenant.email` | Document headers | Official inquiry email (e.g., `contact@example.com`). |
+| **Website** | `Tenant.website` | Document footers | Official corporate website URL (e.g., `https://example.com`). |
 
 ---
 
@@ -89,8 +89,8 @@ The CRM implements strict separation of duties between platform transactional no
 Navigate to **Settings -> Mail Accounts -> Add Account**:
 1. **Account Name / Label**: Descriptive name (e.g., `Company Billing Mailbox`).
 2. **Sender Display Name**: Name recipients see in their inbox (e.g., `Acme Billing Team`).
-3. **Email Address**: Sender email address (e.g., `billing@yourcompany.com`).
-4. **SMTP Host**: Secure outbound mail server (e.g., `smtp.yourcompany.com`).
+3. **Email Address**: Sender email address (e.g., `billing@example.com`).
+4. **SMTP Host**: Secure outbound mail server (e.g., `smtp.example.com`).
 5. **SMTP Port**: Secure ports only (`465` with SSL/TLS or `587` with STARTTLS).
 6. **SMTP Username**: Mailbox authentication username.
 7. **SMTP Password**: Mailbox authentication password (automatically encrypted at rest with AES-256-GCM via `ENCRYPTION_KEY`).

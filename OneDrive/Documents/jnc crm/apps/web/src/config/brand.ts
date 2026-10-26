@@ -11,12 +11,24 @@ export interface BrandFooterLink {
   isExternal?: boolean;
 }
 
+export const PRODUCT_NAME = (import.meta.env.VITE_PRODUCT_NAME as string) || 'JNC CRM';
+export const COMPANY_NAME = (import.meta.env.VITE_COMPANY_NAME as string) || 'JNC';
+
+export const BRAND_ASSETS = {
+  logoLight: '/logo.png',
+  logoDark: '/logo-dark.png',
+  logoIcon: '/logo-icon.png',
+  faviconSvg: '/favicon.svg',
+  faviconPng: '/favicon.png',
+  favicon32: '/favicon-32x32.png',
+} as const;
+
 export const getProductName = (branding?: { companyDisplayName?: string } | null): string => {
-  return branding?.companyDisplayName?.trim() || (import.meta.env.VITE_PRODUCT_NAME as string) || 'CRM';
+  return branding?.companyDisplayName?.trim() || PRODUCT_NAME;
 };
 
 export const getProductLogoUrl = (): string => {
-  return (import.meta.env.VITE_PRODUCT_LOGO_URL as string) || '/logo.png';
+  return (import.meta.env.VITE_PRODUCT_LOGO_URL as string) || BRAND_ASSETS.logoLight;
 };
 
 export const getBrandHeadline = (): string => {
@@ -55,7 +67,7 @@ export const BRAND_CONFIG = {
     return getProductName();
   },
   get legalNameDefault() {
-    return getProductName();
+    return COMPANY_NAME;
   },
   get logoUrl() {
     return getProductLogoUrl();

@@ -487,7 +487,7 @@ export default function SuppliersPage() {
                     label="Phone Number"
                     type="tel"
                     inputMode="tel"
-                    placeholder="+91 98765 43210"
+                    placeholder="10-digit mobile number"
                     value={newSupplier.phone}
                     onChange={(e) => {
                       const filtered = filterPhoneInput(e.target.value);

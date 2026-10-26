@@ -1,5 +1,5 @@
 -- ============================================================================
--- JNC-CRM POST-UPGRADE READ-ONLY POSTCHECK AUDIT
+-- CRM POST-UPGRADE READ-ONLY POSTCHECK AUDIT
 -- Target: Supabase Live Database / Staging Database / Rehearsal
 -- Mode: Strictly READ-ONLY (SELECT only, zero writes, zero data modifications)
 -- Safe to execute in Supabase SQL Editor.
@@ -141,16 +141,15 @@ WITH checks AS (
 
   UNION ALL
 
-  -- Check 7: Exactly the internal JNC tenant has isInternal = true
+  -- Check 7: Exactly one primary tenant has isInternal = true
   SELECT 
-    '7. JNC Internal Tenant Identification' AS check_name,
+    '7. Primary Internal Tenant Identification' AS check_name,
     CASE 
       WHEN (
         (SELECT COUNT(*) FROM "Tenant" WHERE "isInternal" = true AND "deletedAt" IS NULL) = 1
         AND (
           SELECT COUNT(*) FROM "Tenant" 
           WHERE "isInternal" = true 
-            AND ("code" IN ('JNC', 'JNC-ORG-001') OR "id" = 'default-tenant-id')
             AND "deletedAt" IS NULL
         ) = 1
       ) THEN 'PASS'

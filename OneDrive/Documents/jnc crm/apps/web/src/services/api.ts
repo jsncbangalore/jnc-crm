@@ -58,7 +58,7 @@ export const getPublicWebhookBaseUrl = (): string => {
     if (customTunnel && customTunnel.trim().startsWith('http')) {
       return customTunnel.trim().replace(/\/+$/, '');
     }
-    const isDevHost = window.location.hostname.startsWith('local') || window.location.hostname === '127.0.0.1';
+    const isDevHost = window.location.hostname.startsWith('local') || window.location.hostname.startsWith('127.');
     if (window.location.origin.startsWith('https://') && !isDevHost) {
       return window.location.origin;
     }

@@ -330,7 +330,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
               setErrors((prev) => ({ ...prev, customerPhone: res.valid ? '' : res.error || '' }));
             }}
             error={touched.customerPhone ? errors.customerPhone : null}
-            placeholder="10-digit mobile"
+            placeholder="10-digit mobile number"
             maxLength={20}
           />
 

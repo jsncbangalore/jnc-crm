@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useBranding } from '../../contexts/BrandingContext';
+import { BRAND_ASSETS } from '../../config/brand';
 
 export interface BrandLogoProps {
   size?: number;
@@ -23,10 +24,10 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 
   // Determine fallback image based on variant and reversed (dark/light)
   const defaultLogoSrc = variant === 'icon' || !showText
-    ? '/logo-icon.png'
+    ? BRAND_ASSETS.logoIcon
     : reversed
-      ? '/logo-dark.png'
-      : '/logo.png';
+      ? BRAND_ASSETS.logoDark
+      : BRAND_ASSETS.logoLight;
 
   const logoSrc = customLogoUrl && !imgError ? customLogoUrl : defaultLogoSrc;
 

@@ -1,5 +1,5 @@
 -- ============================================================================
--- JNC-CRM PRODUCTION DATABASE UPGRADE (OCTOBER 2026)
+-- CRM PRODUCTION DATABASE UPGRADE (OCTOBER 2026)
 -- Target Database: PostgreSQL 14+
 -- Safety Guarantee: Non-destructive, single transaction, idempotent (IF NOT EXISTS).
 -- ============================================================================
@@ -15,10 +15,10 @@ ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "webhookKeyHash" TEXT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS "Tenant_webhookKeyHash_key" ON "Tenant"("webhookKeyHash");
 
--- Idempotently set Tenant.isInternal = true for internal JNC tenant, and false for all client companies
+-- Idempotently set Tenant.isInternal = true for primary internal tenant, and false for all client companies
 UPDATE "Tenant"
 SET "isInternal" = CASE 
-  WHEN "code" IN ('JNC', 'JNC-ORG-001') OR "id" = 'default-tenant-id' THEN true 
+  WHEN "isInternal" = true OR "id" = 'default-tenant-id' THEN true 
   ELSE false 
 END;
 

@@ -1,0 +1,71 @@
+# CRM Single Page Application (SPA) Apache Rewrite & Security Configuration
+# Generated from .htaccess.template at build time - DO NOT EDIT DIRECTLY
+
+# 1. Reverse Proxy for Node.js API (forwarding to API subdomain if on admin subdomain)
+<IfModule mod_proxy.c>
+  <IfModule mod_proxy_http.c>
+    SSLProxyEngine On
+    RewriteEngine On
+    RewriteCond %{HTTP_HOST} ^admin\.(.+)$ [NC]
+    RewriteCond %{REQUEST_URI} ^/api/ [NC]
+    RewriteRule ^api/(.*)$ https://api.%1/api/$1 [P,L]
+  </IfModule>
+</IfModule>
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Enable UTF-8 encoding
+  AddDefaultCharset UTF-8
+
+  # Exclude API and upload endpoints from SPA fallback so they reach Node.js / backend
+  RewriteCond %{REQUEST_URI} ^/api/ [NC,OR]
+  RewriteCond %{REQUEST_URI} ^/uploads/ [NC]
+  RewriteRule ^ - [L]
+
+  # Serve existing files and directories directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Fallback all React Router SPA client-side routes to index.html
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Ensure correct MIME Types for modern web assets (ES modules, CSS, SVGs, Fonts)
+<IfModule mod_mime.c>
+  AddType text/html .html
+  AddType text/css .css
+  AddType application/javascript .js .mjs
+  AddType application/json .json
+  AddType image/svg+xml .svg
+  AddType font/woff2 .woff2
+</IfModule>
+
+# Security Headers (Clickjacking, MIME sniffing, HSTS, CSP, Permissions)
+<IfModule mod_headers.c>
+  Header always set X-Frame-Options "DENY"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' {{API_ORIGIN}}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+
+  # Dedicated framing policy for public inquiry and embeddable form paths
+  <If "%{REQUEST_URI} =~ m#^/(inquiry|quote-request|api/v1/webhooks/website)#">
+    Header always unset X-Frame-Options
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' {{API_ORIGIN}}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors *;"
+  </If>
+
+  # index.html: no-cache, must-revalidate (never cache private SPA shell)
+  <FilesMatch "index\.html$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+
+  # Hashed JS and CSS assets may stay cached
+  <FilesMatch "\.(js|mjs|css|woff2|woff|ttf|svg|png|jpg|jpeg|gif|ico|webp)$">
+    Header set Cache-Control "max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>

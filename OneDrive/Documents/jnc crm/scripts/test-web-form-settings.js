@@ -175,7 +175,7 @@ async function main() {
       Origin: 'https://clientcompany.in',
     },
     body: JSON.stringify({
-      name: 'Rajesh Sharma',
+      name: 'Test Inquirer',
       phone: '5550123456',
       // product missing!
     }),

@@ -179,7 +179,7 @@ async function run() {
     const uniqueLeadId = `leadgen_test_${Date.now()}`;
     const testPhone = '1000000000';
     const testEmail = `meta_ad_lead_${Date.now()}@example.com`;
-    const testName = 'Priya Sharma (Meta Lead Ad Test)';
+    const testName = 'Test Contact (Meta Lead Ad Test)';
 
     const metaLeadPayload = {
       object: 'page',

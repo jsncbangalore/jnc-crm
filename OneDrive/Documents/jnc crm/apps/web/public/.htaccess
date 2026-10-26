@@ -1,4 +1,5 @@
-# CRM Single Page Application (SPA) Apache Rewrite Configuration
+# CRM Single Page Application (SPA) Apache Rewrite & Security Configuration
+# Generated from .htaccess.template at build time - DO NOT EDIT DIRECTLY
 
 # 1. Reverse Proxy for Node.js API (forwarding to API subdomain if on admin subdomain)
 <IfModule mod_proxy.c>
@@ -43,12 +44,18 @@
 
 # Security Headers (Clickjacking, MIME sniffing, HSTS, CSP, Permissions)
 <IfModule mod_headers.c>
-  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-Frame-Options "DENY"
   Header always set X-Content-Type-Options "nosniff"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
   Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: http: wss: ws:; frame-ancestors 'self' *;"
-  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+
+  # Dedicated framing policy for public inquiry and embeddable form paths
+  <If "%{REQUEST_URI} =~ m#^/(inquiry|quote-request|api/v1/webhooks/website)#">
+    Header always unset X-Frame-Options
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors *;"
+  </If>
 
   # index.html: no-cache, must-revalidate (never cache private SPA shell)
   <FilesMatch "index\.html$">

@@ -311,7 +311,7 @@ export default function CreateOrderModal({
               setErrors((prev) => ({ ...prev, customerPhone: res.valid ? '' : res.error || '' }));
             }}
             error={touched.customerPhone ? errors.customerPhone : null}
-            placeholder="10-digit mobile"
+            placeholder="10-digit mobile number"
             maxLength={20}
           />
         </div>
@@ -331,7 +331,7 @@ export default function CreateOrderModal({
               }
             }}
             error={errors.customerEmail}
-            placeholder="client@company.com"
+            placeholder="client@example.com"
             maxLength={254}
           />
 

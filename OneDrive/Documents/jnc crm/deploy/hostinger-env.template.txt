@@ -1,5 +1,5 @@
 # ==============================================================================
-# JNC-CRM HOSTINGER PRODUCTION ENVIRONMENT VARIABLE TEMPLATE
+# CRM HOSTINGER PRODUCTION ENVIRONMENT VARIABLE TEMPLATE
 # ==============================================================================
 # Copy these key-value pairs into Hostinger hPanel -> Node.js Web Applications -> Environment Variables.
 # NEVER commit real values to version control. Placeholders only below.

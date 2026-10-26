@@ -1,5 +1,5 @@
 -- ============================================================================
--- JNC-CRM DATABASE UPGRADE ROLLBACK SCRIPT (OCTOBER 2026)
+-- CRM DATABASE UPGRADE ROLLBACK SCRIPT (OCTOBER 2026)
 -- Target Database: PostgreSQL 14+
 -- Safety: Reverses October 2026 schema changes within a single transaction.
 -- WARNING: Use only immediately after a failed upgrade; it deletes new columns

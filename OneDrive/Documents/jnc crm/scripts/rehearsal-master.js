@@ -176,42 +176,42 @@ async function main() {
   await rehClient.query(`
     INSERT INTO "Contact" ("id", "companyId", "name", "email", "phone", "createdAt", "updatedAt")
     VALUES
-      ('con-alpha-1', 'comp-alpha-1', 'Rahul Sharma', 'rahul@alphasystems.test', '', NOW(), NOW()),
-      ('con-alpha-2', 'comp-alpha-1', 'Priya Patel', 'priya@alphasystems.test', '', NOW(), NOW()),
-      ('con-acme-1', 'comp-acme-1', 'John Doe', 'john@acmeglobal.test', '', NOW(), NOW());
+      ('con-alpha-1', 'comp-alpha-1', 'Alpha Contact 1', 'contact1@alphasystems.test', '', NOW(), NOW()),
+      ('con-alpha-2', 'comp-alpha-1', 'Alpha Contact 2', 'contact2@alphasystems.test', '', NOW(), NOW()),
+      ('con-acme-1', 'comp-acme-1', 'Acme Contact 1', 'contact1@acmeglobal.test', '', NOW(), NOW());
   `);
 
   // Leads: pre-upgrade schema has NO createdById (some have assignedToId, some null)
   await rehClient.query(`
     INSERT INTO "Lead" ("id", "tenantId", "leadNumber", "customerName", "customerPhone", "assignedToId", "companyId", "source", "status", "createdAt", "updatedAt")
     VALUES
-      ('lead-alpha-1', 'tenant-alpha-rehearsal', 'ALP-LD-001', 'Vikram Seth', '', 'u-alpha-emp', 'comp-alpha-1', 'manual', 'new', NOW(), NOW()),
-      ('lead-alpha-2', 'tenant-alpha-rehearsal', 'ALP-LD-002', 'Ananya Roy', '', NULL, 'comp-alpha-2', 'manual', 'new', NOW(), NOW()),
-      ('lead-acme-1', 'tenant-acme-rehearsal', 'ACM-LD-001', 'David Miller', '', 'u-acme-emp', 'comp-acme-1', 'manual', 'new', NOW(), NOW()),
-      ('lead-acme-2', 'tenant-acme-rehearsal', 'ACM-LD-002', 'Sarah Connor', '', NULL, NULL, 'manual', 'new', NOW(), NOW());
+      ('lead-alpha-1', 'tenant-alpha-rehearsal', 'ALP-LD-001', 'Alpha Lead 1', '', 'u-alpha-emp', 'comp-alpha-1', 'manual', 'new', NOW(), NOW()),
+      ('lead-alpha-2', 'tenant-alpha-rehearsal', 'ALP-LD-002', 'Alpha Lead 2', '', NULL, 'comp-alpha-2', 'manual', 'new', NOW(), NOW()),
+      ('lead-acme-1', 'tenant-acme-rehearsal', 'ACM-LD-001', 'Acme Lead 1', '', 'u-acme-emp', 'comp-acme-1', 'manual', 'new', NOW(), NOW()),
+      ('lead-acme-2', 'tenant-acme-rehearsal', 'ACM-LD-002', 'Acme Lead 2', '', NULL, NULL, 'manual', 'new', NOW(), NOW());
   `);
 
   // Suppliers: pre-upgrade schema has NO createdById
   await rehClient.query(`
     INSERT INTO "Supplier" ("id", "tenantId", "name", "createdAt", "updatedAt")
     VALUES
-      ('sup-alpha-1', 'tenant-alpha-rehearsal', 'Paramount Electronic Components', NOW(), NOW()),
-      ('sup-acme-1', 'tenant-acme-rehearsal', 'Summit Precision Metals', NOW(), NOW());
+      ('sup-alpha-1', 'tenant-alpha-rehearsal', 'Alpha Supplier Components', NOW(), NOW()),
+      ('sup-acme-1', 'tenant-acme-rehearsal', 'Acme Precision Metals', NOW(), NOW());
   `);
 
   // Orders & Invoices
   await rehClient.query(`
     INSERT INTO "Order" ("id", "tenantId", "orderNumber", "contactId", "customerName", "customerPhone", "totalAmount", "createdAt", "updatedAt")
     VALUES
-      ('ord-alpha-1', 'tenant-alpha-rehearsal', 'ORD-ALP-001', 'con-alpha-1', 'Rahul Sharma', '', 45000.00, NOW(), NOW()),
-      ('ord-acme-1', 'tenant-acme-rehearsal', 'ORD-ACM-001', 'con-acme-1', 'John Doe', '', 72000.00, NOW(), NOW());
+      ('ord-alpha-1', 'tenant-alpha-rehearsal', 'ORD-ALP-001', 'con-alpha-1', 'Alpha Contact 1', '', 45000.00, NOW(), NOW()),
+      ('ord-acme-1', 'tenant-acme-rehearsal', 'ORD-ACM-001', 'con-acme-1', 'Acme Contact 1', '', 72000.00, NOW(), NOW());
   `);
 
   await rehClient.query(`
     INSERT INTO "Invoice" ("id", "tenantId", "invoiceNumber", "companyId", "orderId", "customerName", "customerPhone", "totalAmount", "createdAt", "updatedAt")
     VALUES
-      ('inv-alpha-1', 'tenant-alpha-rehearsal', 'INV-ALP-001', 'comp-alpha-1', 'ord-alpha-1', 'Rahul Sharma', '', 53100.00, NOW(), NOW()),
-      ('inv-acme-1', 'tenant-acme-rehearsal', 'INV-ACM-001', 'comp-acme-1', 'ord-acme-1', 'John Doe', '', 84960.00, NOW(), NOW());
+      ('inv-alpha-1', 'tenant-alpha-rehearsal', 'INV-ALP-001', 'comp-alpha-1', 'ord-alpha-1', 'Alpha Contact 1', '', 53100.00, NOW(), NOW()),
+      ('inv-acme-1', 'tenant-acme-rehearsal', 'INV-ACM-001', 'comp-acme-1', 'ord-acme-1', 'Acme Contact 1', '', 84960.00, NOW(), NOW());
   `);
 
   console.log('[Step 3] Sample pre-upgrade records successfully inserted.');

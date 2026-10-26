@@ -790,7 +790,7 @@ export default function PlatformCompaniesPage() {
                       <input
                         type="text"
                         className="input text-xs"
-                        placeholder="e.g. Ramesh Patel"
+                        placeholder="Admin Name"
                         value={form.adminName}
                         onChange={(e) => setForm({ ...form, adminName: e.target.value })}
                         required

@@ -27,6 +27,7 @@ import {
 import BrandLogo from '../components/common/BrandLogo';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { PRODUCT_NAME, COMPANY_NAME } from '../config/brand';
 
 /* ---------- Feature Items ---------- */
 interface FeatureItem {
@@ -63,10 +64,19 @@ const FEATURES: FeatureItem[] = [
   },
 ];
 
-const STATS: [string, string][] = [
-  ['35%', 'increase in deal closure'],
-  ['2.5x', 'faster lead response'],
-  ['99.9%', 'uptime, last 12 months'],
+const HIGHLIGHTS = [
+  {
+    title: 'Pipeline Management',
+    description: 'Track leads, generate quotations, issue invoices, and manage inventory in one system.',
+  },
+  {
+    title: 'Integrated Communication',
+    description: 'Connect WhatsApp, email, and web inquiry channels into a single unified workspace.',
+  },
+  {
+    title: 'Real-Time Insights',
+    description: 'Instant visibility on pipeline velocity, team workload, and order fulfillment status.',
+  },
 ];
 
 interface PlanItem {
@@ -414,9 +424,9 @@ function DashboardMock() {
           </div>
           <div className="hidden space-y-2 sm:col-span-2 sm:block">
             {[
-              ['Priya Nair', 'Acme Corp', 'from-blue-600 to-indigo-600'],
-              ['Tom Reeves', 'Globex', 'from-emerald-500 to-teal-500'],
-              ['Ana Silva', 'Initech', 'from-amber-500 to-rose-500'],
+              ['Active Lead 1', 'Stage: Qualified', 'from-blue-600 to-indigo-600'],
+              ['Active Lead 2', 'Stage: Proposal', 'from-emerald-500 to-teal-500'],
+              ['Active Lead 3', 'Stage: Negotiation', 'from-amber-500 to-rose-500'],
             ].map(([n, c, g]) => (
               <div
                 key={n}
@@ -455,13 +465,13 @@ function Hero() {
     <section className="relative overflow-hidden bg-gradient-to-b from-blue-50/50 via-transparent to-transparent dark:from-blue-950/20 dark:via-transparent dark:to-transparent px-4 pb-16 pt-16 text-center sm:px-6 sm:pt-24 lg:px-8">
       <div className="mx-auto max-w-3xl">
         <p className="mx-auto inline-flex items-center gap-2 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 px-3.5 py-1 text-xs font-semibold text-emerald-800 dark:text-emerald-300 shadow-xs">
-          <TrendingUp size={14} /> Teams using JNC CRM close 35% more deals
+          <Zap size={14} /> Unified sales pipeline and automated customer follow-ups
         </p>
         <h1 className="mt-6 text-4xl font-extrabold tracking-tight text-slate-950 dark:text-white sm:text-6xl">
           Manage leads. Close deals. Scale your business faster.
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-slate-700 dark:text-slate-300 font-normal">
-          JNC CRM keeps every lead, conversation and deal in one place, then automates the follow-ups
+          {PRODUCT_NAME} keeps every lead, conversation and deal in one place, then automates follow-ups
           so your team spends its time selling.
         </p>
 
@@ -536,7 +546,7 @@ function ContactPreview() {
   return (
     <div className="grid gap-3 sm:grid-cols-5">
       <div className="space-y-2 sm:col-span-2">
-        {['Priya Nair', 'Tom Reeves', 'Ana Silva'].map((n, i) => (
+        {['Account Lead 1', 'Account Lead 2', 'Account Lead 3'].map((n, i) => (
           <div
             key={n}
             className={`flex items-center gap-2.5 rounded-xl border p-2.5 transition ${
@@ -555,7 +565,7 @@ function ContactPreview() {
       <ol className="space-y-3 rounded-xl border border-slate-200 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] p-4 sm:col-span-3 shadow-xs">
         {[
           [Mail, 'Opened proposal email', '2 hr ago'],
-          [Phone, 'Call with Priya, 14 min', 'Yesterday'],
+          [Phone, 'Client phone consultation, 14 min', 'Yesterday'],
           [Clock, 'Follow-up set for Friday', 'Yesterday'],
         ].map(([Icon, t, time], i) => (
           <li key={i} className="flex items-start gap-3">
@@ -579,9 +589,9 @@ function ContactPreview() {
 
 function EmailPreview() {
   const steps = [
-    ['Day 0', 'Welcome and intro', 'Sent to 482'],
-    ['Day 2', 'Case study for their industry', '61% opened'],
-    ['Day 5', 'Book a demo', '18% replied'],
+    ['Step 1', 'Welcome and intro', 'Triggered on lead creation'],
+    ['Step 2', 'Technical specifications', 'Triggered after 2 days'],
+    ['Step 3', 'Commercial review', 'Triggered after consultation'],
   ];
 
   return (
@@ -632,7 +642,7 @@ function Showcase() {
 
   return (
     <section id="solutions" className="bg-slate-100/70 dark:bg-[#121520] px-4 py-20 sm:px-6 lg:px-8 transition-colors">
-      <SectionTitle title="Built around how the JNC sales team actually works" />
+      <SectionTitle title="Built around how modern sales teams actually work" />
       <div
         role="tablist"
         className="mx-auto mt-10 flex max-w-xl flex-wrap justify-center gap-1 rounded-xl bg-slate-200/80 dark:bg-[#1E2230] p-1 border border-slate-300/60 dark:border-[#2A3042]"
@@ -680,17 +690,18 @@ function Showcase() {
   );
 }
 
-/* ---------- Stats & Proof ---------- */
-function Proof() {
+/* ---------- Capability Highlights ---------- */
+function CapabilityHighlights() {
   return (
-    <section className="px-4 py-20 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-5xl gap-8 text-center sm:grid-cols-3">
-        {STATS.map(([n, l]) => (
-          <div key={l}>
-            <p className="bg-gradient-to-r from-blue-600 via-indigo-600 to-teal-500 bg-clip-text text-5xl font-extrabold text-transparent">
-              {n}
-            </p>
-            <p className="mt-2 text-slate-700 dark:text-slate-300 font-semibold">{l}</p>
+    <section className="px-4 py-16 sm:px-6 lg:px-8 bg-slate-50/50 dark:bg-[#151926]/40">
+      <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-3">
+        {HIGHLIGHTS.map(({ title, description }) => (
+          <div
+            key={title}
+            className="rounded-2xl border border-slate-200/80 dark:border-[#2A3042] bg-white dark:bg-[#181B26] p-6 text-left shadow-xs"
+          >
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">{title}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">{description}</p>
           </div>
         ))}
       </div>
@@ -858,7 +869,7 @@ function Footer() {
             <BrandLogo size={26} reversed={isDark} showText={true} />
           </Link>
           <span className="hidden sm:inline text-slate-300 dark:text-slate-700">|</span>
-          <span className="font-medium">© {new Date().getFullYear()} CRM. All rights reserved.</span>
+          <span className="font-medium">© {new Date().getFullYear()} {COMPANY_NAME}. All rights reserved.</span>
         </div>
 
         {/* Center: Essential Navigation Links */}
@@ -922,7 +933,7 @@ export default function LandingPage() {
         <Hero />
         <Features />
         <Showcase />
-        <Proof />
+        <CapabilityHighlights />
         <Pricing />
         <FinalCta />
       </main>

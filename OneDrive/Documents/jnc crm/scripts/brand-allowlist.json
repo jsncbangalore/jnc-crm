@@ -1,0 +1,22 @@
+{
+  "comment": "Files allowed to reference the configured PRODUCT_NAME and COMPANY_NAME. Strictly limited to brand config, public index page, brand assets, and legal pages.",
+  "allowedFilesForBrandName": [
+    "apps/web/src/config/brand.ts",
+    "apps/web/src/pages/LandingPage.tsx",
+    "apps/web/src/pages/CookieConsentPage.tsx",
+    "apps/web/public/logo.png",
+    "apps/web/public/logo-dark.png",
+    "apps/web/public/logo-icon.png",
+    "apps/web/public/favicon.svg",
+    "apps/web/public/favicon.png",
+    "apps/web/public/favicon-32x32.png",
+    "apps/web/dist/index.html",
+    "apps/web/dist/assets/index-*.js",
+    "apps/web/dist/logo.png",
+    "apps/web/dist/logo-dark.png",
+    "apps/web/dist/logo-icon.png",
+    "apps/web/dist/favicon.svg",
+    "apps/web/dist/favicon.png",
+    "apps/web/dist/favicon-32x32.png"
+  ]
+}

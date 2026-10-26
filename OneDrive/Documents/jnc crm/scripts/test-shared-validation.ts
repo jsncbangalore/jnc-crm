@@ -48,7 +48,7 @@ console.log('===================================================================
 console.log('--- 1. Person / Company Name ---');
 assert(validatePersonOrCompanyName('Acme Corp Pvt Ltd').valid, 'Valid company name with letters & space');
 assert(validatePersonOrCompanyName('Dr. John O\'Connor & Co. (UK) / Ltd.').valid, 'Valid name with ., & - \' () /');
-assert(validatePersonOrCompanyName('JNC 360 Solutions').valid, 'Valid name with digits and letters');
+assert(validatePersonOrCompanyName('Acme 360 Solutions').valid, 'Valid name with digits and letters');
 // Invalid:
 assert(!validatePersonOrCompanyName('').valid, 'Empty name rejected');
 assert(!validatePersonOrCompanyName('A').valid, 'Single letter name rejected (< 2 chars)');
@@ -63,11 +63,11 @@ assert(
   'Name exceeding 100 characters rejected',
 );
 // Text-Only validations
-assert(validateTextOnlyName('Rajesh Kumar').valid, 'Valid text-only customer name accepted');
+assert(validateTextOnlyName('Test Customer').valid, 'Valid text-only customer name accepted');
 assert(validateTextOnlyName('Acme Solutions Pvt Ltd').valid, 'Valid text-only company name accepted');
-assert(!validateTextOnlyName('Rajesh Kumar52254254').valid, 'Customer name with numbers rejected by text-only validator');
+assert(!validateTextOnlyName('Test Customer52254254').valid, 'Customer name with numbers rejected by text-only validator');
 assert(!validateTextOnlyName('12345Corp').valid, 'Company name with numbers rejected by text-only validator');
-assert(filterTextOnly('Rajesh Kumar52254254') === 'Rajesh Kumar', 'filterTextOnly strips numbers from name');
+assert(filterTextOnly('Test Customer52254254') === 'Test Customer', 'filterTextOnly strips numbers from name');
 assert(filterTextOnly(['12345', 'SampleCorp'].join('')) === 'SampleCorp', 'filterTextOnly strips numbers from company name');
 
 // 2. Mobile Phone

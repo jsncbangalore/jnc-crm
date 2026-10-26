@@ -2043,7 +2043,7 @@ export default function UsersPage() {
                       </div>
                       <textarea
                         className="input font-mono text-xs h-36"
-                        placeholder="Full Name,Email Address,Phone Number,Role,Team Name&#10;Rajesh Sharma,rajesh.sharma@example.com,+91 98450 12345,employee,Sales Team Alpha"
+                        placeholder="Full Name,Email Address,Phone Number,Role,Team Name"
                         value={importCsvText}
                         onChange={(e) => {
                           setImportCsvText(e.target.value);

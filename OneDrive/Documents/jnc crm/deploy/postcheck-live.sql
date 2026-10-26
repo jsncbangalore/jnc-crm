@@ -1,5 +1,5 @@
 -- ============================================================================
--- JNC-CRM POST-BOOTSTRAP READ-ONLY VERIFICATION SCRIPT (LIVE SUPABASE)
+-- CRM POST-BOOTSTRAP READ-ONLY VERIFICATION SCRIPT (LIVE SUPABASE)
 -- Target: Fresh Supabase Live Database
 -- Mode: Strictly READ-ONLY (SELECT only, zero writes, zero data modifications)
 -- Safe to execute directly in Supabase SQL Editor.
@@ -26,14 +26,13 @@ WITH checks AS (
 
   UNION ALL
 
-  -- Check 2: Exactly one internal tenant JNC
+  -- Check 2: Exactly one internal tenant
   SELECT 
-    '2. Internal JNC Tenant Presence' AS check_name,
+    '2. Internal Tenant Presence' AS check_name,
     CASE 
       WHEN (
         (SELECT COUNT(*) FROM "Tenant" WHERE "isInternal" = true AND "deletedAt" IS NULL) = 1
-        AND (SELECT COUNT(*) FROM "Tenant" WHERE "isInternal" = true AND "code" = 'JNC' AND "deletedAt" IS NULL) = 1
-        AND (SELECT "webhookKeyHash" FROM "Tenant" WHERE "code" = 'JNC' LIMIT 1) IS NOT NULL
+        AND (SELECT "webhookKeyHash" FROM "Tenant" WHERE "isInternal" = true LIMIT 1) IS NOT NULL
       ) THEN 'PASS'
       ELSE 'FAIL'
     END AS status,
@@ -41,7 +40,7 @@ WITH checks AS (
       SELECT 'Internal tenant count: ' || 
         (SELECT COUNT(*) FROM "Tenant" WHERE "isInternal" = true AND "deletedAt" IS NULL)::text ||
         ' (Code: ' || COALESCE((SELECT code FROM "Tenant" WHERE "isInternal" = true AND "deletedAt" IS NULL LIMIT 1), 'NONE') ||
-        ', Has WebhookKey: ' || CASE WHEN (SELECT "webhookKeyHash" FROM "Tenant" WHERE "code" = 'JNC' LIMIT 1) IS NOT NULL THEN 'YES' ELSE 'NO' END || ')'
+        ', Has WebhookKey: ' || CASE WHEN (SELECT "webhookKeyHash" FROM "Tenant" WHERE "isInternal" = true LIMIT 1) IS NOT NULL THEN 'YES' ELSE 'NO' END || ')'
     ) AS details
 
   UNION ALL

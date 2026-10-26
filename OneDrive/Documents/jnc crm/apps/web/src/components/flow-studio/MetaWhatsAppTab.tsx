@@ -220,11 +220,6 @@ export default function MetaWhatsAppTab() {
           )}
           <div className="leading-relaxed">
             <p>{healthStatus.message}</p>
-            {!healthStatus.ok && (
-              <p className="text-[11px] font-normal mt-1 opacity-90">
-                Tip: If running locally on port 3333, start a tunnel via <code>cloudflared tunnel --url http://127.0.0.1:3333</code> and select &ldquo;Custom / Cloudflare Tunnel URL&rdquo; below.
-              </p>
-            )}
           </div>
         </div>
       )}
@@ -378,9 +373,6 @@ export default function MetaWhatsAppTab() {
                 Test URL
               </button>
             </div>
-            <p className="text-[10px] text-slate-400">
-              Run <code>cloudflared tunnel --url http://127.0.0.1:3333</code> in PowerShell to generate a free HTTPS tunnel for port 3333.
-            </p>
           </div>
         )}
       </div>

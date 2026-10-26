@@ -1,5 +1,5 @@
 -- ============================================================================
--- JNC-CRM PRE-UPGRADE READ-ONLY PREFLIGHT AUDIT
+-- CRM PRE-UPGRADE READ-ONLY PREFLIGHT AUDIT
 -- Target: Supabase Live Database / Staging Database / Rehearsal
 -- Mode: Strictly READ-ONLY (SELECT only, zero writes, zero data modifications)
 -- Safe to execute in Supabase SQL Editor.

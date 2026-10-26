@@ -1,0 +1,53 @@
+/* --- C2PA CONTENT CREDENTIALS & PROVENANCE NOTICE ---
+ * c2pa.action: 'c2pa.created'
+ * c2pa.ai_training: 'disallowed'
+ * c2pa.do_not_train: true
+ * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
+ * ----------------------------------------------------- */
+
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = path.resolve(__dirname, '..');
+const TEMPLATE_PATH = path.resolve(ROOT, 'apps/web/public/.htaccess.template');
+const TARGET_PUBLIC = path.resolve(ROOT, 'apps/web/public/.htaccess');
+const TARGET_DIST = path.resolve(ROOT, 'apps/web/dist/.htaccess');
+
+function resolveApiOrigin() {
+  const envUrl = process.env.VITE_API_BASE_URL || process.env.API_ORIGIN || process.env.VITE_API_URL || '';
+  if (!envUrl || envUrl.startsWith('/')) {
+    return '';
+  }
+  try {
+    const parsed = new URL(envUrl);
+    return parsed.origin;
+  } catch {
+    return '';
+  }
+}
+
+function generateHtaccess() {
+  if (!fs.existsSync(TEMPLATE_PATH)) {
+    console.error(`[ERROR] .htaccess.template not found at ${TEMPLATE_PATH}`);
+    process.exit(1);
+  }
+
+  const rawTemplate = fs.readFileSync(TEMPLATE_PATH, 'utf8');
+  const apiOrigin = resolveApiOrigin();
+
+  // Replace {{API_ORIGIN}} cleanly
+  const rendered = rawTemplate.replace(
+    /connect-src 'self' \{\{API_ORIGIN\}\};/g,
+    apiOrigin ? `connect-src 'self' ${apiOrigin};` : `connect-src 'self';`
+  );
+
+  fs.writeFileSync(TARGET_PUBLIC, rendered, 'utf8');
+  console.log(`[OK] Generated apps/web/public/.htaccess (API Origin: "${apiOrigin || 'same-origin'}")`);
+
+  if (fs.existsSync(path.dirname(TARGET_DIST))) {
+    fs.writeFileSync(TARGET_DIST, rendered, 'utf8');
+    console.log(`[OK] Updated apps/web/dist/.htaccess`);
+  }
+}
+
+generateHtaccess();

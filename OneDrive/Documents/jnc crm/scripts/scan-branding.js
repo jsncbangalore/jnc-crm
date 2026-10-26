@@ -7,6 +7,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const AdmZip = require('adm-zip');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -35,6 +36,7 @@ const IGNORE_EXTENSIONS = new Set([
   '.woff', '.woff2', '.ttf', '.eot',
   '.zip', '.tar', '.gz',
   '.pdf',
+  '.tsbuildinfo',
 ]);
 
 const PROHIBITED_DB_EXTENSIONS = new Set([
@@ -63,6 +65,23 @@ const PROHIBITED_TERMS = [
   ['coming', ' ', 'soon'].join(''),
 ];
 
+// Sample person and company names historically used
+const PROHIBITED_SAMPLE_NAMES = [
+  ['Rajesh', 'Sharma'].join(' '),
+  ['Priya', 'Patel'].join(' '),
+  ['Vikram', 'Sundaram'].join(' '),
+  ['Vikram', 'Seth'].join(' '),
+  ['Rajesh', 'Kumar'].join(' '),
+  ['Ramesh', 'Patel'].join(' '),
+  ['Sharma', 'Tooling'].join(' '),
+  ['Nexus', 'Tech'].join(' '),
+  ['Apex', 'Metro'].join(' '),
+  ['Rajesh', 'Electronics'].join(' '),
+  ['Priya', 'Nair'].join(' '),
+  ['Tom', 'Reeves'].join(' '),
+  ['Ana', 'Silva'].join(' '),
+];
+
 const FAKE_TESTIMONIAL_PATTERNS = [
   new RegExp(['head', 'of', 'growth'].join('\\s+'), 'i'),
   new RegExp(['vp', 'of', 'sales'].join('\\s+'), 'i'),
@@ -75,17 +94,275 @@ const ALLOWED_EMAIL_DOMAINS = new Set([
   'example.org',
   'example.net',
   'example.internal',
-  'company.com',
-  'customer.com',
-  'vendor.com',
-  'yourcompany.com',
-  'client.com',
-  'test.com',
-  'mail.com',
   'localhost',
 ]);
 
+// Load Brand Name Allowlist
+const ALLOWLIST_FILE = path.resolve(ROOT, 'scripts/brand-allowlist.json');
+let allowedBrandFiles = [];
+if (fs.existsSync(ALLOWLIST_FILE)) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(ALLOWLIST_FILE, 'utf8'));
+    allowedBrandFiles = parsed.allowedFilesForBrandName || [];
+  } catch (err) {
+    console.error(`[WARN] Failed to parse brand-allowlist.json: ${err.message}`);
+  }
+}
+
+function isBrandAllowed(relativePath) {
+  const norm = relativePath.replace(/\\/g, '/');
+  return allowedBrandFiles.some((pattern) => {
+    if (pattern.includes('*')) {
+      const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+      return regex.test(norm);
+    }
+    return norm === pattern;
+  });
+}
+
 let violations = [];
+
+function checkContent(relativePath, content) {
+  // Exclude third-party Axios library fallback string in minified web bundles
+  const sanitizedContent = content.replace(
+    /window\.location\.href\s*\|\|\s*["']http:\/\/localhost["']/g,
+    ''
+  );
+
+  const lines = sanitizedContent.split('\n');
+  const isWebDist = relativePath.startsWith('apps/web/dist');
+  const isWebSrc = relativePath.startsWith('apps/web/src') || relativePath.startsWith('apps/web/public');
+  const isWeb = isWebDist || isWebSrc;
+
+  for (let i = 0; i < lines.length; i++) {
+    const lineNum = i + 1;
+    const line = lines[i];
+    const lowerLine = line.toLowerCase();
+
+    // 1. Prohibited Keywords
+    if (lowerLine.includes(KW_JSNC)) {
+      violations.push({
+        file: relativePath,
+        line: lineNum,
+        rule: `Keyword '${KW_JSNC}' prohibited`,
+        match: line.slice(0, 100).trim(),
+      });
+    }
+
+    if (lowerLine.includes(KW_JS_NET)) {
+      violations.push({
+        file: relativePath,
+        line: lineNum,
+        rule: `Keyword '${KW_JS_NET}' prohibited`,
+        match: line.slice(0, 100).trim(),
+      });
+    }
+
+    if (lowerLine.includes(KW_RESEND_DEV)) {
+      violations.push({
+        file: relativePath,
+        line: lineNum,
+        rule: `Keyword '${KW_RESEND_DEV}' prohibited`,
+        match: line.slice(0, 100).trim(),
+      });
+    }
+
+    if (lowerLine.includes(KW_JAYARAJ)) {
+      violations.push({
+        file: relativePath,
+        line: lineNum,
+        rule: `Prohibited name found: '${KW_JAYARAJ}'`,
+        match: line.slice(0, 100).trim(),
+      });
+    }
+
+    if (lowerLine.includes(KW_SANTHOSH)) {
+      violations.push({
+        file: relativePath,
+        line: lineNum,
+        rule: `Prohibited name found: '${KW_SANTHOSH}'`,
+        match: line.slice(0, 100).trim(),
+      });
+    }
+
+    if (line.includes(KW_LUT_BOND)) {
+      violations.push({
+        file: relativePath,
+        line: lineNum,
+        rule: `Prohibited credential/identifier found: '${KW_LUT_BOND}'`,
+        match: line.slice(0, 100).trim(),
+      });
+    }
+
+    // 2. Prohibited competitor / deprecated brand names
+    for (const term of PROHIBITED_TERMS) {
+      if (lowerLine.includes(term)) {
+        violations.push({
+          file: relativePath,
+          line: lineNum,
+          rule: `Prohibited word/brand '${term}' found`,
+          match: line.slice(0, 100).trim(),
+        });
+      }
+    }
+
+    // 3. Brand & Company Name (Allowed ONLY in allowlisted files)
+    const BRAND_MATCH = /\bJNC\s+CRM\b|\bJNC\b/g;
+    if (BRAND_MATCH.test(line)) {
+      if (!isBrandAllowed(relativePath)) {
+        violations.push({
+          file: relativePath,
+          line: lineNum,
+          rule: 'Brand or Company name is only permitted in allowlisted brand config, public index page, and legal pages',
+          match: line.slice(0, 100).trim(),
+        });
+      }
+    }
+
+    // 4. Sample Person and Company Names
+    for (const sampleName of PROHIBITED_SAMPLE_NAMES) {
+      if (line.includes(sampleName)) {
+        violations.push({
+          file: relativePath,
+          line: lineNum,
+          rule: `Prohibited sample name '${sampleName}' found`,
+          match: line.slice(0, 100).trim(),
+        });
+      }
+    }
+
+    // 5. Invented Statistics Claims (e.g. 35%)
+    if (/\b35%/.test(line)) {
+      violations.push({
+        file: relativePath,
+        line: lineNum,
+        rule: `Unverified statistics claim ('35%') prohibited`,
+        match: line.slice(0, 100).trim(),
+      });
+    }
+
+    // 6. Developer Tunnel instructions
+    if (line.includes('cloudflared')) {
+      violations.push({
+        file: relativePath,
+        line: lineNum,
+        rule: `Developer tunnel tool 'cloudflared' prohibited`,
+        match: line.slice(0, 100).trim(),
+      });
+    }
+
+    // In web source & web dist: no 127.0.0.1 or localhost (outside library code)
+    if (isWeb) {
+      if (line.includes('127.0.0.1')) {
+        violations.push({
+          file: relativePath,
+          line: lineNum,
+          rule: `Local IP '127.0.0.1' prohibited in web client code`,
+          match: line.slice(0, 100).trim(),
+        });
+      }
+      if (line.includes('localhost') && !line.includes('window.location.href')) {
+        violations.push({
+          file: relativePath,
+          line: lineNum,
+          rule: `Literal 'localhost' prohibited in web client code`,
+          match: line.slice(0, 100).trim(),
+        });
+      }
+    }
+
+    // 7. Local Windows user paths
+    if (line.includes(KW_JNC_RD) || line.includes(KW_JNC_RD_SLASH) || (line.includes('Users') && line.includes('JNC R&D'))) {
+      violations.push({
+        file: relativePath,
+        line: lineNum,
+        rule: 'Local Windows user path prohibited',
+        match: line.slice(0, 100).trim(),
+      });
+    }
+
+    // 8. Fake Testimonial Patterns
+    for (const pat of FAKE_TESTIMONIAL_PATTERNS) {
+      if (pat.test(line)) {
+        violations.push({
+          file: relativePath,
+          line: lineNum,
+          rule: 'Fake testimonial pattern found',
+          match: line.slice(0, 100).trim(),
+        });
+      }
+    }
+
+    // 9. Real or unapproved Email addresses
+    const emailMatches = line.matchAll(/\b([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g);
+    for (const em of emailMatches) {
+      const fullEmail = em[0].toLowerCase();
+      const domain = em[2].toLowerCase();
+
+      // Check URL database connection string exclusions
+      const atIdx = em.index;
+      const beforeAt = line.substring(Math.max(0, atIdx - 30), atIdx);
+      if (beforeAt.includes('://') || beforeAt.includes('postgres') || beforeAt.includes('http')) {
+        continue;
+      }
+
+      if (domain === [KW_JSNC, '.co.in'].join('') || domain === 'gmail.com') {
+        violations.push({
+          file: relativePath,
+          line: lineNum,
+          rule: `Prohibited email domain: @${domain}`,
+          match: fullEmail,
+        });
+      } else if (
+        !ALLOWED_EMAIL_DOMAINS.has(domain) &&
+        !domain.endsWith('.example') &&
+        !domain.endsWith('.test') &&
+        !domain.endsWith('.localhost')
+      ) {
+        violations.push({
+          file: relativePath,
+          line: lineNum,
+          rule: `Unapproved non-example email domain: @${domain}`,
+          match: fullEmail,
+        });
+      }
+    }
+
+    // 10. Phone numbers in any format (+91 98765 43210, 98765-43210, spaces, etc.)
+    if (
+      !relativePath.endsWith('password-policy.ts') &&
+      !relativePath.endsWith('password-policy.js') &&
+      !relativePath.includes('test/')
+    ) {
+      if (isWebDist || relativePath.includes('.zip!')) {
+        // In built bundles: detect formatted phone numbers (+91 98765 43210, 98765-43210, 98765 43210)
+        // or quoted phone strings ("+91..." or "9876543210")
+        const bundlePhoneMatches = line.matchAll(/(?:["'`])(?:\+91[\s-]?)?[6-9]\d{9}(?:["'`])|(?:\+91[\s-]?)?[6-9]\d{4}[\s-]\d{5}\b/g);
+        for (const pm of bundlePhoneMatches) {
+          violations.push({
+            file: relativePath,
+            line: lineNum,
+            rule: 'Prohibited phone number pattern found in bundle',
+            match: pm[0],
+          });
+        }
+      } else {
+        // In source files: detect any 10-digit mobile or formatted phone number
+        const phoneMatches = line.matchAll(/(?:\+91[\s-]?)?[6-9]\d{4}[\s-]?[0-9]{5}\b/g);
+        for (const pm of phoneMatches) {
+          if (pm[0].length >= 10 && pm[0].length <= 15) {
+            violations.push({
+              file: relativePath,
+              line: lineNum,
+              rule: 'Prohibited phone number pattern found',
+              match: pm[0],
+            });
+          }
+        }
+      }
+    }
+  }
+}
 
 function checkFile(filePath) {
   const relativePath = path.relative(ROOT, filePath).replace(/\\/g, '/');
@@ -114,11 +391,11 @@ function checkFile(filePath) {
     return;
   }
 
-  // Skip binary/media files for content scanning
+  // Skip binary/media files
   if (IGNORE_EXTENSIONS.has(ext)) return;
 
-  // Skip self
-  if (path.basename(filePath) === 'scan-branding.js') return;
+  // Skip self & bad fixture test
+  if (path.basename(filePath) === 'scan-branding.js' || path.basename(filePath) === 'test-scan-fixtures.js') return;
 
   let content;
   try {
@@ -127,149 +404,41 @@ function checkFile(filePath) {
     return;
   }
 
-  const lines = content.split('\n');
+  checkContent(relativePath, content);
+}
 
-  for (let i = 0; i < lines.length; i++) {
-    const lineNum = i + 1;
-    const line = lines[i];
-    const lowerLine = line.toLowerCase();
+function scanBuiltOutputs() {
+  console.log('[BUILT OUTPUT SCAN] Checking built web dist and API bundle...');
 
-    // Check: Keywords (jsnc, js network, resend.dev)
-    if (lowerLine.includes(KW_JSNC)) {
-      violations.push({
-        file: relativePath,
-        line: lineNum,
-        rule: `Keyword '${KW_JSNC}' prohibited`,
-        match: line.trim(),
-      });
-    }
+  // A. Scan apps/web/dist
+  const webDistDir = path.resolve(ROOT, 'apps/web/dist');
+  if (fs.existsSync(webDistDir)) {
+    console.log('  -> Scanning apps/web/dist ...');
+    walkDir(webDistDir, true);
+  }
 
-    if (lowerLine.includes(KW_JS_NET)) {
-      violations.push({
-        file: relativePath,
-        line: lineNum,
-        rule: `Keyword '${KW_JS_NET}' prohibited`,
-        match: line.trim(),
-      });
-    }
+  // B. Scan deploy-release/api-bundle.zip if exists
+  const apiZipPath = path.resolve(ROOT, 'deploy-release/api-bundle.zip');
+  if (fs.existsSync(apiZipPath)) {
+    console.log('  -> Scanning deploy-release/api-bundle.zip ...');
+    try {
+      const zip = new AdmZip(apiZipPath);
+      for (const entry of zip.getEntries()) {
+        if (entry.isDirectory) continue;
+        const name = entry.entryName;
+        const ext = path.extname(name).toLowerCase();
+        if (IGNORE_EXTENSIONS.has(ext)) continue;
 
-    if (lowerLine.includes(KW_RESEND_DEV)) {
-      violations.push({
-        file: relativePath,
-        line: lineNum,
-        rule: `Keyword '${KW_RESEND_DEV}' prohibited`,
-        match: line.trim(),
-      });
-    }
-
-    if (lowerLine.includes(KW_JAYARAJ)) {
-      violations.push({
-        file: relativePath,
-        line: lineNum,
-        rule: `Prohibited name found: '${KW_JAYARAJ}'`,
-        match: line.trim(),
-      });
-    }
-
-    if (lowerLine.includes(KW_SANTHOSH)) {
-      violations.push({
-        file: relativePath,
-        line: lineNum,
-        rule: `Prohibited name found: '${KW_SANTHOSH}'`,
-        match: line.trim(),
-      });
-    }
-
-    if (line.includes(KW_LUT_BOND)) {
-      violations.push({
-        file: relativePath,
-        line: lineNum,
-        rule: `Prohibited credential/identifier found: '${KW_LUT_BOND}'`,
-        match: line.trim(),
-      });
-    }
-
-    // Check: Prohibited words (CRMflow, Copperline, Brisko, Lantern, Velum, Tessa, Quarra, Continue with, coming soon)
-    for (const term of PROHIBITED_TERMS) {
-      if (lowerLine.includes(term)) {
-        violations.push({
-          file: relativePath,
-          line: lineNum,
-          rule: `Prohibited word/brand '${term}' found`,
-          match: line.trim(),
-        });
+        const text = entry.getData().toString('utf8');
+        checkContent(`deploy-release/api-bundle.zip!${name}`, text);
       }
-    }
-
-    // Check: Fake testimonial patterns
-    for (const pat of FAKE_TESTIMONIAL_PATTERNS) {
-      if (pat.test(line)) {
-        violations.push({
-          file: relativePath,
-          line: lineNum,
-          rule: 'Fake testimonial pattern found',
-          match: line.trim(),
-        });
-      }
-    }
-
-    // Check: Local Windows user paths (Users/JNC R&D)
-    if (line.includes(KW_JNC_RD) || line.includes(KW_JNC_RD_SLASH) || (line.includes('Users') && line.includes('JNC R&D'))) {
+    } catch (err) {
       violations.push({
-        file: relativePath,
-        line: lineNum,
-        rule: 'Local Windows user path prohibited',
-        match: line.trim(),
+        file: 'deploy-release/api-bundle.zip',
+        line: 1,
+        rule: 'Failed to inspect API bundle zip',
+        match: err.message,
       });
-    }
-
-    // Check: Real email addresses
-    const emailMatches = line.matchAll(/\b([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g);
-    for (const em of emailMatches) {
-      const fullEmail = em[0].toLowerCase();
-      const domain = em[2].toLowerCase();
-
-      // Check if this match is actually inside a URL (e.g. postgres://user:pass@host)
-      const atIdx = em.index;
-      const beforeAt = line.substring(Math.max(0, atIdx - 30), atIdx);
-      if (beforeAt.includes('://') || beforeAt.includes('postgres') || beforeAt.includes('http')) {
-        continue;
-      }
-
-      // Check strictly prohibited domains
-      if (domain === [KW_JSNC, '.co.in'].join('') || domain === 'gmail.com') {
-        violations.push({
-          file: relativePath,
-          line: lineNum,
-          rule: `Prohibited email domain: @${domain}`,
-          match: fullEmail,
-        });
-      } else if (
-        !ALLOWED_EMAIL_DOMAINS.has(domain) &&
-        !domain.endsWith('.example') &&
-        !domain.endsWith('.test') &&
-        !domain.endsWith('.localhost')
-      ) {
-        violations.push({
-          file: relativePath,
-          line: lineNum,
-          rule: `Unapproved non-placeholder email domain: @${domain}`,
-          match: fullEmail,
-        });
-      }
-    }
-
-    // Check: Indian phone numbers (strictly zero in production code)
-    if (!relativePath.endsWith('password-policy.ts') && !relativePath.includes('test/')) {
-      const phoneMatches = line.matchAll(/(?:\+91[\s-]?)?([6-9]\d{9})\b/g);
-      for (const pm of phoneMatches) {
-        violations.push({
-          file: relativePath,
-          line: lineNum,
-          rule: 'Prohibited phone number pattern found',
-          match: pm[0],
-        });
-      }
     }
   }
 }
@@ -306,14 +475,15 @@ function checkAuthPagesUseAuthLayout() {
   }
 }
 
-function walkDir(dir) {
+function walkDir(dir, includeDist = false) {
   if (!fs.existsSync(dir)) return;
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist' || entry.name === 'migrations' || entry.name === 'evidence') continue;
-      walkDir(fullPath);
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'migrations' || entry.name === 'evidence') continue;
+      if (!includeDist && entry.name === 'dist') continue;
+      walkDir(fullPath, includeDist);
     } else if (entry.isFile()) {
       checkFile(fullPath);
     }
@@ -336,8 +506,9 @@ for (const targetFile of TARGET_FILES) {
 }
 
 checkAuthPagesUseAuthLayout();
+scanBuiltOutputs();
 
-console.log(`Scan completed across target directories and files.`);
+console.log(`\nScan completed across target source and built distribution files.`);
 
 if (violations.length > 0) {
   console.error(`\n[ERROR] FOUND ${violations.length} VIOLATION(S):\n`);
@@ -347,6 +518,6 @@ if (violations.length > 0) {
   console.error('\nPlease resolve all prohibited branding, real credentials, paths, or database files.\n');
   process.exit(1);
 } else {
-  console.log('\n[PASS] 0 violations found. Repository is 100% white-labeled and clean.\n');
+  console.log('\n[PASS] 0 violations found. Repository and built outputs are 100% compliant.\n');
   process.exit(0);
 }
