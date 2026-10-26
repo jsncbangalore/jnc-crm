@@ -40,17 +40,17 @@ const BrandingContext = createContext<BrandingContextType>({
 
 const sanitizeCompanyLogo = (url?: string | null): string => {
   if (!url || typeof url !== 'string') return getProductLogoUrl();
-  if (url.startsWith('data:') || url.length > 500) return getProductLogoUrl();
+  if (url.startsWith('data:image/')) return url;
   const resolved = resolveFileUrl(url);
-  if (!resolved || resolved.startsWith('data:') || resolved.length > 500) return getProductLogoUrl();
+  if (!resolved) return getProductLogoUrl();
   return resolved;
 };
 
 const sanitizePortalLogo = (url?: string | null): string | null => {
   if (!url || typeof url !== 'string') return null;
-  if (url.startsWith('data:') || url.length > 500) return null;
+  if (url.startsWith('data:image/')) return url;
   const resolved = resolveFileUrl(url);
-  if (!resolved || resolved.startsWith('data:') || resolved.length > 500) return null;
+  if (!resolved) return null;
   return resolved;
 };
 
@@ -63,9 +63,7 @@ export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const cached = localStorage.getItem(BRANDING_STORAGE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (parsed.companyLogoUrl?.startsWith('data:')) {
-          localStorage.removeItem(BRANDING_STORAGE_KEY);
-        } else if (parsed.companyLogoUrl && !parsed.companyLogoUrl.includes('/settings/branding/logo')) {
+        if (parsed.companyLogoUrl) {
           return {
             ...parsed,
             companyLogoUrl: sanitizeCompanyLogo(parsed.companyLogoUrl),

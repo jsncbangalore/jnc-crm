@@ -147,7 +147,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   const profile = companyProfile || invoice?.companyProfile;
   const rawLogo = profile?.logoUrl || branding?.companyLogoUrl;
   const invoiceLogo =
-    rawLogo && typeof rawLogo === 'string' && !rawLogo.startsWith('data:') && rawLogo.trim() !== ''
+    rawLogo && typeof rawLogo === 'string' && rawLogo.trim() !== ''
       ? rawLogo
       : '';
 

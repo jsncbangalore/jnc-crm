@@ -107,7 +107,7 @@ export default function DirectPrintModal({
 
   const effectiveCompanyName = signatoryConfig?.companyName || profile?.companyName || BRAND_CONFIG.displayName;
   const effectiveLogoUrl =
-    invoiceLogo && !invoiceLogo.startsWith('data:') && invoiceLogo.trim() !== ''
+    invoiceLogo && invoiceLogo.trim() !== ''
       ? invoiceLogo
       : (profile?.logoUrl || BRAND_CONFIG.logoUrl || '');
   const effectiveAddress1 = profile?.addressLine1 || profile?.address || '';
