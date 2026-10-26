@@ -141,16 +141,18 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       const status = err?.response?.status;
       const serverMessage = err?.response?.data?.message;
 
-      if (!err?.response || err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
-        setError('Cannot reach the server. Please check your connection and try again.');
+      if (!err?.response || err.code === 'ERR_NETWORK' || err.message?.includes('Network Error') || err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        setError('Server connection timed out. Please check your connection and try again.');
       } else if (status === 401) {
-        setError(serverMessage || 'Invalid credentials.');
+        setError(serverMessage || 'Incorrect email or password. Please check and try again.');
       } else if (status === 403) {
-        setError(serverMessage || 'Access restricted.');
+        setError(serverMessage || 'Account access restricted. Please contact your administrator.');
       } else if (status === 429) {
-        setError(serverMessage || 'Too many attempts. Please try again later.');
+        setError(serverMessage || 'Too many attempts. Please wait a few moments and try again.');
+      } else if (status === 502 || status === 503 || status === 504) {
+        setError('Server is currently starting up or busy. Please try again in a few moments.');
       } else {
-        setError(serverMessage || 'Unable to sign in. Please verify your credentials.');
+        setError(serverMessage || 'Incorrect email or password. Please check and try again.');
       }
     } finally {
       setLoading(false);

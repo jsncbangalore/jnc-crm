@@ -1,12 +1,13 @@
 # CRM Single Page Application (SPA) Apache Rewrite Configuration
 
-# 1. Reverse Proxy for Node.js API (if running on same Hostinger server on port 3333)
+# 1. Reverse Proxy for Node.js API (forwarding to API subdomain if on admin subdomain)
 <IfModule mod_proxy.c>
   <IfModule mod_proxy_http.c>
+    SSLProxyEngine On
     RewriteEngine On
-    RewriteCond %{REQUEST_URI} ^/api/ [NC,OR]
-    RewriteCond %{REQUEST_URI} ^/uploads/ [NC]
-    RewriteRule ^(api|uploads)/(.*)$ http://127.0.0.1:3333/$1/$2 [P,L]
+    RewriteCond %{HTTP_HOST} ^admin\.(.+)$ [NC]
+    RewriteCond %{REQUEST_URI} ^/api/ [NC]
+    RewriteRule ^api/(.*)$ https://api.%1/api/$1 [P,L]
   </IfModule>
 </IfModule>
 

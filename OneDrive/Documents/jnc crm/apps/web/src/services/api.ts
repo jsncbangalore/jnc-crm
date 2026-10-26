@@ -25,6 +25,12 @@ export const getApiBaseUrl = () => {
       }
     } catch {}
 
+    // 3. Dynamic subdomain resolution: admin.<domain> -> api.<domain>
+    if (window.location.hostname.startsWith('admin.')) {
+      const apiHost = window.location.hostname.replace(/^admin\./, 'api.');
+      return `${window.location.protocol}//${apiHost}/api/v1`;
+    }
+
     const isTestTwoOrigin =
       window.location.port === '4173' &&
       (window.location.search.includes('originB=3333') ||
