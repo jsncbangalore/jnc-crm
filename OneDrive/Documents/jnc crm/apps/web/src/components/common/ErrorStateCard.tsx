@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, WifiOff, ShieldAlert, RefreshCw } from 'lucide-react';
+import { AlertTriangle, WifiOff, ShieldAlert, RefreshCw, LogIn } from 'lucide-react';
 
 export interface ErrorStateCardProps {
   message: string;
@@ -18,9 +18,12 @@ export function ErrorStateCard({
   className = '',
   title,
 }: ErrorStateCardProps) {
+  const is401 = status === 401 || message === 'Unauthorized' || message?.toLowerCase().includes('unauthorized') || message?.toLowerCase().includes('session expired');
   const is403 = status === 403;
 
-  const defaultTitle = is403
+  const defaultTitle = is401
+    ? 'Session Expired'
+    : is403
     ? 'Access Denied'
     : isNetworkError
     ? 'Connection Failed'
@@ -46,7 +49,9 @@ export function ErrorStateCard({
               : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
           }`}
         >
-          {is403 ? (
+          {is401 ? (
+            <LogIn size={24} />
+          ) : is403 ? (
             <ShieldAlert size={24} />
           ) : isNetworkError ? (
             <WifiOff size={24} />
@@ -61,10 +66,26 @@ export function ErrorStateCard({
       </h3>
 
       <p className="text-xs text-slate-600 dark:text-slate-400 mb-5 leading-relaxed">
-        {message}
+        {is401 ? 'Your login session has expired. Please sign in again to refresh your access.' : message}
       </p>
 
-      {onRetry && (
+      {is401 ? (
+        <button
+          onClick={() => {
+            try {
+              localStorage.removeItem('crm_staff_token');
+              localStorage.removeItem('crm_platform_token');
+              sessionStorage.clear();
+            } catch {}
+            window.location.href = '/login?expired=1';
+          }}
+          type="button"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-crm-blue text-white text-xs font-bold hover:bg-crm-blue-dark transition-all shadow-sm active:scale-95 cursor-pointer"
+        >
+          <LogIn size={14} />
+          Sign In Again
+        </button>
+      ) : onRetry && (
         <button
           onClick={onRetry}
           type="button"
