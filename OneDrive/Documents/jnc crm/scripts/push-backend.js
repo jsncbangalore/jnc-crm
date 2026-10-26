@@ -90,6 +90,15 @@ try {
     console.log(' -> assets/ synchronized');
   }
 
+  // Sync packages/shared-validation
+  const sharedValPkg = path.join(REPO_ROOT, 'packages/shared-validation');
+  if (fs.existsSync(sharedValPkg)) {
+    const targetSharedVal = path.join(TARGET_REPO, 'packages/shared-validation');
+    if (fs.existsSync(targetSharedVal)) fs.rmSync(targetSharedVal, { recursive: true, force: true });
+    copyRecursiveSync(sharedValPkg, targetSharedVal);
+    console.log(' -> packages/shared-validation synchronized');
+  }
+
   // Sync tsconfig and nest-cli
   fs.copyFileSync(path.join(API_DIR, 'tsconfig.json'), path.join(TARGET_REPO, 'tsconfig.json'));
   fs.copyFileSync(path.join(API_DIR, 'nest-cli.json'), path.join(TARGET_REPO, 'nest-cli.json'));
@@ -140,6 +149,7 @@ backups/
       express: apiPkg.dependencies.express || '^4.22.1',
       '@prisma/client': '^5.22.0',
       prisma: '^5.22.0',
+      '@crm/shared-validation': 'file:./packages/shared-validation',
     },
     devDependencies: {
       '@nestjs/cli': '^10.3.2',

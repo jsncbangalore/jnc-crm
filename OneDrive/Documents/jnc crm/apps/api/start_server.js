@@ -7,6 +7,23 @@
 
 const fs = require('fs');
 const path = require('path');
+const Module = require('module');
+
+// Standalone fallback resolution for monorepo packages (e.g. on Render / Hostinger)
+const originalResolve = Module._resolveFilename;
+Module._resolveFilename = function (request, parent, isMain) {
+  if (request === '@crm/shared-validation') {
+    const candidatePaths = [
+      path.resolve(__dirname, 'dist/common/shared-validation.js'),
+      path.resolve(__dirname, 'packages/shared-validation/dist/index.js'),
+      path.resolve(__dirname, 'packages/shared-validation/index.js'),
+    ];
+    for (const c of candidatePaths) {
+      if (fs.existsSync(c)) return c;
+    }
+  }
+  return originalResolve.apply(this, arguments);
+};
 
 // Hosting panels often inject environment variables directly into process.env.
 // Load .env only if the file exists in the application root directory.

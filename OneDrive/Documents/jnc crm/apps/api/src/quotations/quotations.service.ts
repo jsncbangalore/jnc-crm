@@ -39,7 +39,7 @@ import {
   IsValidUnitRate,
   IsValidGstRate,
 } from '../common/validation.transformers';
-import { roundCurrency } from '@crm/shared-validation';
+import { roundCurrency } from '../common/shared-validation';
 
 export class QuotationLineItemDto {
   @IsString()

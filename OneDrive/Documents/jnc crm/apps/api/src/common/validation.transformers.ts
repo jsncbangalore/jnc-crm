@@ -32,7 +32,7 @@ import {
   validateBankAccount,
   validateDate,
   validateHttpsUrl,
-} from '@crm/shared-validation';
+} from './shared-validation';
 
 /**
  * Transform decorator: trims whitespace, removes control characters, and strips HTML tags.
