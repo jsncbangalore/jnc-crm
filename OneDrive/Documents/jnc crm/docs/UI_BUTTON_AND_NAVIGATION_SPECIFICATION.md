@@ -1,5 +1,5 @@
 # UI Button & Navigation Arrangement Architecture Specification
-**JS Network Communication CRM — Locked UI Hierarchy & Layout Blueprint**
+**Enterprise CRM — Locked UI Hierarchy & Layout Blueprint**
 *Document Version: 1.0.0 | Date: 2026-10-16 | Status: PERMANENT SPECIFICATION (DO NOT ALTER)*
 
 ---
@@ -17,7 +17,7 @@
 ```mermaid
 flowchart TD
     subgraph GlobalHeader["Tier 1: Global Utility Header Bar (48px)"]
-        Logo["Company Logo & Branding\n(JS Network Communication)"]
+        Logo["Company Logo & Branding\n(Tenant Workspace)"]
         Search["Global Command Palette\n(Ctrl + K / Cmd + K)"]
         
         subgraph PlusMenu["Quick Create Button (+)"]
@@ -53,20 +53,20 @@ flowchart TD
     end
 
     subgraph StandaloneAdmin["Standalone Administration Console (/users & /settings/branding) — Zero CRM Tabs"]
-        AdminLogo["JNC Administration"]
-        AdminTab1["🛡️ Team & Users"]
-        AdminTab2["🏢 Company Branding & GST"]
+        AdminLogo["System Administration"]
+        AdminTab1[" Team & Users"]
+        AdminTab2[" Company Branding & GST"]
         ExitAdmin["Exit to CRM (/)"]
     end
 
     subgraph StandaloneStudio["Standalone Start Setup Studio (/start-setup) — Zero CRM Tabs"]
         ExitBtn["Exit Setup (/)"]
-        StudioLogo["JNC Start Setup Studio"]
-        StudioTab1["⚡ Flow Builder (Drag & Drop Canvas)"]
-        StudioTab2["🇮🇳 IndiaMART (Inbound Webhook & Pull API)"]
-        StudioTab3["🌐 Meta & WhatsApp (Cloud API & Lead Ads)"]
-        StudioTab4["💬 Unified Inbox (Omnichannel Conversation Feed)"]
-        StudioTab5["📊 Analytics (Funnel & Delivery Rates)"]
+        StudioLogo["Start Setup Studio"]
+        StudioTab1[" Flow Builder (Drag & Drop Canvas)"]
+        StudioTab2[" IndiaMART (Inbound Webhook & Pull API)"]
+        StudioTab3[" Meta & WhatsApp (Cloud API & Lead Ads)"]
+        StudioTab4[" Unified Inbox (Omnichannel Conversation Feed)"]
+        StudioTab5[" Analytics (Funnel & Delivery Rates)"]
     end
 
     UsersLink -->|Click 'Team & Users'| StandaloneAdmin
@@ -83,7 +83,7 @@ flowchart TD
 ### A. Global Header Bar (Tier 1 — Top 48px)
 | Element | Visual Appearance | Function / Route | Target State / Modal |
 | :--- | :--- | :--- | :--- |
-| **Brand Logo & Name** | JNC Logo + Company Display Name | Organization identity | Displays active company branding |
+| **Brand Logo & Name** | Company Logo + Display Name | Organization identity | Displays active company branding |
 | **Global Search** | Input bar with `Ctrl + K` badge | Fast search / command palette | Real-time dropdown jump list to any CRM module |
 | **Quick Actions `(+)`** | Rounded CRM Blue `+` button | Drops down 6 quick-action buttons | Opens creation drawer / form on target page |
 | **Theme Toggle** | Sun (Amber) / Moon (Indigo) | Switches Dark & Light theme | Updates CSS theme across entire application |
@@ -121,13 +121,13 @@ Every tab has a direct click target, plus a dropdown caret (`▾`) exposing sub-
 > **Pure Setup Experience**: This page is completely isolated from the standard CRM layout. There is **NO** Tier 1 CRM search or quick-create bar, and **NO** Tier 2 navigation tabs (Home, Quotation, Invoices, Orders, etc.).
 
 #### Top Header Elements:
-1. **Company Logo & Title**: `JS Network Communication — Start Setup Studio`.
+1. **Company Logo & Title**: `Workspace — Start Setup Studio`.
 2. **Module Switcher Tabs**:
-   - ⚡ **Flow Builder**: Interactive drag-and-drop node canvas with Bezier curves, dynamic connection ports, 7 node types (`START`, `SEND_WHATSAPP`, `SEND_EMAIL`, `SEND_SMS`, `WAIT`, `CONDITION`, `EXIT`), node palette, property inspector, and live simulation tester.
-   - 🇮🇳 **IndiaMART**: Real-time push webhook ingestion (`/api/v1/webhooks/indiamart`), `x-indiamart-token` credential manager, pull sync API trigger, and seller integration guide.
-   - 🌐 **Meta & WhatsApp**: Facebook Lead Ads webhook URL, WhatsApp Cloud API phone number ID, WABA ID, and permanent bearer token manager.
-   - 💬 **Unified Inbox**: Real-time multi-channel inbox conversation feed, active sequence step status, and direct customer message composer.
-   - 📊 **Analytics**: Multi-channel lead drop-off funnel, channel delivery & response rates, and conversion KPI cards.
+   -  **Flow Builder**: Interactive drag-and-drop node canvas with Bezier curves, dynamic connection ports, 7 node types (`START`, `SEND_WHATSAPP`, `SEND_EMAIL`, `SEND_SMS`, `WAIT`, `CONDITION`, `EXIT`), node palette, property inspector, and live simulation tester.
+   -  **IndiaMART**: Real-time push webhook ingestion (`/api/v1/webhooks/indiamart`), `x-indiamart-token` credential manager, pull sync API trigger, and seller integration guide.
+   -  **Meta & WhatsApp**: Facebook Lead Ads webhook URL, WhatsApp Cloud API phone number ID, WABA ID, and permanent bearer token manager.
+   -  **Unified Inbox**: Real-time multi-channel inbox conversation feed, active sequence step status, and direct customer message composer.
+   -  **Analytics**: Multi-channel lead drop-off funnel, channel delivery & response rates, and conversion KPI cards.
 4. **Theme Switcher**: Independent dark / light toggle.
 5. **`Exit Setup` Button**: Alternate return button to the main CRM workspace.
 

@@ -1,9 +1,9 @@
-# Render Blueprint Specification for JNC CRM Monorepo API
+# Render Blueprint Specification for CRM Monorepo API
 # Documented at https://render.com/docs/blueprint-spec
 
 services:
   - type: web
-    name: jnc-crm-api
+    name: crm-api
     runtime: node
     region: singapore
     plan: free
@@ -16,9 +16,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: FRONTEND_URL
-        value: https://admin.jsnc.co.in
+        sync: false
       - key: ALLOWED_ORIGINS
-        value: https://admin.jsnc.co.in
+        sync: false
       - key: MAIL_PROVIDER
         sync: false # Set to 'brevo' or 'resend' for Render HTTPS mail sending
       - key: BREVO_API_KEY
@@ -26,17 +26,13 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
-        value: jsnccrm@gmail.com
+        sync: false
       - key: PRIMARY_EMAIL_FROM
-        value: jsnccrm@gmail.com
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL
         sync: false
-      - key: NEW_PROJECT_REF
-        value: aybysdzuwwtqhnzhgiwp
-      - key: OLD_PROJECT_REF
-        value: hbzlelktcfagwvmyusvw
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET

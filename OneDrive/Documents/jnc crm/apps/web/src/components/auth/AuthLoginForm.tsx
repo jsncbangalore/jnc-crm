@@ -35,9 +35,6 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
   const { login, platformLogin, selectCompany, logout } = useAuth();
   const navigate = useNavigate();
 
-  // ── Session state ───────────────────────────────────────────────────────────
-  const [existingSession, setExistingSession] = useState<{ signedIn: boolean; displayName: string } | null>(null);
-  const [checkingSession, setCheckingSession] = useState(false);
 
   // ── Form fields ─────────────────────────────────────────────────────────────
   const [identifier, setIdentifier] = useState('');
@@ -72,38 +69,6 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
   useEffect(() => {
     return subscribeColdStart((waking) => setIsWakingUp(waking));
   }, []);
-
-  // Check active session on mount
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const probeApi = isPlatform ? platformAuthApi : authApi;
-        const res = await probeApi.checkCurrentSession();
-        if (active && res.data?.signedIn && res.data?.displayName) {
-          setExistingSession({
-            signedIn: true,
-            displayName: res.data.displayName,
-          });
-        }
-      } catch {
-        // No session
-      } finally {
-        if (active) setCheckingSession(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [isPlatform]);
-
-  // If already authenticated and visiting login, automatically redirect into CRM replacing history
-  useEffect(() => {
-    if (existingSession?.signedIn && step === 'login') {
-      const destination = isPlatform ? '/platform/companies' : '/dashboard';
-      navigate(destination, { replace: true });
-    }
-  }, [existingSession, step, isPlatform, navigate]);
 
   // Caps lock listener
   const checkCapsLock = (e: React.KeyboardEvent) => {
@@ -228,55 +193,6 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       setLoading(false);
     }
   };
-
-  // ── Existing Session View ───────────────────────────────────────────────────
-  if (checkingSession) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3" aria-live="polite">
-        <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
-        <span className="text-[14px] text-slate-500 dark:text-slate-400">Checking existing session...</span>
-      </div>
-    );
-  }
-
-  if (existingSession && step === 'login') {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-[28px] font-bold text-slate-900 dark:text-white leading-tight">Already signed in</h1>
-          <p className="text-[16px] text-slate-600 dark:text-slate-400 mt-2">
-            You are signed in as <strong className="font-semibold text-slate-900 dark:text-white">{existingSession.displayName}</strong>.
-          </p>
-        </div>
-
-        <div className="space-y-3 pt-2">
-          <button
-            type="button"
-            onClick={() => navigate(isPlatform ? '/platform/companies' : '/dashboard')}
-            className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed text-[16px] font-semibold text-white shadow-xs transition-colors flex items-center justify-center cursor-pointer focus:outline-none focus:ring-[3px] focus:ring-blue-500/30"
-          >
-            Continue to CRM &rarr;
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              setLoading(true);
-              try {
-                await logout();
-              } finally {
-                setExistingSession(null);
-                setLoading(false);
-              }
-            }}
-            disabled={loading}
-            className="w-full h-[48px] rounded-[10px] border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-[16px] font-semibold text-slate-700 dark:text-slate-200 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center cursor-pointer"
-          >
-            {loading ? 'Signing out...' : 'Sign out and switch account'}
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // ── Company Chooser Step ────────────────────────────────────────────────────
   if (step === 'select-company') {

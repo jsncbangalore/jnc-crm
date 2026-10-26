@@ -1,8 +1,8 @@
-# JNC-CRM Security Policy & Hardening Guide
+# Security Policy & Hardening Guide
 
 ## 1. Vulnerability Reporting Procedure
-If you discover a security vulnerability within JNC-CRM, please report it privately to our security team:
-- **Email**: security@jsnc.co.in
+If you discover a security vulnerability, please report it privately to our security team:
+- **Email**: <SECURITY_EMAIL>
 - **Response SLA**: Within 24 hours acknowledging receipt, with a status update every 48 hours until resolved.
 - Please do **not** disclose security vulnerabilities publicly or open public GitHub issues until a patch has been released.
 

@@ -11,6 +11,20 @@ import { clearTabSessionUser } from '../utils/sessionSync';
 
 export const getApiBaseUrl = () => {
   if (typeof window !== 'undefined') {
+    // 1. Runtime window global override (e.g. window.__CRM_API_URL__ in index.html for custom backend URL)
+    if ((window as any).__CRM_API_URL__) {
+      const url = String((window as any).__CRM_API_URL__).trim().replace(/\/+$/, '');
+      if (url) return url.endsWith('/api/v1') ? url : `${url}/api/v1`;
+    }
+    // 2. Runtime localStorage override
+    try {
+      const stored = localStorage.getItem('crm_api_base_url');
+      if (stored && stored.trim().startsWith('http')) {
+        const url = stored.trim().replace(/\/+$/, '');
+        return url.endsWith('/api/v1') ? url : `${url}/api/v1`;
+      }
+    } catch {}
+
     const isTestTwoOrigin =
       window.location.port === '4173' &&
       (window.location.search.includes('originB=3333') ||

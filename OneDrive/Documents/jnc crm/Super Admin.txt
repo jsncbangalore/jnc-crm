@@ -1,19 +1,19 @@
 ================================================================================
-JSNC CRM — SECURITY CREDENTIAL MANAGEMENT & TEMPORARY ACCESS LIST
+CRM — CREDENTIAL MANAGEMENT & INITIAL ACCESS GUIDE
 ================================================================================
-STATUS: Credential rotation complete. All previous default passwords have been 
-permanently revoked, purged, and invalidated across the system.
-Every user account has mandatory password change enforced (mustResetPassword: true).
+STATUS: Multi-tenant credential rotation enabled. All initial user credentials
+must be generated per tenant upon onboarding with mandatory password change
+enforced (mustResetPassword: true).
 Users are required to create a new password immediately upon initial login.
 ================================================================================
 
 Role                 Employee Code   Temporary One-Time Password   Status
 --------------------------------------------------------------------------------
-Super Admin (Boss)   JNC-SA-001      Jnc#Boss5798!                 Forced Reset Required
-Admin                JNC-ADM-001     Jnc#Adm2564!                  Forced Reset Required
-Employee 1 (Sales)   JNC-EMP-001     Jnc#Emp6708!                  Forced Reset Required
-Employee 2 (Sales)   JNC-EMP-002     Jnc#Emp7406!                  Forced Reset Required
+Super Admin (Owner)  <EMPLOYEE_CODE> <GENERATED_TEMP_PASSWORD>     Forced Reset Required
+Admin                <EMPLOYEE_CODE> <GENERATED_TEMP_PASSWORD>     Forced Reset Required
+Employee 1 (Sales)   <EMPLOYEE_CODE> <GENERATED_TEMP_PASSWORD>     Forced Reset Required
+Employee 2 (Sales)   <EMPLOYEE_CODE> <GENERATED_TEMP_PASSWORD>     Forced Reset Required
 
 ================================================================================
-PORTAL URL: https://admin.jsnc.co.in/login (or http://localhost:5173/login)
+PORTAL URL: https://<YOUR_DOMAIN>/login (or http://localhost:5173/login)
 ================================================================================
