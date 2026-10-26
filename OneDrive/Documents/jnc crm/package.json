@@ -18,6 +18,7 @@
     "bundle:api": "node scripts/bundle-api.js",
     "bundle:test-linux": "node scripts/bundle-test-linux.js",
     "release:pack": "node scripts/release-pack.js",
+    "release:verify": "node scripts/release-verify.js",
     "verify:live": "node scripts/verify-live.js",
     "db:preflight-live": "node scripts/db-preflight-live.js",
     "db:predeploy-guard": "node scripts/render-predeploy-guard.js",

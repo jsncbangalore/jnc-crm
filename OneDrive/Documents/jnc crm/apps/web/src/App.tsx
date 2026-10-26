@@ -40,6 +40,8 @@ import CookieConsentBanner from './components/common/CookieConsentBanner';
 import { PopupProvider } from './contexts/PopupContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { BrandingProvider } from './contexts/BrandingContext';
+import { checkApiCompatibility } from './utils/versionCheck';
+import { Clock } from 'lucide-react';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -313,6 +315,32 @@ function AppRoutes() {
   );
 }
 
+function MaintenanceNoticeBanner() {
+  const [isOutdated, setIsOutdated] = React.useState(false);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    checkApiCompatibility().then((res) => {
+      if (!isMounted) return;
+      if (res.isOutdated) {
+        setIsOutdated(true);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  if (!isOutdated) return null;
+
+  return (
+    <aside aria-label="System Notice" className="sticky top-0 z-[9999] bg-amber-600 text-white text-center py-2.5 px-4 text-xs sm:text-sm font-semibold shadow-md flex items-center justify-center gap-2">
+      <Clock size={16} className="shrink-0" />
+      <span>We are updating the system. Please try again in a few minutes.</span>
+    </aside>
+  );
+}
+
 export default function App() {
   React.useEffect(() => {
     // Handle body margins, padding, and stable scrollbar gutter purely in React
@@ -332,6 +360,7 @@ export default function App() {
         <BrandingProvider>
           <PopupProvider>
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <MaintenanceNoticeBanner />
               <AppRoutes />
               <CookieConsentBanner />
             </BrowserRouter>

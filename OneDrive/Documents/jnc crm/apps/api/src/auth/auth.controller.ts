@@ -293,7 +293,7 @@ export class AuthController {
     return this.authService.forgotPassword(dto, ip, userAgent);
   }
 
-  /** Legacy reset password endpoint — returns HTTP 410 Gone */
+  /** Reset password endpoint (kept backward-compatible for one release) */
   @Throttle({ default: { limit: 5, ttl: 900000 } })
   @Post('reset-password')
   @Public()

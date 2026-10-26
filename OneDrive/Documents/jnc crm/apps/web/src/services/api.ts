@@ -81,6 +81,77 @@ const api = axios.create({
   withCredentials: true,
 });
 
+/**
+ * Maps API errors to safe, separated, and human-friendly user messages:
+ * 1. No response at all (network or CORS) -> 'Cannot reach the server. Check your connection.'
+ * 2. 404 or 405 -> 'This feature is not available yet. We are updating the system, please try again in a few minutes.'
+ * 3. 429 -> 'Too many attempts. Please wait and try again.'
+ * 4. 5xx -> 'Something went wrong on our side. Please try again.'
+ * 5. 400 from validation -> show the field messages. Never show raw server text or paths.
+ */
+export function getApiErrorMessage(err: any): string {
+  // Case 1: No response at all (network, DNS, timeout, or CORS)
+  if (!err?.response) {
+    return 'Cannot reach the server. Check your connection.';
+  }
+
+  const status = err.response.status;
+
+  // Case 2: 404 Not Found or 405 Method Not Allowed
+  if (status === 404 || status === 405) {
+    return 'This feature is not available yet. We are updating the system, please try again in a few minutes.';
+  }
+
+  // Case 3: 429 Rate limiting
+  if (status === 429) {
+    return 'Too many attempts. Please wait and try again.';
+  }
+
+  // Case 4: 5xx Server errors
+  if (status >= 500) {
+    return 'Something went wrong on our side. Please try again.';
+  }
+
+  // Case 5: 400 Validation errors
+  if (status === 400) {
+    const data = err.response.data;
+    if (data?.message) {
+      if (Array.isArray(data.message)) {
+        const cleanList = data.message
+          .map((m: any) => String(m).replace(/[A-Za-z]:\\[^ ]+|\/[a-zA-Z0-9_\-./]+/g, '').trim())
+          .filter(Boolean);
+        if (cleanList.length > 0) {
+          return cleanList.join(', ');
+        }
+      } else if (typeof data.message === 'string') {
+        const clean = data.message.replace(/[A-Za-z]:\\[^ ]+|\/[a-zA-Z0-9_\-./]+/g, '').trim();
+        const lower = clean.toLowerCase();
+        if (clean && !lower.includes('syntaxerror') && !lower.includes('prisma') && !lower.includes('stack')) {
+          return clean;
+        }
+      }
+    }
+    return 'Invalid request details. Please check the fields and try again.';
+  }
+
+  // 401 Unauthorized
+  if (status === 401) {
+    return err.response.data?.message || 'Incorrect email or password. Please check and try again.';
+  }
+
+  // 403 Forbidden
+  if (status === 403) {
+    return err.response.data?.message || 'Access restricted. Please contact your administrator.';
+  }
+
+  const fallback = err.response.data?.message;
+  if (typeof fallback === 'string' && !fallback.includes('/') && !fallback.includes('\\')) {
+    return fallback;
+  }
+
+  return 'Unable to complete request. Please try again.';
+}
+
 export const resolveFileUrl = (url: string | null | undefined): string => {
   if (!url) return '';
   if (url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
@@ -689,6 +760,7 @@ export async function requestWithColdStartRetry<T>(
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
+  getHealth: () => api.get('/health'),
   login: (identifier: string, password: string, companyCode?: string, keepSignedIn?: boolean) =>
     requestWithColdStartRetry(() =>
       api.post('/auth/login', { identifier, password, companyCode, keepSignedIn }, { timeout: 60000 })

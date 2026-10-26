@@ -8,7 +8,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useSearchParams } from 'react-router-dom';
-import { authApi } from '../services/api';
+import { authApi, getApiErrorMessage } from '../services/api';
+import { checkApiCompatibility } from '../utils/versionCheck';
 import {
   RefreshCw,
   AlertCircle,
@@ -109,6 +110,23 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [cooldown, setCooldown] = useState(0);
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+  const [maintenanceNotice, setMaintenanceNotice] = useState('');
+
+  // Version compatibility check on mount
+  useEffect(() => {
+    let isMounted = true;
+    checkApiCompatibility().then((compat) => {
+      if (!isMounted) return;
+      if (compat.isOutdated) {
+        setIsMaintenanceMode(true);
+        setMaintenanceNotice(compat.message || 'We are updating the system. Please try again in a few minutes.');
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Load public password policy on mount
   useEffect(() => {
@@ -139,6 +157,17 @@ export default function ForgotPasswordPage() {
   // ─── Step 1 of 4: Reset password (Email Lookup) ───────────────────────────
   const handleLookup = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isMaintenanceMode) return;
+
+    // Check version compatibility before submitting
+    const compat = await checkApiCompatibility();
+    if (compat.isOutdated) {
+      setIsMaintenanceMode(true);
+      setMaintenanceNotice(compat.message || 'We are updating the system. Please try again in a few minutes.');
+      setError('');
+      return;
+    }
+
     if (!email.trim()) {
       setError('Please enter your email address.');
       return;
@@ -177,14 +206,7 @@ export default function ForgotPasswordPage() {
         setError('The details do not match. Check and try again.');
       }
     } catch (err: any) {
-      if (err.response?.status === 429) {
-        setError('Too many attempts. Please wait a few minutes before trying again.');
-      } else if (!err?.response) {
-        setError('Cannot reach the server. Check your connection and try again.');
-      } else {
-        const msg = err.response?.data?.message;
-        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'The details do not match. Check and try again.');
-      }
+      setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -193,6 +215,7 @@ export default function ForgotPasswordPage() {
   // ─── Step 2 of 4: Verify your mobile number ───────────────────────────────
   const handleVerifyPhone = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isMaintenanceMode) return;
     if (!phone.trim()) {
       setError('Please enter your registered mobile number.');
       return;
@@ -220,14 +243,7 @@ export default function ForgotPasswordPage() {
         setTimeout(() => codeInputsRef.current[0]?.focus(), 100);
       }
     } catch (err: any) {
-      if (err.response?.status === 429) {
-        setError('Too many attempts. Please wait a few minutes.');
-      } else if (!err?.response) {
-        setError('Cannot reach the server. Check your connection.');
-      } else {
-        const msg = err.response?.data?.message;
-        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'The details do not match. Check and try again.');
-      }
+      setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -269,6 +285,7 @@ export default function ForgotPasswordPage() {
 
   const handleVerifyOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isMaintenanceMode) return;
     const code = codeDigits.join('');
     if (code.length < 6) {
       setError('Please enter all 6 digits of your verification code.');
@@ -287,19 +304,14 @@ export default function ForgotPasswordPage() {
       setSelectedAccountIds((accts || []).map((a: AccountItem) => a.accountId));
       setStep('new-password');
     } catch (err: any) {
-      if (!err?.response) {
-        setError('Cannot reach the server. Check your connection.');
-      } else {
-        const msg = err.response?.data?.message;
-        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'Code is incorrect or expired.');
-      }
+      setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
   };
 
   const handleResendOtp = async () => {
-    if (cooldown > 0 || loading) return;
+    if (cooldown > 0 || loading || isMaintenanceMode) return;
     setError('');
     setLoading(true);
     try {
@@ -312,14 +324,7 @@ export default function ForgotPasswordPage() {
       setCodeDigits(['', '', '', '', '', '']);
       codeInputsRef.current[0]?.focus();
     } catch (err: any) {
-      if (err.response?.status === 429) {
-        setError('Too many requests. Please wait a few minutes before requesting another code.');
-      } else if (!err?.response) {
-        setError('Cannot reach the server. Check your connection.');
-      } else {
-        const msg = err.response?.data?.message;
-        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'Unable to resend verification code. Please wait.');
-      }
+      setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -374,6 +379,16 @@ export default function ForgotPasswordPage() {
 
   const handleResetPassword = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isMaintenanceMode) return;
+
+    // Check version compatibility before submitting
+    const compat = await checkApiCompatibility();
+    if (compat.isOutdated) {
+      setIsMaintenanceMode(true);
+      setMaintenanceNotice(compat.message || 'We are updating the system. Please try again in a few minutes.');
+      setError('');
+      return;
+    }
 
     if (!isAllRulesSatisfied) {
       setError('Please satisfy all password security requirements.');
@@ -395,12 +410,7 @@ export default function ForgotPasswordPage() {
       await authApi.forgotPasswordReset(resetTicket, selectedAccountIds, newPassword);
       setStep('success');
     } catch (err: any) {
-      if (!err?.response) {
-        setError('Cannot reach the server. Check your connection.');
-      } else {
-        const msg = err.response?.data?.message;
-        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'Unable to reset password. Please start over.');
-      }
+      setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -480,6 +490,18 @@ export default function ForgotPasswordPage() {
           </div>
         )}
 
+        {/* Maintenance Notice Banner */}
+        {isMaintenanceMode && (
+          <div
+            id="forgot-maintenance-banner"
+            className="mb-6 p-3.5 rounded-[10px] bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-[13px] font-medium flex items-start gap-2.5 shadow-xs"
+            role="alert"
+          >
+            <Clock size={18} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+            <span>{maintenanceNotice || 'We are updating the system. Please try again in a few minutes.'}</span>
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           {/* ────────────────── STEP 1 OF 4: RESET PASSWORD ────────────────── */}
           {step === 'lookup' && (
@@ -507,9 +529,10 @@ export default function ForgotPasswordPage() {
                     id="forgot-email-input"
                     name="email"
                     type="text"
+                    disabled={loading || isMaintenanceMode}
                     autoComplete="username"
                     required
-                    className="w-full h-[48px] pl-[44px] pr-4 text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors"
+                    className="w-full h-[48px] pl-[44px] pr-4 text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
                     placeholder="name@example.com or user ID"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -523,8 +546,9 @@ export default function ForgotPasswordPage() {
                 <div className="flex items-center justify-between mb-1">
                   <button
                     type="button"
+                    disabled={isMaintenanceMode}
                     onClick={() => setShowCompanyCode((prev) => !prev)}
-                    className="text-[12px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center gap-1 cursor-pointer focus:outline-none"
+                    className="text-[12px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center gap-1 cursor-pointer focus:outline-none disabled:opacity-50"
                   >
                     <span>{showCompanyCode ? '− Hide company code' : '+ Have a company code?'}</span>
                   </button>
@@ -542,8 +566,9 @@ export default function ForgotPasswordPage() {
                       id="forgot-company-code"
                       name="company"
                       type="text"
+                      disabled={loading || isMaintenanceMode}
                       autoComplete="organization"
-                      className="w-full h-[48px] pl-[44px] pr-4 text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors uppercase font-mono tracking-wider text-sm"
+                      className="w-full h-[48px] pl-[44px] pr-4 text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors uppercase font-mono tracking-wider text-sm disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
                       placeholder="e.g. ACME"
                       value={companyCode}
                       onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
@@ -556,7 +581,7 @@ export default function ForgotPasswordPage() {
               </div>
 
               {/* Error Alert */}
-              {error && (
+              {!isMaintenanceMode && error && (
                 <div
                   role="alert"
                   className="p-3.5 rounded-[10px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-[14px] font-medium flex items-start gap-2.5"
@@ -569,7 +594,7 @@ export default function ForgotPasswordPage() {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isMaintenanceMode}
                 aria-busy={loading}
                 className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 text-white text-[16px] font-semibold shadow-xs transition-colors flex items-center justify-center gap-2 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
               >
@@ -633,10 +658,11 @@ export default function ForgotPasswordPage() {
                     name="phone"
                     type="tel"
                     inputMode="tel"
+                    disabled={loading || isMaintenanceMode}
                     autoComplete="off"
                     data-lpignore="true"
                     required
-                    className="flex-1 h-[48px] px-3.5 text-[16px] font-mono bg-transparent text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
+                    className="flex-1 h-[48px] px-3.5 text-[16px] font-mono bg-transparent text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none disabled:cursor-not-allowed"
                     placeholder={`10-digit number ending in ${last4}`}
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
@@ -649,7 +675,7 @@ export default function ForgotPasswordPage() {
               </div>
 
               {/* Error Alert */}
-              {error && (
+              {!isMaintenanceMode && error && (
                 <div
                   role="alert"
                   className="p-3.5 rounded-[10px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-[14px] font-medium flex items-start gap-2.5"
@@ -662,7 +688,7 @@ export default function ForgotPasswordPage() {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={loading || phone.trim().length < 4}
+                disabled={loading || isMaintenanceMode || phone.trim().length < 4}
                 aria-busy={loading}
                 className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 text-white text-[16px] font-semibold shadow-xs transition-colors flex items-center justify-center gap-2 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
               >
@@ -703,6 +729,7 @@ export default function ForgotPasswordPage() {
                     key={idx}
                     ref={(el) => (codeInputsRef.current[idx] = el)}
                     type="text"
+                    disabled={loading || isMaintenanceMode}
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={1}
@@ -711,7 +738,7 @@ export default function ForgotPasswordPage() {
                     onKeyDown={(e) => handleDigitKeyDown(idx, e)}
                     onPaste={handleDigitPaste}
                     aria-label={`Digit ${idx + 1} of 6`}
-                    className="w-full h-12 sm:h-14 text-center text-[20px] sm:text-[24px] font-bold font-mono bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-[3px] focus:ring-blue-500/25 transition-all shadow-xs"
+                    className="w-full h-12 sm:h-14 text-center text-[20px] sm:text-[24px] font-bold font-mono bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-[3px] focus:ring-blue-500/25 transition-all shadow-xs disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
                     autoFocus={idx === 0}
                   />
                 ))}
@@ -729,7 +756,7 @@ export default function ForgotPasswordPage() {
               </div>
 
               {/* Error Alert */}
-              {error && (
+              {!isMaintenanceMode && error && (
                 <div
                   role="alert"
                   className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-900/60 dark:text-rose-300 text-[13px] font-medium flex items-center gap-2"
@@ -742,7 +769,7 @@ export default function ForgotPasswordPage() {
               {/* Verify Code Button */}
               <button
                 type="submit"
-                disabled={loading || codeDigits.join('').length < 6}
+                disabled={loading || isMaintenanceMode || codeDigits.join('').length < 6}
                 aria-busy={loading}
                 className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 text-white text-[16px] font-semibold shadow-xs transition-colors flex items-center justify-center gap-2 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
               >
@@ -822,10 +849,11 @@ export default function ForgotPasswordPage() {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    disabled={loading || isMaintenanceMode}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Enter at least 12 characters"
-                    className="w-full h-[48px] pl-[44px] pr-[44px] text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors"
+                    className="w-full h-[48px] pl-[44px] pr-[44px] text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
                     autoFocus
                   />
                   <button
@@ -850,15 +878,17 @@ export default function ForgotPasswordPage() {
                   <input
                     type={showConfirmPassword ? 'text' : 'password'}
                     required
+                    disabled={loading || isMaintenanceMode}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Repeat new password"
-                    className="w-full h-[48px] pl-[44px] pr-[44px] text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors"
+                    className="w-full h-[48px] pl-[44px] pr-[44px] text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
                   />
                   <button
                     type="button"
+                    disabled={loading || isMaintenanceMode}
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-1 w-[40px] h-[40px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40 cursor-pointer transition-colors"
+                    className="absolute right-1 w-[40px] h-[40px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40 cursor-pointer transition-colors disabled:opacity-50"
                     aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                     title={showConfirmPassword ? 'Hide password' : 'Show password'}
                   >
@@ -909,7 +939,7 @@ export default function ForgotPasswordPage() {
               </div>
 
               {/* Error Alert */}
-              {error && (
+              {!isMaintenanceMode && error && (
                 <div
                   role="alert"
                   className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-900/60 dark:text-rose-300 text-[13px] font-medium flex items-center gap-2"
@@ -922,7 +952,7 @@ export default function ForgotPasswordPage() {
               {/* Reset Submit Button */}
               <button
                 type="submit"
-                disabled={loading || !isAllRulesSatisfied || !isPasswordsMatch}
+                disabled={loading || isMaintenanceMode || !isAllRulesSatisfied || !isPasswordsMatch}
                 aria-busy={loading}
                 className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 text-white text-[16px] font-semibold shadow-xs transition-colors flex items-center justify-center gap-2 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
               >

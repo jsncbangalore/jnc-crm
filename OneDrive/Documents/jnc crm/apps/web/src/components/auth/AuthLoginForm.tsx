@@ -21,7 +21,8 @@ import {
 } from 'lucide-react';
 import { useAuth, CompanyChoice } from '../../contexts/AuthContext';
 import { getRoleRedirectPath } from '../../utils/roles';
-import { authApi, platformAuthApi, subscribeColdStart } from '../../services/api';
+import { authApi, platformAuthApi, subscribeColdStart, getApiErrorMessage } from '../../services/api';
+import { checkApiCompatibility } from '../../utils/versionCheck';
 import TwoFactorChallenge from '../common/TwoFactorChallenge';
 
 export interface AuthLoginFormProps {
@@ -50,6 +51,8 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isWakingUp, setIsWakingUp] = useState(false);
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+  const [maintenanceNotice, setMaintenanceNotice] = useState('');
 
   // ── 2FA state ───────────────────────────────────────────────────────────────
   const [twoFactorData, setTwoFactorData] = useState<{
@@ -71,6 +74,21 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
     return subscribeColdStart((waking) => setIsWakingUp(waking));
   }, []);
 
+  // Check API compatibility at form startup
+  useEffect(() => {
+    let isMounted = true;
+    checkApiCompatibility().then((res) => {
+      if (!isMounted) return;
+      if (res.isOutdated) {
+        setIsMaintenanceMode(true);
+        setMaintenanceNotice(res.message || 'We are updating the system. Please try again in a few minutes.');
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Caps lock listener
   const checkCapsLock = (e: React.KeyboardEvent) => {
     if (e.getModifierState) {
@@ -81,7 +99,16 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
   // ── Submit handler ──────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isMaintenanceMode) return;
     setError('');
+
+    // Pre-submit version check
+    const compat = await checkApiCompatibility();
+    if (compat.isOutdated) {
+      setIsMaintenanceMode(true);
+      setMaintenanceNotice(compat.message || 'We are updating the system. Please try again in a few minutes.');
+      return;
+    }
 
     const trimmedIdentifier = identifier.trim();
     if (!trimmedIdentifier) {
@@ -138,22 +165,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       const destination = user.redirectPath || (isPlatform ? '/platform/companies' : getRoleRedirectPath(user));
       navigate(destination, { replace: true });
     } catch (err: any) {
-      const status = err?.response?.status;
-      const serverMessage = err?.response?.data?.message;
-
-      if (!err?.response || err.code === 'ERR_NETWORK' || err.message?.includes('Network Error') || err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-        setError('Server connection timed out. Please check your connection and try again.');
-      } else if (status === 401) {
-        setError(serverMessage || 'Incorrect email or password. Please check and try again.');
-      } else if (status === 403) {
-        setError(serverMessage || 'Account access restricted. Please contact your administrator.');
-      } else if (status === 429) {
-        setError(serverMessage || 'Too many attempts. Please wait a few moments and try again.');
-      } else if (status === 502 || status === 503 || status === 504) {
-        setError('Server is currently starting up or busy. Please try again in a few moments.');
-      } else {
-        setError(serverMessage || 'Incorrect email or password. Please check and try again.');
-      }
+      setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -161,8 +173,17 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
 
   const handleSelectCompanySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isMaintenanceMode) return;
     if (!selectedCompanyCode) {
       setError('Please select a company to proceed.');
+      return;
+    }
+
+    // Pre-submit version check
+    const compat = await checkApiCompatibility();
+    if (compat.isOutdated) {
+      setIsMaintenanceMode(true);
+      setMaintenanceNotice(compat.message || 'We are updating the system. Please try again in a few minutes.');
       return;
     }
 
@@ -188,10 +209,10 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       }
 
       const user = result as any;
-      const destination = user.redirectPath || getRoleRedirectPath(user);
+      const destination = user.redirectPath || (isPlatform ? '/platform/companies' : getRoleRedirectPath(user));
       navigate(destination, { replace: true });
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Unable to sign in with selected company.');
+      setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -259,7 +280,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
 
           <button
             type="submit"
-            disabled={loading || !selectedCompanyCode}
+            disabled={loading || isMaintenanceMode || !selectedCompanyCode}
             className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none text-[16px] font-semibold text-white shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus:ring-[3px] focus:ring-blue-500/30"
           >
             {loading ? (
@@ -350,8 +371,20 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       )}
 
       <form onSubmit={handleSubmit} noValidate autoComplete="off" data-lpignore="true" className="space-y-3">
+        {/* Maintenance Notice */}
+        {isMaintenanceMode && (
+          <div
+            id={`${portal}-maintenance-banner`}
+            className="p-3.5 rounded-[10px] bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-[13px] font-medium flex items-start gap-2.5 shadow-xs"
+            role="alert"
+          >
+            <Clock size={18} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+            <span>{maintenanceNotice || 'We are updating the system. Please try again in a few minutes.'}</span>
+          </div>
+        )}
+
         {/* Form Error Banner (inside form) */}
-        {error && (
+        {!isMaintenanceMode && error && (
           <div
             id={`${portal}-form-error`}
             className="p-3 rounded-[10px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-[13px] font-medium flex items-start gap-2.5"
@@ -367,8 +400,9 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
             <div className="flex items-center justify-between mb-1">
               <button
                 type="button"
+                disabled={isMaintenanceMode}
                 onClick={() => setShowCompanyCode((prev) => !prev)}
-                className="text-[12px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center gap-1 cursor-pointer focus:outline-none"
+                className="text-[12px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center gap-1 cursor-pointer focus:outline-none disabled:opacity-50"
               >
                 <span>{showCompanyCode ? '− Hide company code' : '+ Have a company code?'}</span>
               </button>
@@ -390,6 +424,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
                   id="company-code-input"
                   name="companyCode"
                   type="text"
+                  disabled={loading || isMaintenanceMode}
                   autoComplete="organization"
                   value={companyCode}
                   onChange={(e) => {
@@ -397,7 +432,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
                     if (error) setError('');
                   }}
                   placeholder="e.g. ACME"
-                  className="w-full h-[44px] rounded-[10px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] text-slate-900 dark:text-white pl-[42px] pr-4 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors uppercase tracking-wider font-mono text-sm"
+                  className="w-full h-[44px] rounded-[10px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] text-slate-900 dark:text-white pl-[42px] pr-4 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors uppercase tracking-wider font-mono text-sm disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
                 />
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -426,6 +461,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
               id={`${portal}-identifier`}
               name="username"
               type="text"
+              disabled={loading || isMaintenanceMode}
               autoComplete="username"
               inputMode="email"
               autoFocus
@@ -437,7 +473,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
               aria-invalid={Boolean(error && !identifier.trim())}
               aria-describedby={error ? `${portal}-form-error` : undefined}
               placeholder="name@example.com or user ID"
-              className="w-full h-[44px] rounded-[10px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] text-slate-900 dark:text-white pl-[42px] pr-4 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors"
+              className="w-full h-[44px] rounded-[10px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] text-slate-900 dark:text-white pl-[42px] pr-4 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
               required
             />
           </div>
@@ -469,6 +505,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
               ref={passwordRef}
               id={`${portal}-password`}
               name="password"
+              disabled={loading || isMaintenanceMode}
               type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
               value={password}
@@ -481,13 +518,14 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
               aria-invalid={Boolean(error && !password)}
               aria-describedby={error ? `${portal}-form-error` : undefined}
               placeholder="••••••••••••"
-              className="w-full h-[44px] rounded-[10px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] text-slate-900 dark:text-white pl-[42px] pr-[42px] placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors"
+              className="w-full h-[44px] rounded-[10px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] text-slate-900 dark:text-white pl-[42px] pr-[42px] placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
               required
             />
             <button
               type="button"
+              disabled={loading || isMaintenanceMode}
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-1 w-[38px] h-[38px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40 cursor-pointer transition-colors"
+              className="absolute right-1 w-[38px] h-[38px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40 cursor-pointer transition-colors disabled:opacity-50"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
               title={showPassword ? 'Hide password' : 'Show password'}
             >
@@ -507,9 +545,10 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
           <label className="inline-flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
+              disabled={loading || isMaintenanceMode}
               checked={keepSignedIn}
               onChange={(e) => setKeepSignedIn(e.target.checked)}
-              className="w-4 h-4 rounded text-blue-600 border-slate-300 dark:border-slate-700 focus:ring-blue-500 cursor-pointer"
+              className="w-4 h-4 rounded text-blue-600 border-slate-300 dark:border-slate-700 focus:ring-blue-500 cursor-pointer disabled:opacity-50"
             />
             <span className="text-[13px] font-medium text-slate-700 dark:text-slate-300">
               Keep me signed in on this device
@@ -521,7 +560,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
         <div className="pt-1.5">
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || isMaintenanceMode}
             className="w-full h-[44px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none text-[15px] font-semibold text-white shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus:ring-[3px] focus:ring-blue-500/30"
           >
             {loading ? (

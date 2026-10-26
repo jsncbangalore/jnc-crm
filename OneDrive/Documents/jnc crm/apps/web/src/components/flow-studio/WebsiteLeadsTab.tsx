@@ -335,7 +335,7 @@ window.addEventListener('message', function(e) {
       return;
     }
 
-    const isLocalDev = (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1');
+    const isLocalDev = (parsed.hostname === '127.0.0.1' || parsed.hostname.endsWith('.local') || parsed.hostname.startsWith('local'));
     if (parsed.protocol !== 'https:' && !isLocalDev) {
       setOriginError('Allowed website must use secure HTTPS (starting with https://).');
       return;

@@ -2801,12 +2801,92 @@ export class AuthService {
     return this.forgotPasswordRequest({ email: dto.email }, clientIp, userAgent);
   }
 
-  // Legacy link-based endpoint returns HTTP 410 Gone
-  async resetPassword(_dto: ResetPasswordDto, _ipAddress?: string) {
-    throw new HttpException(
-      'Email reset links have been upgraded to 6-digit verification codes. Please request a new verification code.',
-      HttpStatus.GONE,
-    );
+  // Backward compatible reset password endpoint (kept functional for release compatibility; no 410)
+  async resetPassword(dto: ResetPasswordDto, ipAddress?: string) {
+    if (!dto || !dto.token || !dto.newPassword) {
+      throw new BadRequestException('Token and new password are required');
+    }
+
+    // 1. Try checking against PasswordResetToken table (legacy link token)
+    try {
+      const tokenHash = crypto.createHash('sha256').update(dto.token.trim()).digest('hex');
+      const now = new Date();
+      let resetRecord = await this.prisma.passwordResetToken.findFirst({
+        where: {
+          tokenHash,
+          usedAt: null,
+          expiresAt: { gt: now },
+        },
+        include: { user: true },
+      });
+
+      if (!resetRecord) {
+        // Also check if raw token/id was stored directly
+        resetRecord = await this.prisma.passwordResetToken.findFirst({
+          where: {
+            id: dto.token.trim(),
+            usedAt: null,
+            expiresAt: { gt: now },
+          },
+          include: { user: true },
+        });
+      }
+
+      if (resetRecord && resetRecord.user) {
+        const hashedPassword = await bcrypt.hash(dto.newPassword, 12);
+        await this.prisma.user.update({
+          where: { id: resetRecord.userId },
+          data: {
+            passwordHash: hashedPassword,
+            mustResetPassword: false,
+          },
+        });
+
+        await this.prisma.passwordResetToken.update({
+          where: { id: resetRecord.id },
+          data: { usedAt: new Date() },
+        });
+
+        // Revoke active sessions for security
+        await this.prisma.refreshSession.updateMany({
+          where: { userId: resetRecord.userId, isRevoked: false },
+          data: { isRevoked: true },
+        }).catch(() => {});
+
+        return {
+          message: 'Password has been reset successfully. You can now log in.',
+        };
+      }
+    } catch (e: any) {
+      if (e instanceof BadRequestException) throw e;
+    }
+
+    // 2. Try handling as a reset ticket (flow JWT from recent flow)
+    try {
+      const payload: any = this.jwtService.verify(dto.token, {
+        secret: process.env.JWT_SECRET,
+        algorithms: ['HS256'],
+        issuer: process.env.JWT_ISSUER || 'crm-api',
+        audience: process.env.JWT_AUDIENCE || 'crm-client',
+      });
+      if (payload && payload.purpose === 'password_reset_ticket' && payload.email) {
+        const users = await this.prisma.user.findMany({
+          where: { email: payload.email.toLowerCase(), isActive: true, deletedAt: null },
+          select: { id: true },
+        });
+        const accountIds = users.map((u) => u.id);
+        if (accountIds.length > 0) {
+          return await this.forgotPasswordReset(
+            { resetTicket: dto.token, accountIds, newPassword: dto.newPassword },
+            ipAddress,
+          );
+        }
+      }
+    } catch {
+      // Flow JWT verification did not succeed
+    }
+
+    throw new BadRequestException('Invalid or expired password reset link. Please request a new one.');
   }
 
   // ─── POST /auth/refresh & POST /platform-auth/refresh ───────────────────────

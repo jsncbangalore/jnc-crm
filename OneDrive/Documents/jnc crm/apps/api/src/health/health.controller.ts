@@ -15,7 +15,16 @@ export class HealthController {
   getHealth() {
     return {
       status: 'ok',
-      version: '1.0.0',
+      version: '1.1.0',
+      apiVersion: '1.1.0',
+      features: [
+        'auth',
+        'rbac',
+        'password-reset-flow',
+        'two-factor-auth',
+        'device-sessions',
+        'web-form-settings',
+      ],
     };
   }
 }
