@@ -183,6 +183,9 @@ function AppRoutes() {
     <Routes>
       {/* Front root index: Landing Page when not logged in, Dashboard when logged in */}
       <Route path="/" element={<RootIndexRoute />} />
+      <Route path="/index" element={<RootIndexRoute />} />
+      <Route path="/index.html" element={<RootIndexRoute />} />
+      <Route path="/home" element={<RootIndexRoute />} />
 
       {/* Public Pages */}
       <Route path="/login" element={<LoginPage />} />
@@ -302,8 +305,10 @@ function AppRoutes() {
         <Route path="/objects/:objectApiName" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><CustomObjectRecordsPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/daily-activities" element={<TeamPageGuard pageKey="daily_activities"><CrmRouteGuard><DailyActivitiesPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/account" element={<MyAccountPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
+
+      {/* Fallback route outside of ProtectedRoute to prevent unauthorized bounce to login */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

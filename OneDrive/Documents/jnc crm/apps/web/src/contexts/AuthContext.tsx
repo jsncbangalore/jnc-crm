@@ -135,6 +135,31 @@ const persistUserToStorage = (u: User | null, portal: 'staff' | 'platform') => {
   } catch {}
 };
 
+export function isPublicPath(path: string): boolean {
+  const p = (path || '').toLowerCase().replace(/\/+$/, '') || '/';
+  return (
+    p === '/' ||
+    p === '/index' ||
+    p === '/index.html' ||
+    p === '/home' ||
+    p === '/features' ||
+    p === '/solutions' ||
+    p === '/pricing' ||
+    p === '/landing' ||
+    p === '/login' ||
+    p === '/platform/login' ||
+    p === '/forgot-password' ||
+    p.startsWith('/reset-password') ||
+    p === '/inquiry' ||
+    p === '/quote-request' ||
+    p === '/shared-cart' ||
+    p === '/cart-share' ||
+    p === '/cart' ||
+    p === '/cookies' ||
+    p === '/cookie-policy'
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [staffUser, setStaffUser] = useState<User | null>(() => getStoredUser('staff'));
   const [platformUser, setPlatformUser] = useState<User | null>(() => getStoredUser('platform'));
@@ -261,7 +286,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       broadcastSignOut();
       setShowInactivityModal(false);
       clearStorageExceptTheme();
-      if (window.location.pathname !== '/login') {
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      if (!isPublicPath(currentPath)) {
         window.history.replaceState(null, '', '/login');
         window.location.href = '/login';
       }
@@ -282,9 +308,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       broadcastSignOut();
       setShowInactivityModal(false);
       clearStorageExceptTheme();
-      if (window.location.pathname !== '/login') {
-        window.history.replaceState(null, '', '/login');
-        window.location.href = '/login';
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      if (!isPublicPath(currentPath)) {
+        window.history.replaceState(null, '', '/platform/login');
+        window.location.href = '/platform/login';
       }
     }
   }, [setPlatformUserWithStorage]);
@@ -312,8 +339,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       broadcastSignOut();
       setShowInactivityModal(false);
       clearStorageExceptTheme();
-      window.history.replaceState(null, '', '/login');
-      window.location.href = '/login';
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      if (!isPublicPath(currentPath)) {
+        window.history.replaceState(null, '', '/login');
+        window.location.href = '/login';
+      }
     }
   }, [setStaffUserWithStorage, setPlatformUserWithStorage]);
 
@@ -324,12 +354,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Check 15-minute inactivity limit on startup
     const storedLastActive = typeof window !== 'undefined' ? localStorage.getItem(ACTIVITY_STORAGE_KEY) : null;
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
     if (storedLastActive) {
       const parsedTime = Number(storedLastActive);
       if (!isNaN(parsedTime) && parsedTime > 0 && Date.now() - parsedTime >= INACTIVITY_TIMEOUT_MS) {
         // 15 minutes of inactivity exceeded while CRM was closed or idle
-        logout();
+        setStaffAccessToken(null);
+        setStoredRefreshToken(null, false);
+        setStaffUserWithStorage(null);
+        setPlatformAccessToken(null);
+        setStoredRefreshToken(null, true);
+        setPlatformUserWithStorage(null);
+        clearTabSessionUser();
+        clearStorageExceptTheme();
         setIsLoading(false);
+        if (!isPublicPath(currentPath)) {
+          window.history.replaceState(null, '', '/login');
+          window.location.href = '/login';
+        }
         return;
       }
     }
@@ -343,34 +385,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const savedPortal = typeof window !== 'undefined'
       ? (sessionStorage.getItem('crm_portal') || localStorage.getItem('crm_portal'))
       : null;
-    const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
     
-    // Check if there is an existing session stored in the browser
+    // Check if there are active tokens stored in the browser
     const hasExistingSession =
       typeof window !== 'undefined' &&
       (Boolean(localStorage.getItem('crm_staff_token')) ||
        Boolean(localStorage.getItem('crm_platform_token')) ||
-       Boolean(localStorage.getItem('crm_user')) ||
-       Boolean(localStorage.getItem('crm_platform_user')) ||
-       Boolean(savedPortal));
+       Boolean(localStorage.getItem('crm_staff_refresh_token')) ||
+       Boolean(localStorage.getItem('crm_platform_refresh_token')));
 
-    const isPublicStatic =
-      !hasExistingSession && (
-        currentPath === '/' ||
-        currentPath === '/features' ||
-        currentPath === '/solutions' ||
-        currentPath === '/pricing' ||
-        currentPath === '/landing' ||
-        currentPath === '/login' ||
-        currentPath === '/platform/login' ||
-        currentPath === '/forgot-password' ||
-        currentPath.startsWith('/reset-password') ||
-        currentPath === '/inquiry' ||
-        currentPath === '/quote-request' ||
-        currentPath === '/shared-cart' ||
-        currentPath === '/cart-share' ||
-        currentPath === '/cart'
-      );
+    const isPublicStatic = !hasExistingSession && isPublicPath(currentPath);
 
     if (isPublicStatic) {
       setIsLoading(false);
@@ -575,10 +599,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setPlatformUserWithStorage(null);
         clearTabSessionUser();
         if (timerRef.current) clearInterval(timerRef.current);
-        const targetPath = '/login';
-        if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
-          window.history.replaceState(null, '', targetPath);
-          window.location.href = targetPath;
+        const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+        if (!isPublicPath(currentPath)) {
+          window.history.replaceState(null, '', '/login');
+          window.location.href = '/login';
         }
       } else if (event.type === 'session_changed') {
         setStaffAccessToken(null);
