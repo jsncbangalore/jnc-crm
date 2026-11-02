@@ -7,9 +7,10 @@
 
 import React from 'react';
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { toPlainText } from '../../utils/toPlainText';
 
 export interface FormFeedbackProps {
-  error?: string | null;
+  error?: any;
   success?: string | null;
   className?: string;
   onDismiss?: () => void;
@@ -27,9 +28,10 @@ export function FormFeedback({
   onDismiss,
   'data-testid': testId,
 }: FormFeedbackProps) {
-  if (!error && !success) return null;
+  const errorText = toPlainText(error);
+  if (!errorText && !success) return null;
 
-  if (error) {
+  if (errorText) {
     return (
       <div
         role="alert"
@@ -38,7 +40,7 @@ export function FormFeedback({
         className={`p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2.5 shadow-2xs ${className}`}
       >
         <AlertCircle size={15} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-        <span className="flex-1 font-semibold leading-relaxed">{error}</span>
+        <span className="flex-1 font-semibold leading-relaxed">{errorText}</span>
         {onDismiss && (
           <button
             type="button"
@@ -77,7 +79,7 @@ export function FormFeedback({
 }
 
 export interface FormFieldErrorProps {
-  error?: string | null;
+  error?: any;
   id?: string;
   className?: string;
   'data-testid'?: string;
@@ -92,7 +94,8 @@ export function FormFieldError({
   className = '',
   'data-testid': testId,
 }: FormFieldErrorProps) {
-  if (!error) return null;
+  const errorText = toPlainText(error);
+  if (!errorText) return null;
 
   return (
     <p
@@ -102,7 +105,7 @@ export function FormFieldError({
       className={`text-rose-600 dark:text-rose-400 text-[11px] font-semibold mt-1 flex items-center gap-1 leading-tight ${className}`}
     >
       <AlertCircle size={11} className="shrink-0" />
-      <span>{error}</span>
+      <span>{errorText}</span>
     </p>
   );
 }

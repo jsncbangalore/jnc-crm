@@ -7,6 +7,7 @@ import {
   validateEmail,
   validateGstin,
   validateAddress,
+  toPlainText,
 } from '@crm/shared-validation';
 
 export interface CustomerData {
@@ -342,7 +343,38 @@ function CreateCustomerModal({
       });
     } catch (err: any) {
       console.error('Customer creation error:', err);
-      setErrors({ form: err?.response?.data?.message || 'Failed to create customer record.' });
+      const data = err?.response?.data;
+      const inlineErrors: Record<string, string> = {};
+
+      if (Array.isArray(data?.fieldErrors)) {
+        for (const item of data.fieldErrors) {
+          if (item && item.field) {
+            inlineErrors[String(item.field)] = toPlainText(item.message || item);
+          }
+        }
+      } else if (data?.fieldErrors && typeof data.fieldErrors === 'object') {
+        for (const [key, val] of Object.entries(data.fieldErrors)) {
+          inlineErrors[key] = toPlainText(val);
+        }
+      }
+
+      if (Array.isArray(data?.message)) {
+        for (const msg of data.message) {
+          const text = toPlainText(msg);
+          if (/phone/i.test(text) && !inlineErrors.phone) inlineErrors.phone = text;
+          else if (/gstin/i.test(text) && !inlineErrors.gstin) inlineErrors.gstin = text;
+          else if (/name/i.test(text) && !inlineErrors.name) inlineErrors.name = text;
+          else if (/email/i.test(text) && !inlineErrors.email) inlineErrors.email = text;
+        }
+      }
+
+      const formMsg =
+        toPlainText(data?.message || err?.message || 'Failed to create customer record.');
+
+      setErrors({
+        ...(formMsg && Object.keys(inlineErrors).length === 0 ? { form: formMsg } : {}),
+        ...inlineErrors,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -364,7 +396,7 @@ function CreateCustomerModal({
         <form onSubmit={handleSubmit} className="p-4 space-y-3 text-xs">
           {errors.form && (
             <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 rounded-lg">
-              {errors.form}
+              {toPlainText(errors.form)}
             </div>
           )}
 
@@ -387,7 +419,7 @@ function CreateCustomerModal({
               onChange={(e) => setName(e.target.value)}
               className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             />
-            {errors.name && <p className="text-rose-500 text-[10px] mt-0.5">{errors.name}</p>}
+            {errors.name && <p className="text-rose-500 text-[10px] mt-0.5">{toPlainText(errors.name)}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -402,7 +434,7 @@ function CreateCustomerModal({
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
               />
-              {errors.phone && <p className="text-rose-500 text-[10px] mt-0.5">{errors.phone}</p>}
+              {errors.phone && <p className="text-rose-500 text-[10px] mt-0.5">{toPlainText(errors.phone)}</p>}
             </div>
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -436,7 +468,7 @@ function CreateCustomerModal({
                 }}
                 className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono uppercase"
               />
-              {errors.gstin && <p className="text-rose-500 text-[10px] mt-0.5">{errors.gstin}</p>}
+              {errors.gstin && <p className="text-rose-500 text-[10px] mt-0.5">{toPlainText(errors.gstin)}</p>}
             </div>
           </div>
 
@@ -452,7 +484,7 @@ function CreateCustomerModal({
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
               />
-              {errors.email && <p className="text-rose-500 text-[10px] mt-0.5">{errors.email}</p>}
+              {errors.email && <p className="text-rose-500 text-[10px] mt-0.5">{toPlainText(errors.email)}</p>}
             </div>
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -483,7 +515,7 @@ function CreateCustomerModal({
               onChange={(e) => setAddress(e.target.value)}
               className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
             />
-            {errors.address && <p className="text-rose-500 text-[10px] mt-0.5">{errors.address}</p>}
+            {errors.address && <p className="text-rose-500 text-[10px] mt-0.5">{toPlainText(errors.address)}</p>}
           </div>
 
           <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">

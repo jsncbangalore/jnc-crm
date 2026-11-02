@@ -5,10 +5,11 @@
 
 import React, { useId, forwardRef } from 'react';
 import { AlertCircle } from 'lucide-react';
+import { toPlainText } from '../../utils/toPlainText';
 
 export interface FormFieldProps extends React.InputHTMLAttributes<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> {
   label?: string;
-  error?: string | null;
+  error?: any;
   helperText?: string;
   required?: boolean;
   as?: 'input' | 'textarea' | 'select';
@@ -49,7 +50,8 @@ export const FormField = forwardRef<HTMLInputElement & HTMLTextAreaElement & HTM
     const helperId = `${id}-helper`;
 
     const currentLength = typeof value === 'string' ? value.length : typeof value === 'number' ? String(value).length : 0;
-    const hasError = Boolean(error);
+    const errorText = toPlainText(error);
+    const hasError = Boolean(errorText);
 
     const baseInputStyles = `w-full rounded-xl text-xs transition-all outline-none font-medium ${
       hasError
@@ -151,7 +153,7 @@ export const FormField = forwardRef<HTMLInputElement & HTMLTextAreaElement & HTM
             className="text-[11px] font-medium text-red-600 dark:text-red-400 flex items-center gap-1 mt-1 animate-fade-in"
           >
             <AlertCircle size={12} className="shrink-0 text-red-500" />
-            <span>{error}</span>
+            <span>{errorText}</span>
           </p>
         )}
 

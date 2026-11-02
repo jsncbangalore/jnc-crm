@@ -39,10 +39,15 @@ export class AuditService {
 
   async log(dto: CreateAuditLogDto, customTx?: any) {
     try {
+      if (!dto.tenantId || dto.tenantId === 'default-tenant-id') {
+        // Without a valid tenantId foreign key, avoid failing and poisoning transactional blocks
+        console.warn('AuditLog creation warning: tenantId missing or invalid, skipping audit log');
+        return null;
+      }
       const client = customTx || this.prisma;
       return await client.auditLog.create({
         data: {
-          tenantId: dto.tenantId || 'default-tenant-id',
+          tenantId: dto.tenantId,
           actorId: dto.actorId,
           actorName: dto.actorName,
           action: dto.action,

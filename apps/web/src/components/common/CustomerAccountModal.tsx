@@ -19,6 +19,7 @@ import { paymentsApi } from '../../services/api';
 import { useAllowedPages } from '../../hooks/useAllowedPages';
 import { useNavigate } from 'react-router-dom';
 import { safeVoucherType } from '../../utils/safeFormat';
+import { toPlainText } from '../../utils/toPlainText';
 
 interface CustomerAccountModalProps {
   customerId: string;
@@ -149,7 +150,7 @@ export default function CustomerAccountModal({
             </div>
           ) : error ? (
             <div className="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-xl text-red-600 dark:text-red-400 text-sm">
-              {error}
+              {toPlainText(error)}
             </div>
           ) : (
             <>

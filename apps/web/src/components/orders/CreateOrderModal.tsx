@@ -27,6 +27,7 @@ import {
   calculateDocumentTotals,
   formatIndianCurrency,
   sanitizeText,
+  toPlainText,
 } from '@crm/shared-validation';
 
 interface CreateOrderModalProps {
@@ -225,17 +226,33 @@ export default function CreateOrderModal({
       }
     } catch (err: any) {
       const data = err?.response?.data;
-      if (Array.isArray(data?.message)) {
-        const mappedErrors: Record<string, string> = {};
-        data.message.forEach((msg: string) => {
-          if (msg.includes('customerName') || msg.includes('name')) mappedErrors.customerName = msg;
-          else if (msg.includes('customerPhone') || msg.includes('phone')) mappedErrors.customerPhone = msg;
-          else if (msg.includes('unitPrice') || msg.includes('rate')) mappedErrors.lines = msg;
+      const mappedErrors: Record<string, string> = {};
+
+      if (Array.isArray(data?.fieldErrors)) {
+        data.fieldErrors.forEach((item: any) => {
+          if (item?.field) mappedErrors[String(item.field)] = toPlainText(item.message || item);
         });
-        setErrors((prev) => ({ ...prev, ...mappedErrors }));
-      } else if (data?.message) {
-        setErrors((prev) => ({ ...prev, form: data.message }));
+      } else if (data?.fieldErrors && typeof data.fieldErrors === 'object') {
+        Object.entries(data.fieldErrors).forEach(([k, v]) => {
+          mappedErrors[k] = toPlainText(v);
+        });
       }
+
+      if (Array.isArray(data?.message)) {
+        data.message.forEach((msg: any) => {
+          const text = toPlainText(msg);
+          if (text.includes('customerName') || text.includes('name')) mappedErrors.customerName = text;
+          else if (text.includes('customerPhone') || text.includes('phone')) mappedErrors.customerPhone = text;
+          else if (text.includes('unitPrice') || text.includes('rate')) mappedErrors.lines = text;
+        });
+      }
+
+      const formMsg = toPlainText(data?.message || err?.message || 'Failed to save order.');
+      setErrors((prev) => ({
+        ...prev,
+        ...(formMsg && Object.keys(mappedErrors).length === 0 ? { form: formMsg } : {}),
+        ...mappedErrors,
+      }));
     } finally {
       setSubmitting(false);
     }
@@ -264,7 +281,7 @@ export default function CreateOrderModal({
         {errors.form && (
           <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
             <AlertCircle size={14} className="shrink-0" />
-            <span>{errors.form}</span>
+            <span>{toPlainText(errors.form)}</span>
           </div>
         )}
 

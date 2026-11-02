@@ -23,6 +23,7 @@ import {
   validateUnitRate,
   validateNotes,
   sanitizeText,
+  toPlainText,
 } from '@crm/shared-validation';
 
 export interface CreateLeadModalProps {
@@ -245,9 +246,9 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
         }
         setErrors((prev) => ({ ...prev, ...mappedErrors }));
       } else if (data?.message) {
-        setErrors((prev) => ({ ...prev, form: typeof data.message === 'string' ? data.message : JSON.stringify(data.message) }));
+        setErrors((prev) => ({ ...prev, form: toPlainText(data.message) }));
       } else {
-        setErrors((prev) => ({ ...prev, form: err?.message || 'Failed to save lead. Please check details.' }));
+        setErrors((prev) => ({ ...prev, form: toPlainText(err?.message || 'Failed to save lead. Please check details.') }));
       }
     } finally {
       setSubmitting(false);
@@ -305,7 +306,7 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
         {errors.form && (
           <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
             <AlertCircle size={14} className="shrink-0" />
-            <span>{errors.form}</span>
+            <span>{toPlainText(errors.form)}</span>
           </div>
         )}
 

@@ -3,14 +3,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Plus, Trash2, FileText, Truck, FileSpreadsheet, ShieldAlert, ShieldCheck,
   Building2, User, Phone, Mail, MapPin, Hash, DollarSign, Calculator,
-  Calendar, Check, Sparkles, AlertCircle
+  Calendar, Check, Sparkles, AlertCircle, AlertTriangle
 } from 'lucide-react';
 import { DocumentType, Invoice } from '../../types';
 import { invoicesApi, inventoryApi, companiesApi } from '../../services/api';
 import CustomerSelectWithModal, { CustomerData } from '../common/CustomerSelectWithModal';
 import { numberToIndianWords } from './InvoiceModal';
 import { validateLutStatus } from '../../utils/lut-validator';
-import { validateGstin } from '@crm/shared-validation';
+import { validateGstin, toPlainText } from '@crm/shared-validation';
+import { useAllowedPages } from '../../hooks/useAllowedPages';
 import FullCalendarPicker from '../common/FullCalendarPicker';
 import FormFeedback from '../common/FormFeedback';
 
@@ -56,12 +57,35 @@ const COMMON_HSN = [
 ];
 
 export default function CreateDocumentModal({ isOpen, onClose, onCreated, editInvoice }: CreateDocumentModalProps) {
+  const { hasPage } = useAllowedPages();
   const [docType, setDocType] = useState<DocumentType>('tax_invoice');
   const [loadingNumber, setLoadingNumber] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [skus, setSkus] = useState<any[]>([]);
+  const [companyProfile, setCompanyProfile] = useState<any>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      invoicesApi
+        .getCompanyProfile()
+        .then((res) => setCompanyProfile(res.data))
+        .catch((err) => console.warn('Failed to load company profile for document check:', err));
+    }
+  }, [isOpen]);
+
+  const missingCompanyFields = React.useMemo(() => {
+    if (!companyProfile) return [];
+    const missing: string[] = [];
+    if (!companyProfile.companyName && !companyProfile.tradeName) missing.push('Company Name');
+    if (!companyProfile.address) missing.push('Address');
+    if (!companyProfile.gstin) missing.push('GSTIN');
+    if (!companyProfile.bankAccountNumber && !companyProfile.bankIfsc && !companyProfile.bankName) {
+      missing.push('Bank Details');
+    }
+    return missing;
+  }, [companyProfile]);
 
   // Form State
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -427,10 +451,24 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
       onClose();
     } catch (err: any) {
       const respData = err?.response?.data;
-      const msg = respData?.message || err.message || 'Failed to process document';
+      const msg = toPlainText(respData?.message || err.message || 'Failed to process document');
       const fErrors = respData?.fieldErrors || {};
-      setFormError(`Failed to ${editInvoice ? 'update' : 'create'} document: ` + (typeof msg === 'string' ? msg : JSON.stringify(msg)));
-      setFieldErrors(typeof fErrors === 'object' && fErrors !== null ? fErrors : {});
+      const normalizedErrors: Record<string, string> = {};
+
+      if (Array.isArray(fErrors)) {
+        for (const item of fErrors) {
+          if (item && item.field) {
+            normalizedErrors[String(item.field)] = toPlainText(item.message || item);
+          }
+        }
+      } else if (typeof fErrors === 'object' && fErrors !== null) {
+        for (const [k, v] of Object.entries(fErrors)) {
+          normalizedErrors[k] = toPlainText(v);
+        }
+      }
+
+      setFormError(`Failed to ${editInvoice ? 'update' : 'create'} document: ${msg}`);
+      setFieldErrors(normalizedErrors);
     } finally {
       setSubmitting(false);
     }
@@ -474,7 +512,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
           <div className="mx-4 sm:mx-6 mt-4 p-3.5 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-400 text-xs flex flex-col gap-1.5 font-medium">
             <div className="flex items-center gap-2.5">
               <AlertCircle size={16} className="shrink-0 text-red-600 dark:text-red-400" />
-              <span className="flex-1 font-bold">{formError}</span>
+              <span className="flex-1 font-bold">{toPlainText(formError)}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -489,10 +527,45 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
             {Object.keys(fieldErrors).length > 0 && (
               <ul className="list-disc list-inside pl-6 space-y-0.5 text-[11px] text-red-600 dark:text-red-300">
                 {Object.entries(fieldErrors).map(([k, v]) => (
-                  <li key={k}>{v}</li>
+                  <li key={k}>{toPlainText(v)}</li>
                 ))}
               </ul>
             )}
+          </div>
+        )}
+
+        {/* Missing Company Profile Banner - shown once before submit */}
+        {missingCompanyFields.length > 0 && (
+          <div
+            role="alert"
+            className="mx-4 sm:mx-6 mt-4 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+          >
+            <div className="flex items-start sm:items-center gap-2.5">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5 sm:mt-0" />
+              <div>
+                <span className="font-bold">Company profile is incomplete:</span>{' '}
+                <span className="text-amber-800 dark:text-amber-300">
+                  Missing {missingCompanyFields.join(', ')}.
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {hasPage('branding') ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.open('/settings/branding', '_blank');
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs shadow-xs transition-all whitespace-nowrap cursor-pointer"
+                >
+                  Open Branding & GST Profile
+                </button>
+              ) : (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-200/60 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200">
+                  Ask an administrator
+                </span>
+              )}
+            </div>
           </div>
         )}
 

@@ -859,3 +859,102 @@ export const formatFriendlyErrorMessage = (error: any, fallback = 'An unexpected
   return 'Failed to save changes. Please try again.';
 };
 
+/**
+ * ONE canonical function that guarantees plain text string output from ANY error,
+ * object, array of {field, message}, Error instance, or primitive.
+ * Zero JSX-unrenderable objects or [object Object] leaks.
+ */
+export function toPlainText(val: any, fallback = ''): string {
+  if (val === null || val === undefined) {
+    return fallback;
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return fallback;
+    if (trimmed === '[object Object]') return fallback || 'An unexpected error occurred.';
+    return trimmed;
+  }
+  if (typeof val === 'number' || typeof val === 'boolean' || typeof val === 'bigint') {
+    return String(val);
+  }
+  if (val instanceof Error) {
+    return toPlainText(val.message, fallback || 'An error occurred.');
+  }
+
+  // Handle Axios / API error structures
+  if (typeof val === 'object') {
+    // 1. Axios response object or error wrapper
+    const data = val.response?.data || val.data;
+    if (data && typeof data === 'object') {
+      if (Array.isArray(data.fieldErrors) && data.fieldErrors.length > 0) {
+        return toPlainText(data.fieldErrors, fallback);
+      }
+      if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+        return toPlainText(data.fieldErrors, fallback);
+      }
+      if (data.message) {
+        return toPlainText(data.message, fallback);
+      }
+      if (data.error) {
+        return toPlainText(data.error, fallback);
+      }
+    }
+
+    // 2. Array of items (e.g. [{field, message}] or ['err1', 'err2'])
+    if (Array.isArray(val)) {
+      const parts = val
+        .map((item) => {
+          if (!item) return '';
+          if (typeof item === 'string') return item.trim();
+          if (typeof item === 'object') {
+            if (item.message && typeof item.message === 'string') {
+              return item.message.trim();
+            }
+            if (item.field && item.message) {
+              return `${toPlainText(item.field)}: ${toPlainText(item.message)}`;
+            }
+            if (item.field) {
+              return String(item.field);
+            }
+            return toPlainText(item);
+          }
+          return String(item);
+        })
+        .filter(Boolean);
+
+      return parts.length > 0 ? parts.join(', ') : fallback;
+    }
+
+    // 3. Single field error object { field, message }
+    if ('message' in val && typeof val.message === 'string') {
+      return val.message.trim();
+    }
+    if ('error' in val && typeof val.error === 'string') {
+      return val.error.trim();
+    }
+    if ('field' in val && 'message' in val) {
+      return `${toPlainText(val.field)}: ${toPlainText(val.message)}`;
+    }
+
+    // 4. Record/Dictionary of field errors { phone: '...', gstin: '...' }
+    const entries = Object.entries(val)
+      .map(([k, v]) => {
+        if (!v) return '';
+        const msg = toPlainText(v);
+        return msg ? (isNaN(Number(k)) ? `${k}: ${msg}` : msg) : '';
+      })
+      .filter(Boolean);
+
+    if (entries.length > 0) {
+      return entries.join(', ');
+    }
+  }
+
+  try {
+    const str = String(val);
+    return str === '[object Object]' ? fallback : str;
+  } catch {
+    return fallback;
+  }
+}
+

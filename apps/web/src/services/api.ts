@@ -367,6 +367,10 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
   config.headers['X-Requested-With'] = 'XMLHttpRequest';
+  const expectedUserId = getCurrentTabUserId();
+  if (expectedUserId) {
+    config.headers['X-Expected-User-Id'] = expectedUserId;
+  }
   return config;
 });
 
@@ -423,6 +427,7 @@ export const performStaffRefresh = async (): Promise<any> => {
             headers: {
               'X-Requested-With': 'XMLHttpRequest',
               'Content-Type': 'application/json',
+              ...(expectedUserId ? { 'X-Expected-User-Id': expectedUserId } : {}),
             },
           }
         );
@@ -509,6 +514,7 @@ export const performPlatformRefresh = async (): Promise<any> => {
             headers: {
               'X-Requested-With': 'XMLHttpRequest',
               'Content-Type': 'application/json',
+              ...(expectedUserId ? { 'X-Expected-User-Id': expectedUserId } : {}),
             },
           }
         );

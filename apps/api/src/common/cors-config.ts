@@ -29,10 +29,15 @@ export const CORS_ALLOWED_METHODS = [
 
 export const CORS_ALLOWED_HEADERS = [
   'Content-Type',
+  'content-type',
   'Authorization',
+  'authorization',
   'Accept',
+  'accept',
   'X-Requested-With',
+  'x-requested-with',
   'X-Expected-User-Id',
+  'x-expected-user-id',
   'Idempotency-Key',
   'idempotency-key',
   'X-Idempotency-Key',
@@ -40,10 +45,19 @@ export const CORS_ALLOWED_HEADERS = [
   'X-Request-Id',
   'x-request-id',
   'X-App-Version',
+  'x-app-version',
   'X-Client-Version',
+  'x-client-version',
   'X-IndiaMart-Token',
   'x-indiamart-token',
   'Range',
+  'range',
+  'Origin',
+  'origin',
+  'Cache-Control',
+  'cache-control',
+  'Pragma',
+  'pragma',
 ];
 
 export const CORS_EXPOSED_HEADERS = [

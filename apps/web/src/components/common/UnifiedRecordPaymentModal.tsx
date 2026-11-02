@@ -34,6 +34,7 @@ import {
   validateUpiId,
   formatDisplayDate,
   formatFriendlyErrorMessage,
+  toPlainText,
 } from '@crm/shared-validation';
 
 // Safe array extraction helper
@@ -762,7 +763,7 @@ export default function UnifiedRecordPaymentModal({
               <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 rounded-xl text-red-600 dark:text-red-400 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{err}</span>
+                  <span>{toPlainText(err)}</span>
                 </div>
                 {networkErrorOccurred && (
                   <button

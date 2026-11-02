@@ -116,7 +116,13 @@ function verifyCorsPreflight(baseUrl) {
     'X-Expected-User-Id',
     'Idempotency-Key',
     'idempotency-key',
+    'X-Idempotency-Key',
+    'x-idempotency-key',
     'X-Request-Id',
+    'x-request-id',
+    'X-App-Version',
+    'X-Client-Version',
+    'X-IndiaMart-Token',
     'Range',
   ];
 
@@ -155,7 +161,14 @@ function verifyCorsPreflight(baseUrl) {
           return reject(new Error(`Preflight response does not allow headers: ${missing.join(', ')}`));
         }
 
-        console.log(' [SUCCESS] All custom request headers are permitted by target CORS preflight.');
+        const requiredMethods = ['POST', 'PUT', 'PATCH', 'DELETE', 'GET'];
+        const allowedMethodsUpper = allowMethods.split(',').map((m) => m.trim().toUpperCase());
+        const missingMethods = requiredMethods.filter((m) => !allowedMethodsUpper.includes(m));
+        if (missingMethods.length > 0) {
+          return reject(new Error(`Preflight response does not allow methods: ${missingMethods.join(', ')}`));
+        }
+
+        console.log(' [SUCCESS] All custom request headers and methods are permitted by target CORS preflight.');
         resolve();
       }
     );

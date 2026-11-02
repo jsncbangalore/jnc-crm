@@ -16,6 +16,7 @@ import {
   validateIfsc,
   validateUpiId,
   formatFriendlyErrorMessage,
+  toPlainText,
 } from '@crm/shared-validation';
 
 export interface CompanyBankAccount {
@@ -253,7 +254,7 @@ export default function CompanyBankAccountsSection() {
 
       {error && (
         <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs flex items-center justify-between">
-          <span>{error}</span>
+          <span>{toPlainText(error)}</span>
           <button type="button" onClick={() => setError(null)} className="text-rose-500 hover:text-rose-700"><X size={14} /></button>
         </div>
       )}

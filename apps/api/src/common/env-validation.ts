@@ -33,7 +33,7 @@ export const ENV_CATALOG: EnvDefinition[] = [
   { key: 'SMTP_USER', category: 'REQUIRED', description: 'SMTP authentication username / sender account' },
   { key: 'SMTP_PASS', category: 'REQUIRED', description: 'SMTP authentication password', isSecret: true },
   { key: 'EMAIL_FROM', category: 'REQUIRED', description: 'Canonical outbound sender address' },
-  { key: 'PLATFORM_LEADS_TENANT_ID', category: 'OPTIONAL', description: 'Tenant ID where website demo requests land (optional; demo requests disabled if missing)' },
+  { key: 'PLATFORM_LEADS_TENANT_ID', category: 'REQUIRED', description: 'Tenant ID where website demo requests land (refuses to start in production if missing)' },
 
   // ─── FEATURE-GATED (Disabled unless configured; routes return 503/404) ────
   { key: 'WHATSAPP_APP_SECRET', category: 'FEATURE-GATED', description: 'Meta WhatsApp webhook HMAC signature verification secret', isSecret: true },
@@ -251,7 +251,7 @@ export function validateEnvironment(
 
   if (isProduction) {
     if (!env.PLATFORM_LEADS_TENANT_ID || !env.PLATFORM_LEADS_TENANT_ID.trim()) {
-      warnings.push('PLATFORM_LEADS_TENANT_ID is unset; public website demo requests will be disabled until configured.');
+      invalidVariables.push('PLATFORM_LEADS_TENANT_ID is required in production mode for website demo requests.');
     }
     if (!env.DATABASE_URL || !env.DATABASE_URL.trim()) {
       invalidVariables.push('DATABASE_URL is required in production mode.');

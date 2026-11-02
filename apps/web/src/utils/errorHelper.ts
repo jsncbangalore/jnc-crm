@@ -5,6 +5,9 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
+import { toPlainText } from '@crm/shared-validation';
+export { toPlainText };
+
 export interface ParsedApiError {
   statusCode: number;
   code: string;

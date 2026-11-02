@@ -336,6 +336,7 @@ export class PaymentsService {
         });
 
         await this.auditService.log({
+          tenantId,
           actorId: user.id,
           actorName: (user as any).employeeCode || (user as any).name || 'Staff',
           action: 'SUPPLIER_PAYMENT_RECORDED',
@@ -610,6 +611,7 @@ export class PaymentsService {
 
       // ─── 7. Audit Log within tx ─────────────────────────────────────────────
       await this.auditService.log({
+        tenantId,
         actorId: user.id,
         actorName: (user as any).employeeCode || (user as any).name || 'Staff',
         action: 'PAYMENT_RECORDED',
@@ -791,6 +793,7 @@ export class PaymentsService {
 
       // 4. Audit Log within tx
       await this.auditService.log({
+        tenantId,
         actorId: user.id,
         actorName: (user as any).employeeCode || (user as any).name || 'Staff',
         action: 'PAYMENT_REVERSED',
