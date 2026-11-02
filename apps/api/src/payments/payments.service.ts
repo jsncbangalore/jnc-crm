@@ -12,8 +12,8 @@ import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 import { AuditService } from '../audit/audit.service';
 import { DocumentSeriesService } from '../common/document-series.service';
+import { formatIndianCurrency, validateMeaningfulNarration, validatePaymentReference } from '../common/shared-validation';
 import { getEffectivePagesForUser } from '../auth/effective-page-access';
-import { formatIndianCurrency, validateMeaningfulNarration } from '../common/shared-validation';
 
 export interface PaymentAllocationInput {
   invoiceId?: string;
@@ -36,6 +36,8 @@ export interface RecordPaymentInput {
   reference?: string;
   paymentDate?: Date | string;
   notes?: string;
+  bankAccount?: string;
+  bankAccountId?: string;
   allocations?: PaymentAllocationInput[];
   autoAllocate?: boolean;
   allowAdvance?: boolean;
@@ -117,6 +119,15 @@ export class PaymentsService {
 
     if (isNaN(amount) || amount <= 0) {
       throw new BadRequestException('Payment amount must be greater than 0.');
+    }
+
+    // Payment reference validation by mode
+    if (dto.paymentMethod) {
+      const refToValidate = dto.transactionRef || dto.reference || (dto as any).referenceNumber;
+      const refCheck = validatePaymentReference(dto.paymentMethod, refToValidate);
+      if (!refCheck.valid) {
+        throw new BadRequestException(refCheck.error);
+      }
     }
 
     // Narration validation: if notes provided, require meaningful text (5+ chars, non-gibberish)
@@ -226,6 +237,10 @@ export class PaymentsService {
           }
         }
 
+        const effectiveNotes = dto.bankAccount?.trim()
+          ? (dto.notes?.trim() ? `${dto.notes.trim()} • Account: ${dto.bankAccount.trim()}` : `Account: ${dto.bankAccount.trim()}`)
+          : (dto.notes?.trim() || null);
+
         const paymentNumber = dto.reference?.trim() || `SPAY-${Date.now()}`;
         const supplierPayment = await tx.supplierPayment.create({
           data: {
@@ -236,7 +251,7 @@ export class PaymentsService {
             amount: new Prisma.Decimal(amount.toFixed(2)),
             paymentMethod: dto.paymentMethod || 'NEFT',
             reference: dto.reference?.trim() || dto.transactionRef?.trim(),
-            notes: dto.notes,
+            notes: effectiveNotes,
             createdById: user.id,
           },
         });
@@ -522,6 +537,7 @@ export class PaymentsService {
           transactionRef: dto.transactionRef?.trim() || seriesInfo.formattedNumber,
           paymentDate: payDate,
           notes: dto.notes?.trim() || null,
+          bankAccountLabel: dto.bankAccount?.trim() || null,
           recordedById: user.id,
         },
       });
@@ -1133,5 +1149,50 @@ export class PaymentsService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  /**
+   * Looks up an existing payment by its client-supplied idempotency key.
+   * Enables UI recovery after network drops ('Check if it was saved').
+   */
+  async checkIdempotency(idemKey: string, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    const cleanKey = (idemKey || '').trim();
+    if (!cleanKey) {
+      return { found: false };
+    }
+
+    const cacheKey = `${tenantId}:${cleanKey}`;
+    const cached = PaymentsService.idempotencyStore.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return {
+        found: true,
+        exists: true,
+        status: 'completed',
+        payment: cached.result,
+      };
+    }
+
+    const dbKey = `idempotency:payment:${tenantId}:${cleanKey}`;
+    try {
+      const persisted = await this.prisma.systemSetting.findUnique({ where: { key: dbKey } });
+      if (persisted) {
+        const parsed = JSON.parse(persisted.value);
+        if (parsed.result) {
+          PaymentsService.idempotencyStore.set(cacheKey, parsed);
+          return {
+            found: true,
+            exists: true,
+            status: 'completed',
+            payment: parsed.result,
+          };
+        }
+        return { found: true, exists: true, status: 'in_progress' };
+      }
+    } catch (err: any) {
+      this.logger.warn(`Failed reading idempotency setting: ${err.message}`);
+    }
+
+    return { found: false, exists: false };
   }
 }

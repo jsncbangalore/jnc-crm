@@ -36,6 +36,14 @@ export class PaymentsController {
     return this.paymentsService.record(dto, user);
   }
 
+  @Get('payments/idempotency/:key')
+  async checkIdempotency(
+    @Param('key') key: string,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.paymentsService.checkIdempotency(key, user);
+  }
+
   @Get('payments')
   async getPayments(
     @CurrentUser() user: ScopedUser,

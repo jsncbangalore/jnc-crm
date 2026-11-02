@@ -103,6 +103,7 @@ model Tenant {
   documentSeries      DocumentSeries[]
   brandingAssets      BrandingAsset[]
   webhookDeliveries   WebhookDelivery[]
+  bankAccounts        CompanyBankAccount[]
 
   @@index([status])
 }
@@ -944,6 +945,8 @@ model Invoice {
   paymentTerms    String?       @default("Advance")
   paymentStatus   String        @default("unpaid")
   pdfUrl          String?
+  bankAccountId   String?
+  bankAccountDetails Json?
   isVoided        Boolean       @default(false)
   voidedAt        DateTime?
   voidReason      String?
@@ -1276,6 +1279,8 @@ model PaymentRecord {
   notes           String?
   recordedById    String?
   reversalOfId    String?
+  bankAccountId   String?
+  bankAccountLabel String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -1492,4 +1497,31 @@ model WebhookDelivery {
   @@index([tenantId, status])
   @@index([status, nextRetryAt])
   @@map("webhook_deliveries")
+}
+
+// ==========================================
+// 22. COMPANY BANK ACCOUNTS
+// ==========================================
+
+model CompanyBankAccount {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  label              String
+  bankName           String
+  holderName         String?
+  accountNumber      String
+  accountNumberLast4 String
+  ifsc               String
+  branch             String?
+  upiId              String?
+  isDefault          Boolean  @default(false)
+  isDocumentDefault  Boolean  @default(false)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
 }

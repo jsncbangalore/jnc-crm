@@ -409,14 +409,67 @@ export class LedgerService {
    */
   async getAllOpenDocuments(tenantId: string, partyType: 'customer' | 'supplier', partyId: string) {
     if (partyType === 'customer') {
-      const invoices = await this.prisma.invoice.findMany({
-        where: {
+      let whereClause: any;
+
+      if (partyId === 'not-linked') {
+        whereClause = {
           tenantId,
-          OR: [{ companyId: partyId }, { customerId: partyId }],
+          companyId: null,
           docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note'] },
           isVoided: false,
           paymentStatus: { not: 'paid' },
-        },
+        };
+      } else if (partyId.startsWith('unlinked:')) {
+        const parts = partyId.split(':');
+        const targetName = decodeURIComponent(parts[1] || '').trim();
+        const targetGstin = decodeURIComponent(parts[2] || '').trim();
+
+        const matchConditions: any[] = [{ companyId: null }];
+        if (targetGstin) {
+          matchConditions.push({ customerGstin: { equals: targetGstin, mode: 'insensitive' } });
+        } else if (targetName) {
+          matchConditions.push({ customerName: { equals: targetName, mode: 'insensitive' } });
+        }
+
+        whereClause = {
+          tenantId,
+          AND: matchConditions,
+          docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note'] },
+          isVoided: false,
+          paymentStatus: { not: 'paid' },
+        };
+      } else {
+        // Registered Customer partyId
+        const company = await this.prisma.company.findUnique({
+          where: { id: partyId },
+          select: { id: true, name: true, gstin: true },
+        });
+
+        const orConditions: any[] = [{ companyId: partyId }, { customerId: partyId }];
+        if (company?.gstin?.trim()) {
+          orConditions.push({
+            companyId: null,
+            customerGstin: { equals: company.gstin.trim(), mode: 'insensitive' },
+          });
+        }
+        if (company?.name?.trim()) {
+          orConditions.push({
+            companyId: null,
+            customerName: { equals: company.name.trim(), mode: 'insensitive' },
+          });
+        }
+
+        whereClause = {
+          tenantId,
+          OR: orConditions,
+          docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note'] },
+          isVoided: false,
+          paymentStatus: { not: 'paid' },
+        };
+      }
+
+      const invoices = await this.prisma.invoice.findMany({
+        where: whereClause,
         orderBy: [{ invoiceDate: 'asc' }, { dueDate: 'asc' }, { invoiceNumber: 'asc' }],
       });
 
@@ -543,30 +596,59 @@ export class LedgerService {
       });
 
       if (unlinkedInvoices.length > 0) {
-        const totalUnlinkedBalance = unlinkedInvoices.reduce((sum, inv) => sum + (Number(inv.balanceDue ?? inv.totalAmount) || 0), 0);
-        const hasOverdueUnlinked = unlinkedInvoices.some((inv) => inv.dueDate && new Date(inv.dueDate) < new Date());
+        // Group unlinked invoices by customer name and GSTIN
+        const groups = new Map<string, typeof unlinkedInvoices>();
+        for (const inv of unlinkedInvoices) {
+          const rawName = (inv.customerName || 'Unlinked Customer').trim();
+          const rawGstin = (inv.customerGstin || '').trim().toUpperCase();
+          const key = `${rawName.toLowerCase()}:::${rawGstin}`;
+          if (!groups.has(key)) {
+            groups.set(key, []);
+          }
+          groups.get(key)!.push(inv);
+        }
 
-        results.push({
-          partyId: 'not-linked',
-          partyType: 'customer',
-          partyName: 'Not linked to a customer yet',
-          partyGstin: null,
-          partyPhone: null,
-          partyEmail: null,
-          closingBalance: Number(totalUnlinkedBalance.toFixed(2)),
-          balanceSide: 'Dr',
-          outstandingAmount: Number(totalUnlinkedBalance.toFixed(2)),
-          hasOverdue: hasOverdueUnlinked,
-          isUnlinked: true,
-          unlinkedCount: unlinkedInvoices.length,
-          ageing: {
-            current: Number(totalUnlinkedBalance.toFixed(2)),
-            days30: 0,
-            days60: 0,
-            days90Plus: 0,
-            total: Number(totalUnlinkedBalance.toFixed(2)),
-          },
-        });
+        for (const [, invList] of groups.entries()) {
+          const first = invList[0];
+          const groupName = (first.customerName || 'Unlinked Customer').trim();
+          const groupGstin = (first.customerGstin || '').trim().toUpperCase();
+          const groupTotalBalance = invList.reduce(
+            (sum, inv) => sum + (Number(inv.balanceDue ?? inv.totalAmount) || 0),
+            0
+          );
+          const hasOverdue = invList.some((inv) => inv.dueDate && new Date(inv.dueDate) < new Date());
+
+          if (
+            searchFilter &&
+            !groupName.toLowerCase().includes(searchFilter) &&
+            !groupGstin.toLowerCase().includes(searchFilter)
+          ) {
+            continue;
+          }
+
+          const partyId = `unlinked:${encodeURIComponent(groupName)}:${encodeURIComponent(groupGstin)}`;
+          results.push({
+            partyId,
+            partyType: 'customer',
+            partyName: groupName,
+            partyGstin: groupGstin || null,
+            partyPhone: first.customerPhone || null,
+            partyEmail: first.customerEmail || null,
+            closingBalance: Number(groupTotalBalance.toFixed(2)),
+            balanceSide: 'Dr',
+            outstandingAmount: Number(groupTotalBalance.toFixed(2)),
+            hasOverdue,
+            isUnlinked: true,
+            unlinkedCount: invList.length,
+            ageing: {
+              current: Number(groupTotalBalance.toFixed(2)),
+              days30: 0,
+              days60: 0,
+              days90Plus: 0,
+              total: Number(groupTotalBalance.toFixed(2)),
+            },
+          });
+        }
       }
     }
 

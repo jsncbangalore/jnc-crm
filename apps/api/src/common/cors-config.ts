@@ -17,6 +17,43 @@ export const DEV_DEFAULT_ORIGINS = [
   'http://localhost:3333',
 ];
 
+export const CORS_ALLOWED_METHODS = [
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'OPTIONS',
+  'HEAD',
+];
+
+export const CORS_ALLOWED_HEADERS = [
+  'Content-Type',
+  'Authorization',
+  'Accept',
+  'X-Requested-With',
+  'X-Expected-User-Id',
+  'Idempotency-Key',
+  'idempotency-key',
+  'X-Idempotency-Key',
+  'x-idempotency-key',
+  'X-Request-Id',
+  'x-request-id',
+  'X-App-Version',
+  'X-Client-Version',
+  'X-IndiaMart-Token',
+  'x-indiamart-token',
+  'Range',
+];
+
+export const CORS_EXPOSED_HEADERS = [
+  'Content-Disposition',
+  'Content-Range',
+  'Content-Length',
+  'X-Request-Id',
+  'Idempotency-Key',
+];
+
 /**
  * NOTE ON CLIENT / TENANT MARKETING WEBSITES:
  * Client marketing websites that host or embed public inquiry forms must NEVER

@@ -1514,4 +1514,17 @@ export const paymentsApi = {
   reverse: (id: string, reason: string) => api.post("/payments/" + id + "/reverse", { reason }),
   getRelated: (type: string, id: string) => api.get("/documents/" + type + "/" + id + "/related"),
   getCustomerAccountSummary: (customerId: string) => api.get("/customers/" + customerId + "/account-summary"),
+  checkIdempotency: (key: string) => api.get(`/payments/idempotency/${encodeURIComponent(key)}`),
 };
+
+export const bankAccountsApi = {
+  getAll: (includeInactive = false) => api.get(`/settings/bank-accounts${includeInactive ? '?includeInactive=true' : ''}`),
+  getOne: (id: string) => api.get(`/settings/bank-accounts/${id}`),
+  create: (data: any) => api.post('/settings/bank-accounts', data),
+  update: (id: string, data: any) => api.put(`/settings/bank-accounts/${id}`, data),
+  setDefault: (id: string) => api.patch(`/settings/bank-accounts/${id}/default`),
+  setDocumentDefault: (id: string) => api.patch(`/settings/bank-accounts/${id}/document-default`),
+  deactivate: (id: string) => api.patch(`/settings/bank-accounts/${id}/deactivate`),
+  activate: (id: string) => api.patch(`/settings/bank-accounts/${id}/activate`),
+};
+

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { brandingApi } from '../services/api';
 import { FormFeedback, FormFieldError } from '../components/common/FormFeedback';
+import CompanyBankAccountsSection from '../components/settings/CompanyBankAccountsSection';
 
 async function resizeImageInBrowser(
   file: File,
@@ -888,6 +889,9 @@ export default function BrandingSettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* ─── COMPANY BANK ACCOUNTS (MULTI-ACCOUNT MANAGEMENT) ──────────── */}
+        <CompanyBankAccountsSection />
 
         {/* ─── INVOICE PREFIX & BANKING DETAILS CARD ───────────────────────── */}
         <div className="card space-y-5">

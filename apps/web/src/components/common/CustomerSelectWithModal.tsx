@@ -12,7 +12,7 @@ import {
 export interface CustomerData {
   id: string;
   name: string;
-  phone: string;
+  phone?: string;
   email?: string;
   gstin?: string;
   address?: string;
@@ -96,7 +96,7 @@ export default function CustomerSelectWithModal({
       (c) =>
         c.name.toLowerCase().includes(q) ||
         (c.gstin && c.gstin.toLowerCase().includes(q)) ||
-        c.phone.includes(q)
+        (c.phone && c.phone.includes(q))
     );
   }, [customers, search]);
 
@@ -274,7 +274,7 @@ function CreateCustomerModal({
       if (match) return `A customer with GSTIN ${normGstin} already exists (${match.name}).`;
     }
     if (cleanPhone && cleanPhone.length >= 10) {
-      const match = existingCustomers.find((c) => c.phone.replace(/\D/g, '').slice(-10) === cleanPhone.slice(-10));
+      const match = existingCustomers.find((c) => c.phone && c.phone.replace(/\D/g, '').slice(-10) === cleanPhone.slice(-10));
       if (match) return `A customer with phone number ${phone} already exists (${match.name}).`;
     }
     if (normName && normName.length >= 3) {
@@ -291,8 +291,10 @@ function CreateCustomerModal({
     const nameRes = validatePersonOrCompanyName(name);
     if (!nameRes.valid) newErrors.name = nameRes.error!;
 
-    const phoneRes = validatePhone(phone);
-    if (!phoneRes.valid) newErrors.phone = phoneRes.error!;
+    if (phone.trim()) {
+      const phoneRes = validatePhone(phone);
+      if (!phoneRes.valid) newErrors.phone = phoneRes.error!;
+    }
 
     if (email.trim()) {
       const emailRes = validateEmail(email);
@@ -322,7 +324,7 @@ function CreateCustomerModal({
         name: name.trim(),
         gstin: gstin.trim().toUpperCase() || undefined,
         billingEmail: email.trim() || undefined,
-        phone: phone.trim(),
+        phone: phone.trim() || undefined,
         address: address.trim() || undefined,
         state,
         city: 'Bengaluru',
@@ -332,7 +334,7 @@ function CreateCustomerModal({
       onCreated({
         id: created.id,
         name: created.name,
-        phone: phone.trim(),
+        phone: phone.trim() || undefined,
         email: email.trim() || undefined,
         gstin: gstin.trim().toUpperCase() || undefined,
         address: address.trim() || undefined,
@@ -391,11 +393,10 @@ function CreateCustomerModal({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Phone Number <span className="text-rose-500">*</span>
+                Phone Number (Optional)
               </label>
               <input
                 type="text"
-                required
                 placeholder="10-digit number"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}

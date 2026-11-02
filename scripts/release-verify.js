@@ -105,6 +105,70 @@ function fetchJson(urlStr) {
   });
 }
 
+// 4. Send OPTIONS Preflight with custom headers to verify CORS contract
+function verifyCorsPreflight(baseUrl) {
+  const preflightUrl = `${baseUrl}/payments`;
+  const customHeaders = [
+    'Content-Type',
+    'Authorization',
+    'Accept',
+    'X-Requested-With',
+    'X-Expected-User-Id',
+    'Idempotency-Key',
+    'idempotency-key',
+    'X-Request-Id',
+    'Range',
+  ];
+
+  console.log(` [PREFLIGHT] Testing CORS OPTIONS preflight to: ${preflightUrl}`);
+  const parsed = new URL(preflightUrl);
+  const client = parsed.protocol === 'https:' ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const req = client.request(
+      preflightUrl,
+      {
+        method: 'OPTIONS',
+        headers: {
+          'Origin': 'http://localhost:5173',
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': customHeaders.join(', '),
+        },
+        timeout: 10000,
+      },
+      (res) => {
+        const allowHeadersRaw = res.headers['access-control-allow-headers'] || '';
+        const allowed = allowHeadersRaw.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+        const allowOrigin = res.headers['access-control-allow-origin'];
+        const allowMethods = res.headers['access-control-allow-methods'] || '';
+
+        console.log(` [PREFLIGHT] HTTP ${res.statusCode} | Allow-Origin: ${allowOrigin || 'none'}`);
+        console.log(` [PREFLIGHT] Allow-Methods: ${allowMethods || 'none'}`);
+        console.log(` [PREFLIGHT] Allow-Headers: ${allowHeadersRaw || 'none'}`);
+
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error(`Preflight rejected with status ${res.statusCode}`));
+        }
+
+        const missing = customHeaders.filter((h) => !allowed.includes(h.toLowerCase()));
+        if (missing.length > 0) {
+          return reject(new Error(`Preflight response does not allow headers: ${missing.join(', ')}`));
+        }
+
+        console.log(' [SUCCESS] All custom request headers are permitted by target CORS preflight.');
+        resolve();
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Preflight request timed out after 10 seconds'));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 async function run() {
   const rawTarget =
     process.argv[2] ||
@@ -159,6 +223,11 @@ async function run() {
     console.log(
       ` [SUCCESS] Target API version (${apiVersion}) meets or exceeds required version (${requiredVersion}).`
     );
+    console.log('-'.repeat(65));
+
+    // Verify CORS Preflight contract
+    await verifyCorsPreflight(baseUrl);
+
     console.log(' -> System is compatible for website release deployment.');
     console.log('='.repeat(65));
     process.exit(0);

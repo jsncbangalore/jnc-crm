@@ -5,7 +5,7 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   X,
   CreditCard,
@@ -19,11 +19,22 @@ import {
   paymentsApi,
   invoicesApi,
   ledgerApi,
+  bankAccountsApi,
   LedgerParty,
   LedgerOpenBill,
 } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import StyledSelect, { SelectOption } from './StyledSelect';
-import { validateMeaningfulNarration } from '@crm/shared-validation';
+import {
+  validateMeaningfulNarration,
+  validatePaymentReference,
+  getPaymentReferenceHint,
+  validateBankAccount,
+  validateIfsc,
+  validateUpiId,
+  formatDisplayDate,
+  formatFriendlyErrorMessage,
+} from '@crm/shared-validation';
 
 // Safe array extraction helper
 export function ensureArray<T>(val: any): T[] {
@@ -136,6 +147,35 @@ export default function UnifiedRecordPaymentModal({
   const [amountInput, setAmountInput] = useState<string>(defaultAmount ? String(defaultAmount) : '');
   const [isAmountFocused, setIsAmountFocused] = useState(false);
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const { user } = useAuth();
+  const canAddBankAccount = Boolean(
+    user && ['platform_super_admin', 'tenant_admin', 'admin'].includes(user.role)
+  );
+
+  // Idempotency state: created ONCE per window open, reused across retries
+  const [idempotencyKey, setIdempotencyKey] = useState<string>('');
+  const [networkErrorOccurred, setNetworkErrorOccurred] = useState<boolean>(false);
+  const [checkingStatus, setCheckingStatus] = useState<boolean>(false);
+
+  // Add Bank Account In-Place Drawer / Modal state
+  const [showAddBankModal, setShowAddBankModal] = useState<boolean>(false);
+  const [permissionDeniedMsg, setPermissionDeniedMsg] = useState<string | null>(null);
+  const [newBankForm, setNewBankForm] = useState({
+    bankName: '',
+    accountNumber: '',
+    ifsc: '',
+    branch: '',
+    upiId: '',
+    holderName: '',
+  });
+  const [newBankErrors, setNewBankErrors] = useState<Record<string, string>>({});
+  const [savingNewBank, setSavingNewBank] = useState<boolean>(false);
+
+  // Unlinked / Open Invoices Advance Confirmation prompt
+  const [showAdvancePrompt, setShowAdvancePrompt] = useState<boolean>(false);
+  const [promptOpenInvoicesAmount, setPromptOpenInvoicesAmount] = useState<number>(0);
+  const [confirmAdvanceOverride, setConfirmAdvanceOverride] = useState<boolean>(false);
+
   const [paymentMethod, setPaymentMethod] = useState<string>('NEFT');
   const [reference, setReference] = useState<string>('');
   const [bankAccount, setBankAccount] = useState<string>(companyBankDetails || '');
@@ -157,9 +197,18 @@ export default function UnifiedRecordPaymentModal({
 
   const wasOpenRef = useRef(false);
 
-  // Reset on open: when isOpen transitions to true, reset state cleanly
+  // Reset on open: when isOpen transitions to true, reset state cleanly and create fresh Idempotency-Key
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
+      const newKey = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setIdempotencyKey(newKey);
+      setNetworkErrorOccurred(false);
+      setCheckingStatus(false);
+      setShowAddBankModal(false);
+      setPermissionDeniedMsg(null);
+      setShowAdvancePrompt(false);
+      setConfirmAdvanceOverride(false);
+
       setPartyType(initialPartyType);
       setSelectedPartyId(effectiveDefaultPartyId);
       setAmountInput(defaultAmount ? String(defaultAmount) : '');
@@ -195,33 +244,56 @@ export default function UnifiedRecordPaymentModal({
       .then((res) => {
         const list: LedgerParty[] = ensureArray(res?.data);
         setPartiesList(list);
-        // Do NOT auto-select party if none provided (leaves select clear)
       })
       .catch((e) => console.error('Failed to load ledger parties:', e))
       .finally(() => setLoadingParties(false));
   }, [isOpen, partyType, initialParties]);
 
   // Load company bank details for electronic receipts
-  useEffect(() => {
-    if (!isOpen) return;
-    invoicesApi.getCompanyProfile()
+  const loadBankAccounts = useCallback(() => {
+    bankAccountsApi.getAll()
       .then((res) => {
-        const prof: any = res?.data;
-        const bName = prof?.bankDetails?.bankName || prof?.bankName;
-        const bAcc = prof?.bankDetails?.accountNumber || prof?.bankAccountNumber;
-        const bIfsc = prof?.bankDetails?.ifscCode || prof?.bankIfsc;
-        if (bName && bAcc) {
-          const rawAcc = String(bAcc).replace(/\s+/g, '');
-          const masked = rawAcc.length > 4 ? `••••${rawAcc.slice(-4)}` : rawAcc;
-          const label = `${bName} ${masked} (${bIfsc || 'Primary'})`;
-          setBankAccountsList([
-            { value: label, label: label, sublabel: `A/C: ${masked} • IFSC: ${bIfsc || '-'}` }
-          ]);
-          if (!bankAccount) setBankAccount(label);
+        const list = ensureArray(res?.data);
+        if (list.length > 0) {
+          const options: SelectOption[] = list.map((acc: any) => ({
+            value: acc.displayLabel || `${acc.bankName} ••••${acc.accountNumberLast4}`,
+            label: `${acc.bankName} ••••${acc.accountNumberLast4}`,
+            sublabel: `${acc.label} • IFSC: ${acc.ifsc || '-'}${acc.isDefault ? ' (Default)' : ''}`,
+          }));
+          setBankAccountsList(options);
+          if (!bankAccount) {
+            const def: any = list.find((a: any) => a.isDefault) || list[0];
+            if (def) {
+              setBankAccount(def.displayLabel || `${def.bankName} ••••${def.accountNumberLast4}`);
+            }
+          }
+          return;
         }
+        // Fallback to legacy company profile
+        return invoicesApi.getCompanyProfile().then((resProfile) => {
+          const prof: any = resProfile?.data;
+          const bName = prof?.bankDetails?.bankName || prof?.bankName;
+          const bAcc = prof?.bankDetails?.accountNumber || prof?.bankAccountNumber;
+          const bIfsc = prof?.bankDetails?.ifscCode || prof?.bankIfsc;
+          if (bName && bAcc) {
+            const rawAcc = String(bAcc).replace(/\s+/g, '');
+            const masked = rawAcc.length > 4 ? `••••${rawAcc.slice(-4)}` : rawAcc;
+            const label = `${bName} ${masked}`;
+            setBankAccountsList([
+              { value: label, label: label, sublabel: `A/C: ${masked} • IFSC: ${bIfsc || '-'}` }
+            ]);
+            if (!bankAccount) setBankAccount(label);
+          }
+        });
       })
       .catch(() => {});
-  }, [isOpen]);
+  }, [bankAccount]);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadBankAccounts();
+    }
+  }, [isOpen, loadBankAccounts]);
 
   const selectedParty = useMemo(() => {
     return partiesList.find((p) => p.partyId === selectedPartyId) || null;
@@ -404,6 +476,103 @@ export default function UnifiedRecordPaymentModal({
     { value: 'Credit Card', label: 'Credit Card' },
   ];
 
+  const handleAddBankAccountClick = () => {
+    setPermissionDeniedMsg(null);
+    if (!canAddBankAccount) {
+      setPermissionDeniedMsg('Ask an administrator to add a company bank account.');
+      return;
+    }
+    setNewBankForm({
+      bankName: '',
+      accountNumber: '',
+      ifsc: '',
+      branch: '',
+      upiId: '',
+      holderName: '',
+    });
+    setNewBankErrors({});
+    setShowAddBankModal(true);
+  };
+
+  const handleSaveNewBankAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs: Record<string, string> = {};
+
+    if (!newBankForm.bankName.trim()) {
+      errs.bankName = 'Bank name is required.';
+    }
+
+    const accCheck = validateBankAccount(newBankForm.accountNumber, true);
+    if (!accCheck.valid) {
+      errs.accountNumber = accCheck.error || 'Invalid account number.';
+    }
+
+    const ifscCheck = validateIfsc(newBankForm.ifsc, true);
+    if (!ifscCheck.valid) {
+      errs.ifsc = ifscCheck.error || 'Invalid IFSC code.';
+    }
+
+    if (newBankForm.upiId.trim()) {
+      const upiCheck = validateUpiId(newBankForm.upiId, false);
+      if (!upiCheck.valid) {
+        errs.upiId = upiCheck.error || 'Invalid UPI ID format.';
+      }
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setNewBankErrors(errs);
+      return;
+    }
+
+    setSavingNewBank(true);
+    try {
+      const res = await bankAccountsApi.create({
+        bankName: newBankForm.bankName.trim(),
+        accountNumber: newBankForm.accountNumber.trim(),
+        ifsc: newBankForm.ifsc.trim().toUpperCase(),
+        branch: newBankForm.branch.trim() || undefined,
+        upiId: newBankForm.upiId.trim() || undefined,
+        holderName: newBankForm.holderName.trim() || undefined,
+        isDefault: bankAccountsList.length === 0,
+      });
+
+      const created = res.data;
+      const createdLabel = created.displayLabel || `${created.bankName} ••••${created.accountNumberLast4}`;
+      const newOption: SelectOption = {
+        value: createdLabel,
+        label: createdLabel,
+        sublabel: `${created.label} • IFSC: ${created.ifsc || '-'}`,
+      };
+
+      setBankAccountsList((prev) => [newOption, ...prev]);
+      setBankAccount(createdLabel);
+      setShowAddBankModal(false);
+    } catch (err: any) {
+      setNewBankErrors({ form: err?.response?.data?.message || err?.message || 'Failed to save bank account.' });
+    } finally {
+      setSavingNewBank(false);
+    }
+  };
+
+  const checkPaymentSavedStatus = async () => {
+    if (!idempotencyKey) return;
+    setCheckingStatus(true);
+    try {
+      const res = await paymentsApi.checkIdempotency(idempotencyKey);
+      if (res?.data?.exists) {
+        onSuccess('Payment confirmed and saved.');
+        onClose();
+      } else {
+        setErr('Payment was not recorded on server. You may safely retry.');
+        setNetworkErrorOccurred(false);
+      }
+    } catch {
+      setErr('Cannot reach the server. Please check your network connection.');
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+
   const validateForm = (): boolean => {
     setErr(null);
 
@@ -417,9 +586,9 @@ export default function UnifiedRecordPaymentModal({
       return false;
     }
 
-    const isElectronic = ['NEFT', 'RTGS', 'UPI', 'Cheque'].includes(paymentMethod);
-    if (isElectronic && !reference.trim()) {
-      setErr(`Reference / UTR number is mandatory for ${paymentMethod} payments.`);
+    const refCheck = validatePaymentReference(paymentMethod, reference);
+    if (!refCheck.valid) {
+      setErr(refCheck.error || `Invalid reference for ${paymentMethod} payments.`);
       return false;
     }
 
@@ -450,8 +619,8 @@ export default function UnifiedRecordPaymentModal({
     return true;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent, overrideAdvance = false) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (submitting) return; // Prevent double-submit
     if (!validateForm()) return;
 
@@ -465,19 +634,28 @@ export default function UnifiedRecordPaymentModal({
       return;
     }
 
+    const totalOpenDuePaise = allocations.reduce((sum, a) => sum + toPaise(a.balanceDue), 0);
+    const activeAllocations = allocations
+      .filter((a) => a.selected && toPaise(a.allocatedAmount) > 0)
+      .map((a) => ({
+        documentId: a.documentId,
+        invoiceId: a.documentId,
+        amount: a.allocatedAmount,
+      }));
+
+    // If posted entirely as advance while having open invoices, prompt user
+    if (activeAllocations.length === 0 && totalOpenDuePaise > 0 && enteredAmt > 0 && !confirmAdvanceOverride && !overrideAdvance) {
+      setPromptOpenInvoicesAmount(fromPaise(totalOpenDuePaise));
+      setShowAdvancePrompt(true);
+      return;
+    }
+
     setSubmitting(true);
     setErr(null);
 
     try {
-      const activeAllocations = allocations
-        .filter((a) => a.selected && toPaise(a.allocatedAmount) > 0)
-        .map((a) => ({
-          documentId: a.documentId,
-          invoiceId: a.documentId,
-          amount: a.allocatedAmount,
-        }));
-
-      const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const keyToUse = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idem-${Date.now()}`);
+      if (!idempotencyKey) setIdempotencyKey(keyToUse);
 
       const payload: any = {
         partyType,
@@ -494,17 +672,17 @@ export default function UnifiedRecordPaymentModal({
         bankAccount: paymentMethod === 'Cash' ? undefined : (bankAccount || undefined),
         notes: narration.trim() || undefined,
         narration: narration.trim() || undefined,
-        isAdvance,
-        allowAdvance,
+        isAdvance: isAdvance || overrideAdvance || confirmAdvanceOverride,
+        allowAdvance: allowAdvance || overrideAdvance || confirmAdvanceOverride,
         confirmDuplicate,
         confirmedLargePayment: Boolean(confirmedLargeAmount || enteredAmt > 1000000),
         typedConfirmation: enteredAmt > 10000000 ? 'CONFIRM' : undefined,
         allocations: activeAllocations.length > 0 ? activeAllocations : undefined,
-        idempotencyKey,
+        idempotencyKey: keyToUse,
       };
 
       const res = await paymentsApi.record(payload, {
-        headers: { 'idempotency-key': idempotencyKey }
+        headers: { 'idempotency-key': keyToUse }
       });
 
       if (res.data?.duplicateWarning && !confirmDuplicate) {
@@ -517,12 +695,23 @@ export default function UnifiedRecordPaymentModal({
       onSuccess(res.data?.message || 'Payment recorded successfully.');
       onClose();
     } catch (apiErr: any) {
-      const errMsg = normalizeError(apiErr);
-      if (apiErr?.response?.status === 409 || errMsg.toLowerCase().includes('duplicate')) {
-        setDuplicateWarning(errMsg);
-        setConfirmDuplicate(true);
+      const isNetwork =
+        apiErr?.code === 'ECONNABORTED' ||
+        apiErr?.code === 'ERR_NETWORK' ||
+        !apiErr?.response ||
+        /Network Error|Failed to fetch|NetworkError/i.test(apiErr?.message || '');
+
+      if (isNetwork) {
+        setNetworkErrorOccurred(true);
+        setErr('Payment not confirmed. Check the statement before trying again.');
       } else {
-        setErr(errMsg);
+        const errMsg = normalizeError(apiErr);
+        if (apiErr?.response?.status === 409 || errMsg.toLowerCase().includes('duplicate')) {
+          setDuplicateWarning(errMsg);
+          setConfirmDuplicate(true);
+        } else {
+          setErr(errMsg);
+        }
       }
     } finally {
       setSubmitting(false);
@@ -570,9 +759,21 @@ export default function UnifiedRecordPaymentModal({
             
             {/* Error Message */}
             {err && (
-              <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 rounded-xl text-red-600 dark:text-red-400 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{err}</span>
+              <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 rounded-xl text-red-600 dark:text-red-400 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{err}</span>
+                </div>
+                {networkErrorOccurred && (
+                  <button
+                    type="button"
+                    onClick={checkPaymentSavedStatus}
+                    disabled={checkingStatus}
+                    className="px-3 py-1 text-xs font-bold bg-white dark:bg-slate-800 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 rounded-lg shadow-sm hover:bg-red-50 whitespace-nowrap"
+                  >
+                    {checkingStatus ? 'Checking...' : 'Check if it was saved'}
+                  </button>
+                )}
               </div>
             )}
 
@@ -607,7 +808,7 @@ export default function UnifiedRecordPaymentModal({
                       data-testid="unified-payment-amount-input" autoFocus placeholder="0.00"
                       value={
                         isAmountFocused
-                          ? amountInput
+                           ? amountInput
                           : (amountInput ? formatIndianCurrency(amountInput) : '')
                       }
                       onFocus={() => setIsAmountFocused(true)}
@@ -710,20 +911,37 @@ export default function UnifiedRecordPaymentModal({
                 </label>
                 <input
                   type="text"
-                  placeholder={paymentMethod === 'Cash' ? 'Optional for Cash' : 'e.g. UTR-92837189'}
+                  placeholder={paymentMethod === 'Cash' ? 'Optional for Cash' : (paymentMethod === 'UPI' ? '12-digit UTR' : (paymentMethod === 'Cheque' ? '6-digit Cheque No' : '8-22 chars reference'))}
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-white dark:bg-[#141722] border border-slate-300 dark:border-[#2A3042] rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono"
                 />
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                  {getPaymentReferenceHint(paymentMethod)}
+                </p>
               </div>
             </div>
 
-            {/* 4. Company Bank Account (or link if none) */}
+            {/* 4. Company Bank Account (or in-place add) */}
             {paymentMethod !== 'Cash' && (
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Company Bank Account
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block font-bold text-slate-700 dark:text-slate-300">
+                    Company Bank Account
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddBankAccountClick}
+                    className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1"
+                  >
+                    + Add a bank account
+                  </button>
+                </div>
+                {permissionDeniedMsg && (
+                  <div className="mb-2 p-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 rounded-lg text-xs">
+                    {permissionDeniedMsg}
+                  </div>
+                )}
                 {bankAccountsList.length > 0 ? (
                   <StyledSelect
                     value={bankAccount}
@@ -734,9 +952,13 @@ export default function UnifiedRecordPaymentModal({
                 ) : (
                   <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between">
                     <span>No company bank account configured.</span>
-                    <a href="/settings" className="font-bold underline text-indigo-600 dark:text-indigo-400 hover:text-indigo-700">
-                      Add a bank account in Settings &rarr;
-                    </a>
+                    <button
+                      type="button"
+                      onClick={handleAddBankAccountClick}
+                      className="font-bold underline text-indigo-600 dark:text-indigo-400 hover:text-indigo-700"
+                    >
+                      + Add a bank account now &rarr;
+                    </button>
                   </div>
                 )}
               </div>
@@ -801,7 +1023,8 @@ export default function UnifiedRecordPaymentModal({
                           </div>
                           <div className="text-slate-400 text-[10.5px]">
                             Due: <span className="font-bold text-amber-600 dark:text-amber-400">₹{formatIndianCurrency(row.balanceDue)}</span>
-                            {row.dueDate && <span className="ml-2">Due date: {row.dueDate}</span>}
+                            {row.date && <span className="ml-2">Date: {formatDisplayDate(row.date)}</span>}
+                            {row.dueDate && <span className="ml-2">Due: {formatDisplayDate(row.dueDate)}</span>}
                           </div>
                         </div>
                       </div>
@@ -989,6 +1212,186 @@ export default function UnifiedRecordPaymentModal({
                   Confirm & Proceed
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Advance Confirmation when Open Invoices Exist */}
+        {showAdvancePrompt && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="w-5 h-5" />
+                </span>
+                <h4 className="text-base font-bold text-slate-900 dark:text-white">Open Invoices Exist</h4>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                This party owes <strong>₹{formatIndianCurrency(promptOpenInvoicesAmount)}</strong>. Apply to invoices instead?
+              </p>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancePrompt(false)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmAdvanceOverride(true);
+                    setShowAdvancePrompt(false);
+                    handleSubmit(undefined, true);
+                  }}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-200 hover:bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-white"
+                >
+                  Post as Advance
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAdvancePrompt(false);
+                    handleAutoAllocateOldestFirst();
+                  }}
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+                >
+                  Apply to Invoices
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* In-Place Drawer / Modal: Add Bank Account */}
+        {showAddBankModal && (
+          <div className="fixed inset-0 z-[85] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-indigo-600" />
+                  Add Company Bank Account
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowAddBankModal(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {newBankErrors.form && (
+                <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 rounded-lg text-xs">
+                  {newBankErrors.form}
+                </div>
+              )}
+
+              <form onSubmit={handleSaveNewBankAccount} className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Bank Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. HDFC Bank"
+                    value={newBankForm.bankName}
+                    onChange={(e) => setNewBankForm({ ...newBankForm, bankName: e.target.value })}
+                    className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                  {newBankErrors.bankName && <p className="text-rose-500 text-[10px] mt-0.5">{newBankErrors.bankName}</p>}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Account Number *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="9-18 digits"
+                      value={newBankForm.accountNumber}
+                      onChange={(e) => setNewBankForm({ ...newBankForm, accountNumber: e.target.value })}
+                      className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
+                    />
+                    {newBankErrors.accountNumber && <p className="text-rose-500 text-[10px] mt-0.5">{newBankErrors.accountNumber}</p>}
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      IFSC Code *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="11 characters (e.g. HDFC0001234)"
+                      value={newBankForm.ifsc}
+                      onChange={(e) => setNewBankForm({ ...newBankForm, ifsc: e.target.value.toUpperCase() })}
+                      className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono uppercase"
+                    />
+                    {newBankErrors.ifsc && <p className="text-rose-500 text-[10px] mt-0.5">{newBankErrors.ifsc}</p>}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Branch Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Koramangala"
+                      value={newBankForm.branch}
+                      onChange={(e) => setNewBankForm({ ...newBankForm, branch: e.target.value })}
+                      className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      UPI ID (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. company@okhdfcbank"
+                      value={newBankForm.upiId}
+                      onChange={(e) => setNewBankForm({ ...newBankForm, upiId: e.target.value })}
+                      className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    />
+                    {newBankErrors.upiId && <p className="text-rose-500 text-[10px] mt-0.5">{newBankErrors.upiId}</p>}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Account Holder Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Acme Enterprises Pvt Ltd"
+                    value={newBankForm.holderName}
+                    onChange={(e) => setNewBankForm({ ...newBankForm, holderName: e.target.value })}
+                    className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddBankModal(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingNewBank}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50"
+                  >
+                    {savingNewBank ? 'Saving...' : 'Save & Select Account'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

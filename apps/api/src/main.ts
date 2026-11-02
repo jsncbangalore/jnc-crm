@@ -62,7 +62,14 @@ import { json, urlencoded } from 'express';
 import * as cors from 'cors';
 import helmet from 'helmet';
 import * as cookieParser from 'cookie-parser';
-import { corsOriginCallback, getCorsOriginsCount, getAllowedCorsHosts } from './common/cors-config';
+import {
+  corsOriginCallback,
+  getCorsOriginsCount,
+  getAllowedCorsHosts,
+  CORS_ALLOWED_METHODS,
+  CORS_ALLOWED_HEADERS,
+  CORS_EXPOSED_HEADERS,
+} from './common/cors-config';
 import { getFrontendUrl, getDatabaseProjectRef } from './common/url.util';
 import { requestIdMiddleware } from './common/request-id.middleware';
 import { GlobalHttpExceptionFilter } from './common/http-exception.filter';
@@ -344,16 +351,9 @@ async function bootstrap() {
   await verifyMigrationsAppliedOrExit(prismaService);
   const mainCorsMiddleware = cors({
     origin: corsOriginCallback,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'Accept',
-      'X-Requested-With',
-      'X-Expected-User-Id',
-      'Range',
-    ],
-    exposedHeaders: ['Content-Disposition', 'Content-Range', 'Content-Length', 'X-Request-Id'],
+    methods: CORS_ALLOWED_METHODS,
+    allowedHeaders: CORS_ALLOWED_HEADERS,
+    exposedHeaders: CORS_EXPOSED_HEADERS,
     credentials: true,
   });
 

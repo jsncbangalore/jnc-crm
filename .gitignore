@@ -43,3 +43,4 @@ apps/api/data/*.json
 *.gpg
 purchase-documents/
 logs/
+*.traineddata

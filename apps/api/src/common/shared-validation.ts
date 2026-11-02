@@ -152,9 +152,9 @@ export const validatePhone = (raw: string): { valid: boolean; error?: string; va
     return { valid: false, error: 'Phone number is required.', value: '' };
   }
 
-  // If Indian mobile number (+91, 0, 91, or 10 digits starting 6-9)
+  // If Indian mobile or business phone number (10 digits starting 1-9)
   const indianNormalized = normalizePhoneNumber(cleaned);
-  if (/^[6-9]\d{9}$/.test(indianNormalized)) {
+  if (/^[1-9]\d{9}$/.test(indianNormalized)) {
     return { valid: true, value: indianNormalized };
   }
 
@@ -182,7 +182,7 @@ export const validatePhone = (raw: string): { valid: boolean; error?: string; va
   }
   return {
     valid: false,
-    error: 'Indian mobile number must start with 6, 7, 8, or 9.',
+    error: 'Phone number must be a valid 10-digit number.',
     value: indianNormalized,
   };
 };
@@ -722,3 +722,132 @@ export const formatIndianCurrency = (amount: number | string): string => {
     maximumFractionDigits: 2,
   })}`;
 };
+
+// 20. UPI ID Rules
+export const UPI_ID_REGEX = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z0-9]{2,64}$/;
+
+export const validateUpiId = (
+  raw?: string | null,
+  required = false
+): { valid: boolean; error?: string; value: string } => {
+  const value = (raw || '').trim();
+  if (!value) {
+    if (required) return { valid: false, error: 'UPI ID is required.', value: '' };
+    return { valid: true, value: '' };
+  }
+  if (!UPI_ID_REGEX.test(value)) {
+    return { valid: false, error: 'Invalid UPI ID format (e.g. name@bank or merchant@upi).', value };
+  }
+  return { valid: true, value };
+};
+
+// 21. Payment Reference Validation Rules by Mode
+export const UPI_REF_REGEX = /^\d{12}$/;
+export const CHEQUE_REF_REGEX = /^\d{6}$/;
+export const NEFT_RTGS_IMPS_REF_REGEX = /^[a-zA-Z0-9]{8,22}$/;
+
+export const getPaymentReferenceHint = (method: string): string => {
+  const m = (method || '').toUpperCase();
+  if (m === 'CASH') {
+    return 'Cash payments do not require a reference number.';
+  }
+  if (m === 'CHEQUE') {
+    return 'Cheque number must be exactly 6 digits.';
+  }
+  if (m === 'UPI') {
+    return 'UPI reference must be a 12-digit transaction number (UTR).';
+  }
+  return 'NEFT/RTGS/IMPS reference must be 8 to 22 alphanumeric characters.';
+};
+
+export const validatePaymentReference = (
+  method: string,
+  rawRef?: string | null
+): { valid: boolean; error?: string; hint: string; value: string } => {
+  const m = (method || '').toUpperCase();
+  const value = (rawRef || '').trim();
+  const hint = getPaymentReferenceHint(method);
+
+  if (m === 'CASH') {
+    return { valid: true, hint, value: '' };
+  }
+
+  if (!value) {
+    return { valid: false, error: 'Reference / UTR number is required.', hint, value: '' };
+  }
+
+  if (m === 'CHEQUE') {
+    if (!CHEQUE_REF_REGEX.test(value)) {
+      return { valid: false, error: 'Cheque number must be exactly 6 digits.', hint, value };
+    }
+    return { valid: true, hint, value };
+  }
+
+  if (m === 'UPI') {
+    if (!UPI_REF_REGEX.test(value)) {
+      return { valid: false, error: 'UPI reference must be a 12-digit transaction number (UTR).', hint, value };
+    }
+    return { valid: true, hint, value };
+  }
+
+  if (!NEFT_RTGS_IMPS_REF_REGEX.test(value)) {
+    return { valid: false, error: 'NEFT/RTGS/IMPS reference must be 8 to 22 alphanumeric characters.', hint, value };
+  }
+
+  return { valid: true, hint, value };
+};
+
+// 22. Standard Display Date Formatter ('24 Aug 2026')
+const MONTH_ABBRS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export const formatDisplayDate = (raw?: string | Date | null): string => {
+  if (!raw) return '-';
+  const d = typeof raw === 'string' ? new Date(raw) : raw;
+  if (isNaN(d.getTime())) return '-';
+  const day = d.getDate();
+  const month = MONTH_ABBRS[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
+};
+
+// 23. Shared Friendly Error Layer
+export const formatFriendlyErrorMessage = (error: any, fallback = 'An unexpected error occurred.'): string => {
+  if (!error) return fallback;
+  if (typeof error === 'string') return error;
+
+  const code = error?.code || '';
+  const msg = error?.message || '';
+  if (
+    code === 'ECONNABORTED' ||
+    code === 'ERR_NETWORK' ||
+    code === 'ETIMEDOUT' ||
+    code === 'ECONNREFUSED' ||
+    !error.response ||
+    /Network Error|Failed to fetch|NetworkError/i.test(msg)
+  ) {
+    return 'Cannot reach the server. Your payment was not saved.';
+  }
+
+  const data = error.response?.data;
+  if (data) {
+    if (Array.isArray(data.message)) {
+      return data.message.join('. ');
+    }
+    if (typeof data.message === 'string') {
+      return data.message;
+    }
+    if (Array.isArray(data.errors)) {
+      return data.errors.map((e: any) => e.message || String(e)).join('. ');
+    }
+    if (typeof data.error === 'string') {
+      return data.error;
+    }
+  }
+
+  if (typeof msg === 'string' && msg) {
+    return msg;
+  }
+
+  return 'Failed to save changes. Please try again.';
+};
+

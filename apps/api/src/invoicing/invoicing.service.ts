@@ -20,6 +20,7 @@ import { calculateGst, numberToIndianWords } from './invoice-config';
 import { generateInvoicePdfBuffer } from './pdf-generator';
 import { validateLutStatus } from './lut-validator';
 import { sanitizeHtml } from '../common/html-sanitize.util';
+import { decryptAtRest } from '../common/encryption.util';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -979,6 +980,33 @@ export class InvoicingService {
           }
         } catch {}
 
+        let effectiveBankName = tenant.bankName || '';
+        let effectiveBankAccountNumber = tenant.bankAccountNumber || '';
+        let effectiveBankIfsc = tenant.bankIfsc || '';
+        let effectiveBankBranch = tenant.bankBranch || '';
+        let effectiveHolderName = tenant.name || '';
+        let effectiveBankUpi = tenant.bankUpi || '';
+
+        try {
+          const docBank =
+            (await (this.prisma as any).companyBankAccount?.findFirst({
+              where: { tenantId: tenant.id, isActive: true, isDocumentDefault: true },
+            })) ||
+            (await (this.prisma as any).companyBankAccount?.findFirst({
+              where: { tenantId: tenant.id, isActive: true, isDefault: true },
+            }));
+
+          if (docBank) {
+            const rawNum = decryptAtRest(docBank.accountNumber) || docBank.accountNumberLast4;
+            effectiveBankName = docBank.bankName;
+            effectiveBankAccountNumber = rawNum;
+            effectiveBankIfsc = docBank.ifsc;
+            effectiveBankBranch = docBank.branch || '';
+            effectiveHolderName = docBank.holderName || tenant.name || '';
+            effectiveBankUpi = docBank.upiId || '';
+          }
+        } catch {}
+
         return {
           tenantId: tenant.id,
           companyName: tenant.name,
@@ -992,11 +1020,20 @@ export class InvoicingService {
           phone: tenant.phone || '',
           email: tenant.email || '',
           website: tenant.website || '',
-          bankName: tenant.bankName || '',
-          bankAccountNumber: tenant.bankAccountNumber || '',
-          bankIfsc: tenant.bankIfsc || '',
-          bankBranch: tenant.bankBranch || '',
-          bankAccountHolder: tenant.name || '',
+          bankName: effectiveBankName,
+          bankAccountNumber: effectiveBankAccountNumber,
+          bankIfsc: effectiveBankIfsc,
+          bankBranch: effectiveBankBranch,
+          bankAccountHolder: effectiveHolderName,
+          bankUpi: effectiveBankUpi,
+          bankDetails: {
+            bankName: effectiveBankName,
+            accountNumber: effectiveBankAccountNumber,
+            ifscCode: effectiveBankIfsc,
+            branch: effectiveBankBranch,
+            accountHolderName: effectiveHolderName,
+            upiId: effectiveBankUpi,
+          },
           lutBondNo: tenant.lutBondNo || '',
           logoUrl:
             logoBase64 ||
