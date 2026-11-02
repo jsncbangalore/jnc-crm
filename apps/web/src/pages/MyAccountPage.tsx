@@ -9,7 +9,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { authApi } from '../services/api';
+import { useBranding } from '../contexts/BrandingContext';
+import { authApi, brandingApi } from '../services/api';
 import {
   User,
   Shield,
@@ -37,6 +38,8 @@ import {
   Copy,
   Download,
   X,
+  ArrowLeft,
+  ArrowRight,
 } from 'lucide-react';
 import { drawQrToCanvas } from '../utils/qr';
 import { openCookiePreferencesPanel } from '../utils/cookieConsent';
@@ -85,8 +88,27 @@ const maskPhoneNumber = (rawPhone?: string | null): string => {
 export default function MyAccountPage() {
   const navigate = useNavigate();
   const { user, logout, updateUser } = useAuth();
+  const { branding } = useBranding();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'devices' | 'activity'>('profile');
+
+  // Company Organization Profile state
+  const [companyProfile, setCompanyProfile] = useState<any>(null);
+  const [loadingCompanyProfile, setLoadingCompanyProfile] = useState(false);
+
+  useEffect(() => {
+    if (user?.tenantId) {
+      setLoadingCompanyProfile(true);
+      brandingApi.getProfile()
+        .then((res) => {
+          if (res?.data) {
+            setCompanyProfile(res.data);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoadingCompanyProfile(false));
+    }
+  }, [user?.tenantId]);
 
   // Suspicious activity reporting state ("This wasn't me")
   const [suspiciousModalOpen, setSuspiciousModalOpen] = useState(false);
@@ -771,11 +793,40 @@ export default function MyAccountPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">My Account</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Manage your personal profile, security credentials, active devices, and login history.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">My Account</h1>
+            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+              Personal Profile
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Manage your personal profile, security credentials, active devices, and view linked company branding profile.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {(user?.role === 'tenant_admin' || user?.role === 'admin') && (
+            <button
+              type="button"
+              onClick={() => navigate('/settings/branding')}
+              className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5 cursor-pointer font-bold"
+              title="Open Company Branding, GST & Bank Settlement Account"
+            >
+              <Building2 size={13} className="text-crm-teal" />
+              <span>Company Branding & GST</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="btn-ghost text-xs px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center gap-1.5 cursor-pointer font-bold"
+          >
+            <ArrowLeft size={13} />
+            <span>Dashboard</span>
+          </button>
+        </div>
       </div>
 
       {/* Tabs Bar */}
@@ -873,6 +924,46 @@ export default function MyAccountPage() {
                 <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-xs font-semibold capitalize">
                   {user?.role?.replace('_', ' ')}
                 </div>
+              </div>
+
+              {/* Linked Company Organization */}
+              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-left w-full space-y-2">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Company Organization</span>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 mt-0.5">
+                    <Building2 size={13} className="text-crm-teal shrink-0" />
+                    <span className="truncate">{branding?.companyDisplayName || companyProfile?.name || user?.tenant?.name || 'JNC CRM'}</span>
+                  </p>
+                </div>
+                {(companyProfile?.gstin || (user?.tenant as any)?.gstin) && (
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">GSTIN</span>
+                    <p className="text-xs font-mono font-semibold text-slate-700 dark:text-slate-300 mt-0.5">
+                      {companyProfile?.gstin || (user?.tenant as any)?.gstin}
+                    </p>
+                  </div>
+                )}
+                {(companyProfile?.bankName || (user?.tenant as any)?.bankName) && (
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Settlement Bank</span>
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mt-0.5">
+                      {companyProfile?.bankName || (user?.tenant as any)?.bankName} {(companyProfile?.bankAccountNumber || (user?.tenant as any)?.bankAccountNumber) ? `••••${String(companyProfile?.bankAccountNumber || (user?.tenant as any)?.bankAccountNumber).slice(-4)}` : ''}
+                    </p>
+                  </div>
+                )}
+                {(user?.role === 'tenant_admin' || user?.role === 'admin') && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/settings/branding')}
+                    className="w-full mt-2 text-xs font-semibold py-1.5 px-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-crm-blue/10 hover:text-crm-blue transition-colors flex items-center justify-between cursor-pointer text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Building2 size={12} className="text-crm-teal" />
+                      <span>Company Settings</span>
+                    </span>
+                    <ArrowRight size={12} />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1063,6 +1154,102 @@ export default function MyAccountPage() {
                     >
                       Cookie settings
                     </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Company Branding, Tax & Banking Overview Card */}
+              <div className="p-6 rounded-2xl bg-white dark:bg-[#121622] border border-slate-200 dark:border-slate-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                      <Building2 size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white">Company Branding, Tax & Banking Profile</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Central organization identity, GST tax profile, and default settlement account.
+                      </p>
+                    </div>
+                  </div>
+
+                  {(user?.role === 'tenant_admin' || user?.role === 'admin') && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/settings/branding')}
+                      className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5 font-bold self-start sm:self-auto cursor-pointer"
+                    >
+                      <Building2 size={13} className="text-crm-teal" />
+                      <span>Edit Branding & GST Profile &rarr;</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                  {/* Company Display Name */}
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
+                    <span className="text-slate-500 dark:text-slate-400">Company Display Name</span>
+                    <p className="font-bold text-slate-900 dark:text-white mt-0.5">
+                      {branding?.companyDisplayName || companyProfile?.name || user?.tenant?.name || 'JNC CRM'}
+                    </p>
+                  </div>
+
+                  {/* GSTIN */}
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
+                    <span className="text-slate-500 dark:text-slate-400">Company GSTIN</span>
+                    <p className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">
+                      {companyProfile?.gstin || (user?.tenant as any)?.gstin || 'Not configured'}
+                    </p>
+                  </div>
+
+                  {/* PAN */}
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
+                    <span className="text-slate-500 dark:text-slate-400">Company PAN</span>
+                    <p className="font-mono font-bold text-slate-900 dark:text-white mt-0.5">
+                      {companyProfile?.pan || (user?.tenant as any)?.pan || 'Not configured'}
+                    </p>
+                  </div>
+
+                  {/* Settlement Bank */}
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
+                    <span className="text-slate-500 dark:text-slate-400">Settlement Bank</span>
+                    <p className="font-semibold text-slate-900 dark:text-white mt-0.5">
+                      {companyProfile?.bankName || (user?.tenant as any)?.bankName || 'Not configured'}
+                    </p>
+                  </div>
+
+                  {/* Account Number */}
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
+                    <span className="text-slate-500 dark:text-slate-400">Account Number</span>
+                    <p className="font-mono font-semibold text-slate-900 dark:text-white mt-0.5">
+                      {(companyProfile?.bankAccountNumber || (user?.tenant as any)?.bankAccountNumber)
+                        ? `••••${String(companyProfile?.bankAccountNumber || (user?.tenant as any)?.bankAccountNumber).slice(-4)}`
+                        : 'Not configured'}
+                    </p>
+                  </div>
+
+                  {/* IFSC Code */}
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
+                    <span className="text-slate-500 dark:text-slate-400">IFSC Code</span>
+                    <p className="font-mono font-semibold text-slate-900 dark:text-white mt-0.5">
+                      {companyProfile?.bankIfsc || (user?.tenant as any)?.bankIfsc || 'Not configured'}
+                    </p>
+                  </div>
+
+                  {/* Official Billing Email */}
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 sm:col-span-2">
+                    <span className="text-slate-500 dark:text-slate-400">Official Billing Email</span>
+                    <p className="font-semibold text-slate-900 dark:text-white mt-0.5">
+                      {companyProfile?.email || (user?.tenant as any)?.email || user?.email || 'Not configured'}
+                    </p>
+                  </div>
+
+                  {/* Registered City & State */}
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
+                    <span className="text-slate-500 dark:text-slate-400">Registered Location</span>
+                    <p className="font-semibold text-slate-900 dark:text-white mt-0.5">
+                      {[companyProfile?.city || (user?.tenant as any)?.city, companyProfile?.state || (user?.tenant as any)?.state].filter(Boolean).join(', ') || 'Not configured'}
+                    </p>
                   </div>
                 </div>
               </div>

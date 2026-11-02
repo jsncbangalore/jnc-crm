@@ -291,7 +291,7 @@ async function runPromptDSuite() {
 
       // Verify format adheres to REC/YY-YY/NNNN with no timestamp fallback
       for (const num of formattedNumbers) {
-        assert(
+        assert.ok(
           /^REC\/\d{2}-\d{2}\/\d{4}$/.test(num),
           `Number ${num} must strictly match REC/YY-YY/NNNN format without timestamp suffixes`
         );
@@ -351,7 +351,7 @@ async function runPromptDSuite() {
 
       // Attempt 1: Server executes payment and saves idempotency state
       const firstResult = await paymentsService.record(paymentInput, testUser);
-      assert(firstResult.payment?.id, 'First attempt must succeed and return payment ID');
+      assert.ok(firstResult.payment?.id, 'First attempt must succeed and return payment ID');
       const paymentId = firstResult.payment.id;
 
       // Simulated network drop: client never received the response!
@@ -468,7 +468,7 @@ async function runPromptDSuite() {
         testUser
       );
 
-      assert(validResult.payment?.id);
+      assert.ok(validResult.payment?.id);
       const paidInvoice = await prisma.invoice.findUnique({ where: { id: invoice.id } });
       assert.strictEqual(Number(paidInvoice!.balanceDue), 0, 'Invoice balanceDue must be 0 after exact payment');
       assert.strictEqual(paidInvoice!.paymentStatus, 'paid', 'Invoice paymentStatus must transition to paid');

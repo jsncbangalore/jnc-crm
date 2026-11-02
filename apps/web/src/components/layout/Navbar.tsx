@@ -646,7 +646,7 @@ export default function Navbar() {
                       className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
                     >
                       <Building2 size={13} className="text-crm-teal shrink-0" />
-                      <span>Branding & GST Profile</span>
+                      <span>Company Branding, GST & Banking</span>
                     </NavLink>
                   )}
                   {hasPage('mail_settings') && (
@@ -663,7 +663,7 @@ export default function Navbar() {
                 </div>
               )}
 
-              {/* My Account */}
+              {/* My Account (Personal Profile) */}
               <NavLink
                 role="menuitem"
                 to="/account"
@@ -671,7 +671,7 @@ export default function Navbar() {
                 className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors mb-1"
               >
                 <User size={13} className="text-crm-blue shrink-0" />
-                <span>My Account</span>
+                <span>My Account (Personal Profile)</span>
               </NavLink>
 
               {/* Logout Session */}

@@ -18,6 +18,7 @@ import {
 import {
   paymentsApi,
   invoicesApi,
+  brandingApi,
   ledgerApi,
   bankAccountsApi,
   LedgerParty,
@@ -69,7 +70,12 @@ export function formatIndianCurrency(num: number | string): string {
 // Error normalisation helper for arrays, strings, and class-validator messages
 export function normalizeError(error: any): string {
   if (!error) return 'An unexpected error occurred.';
-  if (typeof error === 'string') return error;
+  if (typeof error === 'string') {
+    if (/Network Error|Failed to fetch|NetworkError/i.test(error)) {
+      return 'Cannot reach the server. Your payment was not saved.';
+    }
+    return error;
+  }
   const data = error.response?.data;
   if (data) {
     if (Array.isArray(data.message)) {
@@ -86,6 +92,9 @@ export function normalizeError(error: any): string {
     }
   }
   if (typeof error.message === 'string') {
+    if (/Network Error|Failed to fetch|NetworkError/i.test(error.message)) {
+      return 'Cannot reach the server. Your payment was not saved.';
+    }
     return error.message;
   }
   return 'Failed to record payment. Please check your inputs and try again.';
@@ -251,43 +260,82 @@ export default function UnifiedRecordPaymentModal({
   }, [isOpen, partyType, initialParties]);
 
   // Load company bank details for electronic receipts
-  const loadBankAccounts = useCallback(() => {
-    bankAccountsApi.getAll()
-      .then((res) => {
-        const list = ensureArray(res?.data);
-        if (list.length > 0) {
-          const options: SelectOption[] = list.map((acc: any) => ({
-            value: acc.displayLabel || `${acc.bankName} ••••${acc.accountNumberLast4}`,
-            label: `${acc.bankName} ••••${acc.accountNumberLast4}`,
-            sublabel: `${acc.label} • IFSC: ${acc.ifsc || '-'}${acc.isDefault ? ' (Default)' : ''}`,
-          }));
-          setBankAccountsList(options);
-          if (!bankAccount) {
-            const def: any = list.find((a: any) => a.isDefault) || list[0];
-            if (def) {
-              setBankAccount(def.displayLabel || `${def.bankName} ••••${def.accountNumberLast4}`);
-            }
+  const loadBankAccounts = useCallback(async () => {
+    // 1. First attempt: Dedicated company bank accounts API
+    try {
+      const res = await bankAccountsApi.getAll();
+      const list = ensureArray(res?.data);
+      if (list.length > 0) {
+        const options: SelectOption[] = list.map((acc: any) => ({
+          value: acc.displayLabel || `${acc.bankName} ••••${acc.accountNumberLast4}`,
+          label: `${acc.bankName} ••••${acc.accountNumberLast4}`,
+          sublabel: `${acc.holderName || acc.label || 'Company Account'} • IFSC: ${acc.ifsc || '-'}${acc.isDefault ? ' (Default)' : ''}`,
+        }));
+        setBankAccountsList(options);
+        if (!bankAccount) {
+          const def: any = list.find((a: any) => a.isDefault) || list[0];
+          if (def) {
+            setBankAccount(def.displayLabel || `${def.bankName} ••••${def.accountNumberLast4}`);
           }
-          return;
         }
-        // Fallback to legacy company profile
-        return invoicesApi.getCompanyProfile().then((resProfile) => {
-          const prof: any = resProfile?.data;
-          const bName = prof?.bankDetails?.bankName || prof?.bankName;
-          const bAcc = prof?.bankDetails?.accountNumber || prof?.bankAccountNumber;
-          const bIfsc = prof?.bankDetails?.ifscCode || prof?.bankIfsc;
-          if (bName && bAcc) {
-            const rawAcc = String(bAcc).replace(/\s+/g, '');
-            const masked = rawAcc.length > 4 ? `••••${rawAcc.slice(-4)}` : rawAcc;
-            const label = `${bName} ${masked}`;
-            setBankAccountsList([
-              { value: label, label: label, sublabel: `A/C: ${masked} • IFSC: ${bIfsc || '-'}` }
-            ]);
-            if (!bankAccount) setBankAccount(label);
-          }
-        });
-      })
-      .catch(() => {});
+        return;
+      }
+    } catch {
+      // bankAccountsApi failed or route not deployed yet, proceed to branding profile fallback
+    }
+
+    // 2. Second attempt: Company Branding & GST profile (/settings/company-profile)
+    try {
+      const profileRes = await brandingApi.getProfile();
+      const prof: any = profileRes?.data;
+      const bName = prof?.bankName || prof?.bankDetails?.bankName;
+      const bAcc = prof?.bankAccountNumber || prof?.bankDetails?.accountNumber;
+      const bIfsc = prof?.bankIfsc || prof?.bankDetails?.ifscCode;
+      const holder = prof?.name || prof?.companyDisplayName || 'Company Account';
+      if (bName) {
+        const rawAcc = bAcc ? String(bAcc).replace(/\s+/g, '') : '';
+        const masked = rawAcc.length > 4 ? `••••${rawAcc.slice(-4)}` : (rawAcc ? `••••${rawAcc}` : '');
+        const label = `${bName}${masked ? ` ${masked}` : ''}`.trim();
+        const options: SelectOption[] = [
+          {
+            value: label,
+            label,
+            sublabel: `${holder}${bIfsc ? ` • IFSC: ${bIfsc}` : ''}`.trim(),
+          },
+        ];
+        setBankAccountsList(options);
+        if (!bankAccount) setBankAccount(label);
+        return;
+      }
+    } catch {
+      // Proceed to invoicing profile fallback
+    }
+
+    // 3. Third attempt: Invoices company profile (/invoices/company-profile)
+    try {
+      const resProfile = await invoicesApi.getCompanyProfile();
+      const prof: any = resProfile?.data;
+      const bName = prof?.bankDetails?.bankName || prof?.bankName;
+      const bAcc = prof?.bankDetails?.accountNumber || prof?.bankAccountNumber;
+      const bIfsc = prof?.bankDetails?.ifscCode || prof?.bankIfsc;
+      const holder = prof?.companyName || prof?.name || 'Company Account';
+      if (bName) {
+        const rawAcc = bAcc ? String(bAcc).replace(/\s+/g, '') : '';
+        const masked = rawAcc.length > 4 ? `••••${rawAcc.slice(-4)}` : (rawAcc ? `••••${rawAcc}` : '');
+        const label = `${bName}${masked ? ` ${masked}` : ''}`.trim();
+        const options: SelectOption[] = [
+          {
+            value: label,
+            label,
+            sublabel: `${holder}${bIfsc ? ` • IFSC: ${bIfsc}` : ''}`.trim(),
+          },
+        ];
+        setBankAccountsList(options);
+        if (!bankAccount) setBankAccount(label);
+      }
+    } catch {
+      // End of fallbacks
+    }
   }, [bankAccount]);
 
   useEffect(() => {

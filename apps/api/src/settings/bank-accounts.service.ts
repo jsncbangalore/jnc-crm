@@ -70,6 +70,50 @@ export class BankAccountsService {
       ],
     });
 
+    if (accounts.length === 0) {
+      try {
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: {
+            id: true,
+            name: true,
+            bankName: true,
+            bankAccountNumber: true,
+            bankIfsc: true,
+            bankBranch: true,
+            bankUpi: true,
+          },
+        });
+
+        if (tenant && (tenant.bankName || tenant.bankAccountNumber)) {
+          const rawNum = tenant.bankAccountNumber ? String(tenant.bankAccountNumber).replace(/\s+/g, '') : '';
+          const last4 = rawNum.length >= 4 ? rawNum.slice(-4) : (rawNum || '0000');
+          const bName = tenant.bankName || 'Company Bank';
+          return [
+            {
+              id: `tenant-${tenant.id}`,
+              label: tenant.name || 'Primary Settlement Account',
+              bankName: bName,
+              holderName: tenant.name || 'Company Account',
+              accountNumberLast4: last4,
+              maskedAccount: `••••${last4}`,
+              displayLabel: `${bName} ••••${last4}`,
+              ifsc: tenant.bankIfsc || '',
+              branch: tenant.bankBranch || '',
+              upiId: tenant.bankUpi || '',
+              isDefault: true,
+              isDocumentDefault: true,
+              isActive: true,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ];
+        }
+      } catch {
+        // Safe fallback
+      }
+    }
+
     return accounts.map((acc) => ({
       id: acc.id,
       label: acc.label,

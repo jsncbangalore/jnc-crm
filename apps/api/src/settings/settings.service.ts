@@ -478,6 +478,51 @@ export class SettingsService {
       data: updateData,
     });
 
+    if (dto.bankName && dto.bankAccountNumber) {
+      try {
+        const cleanAcc = String(dto.bankAccountNumber).replace(/\s+/g, '');
+        const last4 = cleanAcc.length >= 4 ? cleanAcc.slice(-4) : cleanAcc;
+        const holder = dto.name?.trim() || updated.name || 'Company Account';
+        const existing = await (this.prisma as any).companyBankAccount?.findFirst({
+          where: { tenantId, isDefault: true },
+        });
+        if (existing) {
+          await (this.prisma as any).companyBankAccount?.update({
+            where: { id: existing.id },
+            data: {
+              bankName: dto.bankName.trim(),
+              holderName: holder,
+              accountNumber: encryptAtRest(cleanAcc),
+              accountNumberLast4: last4,
+              ifsc: (dto.bankIfsc || existing.ifsc || '').trim().toUpperCase(),
+              branch: dto.bankBranch !== undefined ? dto.bankBranch?.trim() : existing.branch,
+              upiId: dto.bankUpi !== undefined ? dto.bankUpi?.trim() : existing.upiId,
+              isActive: true,
+            },
+          });
+        } else {
+          await (this.prisma as any).companyBankAccount?.create({
+            data: {
+              tenantId,
+              label: 'Primary Settlement Account',
+              bankName: dto.bankName.trim(),
+              holderName: holder,
+              accountNumber: encryptAtRest(cleanAcc),
+              accountNumberLast4: last4,
+              ifsc: (dto.bankIfsc || '').trim().toUpperCase(),
+              branch: dto.bankBranch?.trim() || '',
+              upiId: dto.bankUpi?.trim() || '',
+              isDefault: true,
+              isDocumentDefault: true,
+              isActive: true,
+            },
+          });
+        }
+      } catch (e: any) {
+        this.logger.warn(`Failed to auto-sync CompanyBankAccount for tenant ${tenantId}: ${e?.message}`);
+      }
+    }
+
     return updated;
   }
 
