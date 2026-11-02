@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1541.2489999999993 756.5" width="1541.2489999999993" height="756.5" style="--bg:#1F1F1F;--fg:#CCCCCC;--line:#CCCCCC;--accent:#0078D4;--muted:#CCCCCCCC;--surface:#181818;--border:#CCCCCC;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<g class="subgraph" data-id="Layer1" data-label="Layer 1: Identity &amp; Session Locks">
+  <rect x="134.47749999999974" y="40" width="1272.2939999999999" height="96.9" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="134.47749999999974" y="40" width="1272.2939999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="146.47749999999974" y="54" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Layer 1: Identity &amp; Session Locks</text>
+</g>
+<g class="subgraph" data-id="Layer2" data-label="Layer 2: Multi-Tenant &amp; Authorization Locks">
+  <rect x="40" y="184.9" width="1461.2489999999993" height="96.9" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="184.9" width="1461.2489999999993" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="52" y="198.9" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Layer 2: Multi-Tenant &amp; Authorization Locks</text>
+</g>
+<g class="subgraph" data-id="Layer3" data-label="Layer 3: CRM Vector Immunization">
+  <rect x="149.2974999999999" y="329.8" width="1242.6539999999995" height="96.9" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="149.2974999999999" y="329.8" width="1242.6539999999995" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="161.2974999999999" y="343.8" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Layer 3: CRM Vector Immunization</text>
+</g>
+<g class="subgraph" data-id="Layer4" data-label="Layer 4: Anti-Exfiltration &amp; Velocity Locks">
+  <rect x="124.10349999999971" y="474.7" width="1293.042" height="96.9" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="124.10349999999971" y="474.7" width="1293.042" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="136.1034999999997" y="488.7" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Layer 4: Anti-Exfiltration &amp; Velocity Locks</text>
+</g>
+<g class="subgraph" data-id="Layer5" data-label="Layer 5: Network, SSRF &amp; Audit Logging">
+  <rect x="263.55949999999973" y="619.5999999999999" width="1014.1299999999999" height="96.9" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="263.55949999999973" y="619.5999999999999" width="1014.1299999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="275.55949999999973" y="633.5999999999999" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Layer 5: Network, SSRF &amp; Audit Logging</text>
+</g>
+<polyline class="edge" data-from="Layer1" data-to="Layer2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="770.6244999999997,136.9 770.6244999999997,184.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Layer2" data-to="Layer3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="770.6244999999997,281.8 770.6244999999997,329.8" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Layer3" data-to="Layer4" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="770.6244999999997,426.7 770.6244999999997,474.7" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="Layer4" data-to="Layer5" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="770.6244999999997,571.5999999999999 770.6244999999997,619.5999999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="node" data-id="L1_1" data-label="15-Min Short-Lived Access Tokens" data-shape="rectangle">
+  <rect x="532.3884999999997" y="84" width="246.46599999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="655.6214999999996" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">15-Min Short-Lived Access Tokens</text>
+</g>
+<g class="node" data-id="L1_2" data-label="Rotating Refresh Tokens in HttpOnly Cookies" data-shape="rectangle">
+  <rect x="806.8544999999997" y="84" width="302.04099999999994" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="957.8749999999997" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Rotating Refresh Tokens in HttpOnly Cookies</text>
+</g>
+<g class="node" data-id="L1_3" data-label="TOTP Multi-Factor Authentication (Admins/Managers)" data-shape="rectangle">
+  <rect x="150.47749999999974" y="84" width="353.91099999999994" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="327.4329999999997" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">TOTP Multi-Factor Authentication (Admins/Managers)</text>
+</g>
+<g class="node" data-id="L1_4" data-label="Dual-Key Rate Limiting (IP + Account)" data-shape="rectangle">
+  <rect x="1136.8954999999996" y="84" width="253.87599999999995" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1263.8334999999995" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Dual-Key Rate Limiting (IP + Account)</text>
+</g>
+<g class="node" data-id="L2_1" data-label="Zero-Trust Tenant Extraction (JWT Claims Only)" data-shape="rectangle">
+  <rect x="444.5799999999999" y="228.9" width="322.7889999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="605.9744999999998" y="247.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Zero-Trust Tenant Extraction (JWT Claims Only)</text>
+</g>
+<g class="node" data-id="L2_2" data-label="PostgreSQL Database-Level Row-Level Security (RLS)" data-shape="rectangle">
+  <rect x="795.3689999999998" y="228.9" width="366.5079999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="978.6229999999998" y="247.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">PostgreSQL Database-Level Row-Level Security (RLS)</text>
+</g>
+<g class="node" data-id="L2_3" data-label="Strict DTO Schema Allow-Listing (No Mass Assignment)" data-shape="rectangle">
+  <rect x="56" y="228.9" width="360.57999999999987" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="236.28999999999994" y="247.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Strict DTO Schema Allow-Listing (No Mass Assignment)</text>
+</g>
+<g class="node" data-id="L2_4" data-label="UUIDv4/UUIDv7 Global Resource Identifiers" data-shape="rectangle">
+  <rect x="1189.8769999999995" y="228.9" width="295.37199999999984" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1337.5629999999994" y="247.35000000000002" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">UUIDv4/UUIDv7 Global Resource Identifiers</text>
+</g>
+<g class="node" data-id="L3_1" data-label="DOMPurify Rich-Text &amp; Note Sanitization" data-shape="rectangle">
+  <rect x="478.29549999999983" y="373.8" width="274.62399999999985" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="615.6074999999997" y="392.25" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">DOMPurify Rich-Text &amp; Note Sanitization</text>
+</g>
+<g class="node" data-id="L3_2" data-label="Strict Helmet CSP (script-src 'self')" data-shape="rectangle">
+  <rect x="780.9194999999997" y="373.8" width="239.7969999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="900.8179999999998" y="392.25" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Strict Helmet CSP (script-src &#39;self&#39;)</text>
+</g>
+<g class="node" data-id="L3_3" data-label="File Upload Magic-Bytes Buffer Inspection" data-shape="rectangle">
+  <rect x="165.2974999999999" y="373.8" width="284.99799999999993" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="307.79649999999987" y="392.25" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">File Upload Magic-Bytes Buffer Inspection</text>
+</g>
+<g class="node" data-id="L3_4" data-label="Forced Attachment &amp; Cookieless Upload Delivery" data-shape="rectangle">
+  <rect x="1048.7164999999995" y="373.8" width="327.2349999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1212.3339999999994" y="392.25" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Forced Attachment &amp; Cookieless Upload Delivery</text>
+</g>
+<g class="node" data-id="L4_1" data-label="Global Hard Pagination Caps (Max 100 Rows)" data-shape="rectangle">
+  <rect x="472.3674999999996" y="518.7" width="299.077" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="621.9059999999996" y="537.1500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Global Hard Pagination Caps (Max 100 Rows)</text>
+</g>
+<g class="node" data-id="L4_2" data-label="Export Velocity Anomaly Detection &amp; Throttling" data-shape="rectangle">
+  <rect x="799.4444999999996" y="518.7" width="309.45099999999996" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="954.1699999999996" y="537.1500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Export Velocity Anomaly Detection &amp; Throttling</text>
+</g>
+<g class="node" data-id="L4_3" data-label="Watermarked CSV / Excel Export Audit Trails" data-shape="rectangle">
+  <rect x="140.1034999999997" y="518.7" width="304.2639999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="292.23549999999966" y="537.1500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Watermarked CSV / Excel Export Audit Trails</text>
+</g>
+<g class="node" data-id="L4_4" data-label="Field-Level AES-256-GCM Encryption" data-shape="rectangle">
+  <rect x="1136.8954999999996" y="518.7" width="264.24999999999994" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1269.0204999999996" y="537.1500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Field-Level AES-256-GCM Encryption</text>
+</g>
+<g class="node" data-id="L5_1" data-label="Outbound Webhook SSRF Guard (Private CIDR Filter)" data-shape="rectangle">
+  <rect x="594.7804999999997" y="663.5999999999999" width="350.9469999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="770.2539999999997" y="682.05" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Outbound Webhook SSRF Guard (Private CIDR Filter)</text>
+</g>
+<g class="node" data-id="L5_2" data-label="Append-Only Immutable AuditLog Triggers" data-shape="rectangle">
+  <rect x="973.7274999999996" y="663.5999999999999" width="287.962" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1117.7084999999997" y="682.05" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Append-Only Immutable AuditLog Triggers</text>
+</g>
+<g class="node" data-id="L5_3" data-label="Strict Host-Only CORS &amp; TLS 1.3 Transport" data-shape="rectangle">
+  <rect x="279.55949999999973" y="663.5999999999999" width="287.22099999999995" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="423.16999999999973" y="682.05" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Strict Host-Only CORS &amp; TLS 1.3 Transport</text>
+</g>
+</svg>

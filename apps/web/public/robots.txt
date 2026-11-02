@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /$
+Allow: /landing$
+Disallow: /
+
+Sitemap: /sitemap.xml

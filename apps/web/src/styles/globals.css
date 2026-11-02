@@ -1,0 +1,292 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Great+Vibes&family=Kaushan+Script&family=Parisienne&display=swap');
+
+/* RNDI Type Foundry (Nuvetra & Naratama) Font Definitions */
+@font-face {
+  font-family: 'Nuvetra';
+  src: local('Nuvetra'), local('RNDI Nuvetra'), local('Naratama'), local('RNDI Naratama'), url('/fonts/Nuvetra-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Nuvetra';
+  src: local('Nuvetra Medium'), local('RNDI Nuvetra Medium'), local('Naratama Medium'), url('/fonts/Nuvetra-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Nuvetra';
+  src: local('Nuvetra SemiBold'), local('RNDI Nuvetra SemiBold'), local('Naratama SemiBold'), url('/fonts/Nuvetra-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Nuvetra';
+  src: local('Nuvetra Bold'), local('RNDI Nuvetra Bold'), local('Naratama Bold'), url('/fonts/Nuvetra-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Naratama';
+  src: local('Naratama'), local('RNDI Naratama'), local('Nuvetra'), url('/fonts/Naratama-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Naratama';
+  src: local('Naratama Bold'), local('RNDI Naratama Bold'), local('Nuvetra Bold'), url('/fonts/Naratama-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.font-fancy {
+  font-family: 'Great Vibes', cursive;
+}
+.font-brush {
+  font-family: 'Kaushan Script', cursive;
+}
+.font-comeitiye {
+  font-family: 'Parisienne', cursive;
+}
+/* Instantly suppress transitions during theme toggling for 0ms response */
+.no-theme-transition,
+.no-theme-transition * {
+  transition: none !important;
+  animation-duration: 0s !important;
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  html, body, #root {
+    height: 100%;
+    min-height: 100%;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    max-width: 100vw;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    @apply bg-[#F4F6FB] text-slate-900 dark:bg-[#0F1117] dark:text-slate-100 font-sans antialiased;
+    font-family: 'Nuvetra', 'Naratama', 'RNDI', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  /* Prevent browser pale-blue autofill */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 40px #ffffff inset !important;
+    -webkit-text-fill-color: #0f172a !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  .dark input:-webkit-autofill,
+  .dark input:-webkit-autofill:hover,
+  .dark input:-webkit-autofill:focus,
+  .dark input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 40px #0F172A inset !important;
+    -webkit-text-fill-color: #ffffff !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  /* Force rich dark text on general typography in Light Mode */
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-slate-950 dark:text-white tracking-tight;
+  }
+
+  p {
+    @apply text-slate-800 dark:text-slate-300;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-400/70 dark:bg-slate-600 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-slate-500 dark:bg-slate-500; }
+
+  /* Hide default browser datalist arrow icon */
+  input::-webkit-calendar-picker-indicator {
+    display: none !important;
+    -webkit-appearance: none !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+}
+
+@layer components {
+  /* ─── Cards & Surfaces ─────────────────────────────────────────────────── */
+  .card {
+    @apply bg-white dark:bg-[#181B26] rounded-xl border border-slate-200 dark:border-[#2A3042] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] dark:shadow-none text-slate-900 dark:text-slate-100;
+  }
+
+  .card-header {
+    @apply flex items-center justify-between mb-4 border-b border-slate-100 dark:border-[#2A3042]/60 pb-3;
+  }
+
+  /* ─── Buttons ───────────────────────────────────────────────────────────── */
+  .btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-[#0F1117];
+  }
+
+  .btn-primary {
+    @apply btn bg-crm-blue hover:bg-crm-blue-hover text-white focus:ring-crm-blue shadow-sm hover:shadow;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-slate-100;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-600 hover:bg-red-700 text-white focus:ring-red-500;
+  }
+
+  /* ─── Inputs & Form Controls ────────────────────────────────────────────── */
+  .input {
+    @apply w-full bg-white dark:bg-[#1E2230] border border-slate-300 dark:border-[#2A3042] rounded-lg px-3 py-2 text-xs font-medium text-slate-950 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-crm-blue focus:ring-1 focus:ring-crm-blue transition-colors shadow-sm dark:shadow-none;
+  }
+
+  .label {
+    @apply block text-xs font-bold text-slate-700 dark:text-slate-400 uppercase tracking-wider mb-1.5;
+  }
+
+  /* ─── Badges & Status Pills ─────────────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap;
+  }
+
+  /* Source badges */
+  .badge-indiamart {
+    @apply badge bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-400 border border-orange-300 dark:border-orange-500/20;
+  }
+  .badge-web {
+    @apply badge bg-blue-50 text-blue-700 dark:bg-crm-blue/15 dark:text-crm-blue-light border border-blue-300 dark:border-crm-blue/20;
+  }
+  .badge-whatsapp {
+    @apply badge bg-emerald-50 text-emerald-700 dark:bg-crm-whatsapp/15 dark:text-crm-whatsapp border border-emerald-300 dark:border-green-500/20;
+  }
+  .badge-manual {
+    @apply badge bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-400 border border-slate-300 dark:border-slate-700;
+  }
+
+  /* Status badges */
+  .badge-new { @apply badge bg-blue-50 text-blue-800 dark:bg-blue-500/15 dark:text-blue-400 border border-blue-300 dark:border-blue-500/20; }
+  .badge-contacted { @apply badge bg-amber-50 text-amber-800 dark:bg-yellow-500/15 dark:text-yellow-400 border border-amber-300 dark:border-yellow-500/20; }
+  .badge-qualified { @apply badge bg-purple-50 text-purple-800 dark:bg-violet-500/15 dark:text-violet-400 border border-purple-300 dark:border-purple-500/20; }
+  .badge-quoted { @apply badge bg-orange-50 text-orange-800 dark:bg-amber-500/15 dark:text-amber-400 border border-orange-300 dark:border-amber-500/20; }
+  .badge-won { @apply badge bg-emerald-50 text-emerald-800 dark:bg-green-500/15 dark:text-green-400 border border-emerald-300 dark:border-emerald-500/20; }
+  .badge-lost { @apply badge bg-rose-50 text-rose-800 dark:bg-red-500/15 dark:text-red-400 border border-rose-300 dark:border-red-500/20; }
+  .badge-confirmed { @apply badge bg-blue-50 text-blue-800 dark:bg-blue-500/15 dark:text-blue-400 border border-blue-300 dark:border-blue-500/20; }
+  .badge-processing { @apply badge bg-yellow-50 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-400 border border-yellow-300 dark:border-yellow-500/20; }
+  .badge-dispatched { @apply badge bg-teal-50 text-teal-800 dark:bg-teal-500/15 dark:text-teal-400 border border-teal-300 dark:border-teal-500/20; }
+  .badge-delivered { @apply badge bg-emerald-50 text-emerald-800 dark:bg-green-500/15 dark:text-green-400 border border-emerald-300 dark:border-emerald-500/20; }
+  .badge-cancelled { @apply badge bg-rose-50 text-rose-800 dark:bg-red-500/15 dark:text-red-400 border border-rose-300 dark:border-red-500/20; }
+
+  /* ─── Tables ────────────────────────────────────────────────────────────── */
+  .table-wrapper {
+    @apply overflow-x-auto rounded-xl border border-slate-200 dark:border-[#2A3042] bg-white dark:bg-[#181B26] shadow-sm dark:shadow-none;
+  }
+
+  /* ─── Printable A4 Invoice/Challan Documents (Enforce 100% Solid Black Text) ─── */
+  #printable-tax-invoice {
+    color: #000000 !important;
+    background-color: #ffffff !important;
+  }
+
+  #printable-tax-invoice,
+  #printable-tax-invoice * {
+    border-color: #000000;
+  }
+
+  #printable-tax-invoice p,
+  #printable-tax-invoice span,
+  #printable-tax-invoice div,
+  #printable-tax-invoice td,
+  #printable-tax-invoice th,
+  #printable-tax-invoice li,
+  #printable-tax-invoice strong,
+  #printable-tax-invoice b,
+  #printable-tax-invoice h1,
+  #printable-tax-invoice h2,
+  #printable-tax-invoice h3,
+  #printable-tax-invoice h4 {
+    color: #000000 !important;
+  }
+
+  #printable-tax-invoice .bg-gray-100 {
+    background-color: #f3f4f6 !important;
+  }
+
+  #printable-tax-invoice .bg-gray-50 {
+    background-color: #f9fafb !important;
+  }
+
+  table.crm-table {
+    @apply w-full text-xs;
+  }
+
+  table.crm-table thead tr {
+    @apply bg-slate-100 dark:bg-[#1E2230] text-slate-800 dark:text-slate-300 text-[11px] uppercase tracking-wider font-bold border-b border-slate-200 dark:border-[#2A3042];
+  }
+
+  table.crm-table thead th {
+    @apply px-4 py-3 text-left font-bold whitespace-nowrap;
+  }
+
+  table.crm-table tbody tr {
+    @apply border-t border-slate-100 dark:border-[#2A3042] hover:bg-slate-50/90 dark:hover:bg-white/[0.02] text-slate-900 dark:text-slate-100 transition-colors cursor-pointer;
+  }
+
+  table.crm-table tbody td {
+    @apply px-4 py-3 text-slate-900 dark:text-slate-100 font-medium;
+  }
+}
+
+/* ─── Exact A4 Print Optimization for Invoices ─────────────────────────────── */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 5mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 10pt !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  #printable-tax-invoice {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    max-height: 280mm !important;
+  }
+
+  .print\:hidden {
+    display: none !important;
+    visibility: hidden !important;
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "crm-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node ../../scripts/copy-ocr-assets.js && node ../../node_modules/vite/bin/vite.js",
+    "build": "node ../../scripts/copy-ocr-assets.js && node ../../node_modules/typescript/bin/tsc && node ../../node_modules/vite/bin/vite.js build && node ../../scripts/generate-htaccess.js",
+    "preview": "node ../../node_modules/vite/bin/vite.js preview"
+  },
+  "dependencies": {
+    "@types/qrcode": "^1.5.5",
+    "axios": "^1.6.7",
+    "clsx": "^2.1.0",
+    "date-fns": "^3.3.1",
+    "dompurify": "^3.4.16",
+    "framer-motion": "^11.0.8",
+    "lucide-react": "^0.344.0",
+    "papaparse": "^5.4.1",
+    "pdfjs-dist": "^4.10.38",
+    "qrcode": "^1.5.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.2",
+    "recharts": "^2.12.2",
+    "tailwind-merge": "^2.2.1",
+    "tesseract.js": "^7.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.0.5",
+    "@types/node": "^20.11.24",
+    "@types/papaparse": "^5.3.14",
+    "@types/react": "^18.2.56",
+    "@types/react-dom": "^18.2.19",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.18",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.2.2",
+    "vite": "^5.1.4"
+  }
+}

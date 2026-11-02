@@ -1,0 +1,304 @@
+/* --- C2PA CONTENT CREDENTIALS & PROVENANCE NOTICE ---
+ * c2pa.action: 'c2pa.created'
+ * c2pa.ai_training: 'disallowed'
+ * c2pa.do_not_train: true
+ * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
+ * ----------------------------------------------------- */
+
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ScopingService, ScopedUser } from '../auth/scoping.service';
+import { requireTenantId } from '../common/tenant.util';
+import { parsePagination } from '../common/pagination.util';
+
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsBoolean, Min, Max, MaxLength } from 'class-validator';
+import {
+  SanitizeText,
+  TrimString,
+  IsValidName,
+  IsValidPhone,
+  IsValidEmail,
+  IsValidGstin,
+} from '../common/validation.transformers';
+
+export class CreateSupplierDto {
+  @SanitizeText()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  @IsValidName()
+  name: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  contactPerson?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(254)
+  @IsValidEmail()
+  email?: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  @IsValidPhone()
+  phone?: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(15)
+  @IsValidGstin()
+  gstin?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  address?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  city?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  @Max(365)
+  leadTimeDays?: number;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(10)
+  pan?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  state?: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(10)
+  pincode?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  notes?: string;
+}
+
+export class UpdateSupplierDto {
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  @IsValidName()
+  name?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  contactPerson?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(254)
+  @IsValidEmail()
+  email?: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  @IsValidPhone()
+  phone?: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(15)
+  @IsValidGstin()
+  gstin?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  address?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  city?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  @Max(365)
+  leadTimeDays?: number;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(10)
+  pan?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  state?: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(10)
+  pincode?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+@Injectable()
+export class SuppliersService {
+  constructor(
+    private prisma: PrismaService,
+    private scopingService: ScopingService,
+  ) {}
+
+  async create(dto: CreateSupplierDto, user?: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    return this.prisma.supplier.create({
+      data: {
+        tenantId,
+        name: dto.name,
+        contactPerson: dto.contactPerson,
+        email: dto.email,
+        phone: dto.phone,
+        gstin: dto.gstin,
+        address: dto.address,
+        city: dto.city,
+        leadTimeDays: dto.leadTimeDays ? Number(dto.leadTimeDays) : 7,
+        notes: dto.notes,
+        createdById: user?.id ?? null,
+      },
+    });
+  }
+
+  async findAll(user?: ScopedUser, query: { search?: string; isActive?: boolean; page?: number; limit?: number } = {}) {
+    const scope = user ? this.scopingService.getSupplierScope(user) : { tenantId: requireTenantId(user) };
+    const where: any = { deletedAt: null, ...scope };
+    if (query.isActive !== undefined) {
+      where.isActive = query.isActive;
+    }
+    if (query.search) {
+      const searchOR = [
+        { name: { contains: query.search } },
+        { contactPerson: { contains: query.search } },
+        { city: { contains: query.search } },
+        { email: { contains: query.search } },
+        { gstin: { contains: query.search } },
+      ];
+      if (scope.OR) {
+        where.AND = [{ OR: scope.OR }, { OR: searchOR }];
+        delete where.OR;
+      } else {
+        where.OR = searchOR;
+      }
+    }
+    const { skip, take } = parsePagination(query, 50, 100);
+
+    return this.prisma.supplier.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { name: 'asc' },
+      include: {
+        preferredSkus: {
+          select: { id: true, skuCode: true, name: true, category: true },
+        },
+        _count: {
+          select: { stockMovements: true, preferredSkus: true },
+        },
+      },
+    });
+  }
+
+  async findOne(id: string, user?: ScopedUser) {
+    const scope = user ? this.scopingService.getSupplierScope(user) : { tenantId: requireTenantId(user) };
+    const supplier = await this.prisma.supplier.findFirst({
+      where: { id, ...scope },
+      include: {
+        preferredSkus: true,
+        stockMovements: {
+          take: 20,
+          orderBy: { createdAt: 'desc' },
+          include: { sku: true },
+        },
+      },
+    });
+
+    if (!supplier || supplier.deletedAt) {
+      throw new NotFoundException('Supplier not found');
+    }
+
+    return supplier;
+  }
+
+  async update(id: string, dto: Partial<CreateSupplierDto>, user?: ScopedUser) {
+    const scope = user ? this.scopingService.getSupplierScope(user) : { tenantId: requireTenantId(user) };
+    const res = await this.prisma.supplier.updateMany({
+      where: { id, ...scope, deletedAt: null },
+      data: dto,
+    });
+    if (res.count === 0) {
+      throw new NotFoundException('Supplier not found');
+    }
+    return this.findOne(id, user);
+  }
+
+  async delete(id: string, user?: ScopedUser) {
+    const scope = user ? this.scopingService.getSupplierScope(user) : { tenantId: requireTenantId(user) };
+    const res = await this.prisma.supplier.updateMany({
+      where: { id, ...scope, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    if (res.count === 0) {
+      throw new NotFoundException('Supplier not found');
+    }
+    return { success: true };
+  }
+
+  async countActiveSuppliers(user?: ScopedUser): Promise<number> {
+    const tenantId = requireTenantId(user);
+    return this.prisma.supplier.count({
+      where: {
+        tenantId,
+        isActive: true,
+        deletedAt: null,
+      },
+    });
+  }
+}

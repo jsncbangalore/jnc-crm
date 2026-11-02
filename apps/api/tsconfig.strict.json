@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strictNullChecks": true,
+    "noEmit": true
+  },
+  "include": [
+    "src/common/safe-format.ts",
+    "src/invoicing/pdf-generator.ts",
+    "src/ledger/ledger.service.ts",
+    "src/payments/payments.service.ts",
+    "src/dashboard/dashboard.service.ts"
+  ]
+}

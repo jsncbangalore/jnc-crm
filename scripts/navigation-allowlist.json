@@ -1,0 +1,19 @@
+{
+  "description": "Allowlist of static or public app routes that are permitted without requiring granular company page permissions",
+  "allowedRoutes": [
+    "/login",
+    "/platform/login",
+    "/forgot-password",
+    "/reset-password",
+    "/account",
+    "/privacy",
+    "/terms",
+    "/cookies",
+    "/cookie-consent"
+  ],
+  "allowedSpecialTargets": [
+    "/",
+    "#",
+    "#"
+  ]
+}

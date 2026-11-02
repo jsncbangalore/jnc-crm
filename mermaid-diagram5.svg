@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1139.367 1342" width="1139.367" height="1342" style="--bg:#1F1F1F;--fg:#CCCCCC;--line:#CCCCCC;--accent:#0078D4;--muted:#CCCCCCCC;--surface:#181818;--border:#CCCCCC;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<g class="subgraph" data-id="UI" data-label="Frontend (React / Vite)">
+  <rect x="147.74795833333337" y="58" width="612.9775833333333" height="420.2" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="147.74795833333337" y="58" width="612.9775833333333" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="159.74795833333337" y="72" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Frontend (React / Vite)</text>
+</g>
+<g class="subgraph" data-id="API" data-label="Backend (NestJS API)">
+  <rect x="173.49350000000004" y="606.5" width="856.1114999999999" height="521.7" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="173.49350000000004" y="606.5" width="856.1114999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="185.49350000000004" y="620.5" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Backend (NestJS API)</text>
+</g>
+<g class="subgraph" data-id="DB" data-label="Database (Supabase / PostgreSQL)">
+  <rect x="40" y="1188.2" width="669.2689999999999" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="1188.2" width="669.2689999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="52" y="1202.2" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Database (Supabase / PostgreSQL)</text>
+</g>
+<polyline class="edge" data-from="M" data-to="N" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="247.03449999999998,959 247.03449999999998,1232.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="M" data-to="O" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="304.57550000000003,959 304.57550000000003,1170.2 579.6689999999999,1170.2 579.669,1232.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="B" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="POST /orders/shipments/verify-live-url" points="557.943625,292.1 557.943625,304.1 542.8345416666666,304.1 542.8345416666666,520.2 580.48125,520.2 580.48125,588.5 509.0169166666667,588.5 509.01691666666665,650.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="D" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="POST /orders/shipments/:id/sync-tracking" points="395.27295833333335,138.9 395.27295833333335,150.9 405.39395833333333,150.9 405.39395833333333,520.2 367.74725,520.2 367.74725,588.5 439.21158333333335,588.5 439.21158333333335,650.5" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="M" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Live Response" points="362.1165,959 362.1165,971 339.846,971 339.846,1158.2 1039.605,1158.2 1039.605,40 240.9632916666667,40 240.9632916666667,255.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="A" data-to="B" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Enter URL / AWB" points="596.0572916666666,138.9 596.0572916666666,255.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="B" data-to="C" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Live Preview" points="634.1709583333334,292.1 634.1709583333334,304.1 649.2800416666666,304.1 649.2800416666666,408.4" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="D" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Click 'Sync Live'" points="328.678625,138.9 328.678625,150.9 318.368125,150.9 318.368125,219.2 318.178625,219.2 318.178625,255.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="F" data-to="G" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="474.11424999999997,687.4 474.11425,735.4" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="G" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="474.11425,789.2 474.11425,837.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H" data-to="I" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="474.11425,874.1 474.11425,898.1 665.9234999999999,898.1 665.9234999999999,922.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="I" data-to="J" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="DTDC URL / AWB" points="665.9235,959 665.9235,1075.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="I" data-to="K" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Delhivery / Blue Dart" points="620.9795,959 620.9795,971 442.216,971 442.216,1075.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="I" data-to="L" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Generic Courier URL" points="710.8675,959 710.8675,971 905.933,971 905.933,1075.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H" data-to="M" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="474.11425,874.1 474.11425,898.1 304.57550000000003,898.1 304.57550000000003,922.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="B" data-to="F" data-label="POST /orders/shipments/verify-live-url">
+  <rect x="479.9812500000001" y="527.2" width="200.602" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="580.2822500000001" y="542.35" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">POST /orders/shipments/verify-live-url</text>
+</g>
+<g class="edge-label" data-from="D" data-to="F" data-label="POST /orders/shipments/:id/sync-tracking">
+  <rect x="258.74725" y="527.2" width="217.23399999999998" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="367.36424999999997" y="542.35" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">POST /orders/shipments/:id/sync-tracking</text>
+</g>
+<g class="edge-label" data-from="M" data-to="E" data-label="Live Response">
+  <rect x="994.605" y="527.2" width="89.524" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="1039.367" y="542.35" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Live Response</text>
+</g>
+<g class="edge-label" data-from="A" data-to="B" data-label="Enter URL / AWB">
+  <rect x="547.5572916666666" y="181.9" width="96.65200000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="595.8832916666667" y="197.05" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Enter URL / AWB</text>
+</g>
+<g class="edge-label" data-from="B" data-to="C" data-label="Live Preview">
+  <rect x="608.7800416666666" y="335.1" width="80.02" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="648.7900416666666" y="350.25" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Live Preview</text>
+</g>
+<g class="edge-label" data-from="D" data-to="E" data-label="Click 'Sync Live'">
+  <rect x="269.868125" y="181.9" width="96.05800000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="317.897125" y="197.05" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Click &#39;Sync Live&#39;</text>
+</g>
+<g class="edge-label" data-from="I" data-to="J" data-label="DTDC URL / AWB">
+  <rect x="615.9235" y="1002" width="99.028" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="665.4375" y="1017.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">DTDC URL / AWB</text>
+</g>
+<g class="edge-label" data-from="I" data-to="K" data-label="Delhivery / Blue Dart">
+  <rect x="385.216" y="1002" width="113.878" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="442.15500000000003" y="1017.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Delhivery / Blue Dart</text>
+</g>
+<g class="edge-label" data-from="I" data-to="L" data-label="Generic Courier URL">
+  <rect x="846.933" y="1002" width="117.44200000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="905.654" y="1017.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Generic Courier URL</text>
+</g>
+<g class="node" data-id="A" data-label="Create Order Dispatch Modal" data-shape="rectangle">
+  <rect x="489.8672916666667" y="102" width="212.37999999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="596.0572916666666" y="120.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Create Order Dispatch Modal</text>
+</g>
+<g class="node" data-id="B" data-label="Live URL Inspector &amp; Debounce" data-shape="rectangle">
+  <rect x="481.7162916666666" y="255.2" width="228.682" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="596.0572916666666" y="273.65" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Live URL Inspector &amp; Debounce</text>
+</g>
+<g class="node" data-id="C" data-label="Instant Status Badge
+(In Transit / Hub Location)" data-shape="rectangle">
+  <rect x="553.8345416666666" y="408.4" width="190.89099999999996" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="649.2800416666666" y="435.29999999999995" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="649.2800416666666" dy="-3.9000000000000012">Instant Status Badge</tspan><tspan x="649.2800416666666" dy="16.900000000000002">(In Transit / Hub Location)</tspan></text>
+</g>
+<g class="node" data-id="D" data-label="Shipments Table &amp; Timeline" data-shape="rectangle">
+  <rect x="262.0842916666667" y="102" width="199.78299999999996" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="361.9757916666666" y="120.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Shipments Table &amp; Timeline</text>
+</g>
+<g class="node" data-id="E" data-label="Live Tracking Drawer &amp; Stepper" data-shape="rectangle">
+  <rect x="163.74795833333337" y="255.2" width="231.64599999999996" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="279.57095833333335" y="273.65" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Live Tracking Drawer &amp; Stepper</text>
+</g>
+<g class="node" data-id="F" data-label="Orders / Logistics Controller" data-shape="rectangle">
+  <rect x="369.40625" y="650.5" width="209.41599999999994" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="474.11424999999997" y="668.95" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Orders / Logistics Controller</text>
+</g>
+<g class="node" data-id="G" data-label="SSRF Security Guard
+(Blocks 127.0.0.1 &amp; Cloud Meta)" data-shape="rectangle">
+  <rect x="366.81275000000005" y="735.4" width="214.60299999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="474.11425" y="762.3" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="474.11425" dy="-3.9000000000000012">SSRF Security Guard</tspan><tspan x="474.11425" dy="16.900000000000002">(Blocks 127.0.0.1 &amp; Cloud Meta)</tspan></text>
+</g>
+<g class="node" data-id="H" data-label="LiveCourierTrackerService" data-shape="rectangle">
+  <rect x="367.92425000000003" y="837.2" width="212.37999999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="474.11425" y="855.6500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">LiveCourierTrackerService</text>
+</g>
+<g class="node" data-id="I" data-label="Courier Adapter Router" data-shape="rectangle">
+  <rect x="576.0355" y="922.1" width="179.77599999999995" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="665.9234999999999" y="940.5500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Courier Adapter Router</text>
+</g>
+<g class="node" data-id="J" data-label="DTDC Express Scraper/API" data-shape="rectangle">
+  <rect x="561.586" y="1075.3" width="208.67499999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="665.9235" y="1093.75" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">DTDC Express Scraper/API</text>
+</g>
+<g class="node" data-id="K" data-label="Carrier-Specific Parser" data-shape="rectangle">
+  <rect x="350.846" y="1075.3" width="182.73999999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="442.216" y="1093.75" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Carrier-Specific Parser</text>
+</g>
+<g class="node" data-id="L" data-label="Smart Meta &amp; HTML Classifier" data-shape="rectangle">
+  <rect x="798.261" y="1075.3" width="215.34399999999994" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="905.933" y="1093.75" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Smart Meta &amp; HTML Classifier</text>
+</g>
+<g class="node" data-id="M" data-label="Standardized Tracking Payload" data-shape="rectangle">
+  <rect x="189.49350000000004" y="922.1" width="230.16399999999996" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="304.57550000000003" y="940.5500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Standardized Tracking Payload</text>
+</g>
+<g class="node" data-id="N" data-label="Shipment Table
+(status, currentLocation, lastTrackedAt, trackingRawData)" data-shape="rectangle">
+  <rect x="56" y="1232.2" width="382.0689999999999" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="247.03449999999995" y="1259.1000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="247.03449999999995" dy="-3.9000000000000012">Shipment Table</tspan><tspan x="247.03449999999995" dy="16.900000000000002">(status, currentLocation, lastTrackedAt, trackingRawData)</tspan></text>
+</g>
+<g class="node" data-id="O" data-label="StatusHistory Table
+(Milestone Transition Audit Log)" data-shape="rectangle">
+  <rect x="466.06899999999996" y="1232.2" width="227.19999999999996" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="579.669" y="1259.1000000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="579.669" dy="-3.9000000000000012">StatusHistory Table</tspan><tspan x="579.669" dy="16.900000000000002">(Milestone Transition Audit Log)</tspan></text>
+</g>
+</svg>

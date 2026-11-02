@@ -1,0 +1,18 @@
+{
+  "productName": "Apex Enterprise CRM",
+  "companyName": "Apex Systems Technologies Ltd.",
+  "domain": "https://example.com",
+  "contactEmail": "contact@example.com",
+  "supportEmail": "support@example.com",
+  "contactPhone": "+1-800-555-0199",
+  "address": {
+    "streetAddress": "100 Enterprise Way, Suite 400",
+    "addressLocality": "Metropolis",
+    "addressRegion": "NY",
+    "postalCode": "10001",
+    "addressCountry": "US"
+  },
+  "social": {
+    "twitterHandle": "@ApexSystemsCRM"
+  }
+}
