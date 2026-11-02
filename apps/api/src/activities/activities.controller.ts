@@ -18,6 +18,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { ActivitiesService } from './activities.service';
 import { PageAccess } from '../auth/page-access.decorator';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateProjectDto, UpdateProjectDto, AssignMembersDto, UploadLogDto } from './dto/project.dto';
 import { validateUploadedFile } from '../common/file-validator';
 import { parseExcelSafely } from '../common/safe-excel-parser';
