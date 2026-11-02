@@ -71,6 +71,17 @@ export class InvoicingController {
     return this.invoicingService.createDirectDocument(user, body as any);
   }
 
+  @Get('company-profile/completeness')
+  async getCompanyProfileCompleteness(
+    @CurrentUser() user: ScopedUser,
+    @Query('isSez') isSezQuery?: string,
+    @Query('docType') docType?: string,
+  ) {
+    const tenantId = requireTenantId(user);
+    const isSez = isSezQuery === 'true' || docType === 'sez_invoice';
+    return this.invoicingService.getCompleteness(tenantId, { isSez });
+  }
+
   @Get('company-profile')
   async getCompanyProfile(@CurrentUser() user: ScopedUser) {
     return this.invoicingService.getCompanyProfile(user);

@@ -21,6 +21,7 @@ import { generateInvoicePdfBuffer } from './pdf-generator';
 import { validateLutStatus } from './lut-validator';
 import { sanitizeHtml } from '../common/html-sanitize.util';
 import { decryptAtRest } from '../common/encryption.util';
+import { getCompanyProfileCompleteness, getUnifiedCompanyProfile, updateUnifiedCompanyProfile } from '../common/company-profile.util';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -325,20 +326,14 @@ export class InvoicingService {
     const docType = dto.docType || 'tax_invoice';
     const isSez = docType === 'sez_invoice' || !!dto.isSez;
 
-    const missingFields: string[] = [];
-    if (!tenant.name?.trim()) missingFields.push('Company Name');
-    if (!tenant.address?.trim()) missingFields.push('Address');
-    if (!tenant.gstin?.trim()) missingFields.push('GSTIN');
-    if (!tenant.bankName?.trim() || !tenant.bankAccountNumber?.trim() || !tenant.bankIfsc?.trim()) {
-      missingFields.push('Bank Details (Bank Name, Account Number, IFSC)');
-    }
-    if (isSez && !tenant.lutBondNo?.trim() && !dto.lutBondNo?.trim()) {
-      missingFields.push('LUT Bond No');
-    }
+    const completeness = await getCompanyProfileCompleteness(this.prisma, tenantId, {
+      isSez,
+      dtoLutBondNo: dto.lutBondNo,
+    });
 
-    if (missingFields.length > 0) {
+    if (!completeness.complete) {
       throw new BadRequestException(
-        `Cannot create invoice. Company profile in Settings is incomplete. Missing: ${missingFields.join(', ')}.`
+        `Cannot create invoice. Company profile in Settings is incomplete. Missing: ${completeness.missing.join(', ')}.`
       );
     }
 
@@ -961,91 +956,8 @@ export class InvoicingService {
         : userOrTenantId?.tenantId;
 
     if (tenantId) {
-      const tenant = await this.prisma.tenant.findUnique({
-        where: { id: tenantId },
-      });
-
-      if (tenant) {
-        let logoBuffer: Buffer | null = null;
-        let logoBase64: string | null = null;
-
-        try {
-          const asset = await (this.prisma as any).brandingAsset.findUnique({
-            where: { tenantId_assetType: { tenantId: tenant.id, assetType: 'logo' } },
-          });
-          if (asset && asset.data) {
-            logoBuffer = Buffer.from(asset.data);
-            const mime = asset.mimeType || 'image/png';
-            logoBase64 = `data:${mime};base64,${logoBuffer.toString('base64')}`;
-          }
-        } catch {}
-
-        let effectiveBankName = tenant.bankName || '';
-        let effectiveBankAccountNumber = tenant.bankAccountNumber || '';
-        let effectiveBankIfsc = tenant.bankIfsc || '';
-        let effectiveBankBranch = tenant.bankBranch || '';
-        let effectiveHolderName = tenant.name || '';
-        let effectiveBankUpi = tenant.bankUpi || '';
-
-        try {
-          const docBank =
-            (await (this.prisma as any).companyBankAccount?.findFirst({
-              where: { tenantId: tenant.id, isActive: true, isDocumentDefault: true },
-            })) ||
-            (await (this.prisma as any).companyBankAccount?.findFirst({
-              where: { tenantId: tenant.id, isActive: true, isDefault: true },
-            }));
-
-          if (docBank) {
-            const rawNum = decryptAtRest(docBank.accountNumber) || docBank.accountNumberLast4;
-            effectiveBankName = docBank.bankName;
-            effectiveBankAccountNumber = rawNum;
-            effectiveBankIfsc = docBank.ifsc;
-            effectiveBankBranch = docBank.branch || '';
-            effectiveHolderName = docBank.holderName || tenant.name || '';
-            effectiveBankUpi = docBank.upiId || '';
-          }
-        } catch {}
-
-        return {
-          tenantId: tenant.id,
-          companyName: tenant.name,
-          tradeName: tenant.name,
-          address: tenant.address || '',
-          city: tenant.city || '',
-          state: tenant.state || '',
-          pincode: tenant.pincode || '',
-          gstin: tenant.gstin || '',
-          pan: tenant.pan || (tenant.gstin && tenant.gstin.length >= 12 ? tenant.gstin.substring(2, 12) : ''),
-          phone: tenant.phone || '',
-          email: tenant.email || '',
-          website: tenant.website || '',
-          bankName: effectiveBankName,
-          bankAccountNumber: effectiveBankAccountNumber,
-          bankIfsc: effectiveBankIfsc,
-          bankBranch: effectiveBankBranch,
-          bankAccountHolder: effectiveHolderName,
-          bankUpi: effectiveBankUpi,
-          bankDetails: {
-            bankName: effectiveBankName,
-            accountNumber: effectiveBankAccountNumber,
-            ifscCode: effectiveBankIfsc,
-            branch: effectiveBankBranch,
-            accountHolderName: effectiveHolderName,
-            upiId: effectiveBankUpi,
-          },
-          lutBondNo: tenant.lutBondNo || '',
-          logoUrl:
-            logoBase64 ||
-            (tenant.logoUrl && tenant.logoUrl.trim() !== ''
-              ? tenant.logoUrl
-              : (process.env.PRODUCT_LOGO_URL || '')),
-          logoBase64,
-          logoBuffer,
-          invoicePrefix: tenant.invoicePrefix || 'INV',
-          isOnboarded: tenant.isOnboarded || false,
-        };
-      }
+      const profile = await getUnifiedCompanyProfile(this.prisma, tenantId);
+      if (profile) return profile;
     }
 
     const defaultName = process.env.PRODUCT_NAME || 'CRM';
@@ -1066,11 +978,31 @@ export class InvoicingService {
       bankIfsc: '',
       bankBranch: '',
       bankAccountHolder: defaultName,
+      bankUpi: '',
+      bankDetails: {
+        bankName: '',
+        accountNumber: '',
+        ifscCode: '',
+        branch: '',
+        accountHolderName: defaultName,
+        upiId: '',
+      },
       lutBondNo: '',
       logoUrl: process.env.PRODUCT_LOGO_URL || '',
       invoicePrefix: 'INV',
       isOnboarded: false,
+      completeness: {
+        complete: false,
+        missing: ['Company profile not found'],
+      },
     };
+  }
+
+  /**
+   * Evaluates company profile completeness for tenant.
+   */
+  async getCompleteness(tenantId: string, options?: { isSez?: boolean; dtoLutBondNo?: string }) {
+    return getCompanyProfileCompleteness(this.prisma, tenantId, options);
   }
 
   /**
@@ -1201,32 +1133,7 @@ export class InvoicingService {
     }
 
     const tenantId = requireTenantId(user);
-    await this.prisma.tenant.update({
-      where: { id: tenantId },
-      data: {
-        name: dto.companyName || dto.name,
-        address: dto.address,
-        city: dto.city,
-        state: dto.state,
-        pincode: dto.pincode,
-        gstin: dto.gstin,
-        pan: dto.pan,
-        phone: dto.phone,
-        email: dto.email,
-        website: dto.website,
-        bankName: dto.bankName,
-        bankAccountNumber: dto.bankAccountNumber,
-        bankIfsc: dto.bankIfsc,
-        bankBranch: dto.bankBranch,
-        logoUrl: dto.logoUrl,
-        lutBondNo: dto.lutBondNo,
-        lutValidity: dto.lutValidity,
-        invoicePrefix: dto.invoicePrefix,
-        isOnboarded: true,
-      },
-    });
-
-    return this.getCompanyProfile(tenantId);
+    return updateUnifiedCompanyProfile(this.prisma, tenantId, dto);
   }
 
   /**

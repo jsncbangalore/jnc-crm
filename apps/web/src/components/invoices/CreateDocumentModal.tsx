@@ -65,27 +65,27 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [skus, setSkus] = useState<any[]>([]);
   const [companyProfile, setCompanyProfile] = useState<any>(null);
+  const [missingCompanyFields, setMissingCompanyFields] = useState<string[]>([]);
 
   useEffect(() => {
     if (isOpen) {
+      invoicesApi
+        .getCompanyProfileCompleteness({ isSez: docType === 'sez_invoice', docType })
+        .then((res) => {
+          if (res?.data?.missing && Array.isArray(res.data.missing)) {
+            setMissingCompanyFields(res.data.missing);
+          } else {
+            setMissingCompanyFields([]);
+          }
+        })
+        .catch((err) => console.warn('Failed to load profile completeness:', err));
+
       invoicesApi
         .getCompanyProfile()
         .then((res) => setCompanyProfile(res.data))
         .catch((err) => console.warn('Failed to load company profile for document check:', err));
     }
-  }, [isOpen]);
-
-  const missingCompanyFields = React.useMemo(() => {
-    if (!companyProfile) return [];
-    const missing: string[] = [];
-    if (!companyProfile.companyName && !companyProfile.tradeName) missing.push('Company Name');
-    if (!companyProfile.address) missing.push('Address');
-    if (!companyProfile.gstin) missing.push('GSTIN');
-    if (!companyProfile.bankAccountNumber && !companyProfile.bankIfsc && !companyProfile.bankName) {
-      missing.push('Bank Details');
-    }
-    return missing;
-  }, [companyProfile]);
+  }, [isOpen, docType]);
 
   // Form State
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -356,6 +356,11 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
     if (e) e.preventDefault();
     setFormError(null);
     setFieldErrors({});
+    if (missingCompanyFields.length > 0) {
+      // The amber banner displays the missing fields clearly once.
+      // Suppress submit to prevent duplicate error boxes or duplicate toasts.
+      return;
+    }
 
     if (!invoiceNumber.trim()) {
       setFormError('Please enter document number.');
@@ -452,6 +457,20 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
     } catch (err: any) {
       const respData = err?.response?.data;
       const msg = toPlainText(respData?.message || err.message || 'Failed to process document');
+
+      // If the error is company profile completeness, show ONCE in the amber banner without duplicate toast or form error box
+      if (msg.toLowerCase().includes('company profile in settings is incomplete')) {
+        const match = msg.match(/Missing:\s*([^.]+)/i);
+        if (match && match[1]) {
+          const fields = match[1].split(',').map((s) => s.trim()).filter(Boolean);
+          if (fields.length > 0) {
+            setMissingCompanyFields(fields);
+          }
+        }
+        setFormError(null);
+        return;
+      }
+
       const fErrors = respData?.fieldErrors || {};
       const normalizedErrors: Record<string, string> = {};
 

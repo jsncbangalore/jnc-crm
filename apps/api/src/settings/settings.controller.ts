@@ -176,6 +176,20 @@ export class SettingsController {
   }
 
   /**
+   * GET /settings/company-profile/completeness
+   * Evaluate profile completeness for web banners and document guards
+   */
+  @Get('company-profile/completeness')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  async getCompanyProfileCompleteness(
+    @CurrentUser() user: ScopedUser,
+    @Query('isSez') isSezQuery?: string,
+  ) {
+    const isSez = isSezQuery === 'true';
+    return this.settingsService.getCompleteness(user, { isSez });
+  }
+
+  /**
    * GET /settings/company-profile
    * Fetch company invoicing, address, tax & bank details
    */

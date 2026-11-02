@@ -241,8 +241,8 @@ export class BankAccountsService {
         },
       });
 
-      // Synchronize primary tenant banking fields for document templates
-      if (shouldBeDocDefault) {
+      // Synchronize primary tenant banking fields for document templates & settings
+      if (shouldBeDocDefault || shouldBeDefault) {
         await tx.tenant.update({
           where: { id: tenantId },
           data: {
@@ -360,7 +360,7 @@ export class BankAccountsService {
         data,
       });
 
-      if (updated.isDocumentDefault) {
+      if (updated.isDocumentDefault || updated.isDefault) {
         const accNumToUse = rawAccount || decryptAtRest(updated.accountNumber) || updated.accountNumberLast4;
         await tx.tenant.update({
           where: { id: tenantId },
@@ -401,10 +401,24 @@ export class BankAccountsService {
         where: { tenantId },
         data: { isDefault: false },
       });
-      return tx.companyBankAccount.update({
+      const updated = await tx.companyBankAccount.update({
         where: { id },
         data: { isDefault: true, isActive: true },
       });
+
+      const rawAccount = decryptAtRest(updated.accountNumber) || updated.accountNumberLast4;
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: {
+          bankName: updated.bankName,
+          bankAccountNumber: rawAccount,
+          bankIfsc: updated.ifsc,
+          bankBranch: updated.branch,
+          bankUpi: updated.upiId,
+        },
+      });
+
+      return updated;
     });
   }
 
@@ -442,9 +456,48 @@ export class BankAccountsService {
    * Deactivate a bank account.
    */
   async deactivate(tenantId: string, id: string) {
-    return this.prisma.companyBankAccount.update({
-      where: { id },
-      data: { isActive: false, isDefault: false, isDocumentDefault: false },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.companyBankAccount.update({
+        where: { id },
+        data: { isActive: false, isDefault: false, isDocumentDefault: false },
+      });
+
+      // Synchronize to next active default account or clear tenant fields if none active
+      const nextActive = await tx.companyBankAccount.findFirst({
+        where: { tenantId, isActive: true },
+        orderBy: [{ isDocumentDefault: 'desc' }, { isDefault: 'desc' }, { createdAt: 'asc' }],
+      });
+
+      if (nextActive) {
+        await tx.companyBankAccount.update({
+          where: { id: nextActive.id },
+          data: { isDefault: true, isDocumentDefault: true },
+        });
+        const rawAccount = decryptAtRest(nextActive.accountNumber) || nextActive.accountNumberLast4;
+        await tx.tenant.update({
+          where: { id: tenantId },
+          data: {
+            bankName: nextActive.bankName,
+            bankAccountNumber: rawAccount,
+            bankIfsc: nextActive.ifsc,
+            bankBranch: nextActive.branch,
+            bankUpi: nextActive.upiId,
+          },
+        });
+      } else {
+        await tx.tenant.update({
+          where: { id: tenantId },
+          data: {
+            bankName: null,
+            bankAccountNumber: null,
+            bankIfsc: null,
+            bankBranch: null,
+            bankUpi: null,
+          },
+        });
+      }
+
+      return updated;
     });
   }
 
@@ -452,9 +505,35 @@ export class BankAccountsService {
    * Activate a bank account.
    */
   async activate(tenantId: string, id: string) {
-    return this.prisma.companyBankAccount.update({
-      where: { id },
-      data: { isActive: true },
+    return this.prisma.$transaction(async (tx) => {
+      const activeCount = await tx.companyBankAccount.count({
+        where: { tenantId, isActive: true },
+      });
+      const isFirst = activeCount === 0;
+
+      const updated = await tx.companyBankAccount.update({
+        where: { id },
+        data: {
+          isActive: true,
+          ...(isFirst ? { isDefault: true, isDocumentDefault: true } : {}),
+        },
+      });
+
+      if (isFirst) {
+        const rawAccount = decryptAtRest(updated.accountNumber) || updated.accountNumberLast4;
+        await tx.tenant.update({
+          where: { id: tenantId },
+          data: {
+            bankName: updated.bankName,
+            bankAccountNumber: rawAccount,
+            bankIfsc: updated.ifsc,
+            bankBranch: updated.branch,
+            bankUpi: updated.upiId,
+          },
+        });
+      }
+
+      return updated;
     });
   }
 }

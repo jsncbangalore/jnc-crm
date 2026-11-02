@@ -1138,6 +1138,8 @@ export const invoicesApi = {
       responseType: 'blob',
     }),
   getCompanyProfile: () => api.get('/invoices/company-profile'),
+  getCompanyProfileCompleteness: (params?: { isSez?: boolean; docType?: string }) =>
+    api.get('/invoices/company-profile/completeness', { params }),
   getSignatorySettings: () => api.get('/invoices/settings/signatory'),
   updateSignatorySettings: (data: {
     signatoryName?: string;

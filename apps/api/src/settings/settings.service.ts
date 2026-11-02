@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 import { encryptAtRest, decryptAtRest } from '../common/encryption.util';
+import { getCompanyProfileCompleteness, getUnifiedCompanyProfile } from '../common/company-profile.util';
 import { BRAND_CONFIG } from '../common/brand';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -340,22 +341,30 @@ export class SettingsService {
   }
 
   /**
-   * Get full company invoicing & tax profile for tenant
+   * Get full company invoicing & tax profile for tenant (unified structure)
    */
   async getCompanyProfile(user: ScopedUser) {
     if (!user.tenantId) {
       throw new ForbiddenException('Platform administrator cannot access tenant invoicing, banking, or tax profiles from the platform console.');
     }
     const tenantId = user.tenantId;
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-    });
+    const profile = await getUnifiedCompanyProfile(this.prisma, tenantId);
 
-    if (!tenant) {
+    if (!profile) {
       throw new NotFoundException('Company tenant not found');
     }
 
-    return tenant;
+    return profile;
+  }
+
+  /**
+   * Evaluates company profile completeness for tenant.
+   */
+  async getCompleteness(user: ScopedUser, options?: { isSez?: boolean }) {
+    if (!user.tenantId) {
+      throw new ForbiddenException('Platform administrator cannot access tenant profile completeness.');
+    }
+    return getCompanyProfileCompleteness(this.prisma, user.tenantId, options);
   }
 
   /**
@@ -473,57 +482,91 @@ export class SettingsService {
     }
 
 
-    const updated = await this.prisma.tenant.update({
-      where: { id: tenantId },
-      data: updateData,
-    });
-
-    if (dto.bankName && dto.bankAccountNumber) {
-      try {
+    return this.prisma.$transaction(async (tx) => {
+      const companyName = dto.name || dto.companyName;
+      if (dto.bankName && dto.bankAccountNumber) {
         const cleanAcc = String(dto.bankAccountNumber).replace(/\s+/g, '');
         const last4 = cleanAcc.length >= 4 ? cleanAcc.slice(-4) : cleanAcc;
-        const holder = dto.name?.trim() || updated.name || 'Company Account';
-        const existing = await (this.prisma as any).companyBankAccount?.findFirst({
-          where: { tenantId, isDefault: true },
+        const cleanIfsc = (dto.bankIfsc || '').trim().toUpperCase();
+        const cleanBranch = dto.bankBranch !== undefined ? dto.bankBranch?.trim() : null;
+        const cleanUpi = dto.bankUpi !== undefined ? dto.bankUpi?.trim() : null;
+        const holder = companyName?.trim() || 'Company Account';
+
+        updateData.bankName = dto.bankName.trim();
+        updateData.bankAccountNumber = cleanAcc;
+        updateData.bankIfsc = cleanIfsc;
+        if (cleanBranch !== null) updateData.bankBranch = cleanBranch;
+        if (cleanUpi !== null) updateData.bankUpi = cleanUpi;
+
+        const existingBank = await tx.companyBankAccount.findFirst({
+          where: {
+            tenantId,
+            isActive: true,
+            OR: [{ isDefault: true }, { isDocumentDefault: true }],
+          },
         });
-        if (existing) {
-          await (this.prisma as any).companyBankAccount?.update({
-            where: { id: existing.id },
+
+        if (existingBank) {
+          await tx.companyBankAccount.update({
+            where: { id: existingBank.id },
             data: {
               bankName: dto.bankName.trim(),
               holderName: holder,
-              accountNumber: encryptAtRest(cleanAcc),
+              accountNumber: encryptAtRest(cleanAcc)!,
               accountNumberLast4: last4,
-              ifsc: (dto.bankIfsc || existing.ifsc || '').trim().toUpperCase(),
-              branch: dto.bankBranch !== undefined ? dto.bankBranch?.trim() : existing.branch,
-              upiId: dto.bankUpi !== undefined ? dto.bankUpi?.trim() : existing.upiId,
+              ifsc: cleanIfsc || existingBank.ifsc,
+              branch: cleanBranch !== null ? cleanBranch : existingBank.branch,
+              upiId: cleanUpi !== null ? cleanUpi : existingBank.upiId,
+              isDefault: true,
+              isDocumentDefault: true,
               isActive: true,
             },
           });
         } else {
-          await (this.prisma as any).companyBankAccount?.create({
+          await tx.companyBankAccount.create({
             data: {
               tenantId,
               label: 'Primary Settlement Account',
               bankName: dto.bankName.trim(),
               holderName: holder,
-              accountNumber: encryptAtRest(cleanAcc),
+              accountNumber: encryptAtRest(cleanAcc)!,
               accountNumberLast4: last4,
-              ifsc: (dto.bankIfsc || '').trim().toUpperCase(),
-              branch: dto.bankBranch?.trim() || '',
-              upiId: dto.bankUpi?.trim() || '',
+              ifsc: cleanIfsc,
+              branch: cleanBranch || '',
+              upiId: cleanUpi || '',
               isDefault: true,
               isDocumentDefault: true,
               isActive: true,
             },
           });
         }
-      } catch (e: any) {
-        this.logger.warn(`Failed to auto-sync CompanyBankAccount for tenant ${tenantId}: ${e?.message}`);
-      }
-    }
+      } else {
+        // If bank details not provided in DTO, sync from active default CompanyBankAccount
+        const defaultBank = await tx.companyBankAccount.findFirst({
+          where: {
+            tenantId,
+            isActive: true,
+            OR: [{ isDocumentDefault: true }, { isDefault: true }],
+          },
+        });
 
-    return updated;
+        if (defaultBank && (updateData.bankName === undefined || updateData.bankAccountNumber === undefined)) {
+          const rawNum = decryptAtRest(defaultBank.accountNumber) || defaultBank.accountNumberLast4;
+          updateData.bankName = defaultBank.bankName;
+          updateData.bankAccountNumber = rawNum;
+          updateData.bankIfsc = defaultBank.ifsc;
+          updateData.bankBranch = defaultBank.branch;
+          updateData.bankUpi = defaultBank.upiId;
+        }
+      }
+
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: updateData,
+      });
+
+      return getUnifiedCompanyProfile(tx, tenantId);
+    });
   }
 
   // --- TENANT-SCOPED ISOLATED MAIL ACCOUNTS ---
