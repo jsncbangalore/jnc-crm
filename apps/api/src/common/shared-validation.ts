@@ -744,7 +744,7 @@ export const validateUpiId = (
 // 21. Payment Reference Validation Rules by Mode
 export const UPI_REF_REGEX = /^\d{12}$/;
 export const CHEQUE_REF_REGEX = /^\d{6}$/;
-export const NEFT_RTGS_IMPS_REF_REGEX = /^[a-zA-Z0-9]{8,22}$/;
+export const NEFT_RTGS_IMPS_REF_REGEX = /^[a-zA-Z0-9/_\-\.\:\s]{4,50}$/;
 
 export const getPaymentReferenceHint = (method: string): string => {
   const m = (method || '').toUpperCase();
@@ -757,7 +757,7 @@ export const getPaymentReferenceHint = (method: string): string => {
   if (m === 'UPI') {
     return 'UPI reference must be a 12-digit transaction number (UTR).';
   }
-  return 'NEFT/RTGS/IMPS reference must be 8 to 22 alphanumeric characters.';
+  return 'NEFT/RTGS/IMPS reference must be 4 to 50 characters (letters, numbers, / or -).';
 };
 
 export const validatePaymentReference = (
@@ -790,8 +790,8 @@ export const validatePaymentReference = (
     return { valid: true, hint, value };
   }
 
-  if (!NEFT_RTGS_IMPS_REF_REGEX.test(value)) {
-    return { valid: false, error: 'NEFT/RTGS/IMPS reference must be 8 to 22 alphanumeric characters.', hint, value };
+  if (!NEFT_RTGS_IMPS_REF_REGEX.test(value) || !/[a-zA-Z0-9]/.test(value)) {
+    return { valid: false, error: 'NEFT/RTGS/IMPS reference must be 4 to 50 characters (letters, numbers, / or -).', hint, value };
   }
 
   return { valid: true, hint, value };

@@ -960,7 +960,7 @@ export default function UnifiedRecordPaymentModal({
                 </label>
                 <input
                   type="text"
-                  placeholder={paymentMethod === 'Cash' ? 'Optional for Cash' : (paymentMethod === 'UPI' ? '12-digit UTR' : (paymentMethod === 'Cheque' ? '6-digit Cheque No' : '8-22 chars reference'))}
+                  placeholder={paymentMethod === 'Cash' ? 'Optional for Cash' : (paymentMethod === 'UPI' ? '12-digit UTR' : (paymentMethod === 'Cheque' ? '6-digit Cheque No' : 'e.g. UTR / Bank Reference No'))}
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-white dark:bg-[#141722] border border-slate-300 dark:border-[#2A3042] rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono"
