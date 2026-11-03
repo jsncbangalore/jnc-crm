@@ -135,8 +135,6 @@ export default function LedgerPage() {
     user?.role === 'platform_super_admin' ||
     user?.role === 'platform_admin';
 
-  const isDemoTenant = Boolean(user?.isDemo || user?.tenant?.isDemo);
-
   // State
   const [partyType, setPartyType] = useState<'customer' | 'supplier'>('customer');
   const [currentFY] = useState<string>(() => computeCurrentIndianFY());
@@ -170,7 +168,6 @@ export default function LedgerPage() {
   const [loadingStatement, setLoadingStatement] = useState(false);
   const [partiesError, setPartiesError] = useState<string | null>(null);
   const [statementError, setStatementError] = useState<string | null>(null);
-  const [resettingDemo, setResettingDemo] = useState(false);
 
   // Dropdown states for Download and More
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
@@ -262,26 +259,6 @@ export default function LedgerPage() {
     loadParties();
   }, [loadParties]);
 
-  // Reset demo data handler
-  const handleResetDemoData = async () => {
-    if (!window.confirm('Reset all demo party balances and transactions back to the clean baseline?')) {
-      return;
-    }
-    setResettingDemo(true);
-    try {
-      await ledgerApi.resetDemo();
-      setSuccessMsg('Demo data has been reset to baseline.');
-      await loadParties();
-      if (selectedPartyId) {
-        await loadStatement(selectedPartyId, selectedFY);
-      }
-    } catch (err: any) {
-      console.error('Failed to reset demo data', err);
-      alert(err?.response?.data?.message || 'Could not reset demo data.');
-    } finally {
-      setResettingDemo(false);
-    }
-  };
 
   // Load statement
   const loadStatement = useCallback(
@@ -478,30 +455,6 @@ export default function LedgerPage() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* ─── DEMO TENANT BANNER ────────────────────────────────────────────── */}
-      {isDemoTenant && (
-        <div
-          data-testid="demo-data-banner"
-          className="p-3 bg-amber-500/10 border border-amber-500/30 dark:border-amber-500/20 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900 dark:text-amber-200"
-        >
-          <div className="flex items-center gap-2">
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-white uppercase tracking-wider">
-              Demo
-            </span>
-            <span className="font-medium">
-              Demo data: sample parties and vouchers for testing. Actions do not affect real accounts.
-            </span>
-          </div>
-          <button
-            onClick={handleResetDemoData}
-            disabled={resettingDemo}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition shadow-xs disabled:opacity-50 shrink-0"
-          >
-            <RotateCcw className={`w-3.5 h-3.5 ${resettingDemo ? 'animate-spin' : ''}`} />
-            <span>{resettingDemo ? 'Resetting...' : 'Reset demo data'}</span>
-          </button>
-        </div>
-      )}
 
       {/* ─── PAGE HEADER (No subtitle, cut-off FY fixed, plain words) ───────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -691,7 +644,7 @@ export default function LedgerPage() {
       </div>
 
       {/* ─── REAL TENANT FIRST-RUN CHECKLIST (When tenant is real and empty) ── */}
-      {!isDemoTenant && parties.length === 0 && !loadingParties && (
+      {parties.length === 0 && !loadingParties && (
         <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs space-y-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
@@ -857,7 +810,6 @@ export default function LedgerPage() {
                 const pName = p.partyName || 'Unnamed Party';
                 const pGstin = p.partyGstin;
                 const pPhone = p.partyPhone;
-                const isDemoParty = Boolean(p.isDemo || p.source === 'demo' || p.source === 'test');
 
                 return (
                   <button
@@ -880,11 +832,6 @@ export default function LedgerPage() {
                         >
                           {pName}
                         </p>
-                        {isDemoParty && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                            Demo
-                          </span>
-                        )}
                         {p.isUnlinked && (
                           <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                             Unlinked
