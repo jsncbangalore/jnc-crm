@@ -84,6 +84,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   // PDF & Print State
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [popupBlockedMsg, setPopupBlockedMsg] = useState<string | null>(null);
 
   if (!invoice) return null;
 
@@ -136,8 +137,6 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
       setDownloadingPdf(false);
     }
   };
-
-  const [popupBlockedMsg, setPopupBlockedMsg] = useState<string | null>(null);
 
   const handlePrint = () => {
     if (!invoice) return;
