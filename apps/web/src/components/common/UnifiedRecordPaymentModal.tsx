@@ -960,6 +960,12 @@ export default function UnifiedRecordPaymentModal({
                 </label>
                 <input
                   type="text"
+                  name="crmPaymentTransactionReference"
+                  id="crm-payment-transaction-reference"
+                  autoComplete="one-time-code"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
                   placeholder={paymentMethod === 'Cash' ? 'Optional for Cash' : (paymentMethod === 'UPI' ? '12-digit UTR' : (paymentMethod === 'Cheque' ? '6-digit Cheque No' : 'e.g. UTR / Bank Reference No'))}
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}

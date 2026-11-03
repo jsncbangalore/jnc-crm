@@ -854,7 +854,10 @@ export default function BrandingSettingsPage() {
                 type="text"
                 name="companyGstin"
                 id="company-gstin"
-                autoComplete="off"
+                autoComplete="one-time-code"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-form-type="other"
                 data-testid="input-gstin"
                 className="input text-xs font-mono uppercase"
                 placeholder="29AAAAA0000A1Z5"
@@ -874,7 +877,10 @@ export default function BrandingSettingsPage() {
                 type="text"
                 name="companyPan"
                 id="company-pan"
-                autoComplete="off"
+                autoComplete="one-time-code"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-form-type="other"
                 data-testid="input-pan"
                 className="input text-xs font-mono uppercase"
                 placeholder="AAAAA0000A"
@@ -907,12 +913,15 @@ export default function BrandingSettingsPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="label">Invoice Number Prefix</label>
+              <label className="label">Invoice Series Prefix</label>
               <input
                 type="text"
-                name="companyInvoicePrefix"
-                id="company-invoice-prefix"
-                autoComplete="off"
+                name="crmInvoiceSeriesPrefix"
+                id="crm-invoice-series-prefix"
+                autoComplete="one-time-code"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-form-type="other"
                 data-testid="input-invoice-prefix"
                 className="input text-xs font-mono uppercase"
                 placeholder="INV"
