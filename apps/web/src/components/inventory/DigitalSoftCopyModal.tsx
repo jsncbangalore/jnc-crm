@@ -14,7 +14,7 @@ import {
   Eye,
   Paperclip,
 } from 'lucide-react';
-import { numberToIndianWords } from './SmartBillScannerModal';
+import { numberToIndianWords } from '../invoices/InvoiceDocumentTemplate';
 import { formatImageUrl } from './PurchaseBillsHub';
 import { fetchPrivateFileBlobUrl } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -105,24 +105,19 @@ export const DigitalSoftCopyModal: React.FC<DigitalSoftCopyModalProps> = ({
     };
   }, [isOpen, bill?.documentUrl]);
 
-  if (!isOpen || !bill) return null;
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const isIgst = Number(bill.igst) > 0 || bill.softCopyData?.taxMode === 'igst';
-
-  const isVerified = Boolean(bill.isVerified || bill.verifiedAt || bill.status === 'verified');
+  const isIgst = Boolean(bill && (Number(bill.igst) > 0 || bill.softCopyData?.taxMode === 'igst'));
+  const isVerified = Boolean(bill && (bill.isVerified || bill.verifiedAt || bill.status === 'verified'));
 
   const hasStockLines = useMemo(() => {
+    if (!bill) return false;
     if (bill.hasStockLines !== undefined) return Boolean(bill.hasStockLines);
     if (bill.inwardedToStock !== undefined) return Boolean(bill.inwardedToStock);
     return parsedItems.length > 0 && parsedItems.some((it: any) => it.skuCode || it.sku || it.quantity);
   }, [bill, parsedItems]);
 
   const displayBillDate = useMemo(() => {
-    const raw = bill?.billDate || bill?.invoiceDateReal || bill?.invoiceDate || bill?.createdAt;
+    if (!bill) return 'N/A';
+    const raw = bill.billDate || bill.invoiceDateReal || bill.invoiceDate || bill.createdAt;
     if (!raw) return 'N/A';
     try {
       const d = new Date(raw);
@@ -133,6 +128,16 @@ export const DigitalSoftCopyModal: React.FC<DigitalSoftCopyModalProps> = ({
   }, [bill]);
 
   const { taxableBase, cgstVal, sgstVal, igstVal, grandTotalVal, roundOffVal } = useMemo(() => {
+    if (!bill) {
+      return {
+        taxableBase: 0,
+        cgstVal: 0,
+        sgstVal: 0,
+        igstVal: 0,
+        grandTotalVal: 0,
+        roundOffVal: 0,
+      };
+    }
     const taxable = Number(Number(bill.subtotal || 0).toFixed(2));
     const rawGrandTotal = Number(Number(bill.grandTotal || bill.totalAmount || 0).toFixed(2));
 
@@ -160,6 +165,12 @@ export const DigitalSoftCopyModal: React.FC<DigitalSoftCopyModalProps> = ({
       roundOffVal: roundOff,
     };
   }, [bill, isIgst]);
+
+  if (!isOpen || !bill) return null;
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   return (
     <AnimatePresence>
