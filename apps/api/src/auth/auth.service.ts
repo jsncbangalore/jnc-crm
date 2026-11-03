@@ -3282,8 +3282,8 @@ export class AuthService {
     if (!session || session.isRevoked) {
       if (session && session.isRevoked) {
         const timeSinceRevocation = Date.now() - new Date(session.updatedAt).getTime();
-        // 120-second grace window to absorb multi-tab / concurrent request race conditions
-        if (timeSinceRevocation < 120000) {
+        // 30-second grace window to absorb multi-tab / concurrent request race conditions
+        if (timeSinceRevocation < 30000) {
           const latestActiveSession = await this.prisma.refreshSession.findFirst({
             where: { familyId: session.familyId, isRevoked: false },
             orderBy: { createdAt: 'desc' },
@@ -3384,9 +3384,9 @@ export class AuthService {
           }
         }
 
-        // 10-second concurrent grace window: if this revoked session was rotated within the last 10 seconds,
+        // 30-second concurrent grace window: if this revoked session was rotated within the last 30 seconds,
         // do NOT revoke the family or increment tokenVersion, allowing concurrent requests to complete safely.
-        if (timeSinceRevocation < 10000) {
+        if (timeSinceRevocation < 30000) {
           throw new UnauthorizedException('Session refresh in progress. Please retry.');
         }
       }

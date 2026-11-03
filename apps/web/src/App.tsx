@@ -46,6 +46,7 @@ import PrivacyPage from './pages/PrivacyPage';
 import TermsPage from './pages/TermsPage';
 import ContactPage from './pages/ContactPage';
 import CookieConsentBanner from './components/common/CookieConsentBanner';
+import ReconnectingBanner from './components/common/ReconnectingBanner';
 import RobotsMetaHandler from './components/common/RobotsMetaHandler';
 import { PopupProvider } from './contexts/PopupContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -400,6 +401,7 @@ export default function App() {
           <PopupProvider>
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <RobotsMetaHandler />
+              <ReconnectingBanner />
               <MaintenanceNoticeBanner />
               <AppRoutes />
               <CookieConsentBanner />

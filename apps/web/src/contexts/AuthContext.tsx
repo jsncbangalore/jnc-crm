@@ -23,6 +23,10 @@ import {
   setStoredRefreshToken,
   setCurrentTabUserId,
   getCurrentTabUserId,
+  hasInFlightRequests,
+  isSaveInProgress,
+  notifyUserActivity,
+  checkAndPerformProactiveRefresh,
 } from '../services/api';
 import {
   subscribeCrossTabAuth,
@@ -89,10 +93,61 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-// 15 minutes inactivity timeout; warning appears at 1 minute (60s) remaining
-const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
-const WARNING_THRESHOLD_MS = 60 * 1000;
-const ACTIVITY_STORAGE_KEY = 'crm_last_activity_time';
+// Inactivity timeout read from VITE_INACTIVITY_TIMEOUT_MINUTES (default 60 minutes)
+export const getInactivityTimeoutMinutes = (): number => {
+  const envVal = import.meta.env?.VITE_INACTIVITY_TIMEOUT_MINUTES;
+  const parsed = Number(envVal);
+  if (!isNaN(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return 60;
+};
+
+export const getInactivityTimeoutMs = (): number => {
+  return getInactivityTimeoutMinutes() * 60 * 1000;
+};
+
+export const hasUnsavedFormChanges = (): boolean => {
+  if (typeof document === 'undefined') return false;
+  try {
+    if (document.querySelector('form.dirty, [data-unsaved="true"], .is-dirty, [data-is-dirty="true"]')) {
+      return true;
+    }
+    const editableElements = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), textarea, select'
+    );
+    for (let i = 0; i < editableElements.length; i++) {
+      const el = editableElements[i];
+      if (el.disabled || (el as any).readOnly) continue;
+      const placeholder = 'placeholder' in el ? ((el as any).placeholder || '').toLowerCase() : '';
+      const name = (el.name || '').toLowerCase();
+      if (name.includes('search') || placeholder.includes('search')) continue;
+
+      if (el instanceof HTMLInputElement) {
+        if (el.type === 'checkbox' || el.type === 'radio') {
+          if (el.checked !== el.defaultChecked) return true;
+        } else if (el.value !== el.defaultValue && el.value.trim().length > 0) {
+          return true;
+        }
+      } else if (el instanceof HTMLTextAreaElement) {
+        if (el.value !== el.defaultValue && el.value.trim().length > 0) return true;
+      } else if (el instanceof HTMLSelectElement) {
+        if (el.selectedIndex > 0 && el.value !== '') {
+          for (let j = 0; j < el.options.length; j++) {
+            if (el.options[j].defaultSelected && j !== el.selectedIndex) return true;
+          }
+        }
+      }
+    }
+  } catch {}
+  return false;
+};
+
+export const WARNING_THRESHOLD_MS = 60 * 1000;
+export const ACTIVITY_STORAGE_KEY = 'crm_last_activity_time';
+export const USER_INPUT_STORAGE_KEY = 'crm_last_user_input_time';
+export const MAX_EXTRA_SUPPRESSION_MS = 30 * 60 * 1000; // Cap suppression at 30 extra minutes
+export const REFRESH_TOKEN_MAX_LIFE_MS = 12 * 60 * 60 * 1000; // 12 hours refresh token life
 
 function clearStorageExceptTheme() {
   try {
@@ -178,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [secondsRemaining, setSecondsRemaining] = useState(60);
 
   const lastActivityRef = useRef<number>(Date.now());
+  const lastUserInputRef = useRef<number>(Date.now());
   const lastStorageWriteRef = useRef<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -366,8 +422,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
     if (storedLastActive) {
       const parsedTime = Number(storedLastActive);
-      if (!isNaN(parsedTime) && parsedTime > 0 && Date.now() - parsedTime >= INACTIVITY_TIMEOUT_MS) {
-        // 15 minutes of inactivity exceeded while CRM was closed or idle
+      if (!isNaN(parsedTime) && parsedTime > 0 && Date.now() - parsedTime >= getInactivityTimeoutMs()) {
+        // Inactivity limit exceeded while CRM was closed or idle
         setStaffAccessToken(null);
         setStoredRefreshToken(null, false);
         setStaffUserWithStorage(null);
@@ -636,11 +692,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const resetInactivityTimer = useCallback(() => {
     const now = Date.now();
     lastActivityRef.current = now;
+    lastUserInputRef.current = now;
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(ACTIVITY_STORAGE_KEY, String(now));
+        localStorage.setItem(USER_INPUT_STORAGE_KEY, String(now));
       } catch {}
     }
+    notifyUserActivity();
     setShowInactivityModal(false);
   }, []);
 
@@ -649,20 +708,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const now = Date.now();
     lastActivityRef.current = now;
+    lastUserInputRef.current = now;
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(ACTIVITY_STORAGE_KEY, String(now));
+        localStorage.setItem(USER_INPUT_STORAGE_KEY, String(now));
       } catch {}
     }
 
-    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click', 'wheel'];
+    const activityEvents = [
+      'mousemove',
+      'mousedown',
+      'keydown',
+      'keyup',
+      'input',
+      'change',
+      'touchstart',
+      'scroll',
+      'click',
+      'wheel',
+      'beforeinput',
+      'paste',
+    ];
     const handleActivity = () => {
       const current = Date.now();
       lastActivityRef.current = current;
+      lastUserInputRef.current = current;
+      notifyUserActivity();
       if (current - lastStorageWriteRef.current > 3000) {
         lastStorageWriteRef.current = current;
         try {
           localStorage.setItem(ACTIVITY_STORAGE_KEY, String(current));
+          localStorage.setItem(USER_INPUT_STORAGE_KEY, String(current));
         } catch {}
       }
       if (showInactivityModal) {
@@ -674,8 +751,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (document.visibilityState === 'visible') {
         const current = Date.now();
         lastActivityRef.current = current;
+        lastUserInputRef.current = current;
+        notifyUserActivity();
         try {
           localStorage.setItem(ACTIVITY_STORAGE_KEY, String(current));
+          localStorage.setItem(USER_INPUT_STORAGE_KEY, String(current));
         } catch {}
       }
     };
@@ -685,28 +765,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener('focus', handleActivity, { passive: true });
 
     timerRef.current = setInterval(() => {
-      let lastActive = lastActivityRef.current;
+      // 1. Proactive Refresh: while active, check and refresh access token ~2 minutes before expiration
+      checkAndPerformProactiveRefresh();
+
+      // 2. Unsaved changes or in-flight save guard:
+      // Cap the combined suppression at 30 extra minutes after the last real user input.
+      // Background polling requests (notifications, automation, health) never count as activity.
+      // Never exceed the refresh token life.
+      const isSaving = isSaveInProgress();
+      const hasRequests = hasInFlightRequests();
+      const hasUnsaved = hasUnsavedFormChanges();
+      const isSuppressionEligible = isSaving || hasRequests || hasUnsaved;
+
+      let lastUserInput = lastUserInputRef.current;
       try {
-        const stored = localStorage.getItem(ACTIVITY_STORAGE_KEY);
-        if (stored) {
-          const parsed = Number(stored);
+        const storedInput = localStorage.getItem(USER_INPUT_STORAGE_KEY);
+        if (storedInput) {
+          const parsed = Number(storedInput);
           if (!isNaN(parsed) && parsed > 0) {
-            lastActive = Math.max(lastActive, parsed);
+            lastUserInput = Math.max(lastUserInput, parsed);
           }
         }
       } catch {}
 
-      const elapsed = Date.now() - lastActive;
-      const timeLeft = INACTIVITY_TIMEOUT_MS - elapsed;
+      const current = Date.now();
+      const elapsedSinceUserInput = current - lastUserInput;
+      const baseTimeoutMs = getInactivityTimeoutMs();
 
-      if (timeLeft <= 0) {
-        setShowInactivityModal(false);
-        logout();
-      } else if (timeLeft <= WARNING_THRESHOLD_MS) {
-        setShowInactivityModal(true);
-        setSecondsRemaining(Math.max(1, Math.round(timeLeft / 1000)));
+      if (isSuppressionEligible) {
+        // Combined suppression is capped at 30 extra minutes (e.g. 60m + 30m = 90m),
+        // and cannot exceed the refresh token life (12 hours).
+        const maxAllowedDuration = Math.min(
+          baseTimeoutMs + MAX_EXTRA_SUPPRESSION_MS,
+          REFRESH_TOKEN_MAX_LIFE_MS
+        );
+        const timeLeft = maxAllowedDuration - elapsedSinceUserInput;
+
+        if (timeLeft <= 0) {
+          setShowInactivityModal(false);
+          logout();
+        } else if (timeLeft <= WARNING_THRESHOLD_MS) {
+          setShowInactivityModal(true);
+          setSecondsRemaining(Math.max(1, Math.round(timeLeft / 1000)));
+        } else {
+          setShowInactivityModal(false);
+        }
       } else {
-        setShowInactivityModal(false);
+        // Standard inactivity timeout when no unsaved changes or active saves
+        const timeLeft = baseTimeoutMs - elapsedSinceUserInput;
+
+        if (timeLeft <= 0) {
+          setShowInactivityModal(false);
+          logout();
+        } else if (timeLeft <= WARNING_THRESHOLD_MS) {
+          setShowInactivityModal(true);
+          setSecondsRemaining(Math.max(1, Math.round(timeLeft / 1000)));
+        } else {
+          setShowInactivityModal(false);
+        }
       }
     }, 1000);
 
@@ -1034,6 +1150,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       )}
     </AuthContext.Provider>
   );
+}
+
+if (typeof window !== 'undefined') {
+  (window as any).getInactivityTimeoutMinutes = getInactivityTimeoutMinutes;
+  (window as any).getInactivityTimeoutMs = getInactivityTimeoutMs;
+  (window as any).hasUnsavedFormChanges = hasUnsavedFormChanges;
 }
 
 export const useAuth = () => useContext(AuthContext);

@@ -104,8 +104,8 @@ export class PlatformAuthController {
     const result: any = await this.authService.verifyTwoFactor(dto, ip, userAgent);
 
     if (result && result.refreshToken) {
-      res.cookie(PLATFORM_REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(PLATFORM_AUTH_COOKIE_PATH, false));
-      res.cookie(PLATFORM_SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(false));
+      res.cookie(PLATFORM_REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(PLATFORM_AUTH_COOKIE_PATH, false, req));
+      res.cookie(PLATFORM_SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(false, req));
     }
     if (result && result.trustedDeviceCookie) {
       res.cookie(

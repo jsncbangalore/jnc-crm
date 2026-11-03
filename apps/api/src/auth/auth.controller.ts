@@ -368,8 +368,8 @@ export class AuthController {
       const result = await this.authService.refreshToken(rawRefreshToken, ip, userAgent, expectedUserId);
 
       if (result && result.refreshToken) {
-        res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(AUTH_COOKIE_PATH, true));
-        res.cookie(SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(true));
+        res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(AUTH_COOKIE_PATH, true, req));
+        res.cookie(SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(true, req));
       }
       this.logger.log('[AUTH] POST /auth/refresh - status: 200, code: REFRESH_SUCCESS');
       return result;
