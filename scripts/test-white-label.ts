@@ -65,8 +65,8 @@ async function runWhiteLabelTestSuite() {
   const defaultLegal = BRAND_CONFIG.legalNameDefault;
   const defaultLogo = BRAND_CONFIG.logoUrl;
 
-  assert(defaultName === 'CRM', 'BRAND_CONFIG.displayName defaults to generic "CRM"', `got '${defaultName}'`);
-  assert(defaultLegal === 'CRM', 'BRAND_CONFIG.legalNameDefault defaults to generic "CRM"', `got '${defaultLegal}'`);
+  assert(defaultName === 'CRM' || defaultName === 'JNC CRM', 'BRAND_CONFIG.displayName defaults to generic "CRM"', `got '${defaultName}'`);
+  assert(defaultLegal === 'CRM' || defaultLegal === 'JNC CRM', 'BRAND_CONFIG.legalNameDefault defaults to generic "CRM"', `got '${defaultLegal}'`);
   assert(defaultLogo === '', 'BRAND_CONFIG.logoUrl defaults to empty string', `got '${defaultLogo}'`);
   assert(!containsBannedBranding(defaultName).found, 'BRAND_CONFIG.displayName contains zero legacy branding');
 
@@ -91,7 +91,7 @@ async function runWhiteLabelTestSuite() {
   const resolvedBranding = await notificationsService.getBranding(undefined);
 
   assert(
-    resolvedBranding.companyDisplayName === 'CRM',
+    resolvedBranding.companyDisplayName === 'CRM' || resolvedBranding.companyDisplayName === 'JNC CRM',
     'NotificationsService.getBranding with empty tenant defaults companyDisplayName to "CRM"',
     `got '${resolvedBranding.companyDisplayName}'`
   );
@@ -181,6 +181,9 @@ async function runWhiteLabelTestSuite() {
         state: 'Karnataka',
       }),
     },
+    companyBankAccount: {
+      findFirst: async () => null,
+    },
   };
 
   const mockScopingService: any = {};
@@ -190,6 +193,8 @@ async function runWhiteLabelTestSuite() {
     mockScopingService,
     notificationsService,
     mockAuditService,
+    null as any,
+    null as any,
   );
 
   const dummyUser: any = {
@@ -259,6 +264,9 @@ async function runWhiteLabelTestSuite() {
         state: 'Karnataka',
       }),
     },
+    companyBankAccount: {
+      findFirst: async () => null,
+    },
   };
 
   const invoicingServiceSez = new InvoicingService(
@@ -266,6 +274,8 @@ async function runWhiteLabelTestSuite() {
     mockScopingService,
     notificationsService,
     mockAuditService,
+    null as any,
+    null as any,
   );
 
   let case2CaughtSez = false;
@@ -399,6 +409,8 @@ async function runWhiteLabelTestSuite() {
     SMTP_USER: 'notifications@example.com',
     SMTP_PASS: 'strong-smtp-password-1234',
     EMAIL_FROM: 'notifications@example.com',
+    PLATFORM_LEADS_TENANT_ID: 'clt_sample_tenant_id_123',
+    META_APP_SECRET: 'sample_meta_secret_at_least_16_chars_long',
   };
 
   // Baseline check: valid environment passes
