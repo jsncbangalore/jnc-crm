@@ -30,7 +30,6 @@ import {
   BulkImportProjectStockDto,
   AllocateProjectStockDto,
   CreatePurchaseBillDto,
-  ScanBillOcrDto,
   BulkEditComponentsDto,
   RecordPurchaseDto,
   RecordProjectStockPurchaseDto,
@@ -500,30 +499,6 @@ export class InventoryController {
     };
   }
 
-  @Post('purchase-documents/extract')
-  @PageAccess('bills', 'purchase_bills')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-    }),
-  )
-  async extractPurchaseDocument(
-    @UploadedFile() file: Express.Multer.File,
-    @CurrentUser() user: ScopedUser,
-  ) {
-    if (!file) throw new BadRequestException('File is required for extraction');
-    validateUploadedFile(file, 'document_or_image', 10 * 1024 * 1024);
-
-    const extracted = await this.inventoryService.extractFromDocumentBuffer(file.buffer, file.originalname);
-    return {
-      success: true,
-      extractedData: {
-        ...extracted,
-        filename: file.originalname,
-      },
-    };
-  }
 
   // ─── Protected Streaming of Purchase Documents ──────────────────────────────
 
@@ -646,11 +621,6 @@ export class InventoryController {
     return this.inventoryService.deletePurchaseBill(id, user);
   }
 
-  @Post('purchase-bills/scan-ocr')
-  @PageAccess('bills', 'purchase_bills')
-  async scanBillOcr(@Body() body: ScanBillOcrDto) {
-    return this.inventoryService.scanBillOcr(body);
-  }
 
   // ─── High-Speed Bulk Component Editing ──────────────────────────────────────
 

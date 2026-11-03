@@ -675,28 +675,6 @@ export class CreatePurchaseBillDto {
   softCopyData?: any;
 }
 
-export class ScanBillOcrDto {
-  @IsString()
-  @IsOptional()
-  rawText?: string;
-
-  @IsString()
-  @IsOptional()
-  filename?: string;
-
-  @IsString()
-  @IsOptional()
-  fileUrl?: string;
-
-  @IsString()
-  @IsOptional()
-  documentUrl?: string;
-
-  @IsString()
-  @IsOptional()
-  imageBase64?: string;
-}
-
 export class BulkEditComponentsDto {
   @IsArray()
   @IsOptional()

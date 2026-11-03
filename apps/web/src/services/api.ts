@@ -356,8 +356,141 @@ export const setStoredRefreshToken = (token: string | null, isPlatform?: boolean
   }
 };
 
-// Attach token to every request
+// In-flight and save request tracking for activity management
+let _inFlightRequestCount = 0;
+let _saveRequestCount = 0;
+let _lastUserActivityTimestamp = Date.now();
+
+/**
+ * Detects whether a request is background polling (e.g. notifications, automation, health, periodic status)
+ * which must NEVER count as user activity or reset the idle timer or suppress inactivity.
+ */
+export const isBackgroundRequest = (config: any): boolean => {
+  if (!config) return false;
+  if (config.isBackground === true) return true;
+  const bgHeader =
+    config.headers?.['X-Background-Request'] ||
+    config.headers?.['x-background-request'];
+  if (bgHeader === 'true' || bgHeader === true) return true;
+  const url = String(config.url || '').toLowerCase();
+  if (
+    url.includes('/health') ||
+    url.includes('/notifications') ||
+    url.includes('/automation') ||
+    url.includes('/poll')
+  ) {
+    return true;
+  }
+  return false;
+};
+
+export const isUserInitiatedRequest = (config: any): boolean => {
+  if (!config) return false;
+  if (config.isUserInitiated === true) return true;
+  const userHeader =
+    config.headers?.['X-User-Initiated'] ||
+    config.headers?.['x-user-initiated'];
+  if (userHeader === 'true' || userHeader === true) return true;
+  return !isBackgroundRequest(config);
+};
+
+export const hasInFlightRequests = (): boolean => _inFlightRequestCount > 0;
+export const isSaveInProgress = (): boolean => _saveRequestCount > 0;
+export const getInFlightRequestCount = (): number => _inFlightRequestCount;
+
+export const notifyUserActivity = () => {
+  _lastUserActivityTimestamp = Date.now();
+};
+
+export const getLastUserActivityTimestamp = (): number => _lastUserActivityTimestamp;
+export const setLastUserActivityTimestamp = (ts: number) => {
+  _lastUserActivityTimestamp = ts;
+};
+
+export const isUserActiveRecently = (thresholdMs: number = 5 * 60 * 1000): boolean => {
+  return Date.now() - _lastUserActivityTimestamp < thresholdMs;
+};
+
+/**
+ * Decodes JWT payload without signature verification (safe client-side exp inspection).
+ */
+export function decodeJwtPayload(token: string | null | undefined): { exp?: number; sub?: string } | null {
+  if (!token || typeof token !== 'string') return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns milliseconds until access token expiration, or null if no token/exp.
+ */
+export function getTimeUntilTokenExpiry(isPlatform?: boolean): number | null {
+  const token = getAccessToken(isPlatform);
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return null;
+  return payload.exp * 1000 - Date.now();
+}
+
+// Connection Status and Non-blocking Banner State
+export type ConnectionStatus =
+  | { state: 'connected' }
+  | { state: 'reconnecting'; attempt: number; maxAttempts: number }
+  | { state: 'offline'; message: string };
+
+let _currentConnectionStatus: ConnectionStatus = { state: 'connected' };
+const _connectionListeners = new Set<(status: ConnectionStatus) => void>();
+
+export const getConnectionStatus = (): ConnectionStatus => _currentConnectionStatus;
+
+export const setConnectionStatus = (status: ConnectionStatus) => {
+  _currentConnectionStatus = status;
+  _connectionListeners.forEach((fn) => {
+    try {
+      fn(status);
+    } catch {}
+  });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('crm:connection-status', { detail: status })
+    );
+  }
+};
+
+export const subscribeConnectionStatus = (fn: (status: ConnectionStatus) => void) => {
+  _connectionListeners.add(fn);
+  fn(_currentConnectionStatus);
+  return () => {
+    _connectionListeners.delete(fn);
+  };
+};
+
+export const REFRESH_BACKOFF_DELAYS = [2000, 5000, 10000, 20000]; // 2s, 5s, 10s, 20s
+
+// Attach token to every request and track in-flight requests (excluding background polling)
 api.interceptors.request.use((config) => {
+  const isBg = isBackgroundRequest(config);
+  if (!isBg) {
+    _inFlightRequestCount++;
+    const method = (config.method || 'get').toUpperCase();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      _saveRequestCount++;
+    }
+    notifyUserActivity();
+  }
+
   const isPlatformReq =
     config.url?.startsWith('/platform') ||
     config.url?.startsWith('/platform-auth') ||
@@ -401,18 +534,35 @@ export const handleSessionExpired = (isPlatform: boolean = false) => {
 let _activeStaffRefreshPromise: Promise<any> | null = null;
 let _activePlatformRefreshPromise: Promise<any> | null = null;
 
-export const performStaffRefresh = async (): Promise<any> => {
-  if (_activeStaffRefreshPromise) {
-    return _activeStaffRefreshPromise;
-  }
+/**
+ * Resilient refresh runner:
+ * - Only a definitive 401 or 403 from the refresh endpoint ends the session.
+ * - Network errors, timeouts, 5xx, 429, and CORS errors KEEP the session.
+ * - Retries up to 4 times with exponential backoff (2s, 5s, 10s, 20s).
+ * - Broadcasts connection status for the non-blocking banner.
+ * - If all retries fail, shows 'Cannot reach the server. Your work is still here.' with a Retry button without logging out.
+ */
+const executeResilientRefresh = async (isPlatform: boolean): Promise<any> => {
+  const maxRetries = 4;
+  let lastError: any = null;
+  const portal = isPlatform ? 'platform' : 'staff';
 
-  const expectedUserId = getCurrentTabUserId();
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const delay = REFRESH_BACKOFF_DELAYS[attempt - 1] ?? 20000;
+      setConnectionStatus({
+        state: 'reconnecting',
+        attempt,
+        maxAttempts: maxRetries,
+      });
+      await new Promise((r) => setTimeout(r, delay));
+    }
 
-  _activeStaffRefreshPromise = (async () => {
     try {
-      const res = await acquireCrossTabRefreshLock('staff', expectedUserId, async () => {
-        const refreshUrl = `${getApiBaseUrl()}/auth/refresh`;
-        const fallbackToken = getStoredRefreshToken(false);
+      const expectedUserId = getCurrentTabUserId();
+      const res = await acquireCrossTabRefreshLock(portal, expectedUserId, async () => {
+        const refreshUrl = `${getApiBaseUrl()}/${isPlatform ? 'platform-auth' : 'auth'}/refresh`;
+        const fallbackToken = getStoredRefreshToken(isPlatform);
         const payload: Record<string, any> = fallbackToken ? { refreshToken: fallbackToken } : {};
         if (expectedUserId) {
           payload.expectedUserId = expectedUserId;
@@ -433,10 +583,14 @@ export const performStaffRefresh = async (): Promise<any> => {
         );
       });
 
-      const data = res.data;
+      const data = res?.data;
       if (typeof window !== 'undefined' && data?.user) {
         if (expectedUserId && expectedUserId !== data.user.id) {
-          setStaffAccessToken(null);
+          if (isPlatform) {
+            setPlatformAccessToken(null);
+          } else {
+            setStaffAccessToken(null);
+          }
           clearTabSessionUser();
           window.dispatchEvent(
             new CustomEvent('crm:session-conflict-reload', {
@@ -450,23 +604,44 @@ export const performStaffRefresh = async (): Promise<any> => {
       }
 
       if (data?.accessToken) {
-        setStaffAccessToken(data.accessToken);
+        if (isPlatform) {
+          setPlatformAccessToken(data.accessToken);
+        } else {
+          setStaffAccessToken(data.accessToken);
+        }
       }
       if (data?.refreshToken) {
-        setStoredRefreshToken(data.refreshToken, false);
+        setStoredRefreshToken(data.refreshToken, isPlatform);
       }
       if (typeof window !== 'undefined' && data?.user && !getCurrentTabUserId()) {
         setCurrentTabUserId(data.user.id);
-        sessionStorage.setItem('crm_tab_user_email', data.user.email);
-        sessionStorage.setItem('crm_tab_tenant_id', data.user.tenantId || '');
-        sessionStorage.setItem('crm_tab_tenant_name', data.user.tenant?.name || '');
-        sessionStorage.setItem('crm_tab_tenant_code', data.user.tenant?.code || '');
-        sessionStorage.setItem('crm_tab_portal', 'staff');
+        if (isPlatform) {
+          sessionStorage.setItem('crm_tab_platform_user_id', data.user.id);
+          sessionStorage.setItem('crm_tab_platform_user_email', data.user.email);
+          sessionStorage.setItem('crm_tab_portal', 'platform');
+        } else {
+          sessionStorage.setItem('crm_tab_user_email', data.user.email);
+          sessionStorage.setItem('crm_tab_tenant_id', data.user.tenantId || '');
+          sessionStorage.setItem('crm_tab_tenant_name', data.user.tenant?.name || '');
+          sessionStorage.setItem('crm_tab_tenant_code', data.user.tenant?.code || '');
+          sessionStorage.setItem('crm_tab_portal', 'staff');
+        }
       }
+
+      // Refresh succeeded: restore connected state
+      setConnectionStatus({ state: 'connected' });
       return res;
     } catch (err: any) {
-      if (err?.response?.status === 409 && (err?.response?.data?.code === 'SESSION_CHANGED' || err?.response?.data?.message?.includes('Session changed'))) {
-        setStaffAccessToken(null);
+      lastError = err;
+      const status = err?.response?.status;
+
+      // 1. Session conflict: signed in with another account in another tab
+      if (status === 409 && (err?.response?.data?.code === 'SESSION_CHANGED' || err?.response?.data?.message?.includes('Session changed'))) {
+        if (isPlatform) {
+          setPlatformAccessToken(null);
+        } else {
+          setStaffAccessToken(null);
+        }
         clearTabSessionUser();
         if (typeof window !== 'undefined') {
           window.dispatchEvent(
@@ -478,12 +653,35 @@ export const performStaffRefresh = async (): Promise<any> => {
         throw err;
       }
 
-      handleSessionExpired(false);
-      throw err;
-    } finally {
-      _activeStaffRefreshPromise = null;
+      // 2. Definitive auth failure (401 or 403) from refresh endpoint ends session
+      if (status === 401 || status === 403) {
+        setConnectionStatus({ state: 'connected' });
+        handleSessionExpired(isPlatform);
+        throw err;
+      }
+
+      // 3. Transient error: network error, timeout, 5xx, 429, CORS error:
+      // Keep the session alive and retry with backoff.
     }
-  })();
+  }
+
+  // All 4 retries failed: show offline banner with Retry button, NEVER log out or navigate away
+  setConnectionStatus({
+    state: 'offline',
+    message: 'Cannot reach the server. Your work is still here.',
+  });
+
+  throw lastError;
+};
+
+export const performStaffRefresh = async (): Promise<any> => {
+  if (_activeStaffRefreshPromise) {
+    return _activeStaffRefreshPromise;
+  }
+
+  _activeStaffRefreshPromise = executeResilientRefresh(false).finally(() => {
+    _activeStaffRefreshPromise = null;
+  });
 
   return _activeStaffRefreshPromise;
 };
@@ -493,84 +691,73 @@ export const performPlatformRefresh = async (): Promise<any> => {
     return _activePlatformRefreshPromise;
   }
 
-  const expectedUserId = getCurrentTabUserId();
-
-  _activePlatformRefreshPromise = (async () => {
-    try {
-      const res = await acquireCrossTabRefreshLock('platform', expectedUserId, async () => {
-        const refreshUrl = `${getApiBaseUrl()}/platform-auth/refresh`;
-        const fallbackToken = getStoredRefreshToken(true);
-        const payload: Record<string, any> = fallbackToken ? { refreshToken: fallbackToken } : {};
-        if (expectedUserId) {
-          payload.expectedUserId = expectedUserId;
-        }
-
-        return axios.post(
-          refreshUrl,
-          payload,
-          {
-            withCredentials: true,
-            timeout: 60000,
-            headers: {
-              'X-Requested-With': 'XMLHttpRequest',
-              'Content-Type': 'application/json',
-              ...(expectedUserId ? { 'X-Expected-User-Id': expectedUserId } : {}),
-            },
-          }
-        );
-      });
-
-      const data = res.data;
-      if (typeof window !== 'undefined' && data?.user) {
-        if (expectedUserId && expectedUserId !== data.user.id) {
-          setPlatformAccessToken(null);
-          clearTabSessionUser();
-          window.dispatchEvent(
-            new CustomEvent('crm:session-conflict-reload', {
-              detail: { message: 'You signed in with another account in a different tab' },
-            })
-          );
-          const err = new Error('SESSION_CHANGED');
-          (err as any).response = { status: 409, data: { code: 'SESSION_CHANGED' } };
-          throw err;
-        }
-      }
-
-      if (data?.accessToken) {
-        setPlatformAccessToken(data.accessToken);
-      }
-      if (data?.refreshToken) {
-        setStoredRefreshToken(data.refreshToken, true);
-      }
-      if (typeof window !== 'undefined' && data?.user && !getCurrentTabUserId()) {
-        setCurrentTabUserId(data.user.id);
-        sessionStorage.setItem('crm_tab_platform_user_id', data.user.id);
-        sessionStorage.setItem('crm_tab_platform_user_email', data.user.email);
-        sessionStorage.setItem('crm_tab_portal', 'platform');
-      }
-      return res;
-    } catch (err: any) {
-      if (err?.response?.status === 409 && (err?.response?.data?.code === 'SESSION_CHANGED' || err?.response?.data?.message?.includes('Session changed'))) {
-        setPlatformAccessToken(null);
-        clearTabSessionUser();
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(
-            new CustomEvent('crm:session-conflict-reload', {
-              detail: { message: 'You signed in with another account in a different tab' },
-            })
-          );
-        }
-        throw err;
-      }
-
-      handleSessionExpired(true);
-      throw err;
-    } finally {
-      _activePlatformRefreshPromise = null;
-    }
-  })();
+  _activePlatformRefreshPromise = executeResilientRefresh(true).finally(() => {
+    _activePlatformRefreshPromise = null;
+  });
 
   return _activePlatformRefreshPromise;
+};
+
+/**
+ * Triggers a manual connection retry when the user clicks 'Retry' on the offline banner.
+ */
+export const retryConnection = async (): Promise<any> => {
+  const isPlatform = isPlatformPath();
+  _activeStaffRefreshPromise = null;
+  _activePlatformRefreshPromise = null;
+  setConnectionStatus({
+    state: 'reconnecting',
+    attempt: 1,
+    maxAttempts: 4,
+  });
+
+  const refreshPromise = isPlatform ? performPlatformRefresh() : performStaffRefresh();
+
+  return refreshPromise
+    .then((res) => {
+      const newToken = res.data?.accessToken;
+      processQueue(null, newToken);
+      setConnectionStatus({ state: 'connected' });
+      return res;
+    })
+    .catch((err) => {
+      if (err?.response?.status !== 401 && err?.response?.status !== 403) {
+        setConnectionStatus({
+          state: 'offline',
+          message: 'Cannot reach the server. Your work is still here.',
+        });
+      }
+      throw err;
+    });
+};
+
+/**
+ * Proactive refresh: while the user is active, refreshes the access token ~2 minutes before it expires
+ * using the existing cross-tab lock.
+ */
+export const checkAndPerformProactiveRefresh = async (): Promise<boolean> => {
+  if (typeof window === 'undefined') return false;
+  const isPlatform = isPlatformPath();
+  const token = getAccessToken(isPlatform);
+  if (!token) return false;
+
+  const timeUntilExpiry = getTimeUntilTokenExpiry(isPlatform);
+  if (timeUntilExpiry === null) return false;
+
+  const PROACTIVE_LEAD_TIME_MS = 2 * 60 * 1000; // 2 minutes
+  if (timeUntilExpiry > 0 && timeUntilExpiry <= PROACTIVE_LEAD_TIME_MS && isUserActiveRecently()) {
+    try {
+      if (isPlatform) {
+        await performPlatformRefresh();
+      } else {
+        await performStaffRefresh();
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
 };
 
 // Auth endpoints that should not trigger auto-refresh retry loop
@@ -588,14 +775,35 @@ let _isRefreshing = false;
 let _failedQueue: Array<{
   resolve: (token: string) => void;
   reject: (error: any) => void;
+  config?: any;
+  wasRejectedWith401?: boolean;
 }> = [];
 
 const processQueue = (error: any, token: string | null = null) => {
-  _failedQueue.forEach((prom) => {
+  _failedQueue.forEach((item) => {
     if (error) {
-      prom.reject(error);
+      item.reject(error);
     } else if (token) {
-      prom.resolve(token);
+      const method = (item.config?.method || 'get').toUpperCase();
+      const isGet = method === 'GET';
+      const was401 = Boolean(item.wasRejectedWith401 || item.config?._wasRejectedWith401);
+
+      // Requirement 2: replay ONLY requests that were rejected with 401 before processing, and GET requests.
+      if (isGet || was401) {
+        item.resolve(token);
+      } else {
+        // For POST, PUT, PATCH and DELETE that failed with a network error or timeout:
+        // Do not auto-replay! Show 'Not confirmed. Check before trying again' and keep form data.
+        const unconfirmedError = new Error('Not confirmed. Check before trying again');
+        (unconfirmedError as any).code = 'ERR_UNCONFIRMED_MUTATION';
+        (unconfirmedError as any).userMessage = 'Not confirmed. Check before trying again';
+        (unconfirmedError as any).isUnconfirmed = true;
+        setConnectionStatus({
+          state: 'offline',
+          message: 'Not confirmed. Check before trying again',
+        });
+        item.reject(unconfirmedError);
+      }
     }
   });
   _failedQueue = [];
@@ -604,6 +812,16 @@ const processQueue = (error: any, token: string | null = null) => {
 // Auto-refresh on 401 and detection of identity change
 api.interceptors.response.use(
   (res) => {
+    const isBg = isBackgroundRequest(res?.config);
+    if (!isBg) {
+      _inFlightRequestCount = Math.max(0, _inFlightRequestCount - 1);
+      const method = (res?.config?.method || 'get').toUpperCase();
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+        _saveRequestCount = Math.max(0, _saveRequestCount - 1);
+      }
+      notifyUserActivity();
+    }
+
     // Requirement 5: No silent identity change anywhere: if /auth/me or any API response returns a user id different from the one stored for this tab, treat it as SESSION_CHANGED.
     const incomingUser = res?.data?.user;
     if (incomingUser && incomingUser.id) {
@@ -624,6 +842,15 @@ api.interceptors.response.use(
     return res;
   },
   async (err) => {
+    const isBg = isBackgroundRequest(err?.config);
+    if (!isBg) {
+      _inFlightRequestCount = Math.max(0, _inFlightRequestCount - 1);
+      const method = (err?.config?.method || 'get').toUpperCase();
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+        _saveRequestCount = Math.max(0, _saveRequestCount - 1);
+      }
+    }
+
     const original = err.config;
     if (!err?.response && typeof window !== 'undefined' && (!api.defaults.baseURL || api.defaults.baseURL.includes('api.jsnc.co.in'))) {
       api.defaults.baseURL = RENDER_DIRECT_BACKUP_URL;
@@ -685,9 +912,11 @@ api.interceptors.response.use(
         url.startsWith('/platform-auth') ||
         isPlatformPath();
 
+      original._wasRejectedWith401 = true;
+
       if (_isRefreshing) {
         return new Promise<string>((resolve, reject) => {
-          _failedQueue.push({ resolve, reject });
+          _failedQueue.push({ resolve, reject, config: original, wasRejectedWith401: true });
         })
           .then((newToken) => {
             original.headers.Authorization = `Bearer ${newToken}`;
@@ -712,17 +941,66 @@ api.interceptors.response.use(
           return api(original);
         })
         .catch((refreshErr) => {
-          processQueue(refreshErr, null);
-          handleSessionExpired(isPlatformReq);
-          return Promise.reject(refreshErr);
+          if (refreshErr?.response?.status === 401 || refreshErr?.response?.status === 403) {
+            processQueue(refreshErr, null);
+            handleSessionExpired(isPlatformReq);
+            return Promise.reject(refreshErr);
+          }
+
+          // For transient errors: keep the session and enqueue request to replay on reconnection
+          return new Promise((resolve, reject) => {
+            _failedQueue.push({
+              resolve: (newToken: string) => {
+                original.headers.Authorization = `Bearer ${newToken}`;
+                resolve(api(original));
+              },
+              reject: (qErr: any) => reject(qErr),
+              config: original,
+              wasRejectedWith401: true,
+            });
+          });
         })
         .finally(() => {
           _isRefreshing = false;
         });
     }
+
+    const reqMethod = (original?.method || err?.config?.method || 'get').toUpperCase();
+    const isNetworkOrTimeout =
+      !err.response ||
+      err.code === 'ECONNABORTED' ||
+      err.message?.includes('timeout') ||
+      err.message?.includes('Network Error');
+
+    if (isNetworkOrTimeout && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(reqMethod)) {
+      err.userMessage = 'Not confirmed. Check before trying again';
+      err.isUnconfirmedMutation = true;
+      setConnectionStatus({
+        state: 'offline',
+        message: 'Not confirmed. Check before trying again',
+      });
+    }
+
     return Promise.reject(err);
   },
 );
+
+if (typeof window !== 'undefined') {
+  (window as any).getConnectionStatus = getConnectionStatus;
+  (window as any).setConnectionStatus = setConnectionStatus;
+  (window as any).retryConnection = retryConnection;
+  (window as any).performStaffRefresh = performStaffRefresh;
+  (window as any).performPlatformRefresh = performPlatformRefresh;
+  (window as any).checkAndPerformProactiveRefresh = checkAndPerformProactiveRefresh;
+  (window as any).getTimeUntilTokenExpiry = getTimeUntilTokenExpiry;
+  (window as any).hasInFlightRequests = hasInFlightRequests;
+  (window as any).isSaveInProgress = isSaveInProgress;
+  (window as any).notifyUserActivity = notifyUserActivity;
+  (window as any).isBackgroundRequest = isBackgroundRequest;
+  (window as any).isUserInitiatedRequest = isUserInitiatedRequest;
+  (window as any).getLastUserActivityTimestamp = getLastUserActivityTimestamp;
+  (window as any).setLastUserActivityTimestamp = setLastUserActivityTimestamp;
+}
 
 export default api;
 
@@ -1075,18 +1353,12 @@ export const inventoryApi = {
     fd.append('file', file);
     return api.post('/inventory/purchase-documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
   },
-  extractPurchaseDocument: (file: File) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    return api.post('/inventory/purchase-documents/extract', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-  },
   getSupplierPurchases: (supplierId: string) => api.get(`/inventory/suppliers/${supplierId}/purchases`),
   recordSupplierPurchase: (supplierId: string, data: any) => api.post(`/inventory/suppliers/${supplierId}/purchase`, data),
   getPurchaseBills: (params?: Record<string, any>) => api.get('/inventory/purchase-bills', { params }),
   getPurchaseBill: (id: string) => api.get(`/inventory/purchase-bills/${id}`),
   createPurchaseBill: (data: any) => api.post('/inventory/purchase-bills', data),
   deletePurchaseBill: (id: string) => api.delete(`/inventory/purchase-bills/${id}`),
-  scanBillOcr: (data: any) => api.post('/inventory/purchase-bills/scan-ocr', data),
   bulkEditComponents: (data: {
     items?: Array<{ id: string; skuId?: string; updates: Record<string, any> }>;
     ids?: string[];
