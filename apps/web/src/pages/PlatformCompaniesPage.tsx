@@ -1264,9 +1264,15 @@ export default function PlatformCompaniesPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="label">Invoice Prefix</label>
+                    <label className="label">Invoice Series Prefix</label>
                     <input
                       type="text"
+                      name="crmTenantInvoiceSeriesPrefix"
+                      id="crm-tenant-invoice-series-prefix"
+                      autoComplete="one-time-code"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-form-type="other"
                       className="input uppercase text-xs font-mono"
                       placeholder="e.g. VTX, INV"
                       value={editForm.invoicePrefix}
