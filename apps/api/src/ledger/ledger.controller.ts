@@ -23,6 +23,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 import { AuthGuard } from '@nestjs/passport';
 import { generateLedgerStatementPdfBuffer } from './statement-pdf';
 import { PrismaClient } from '@prisma/client';
@@ -317,11 +318,16 @@ export class LedgerController {
   }
 
   /**
-   * Reset Demo Data: only permitted for demo tenants (isDemo === true)
+   * Reset Demo Data: strictly restricted to non-production environments (NODE_ENV !== 'production')
+   * and platform super administrators only.
    */
   @Post('reset-demo')
+  @Roles('platform_super_admin')
   @HttpCode(HttpStatus.OK)
   async resetDemoData(@CurrentUser() user: ScopedUser) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Reset demo data is strictly disabled in production.');
+    }
     const tenantId = requireTenantId(user);
     return this.ledgerService.resetDemoData(tenantId, user);
   }

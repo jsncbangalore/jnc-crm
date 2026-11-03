@@ -1746,7 +1746,6 @@ export const ledgerApi = {
   getStatement: (params: { partyType: "customer" | "supplier"; partyId: string; financialYear?: string; fromDate?: string; toDate?: string }) =>
     api.get<LedgerStatementResponse>("/ledger/statement", { params }),
   getLock: () => api.get<{ lockedUntil: string | null }>("/ledger/lock"),
-  resetDemo: () => api.post<{ success: boolean; message: string }>("/ledger/reset-demo"),
   getPartySourceReport: () => api.get<{
     totalCustomers: number;
     totalSuppliers: number;

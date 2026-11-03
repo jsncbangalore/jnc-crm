@@ -1558,6 +1558,14 @@ export class LedgerService {
    * Only permitted for demo tenants (isDemo === true).
    */
   async resetDemoData(tenantId: string, user: ScopedUser) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Reset demo data is strictly disabled in production.');
+    }
+
+    if ((user as any)?.role !== 'platform_super_admin') {
+      throw new ForbiddenException('Reset demo data is restricted to platform super administrators only.');
+    }
+
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
     });
