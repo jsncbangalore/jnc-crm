@@ -23,6 +23,7 @@ assert(fs.existsSync(DIST_DIR), 'apps/web/dist must exist before running test');
 assert(fs.existsSync(HTACCESS_PATH), 'apps/web/dist/.htaccess must exist');
 
 const htaccessContent = fs.readFileSync(HTACCESS_PATH, 'utf8');
+assert(!htaccessContent.includes('wasm-unsafe-eval'), 'apps/web/dist/.htaccess must not contain wasm-unsafe-eval');
 
 // Parse headers from .htaccess
 function getHeadersForPath(urlPath) {
@@ -38,12 +39,12 @@ function getHeadersForPath(urlPath) {
   if (isPublicForm) {
     // Public forms can be embedded across domains
     headers['Content-Security-Policy'] =
-      "default-src 'self'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors *;";
+      "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors *;";
   } else {
     // Protected paths reject framing completely
     headers['X-Frame-Options'] = 'DENY';
     headers['Content-Security-Policy'] =
-      "default-src 'self'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';";
+      "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';";
   }
 
   return headers;

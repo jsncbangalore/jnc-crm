@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ../../scripts/copy-ocr-assets.js && node ../../node_modules/vite/bin/vite.js",
-    "build": "node ../../scripts/copy-ocr-assets.js && node ../../node_modules/typescript/bin/tsc && node ../../node_modules/vite/bin/vite.js build && node ../../scripts/generate-htaccess.js",
-    "preview": "node ../../node_modules/vite/bin/vite.js preview"
+    "dev": "node ../../node_modules/vite/bin/vite.js",
+    "build": "node ../../node_modules/typescript/bin/tsc && node ../../node_modules/vite/bin/vite.js build && node ../../scripts/generate-htaccess.js",
+    "preview": "node ../../node_modules/vite/bin/vite.js preview",
+    "lint:hooks": "node ../../node_modules/eslint/bin/eslint.js \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
     "@types/qrcode": "^1.5.5",
@@ -17,14 +18,12 @@
     "framer-motion": "^11.0.8",
     "lucide-react": "^0.344.0",
     "papaparse": "^5.4.1",
-    "pdfjs-dist": "^4.10.38",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.2",
     "recharts": "^2.12.2",
     "tailwind-merge": "^2.2.1",
-    "tesseract.js": "^7.0.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },
   "devDependencies": {
@@ -33,8 +32,12 @@
     "@types/papaparse": "^5.3.14",
     "@types/react": "^18.2.56",
     "@types/react-dom": "^18.2.19",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.18",
+    "eslint": "^8.57.1",
+    "eslint-plugin-react-hooks": "^4.6.2",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.2.2",
