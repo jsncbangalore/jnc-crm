@@ -692,13 +692,15 @@ export default function Navbar() {
       {/* ═══════════════════════════════════════════════════════════════════════
           TIER 2: APP NAVIGATION TABS (Dynamic measurement: never overflows or clips)
           Tabs that do not fit move into 'More' automatically.
+          Hidden on personal pages (/account) to keep account settings private and separate.
           ═══════════════════════════════════════════════════════════════════════ */}
-      <div
-        ref={tabsContainerRef}
-        id="nav-tabs-container"
-        data-testid="nav-tabs-container"
-        className="h-10 px-3 sm:px-4 flex items-center justify-between relative bg-white dark:bg-[#181B26] border-b border-slate-200/80 dark:border-[#2A3042]"
-      >
+      {location.pathname !== '/account' && (
+        <div
+          ref={tabsContainerRef}
+          id="nav-tabs-container"
+          data-testid="nav-tabs-container"
+          className="h-10 px-3 sm:px-4 flex items-center justify-between relative bg-white dark:bg-[#181B26] border-b border-slate-200/80 dark:border-[#2A3042]"
+        >
         {/* Left: App Title + Nav Tabs */}
         <div className="flex items-center gap-1 h-full min-w-0 flex-1 overflow-x-auto scrollbar-none">
           {/* CRM App Title (visible on lg+) */}
@@ -812,6 +814,7 @@ export default function Navbar() {
           </nav>
         </div>
       </div>
+      )}
 
       {/* Quick Add Modals */}
       <CreateLeadModal
