@@ -198,6 +198,20 @@ async function run() {
   console.log(` Target API Base : ${baseUrl}`);
   console.log(` Required Version: ${requiredVersion}`);
 
+  // Step 0: React rules-of-hooks AST verification
+  console.log(' [VERIFY] Running React hooks AST scanner (scripts/scan-hooks.js)...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/scan-hooks.js apps/web/src', {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'inherit',
+    });
+    console.log(' [SUCCESS] React rules-of-hooks scanner passed with 0 violations.');
+  } catch (err) {
+    console.error(' [FAIL] React rules-of-hooks violations detected! Deployment blocked.');
+    process.exit(1);
+  }
+
   // Resolve health URL: try /health if path contains /api/v1, or /api/v1/health if root
   let healthUrl = baseUrl.endsWith('/health')
     ? baseUrl

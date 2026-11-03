@@ -80,6 +80,10 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   const handleResetZoom = () => setZoom(1);
   const handleFitPage = () => setZoom(0.8);
 
+  // PDF & Print State
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+
   if (!invoice) return null;
 
   const isCreditNote = activeTemplate === 'credit_note';
@@ -98,9 +102,8 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   const hasDocumentLogo = !!(rawLogo && typeof rawLogo === 'string' && rawLogo.trim() !== '');
   const invoiceLogo = hasDocumentLogo ? resolveFileUrl(rawLogo) : '';
 
-  const [downloadingPdf, setDownloadingPdf] = useState(false);
-
   const handleDownloadPdf = async () => {
+    if (!invoice) return;
     try {
       setDownloadingPdf(true);
       const res = await invoicesApi.downloadPdf(invoice.id, activeTemplate);
@@ -133,9 +136,8 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
     }
   };
 
-  const [isPrinting, setIsPrinting] = useState(false);
-
   const handlePrint = async () => {
+    if (!invoice) return;
     try {
       setIsPrinting(true);
       const res = await invoicesApi.downloadPdf(invoice.id, activeTemplate);

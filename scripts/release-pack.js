@@ -37,6 +37,12 @@ execSync('node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json
   stdio: 'inherit',
 });
 
+console.log('\n[Step 0c/5] Executing React Rules-of-Hooks AST Scan (scan-hooks.js)...');
+execSync('node scripts/scan-hooks.js apps/web/src', {
+  cwd: REPO_ROOT,
+  stdio: 'inherit',
+});
+
 // ─── Step 1: Clean Builds ────────────────────────────────────────────────────
 console.log('\n[Step 1/5] Building clean production bundles ...');
 

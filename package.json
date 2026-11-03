@@ -55,6 +55,11 @@
     "build:marketing": "node scripts/build-marketing-site.js",
     "verify:seo": "node scripts/verify-seo-site.js",
     "migration:preflight": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/migration-preflight.ts",
+    "test:session:inactivity": "node scripts/test-inactivity-fake-timers.js",
+    "test:session:grace": "node scripts/test-refresh-rotation-grace.js",
+    "test:session:cookies": "node scripts/test-cookie-flags-prod.js",
+    "test:session:replay": "node scripts/test-replay-safety.js",
+    "test:session:suite": "npm run test:session:inactivity && npm run test:session:grace && npm run test:session:cookies && npm run test:session:replay",
     "test:e2e-session": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-e2e-session.ts",
     "test:reconcile": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-reconciliation.ts",
     "test:meta-webhook": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-meta-webhook-suite.ts",
@@ -66,7 +71,9 @@
     "host:env": "node scripts/host-env.js",
     "test:subtitles": "node scripts/test-page-subtitles.js",
     "test:tenant-isolation": "node --env-file=.env.development node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-cross-tenant-isolation.ts",
-    "test:idempotency-parallel": "node --env-file=.env.development node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-payment-idempotency-parallel.ts"
+    "test:idempotency-parallel": "node --env-file=.env.development node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-payment-idempotency-parallel.ts",
+    "lint:hooks": "node node_modules/eslint/bin/eslint.js \"apps/web/src/**/*.{ts,tsx}\"",
+    "test:modal-hooks": "node scripts/test-hooks-modal-cycles.js"
   },
   "devDependencies": {
     "adm-zip": "^0.6.1",

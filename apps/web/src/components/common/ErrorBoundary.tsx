@@ -28,7 +28,13 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught React Error caught by ErrorBoundary:', error, errorInfo);
+    const refId = this.state.referenceId || 'N/A';
+    console.error(
+      `[ErrorBoundary] Reference ID: ${refId}\nComponent Stack:`,
+      errorInfo?.componentStack,
+      '\nError:',
+      error
+    );
   }
 
   private getFriendlyErrorMessage(): string {
