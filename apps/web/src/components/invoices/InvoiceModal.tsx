@@ -15,6 +15,7 @@ import InvoiceSettingsModal from './InvoiceSettingsModal';
 import UnifiedRecordPaymentModal from '../common/UnifiedRecordPaymentModal';
 import RelatedDocumentsPanel from '../common/RelatedDocumentsPanel';
 import InvoiceDocumentTemplate, { numberToIndianWords } from './InvoiceDocumentTemplate';
+import { openDedicatedPrintTab, POPUP_BLOCKED_MESSAGE } from '../../utils/printHelper';
 
 export { numberToIndianWords };
 
@@ -136,36 +137,16 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
     }
   };
 
-  const handlePrint = async () => {
+  const [popupBlockedMsg, setPopupBlockedMsg] = useState<string | null>(null);
+
+  const handlePrint = () => {
     if (!invoice) return;
-    try {
-      setIsPrinting(true);
-      const res = await invoicesApi.downloadPdf(invoice.id, activeTemplate);
-      const blob = new Blob([res.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.top = '-10000px';
-      iframe.style.left = '-10000px';
-      iframe.style.width = '1px';
-      iframe.style.height = '1px';
-      iframe.src = url;
-      document.body.appendChild(iframe);
-      iframe.onload = () => {
-        setTimeout(() => {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-          setTimeout(() => {
-            document.body.removeChild(iframe);
-            window.URL.revokeObjectURL(url);
-          }, 3000);
-        }, 500);
-      };
-    } catch (err: any) {
-      console.error('Failed to print PDF:', err);
-      alert('Failed to print document.');
-    } finally {
-      setIsPrinting(false);
+    setPopupBlockedMsg(null);
+    const opened = openDedicatedPrintTab(activeTemplate, invoice.id, {
+      paperSize: 'A4',
+    });
+    if (!opened) {
+      setPopupBlockedMsg(POPUP_BLOCKED_MESSAGE);
     }
   };
 
@@ -467,7 +448,20 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
             </div>
           )}
 
-
+          {popupBlockedMsg && (
+            <div data-testid="popup-blocked-alert" className="p-3 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-2 print:hidden font-medium">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>{popupBlockedMsg}</span>
+              </div>
+              <button
+                onClick={handleDownloadPdf}
+                className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition shrink-0"
+              >
+                Download PDF
+              </button>
+            </div>
+          )}
 
           {/* ════════════════════════════════════════════════════════════════════════════
               EXACT INVOICE A4 PAPER TEMPLATE (FULL SCREEN ON MONITOR & EXACT 1-PAGE PRINT A4)

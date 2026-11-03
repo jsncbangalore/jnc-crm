@@ -12,14 +12,38 @@ export interface DirectPrintOptions {
   monochrome?: boolean;
   copies?: number;
   customCss?: string;
+  docType?: string;
+  documentId?: string;
+}
+
+/**
+ * Detects phone or tablet user agents and touch form-factors where hidden-frame printing fails.
+ */
+export function isMobileOrTabletDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isMobileUa = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  const isTouchDevice = Boolean(navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
+  return isMobileUa || (isTouchDevice && window.innerWidth < 1024);
 }
 
 /**
  * Executes a direct, sandboxed print job straight to the connected printer.
- * Uses an invisible DOM iframe rather than window.open to prevent popup blocking,
- * CSP script/stylesheet violations, and blank tab issues.
+ * Uses an A4-sized off-screen DOM iframe (794x1123px) rather than 0x0/1x1.
+ * Waits for fonts and images, triggers print once, and cleans up strictly on afterprint
+ * or after a 60-second safety window (NEVER after 3 seconds).
+ * For mobile/tablet devices, redirects to the dedicated print page or PDF.
  */
 export function executeDirectPrint(htmlContent: string, options: DirectPrintOptions = {}): Promise<boolean> {
+  // Mobile / tablet interception: fallback to dedicated print page or PDF
+  if (isMobileOrTabletDevice() && options.docType && options.documentId) {
+    const targetUrl = `/print/${encodeURIComponent(options.docType)}/${encodeURIComponent(options.documentId)}`;
+    const newWindow = window.open(targetUrl, '_blank');
+    if (newWindow) {
+      return Promise.resolve(true);
+    }
+  }
+
   return new Promise((resolve) => {
     try {
       // Remove any previous print sandbox iframe
@@ -31,10 +55,11 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
       const iframe = document.createElement('iframe');
       iframe.id = 'crm-direct-print-sandbox';
       iframe.style.position = 'fixed';
-      iframe.style.top = '-9999px';
+      iframe.style.top = '0px';
       iframe.style.left = '-9999px';
-      iframe.style.width = '1024px';
-      iframe.style.height = '1440px';
+      // Real A4-sized dimensions at 96 DPI (794px x 1123px) so layout reflow matches print rasterizer
+      iframe.style.width = '794px';
+      iframe.style.height = '1123px';
       iframe.style.border = '0';
       iframe.style.opacity = '0';
       iframe.style.pointerEvents = 'none';
@@ -49,14 +74,14 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
       }
 
       const paperSize = options.paperSize || 'A4';
-      let pageRule = '@page { size: A4 portrait !important; margin: 6mm 8mm !important; }';
+      let pageRule = '@page { size: A4 portrait !important; margin: 8mm 8mm !important; }';
       let sheetWidth = '100%';
 
       if (paperSize === 'A5') {
-        pageRule = '@page { size: 148mm 210mm portrait !important; margin: 4mm !important; }';
+        pageRule = '@page { size: 148mm 210mm portrait !important; margin: 5mm !important; }';
         sheetWidth = '100%';
       } else if (paperSize === '4x6') {
-        pageRule = '@page { size: 4in 6in portrait !important; margin: 2mm !important; }';
+        pageRule = '@page { size: 4in 6in portrait !important; margin: 3mm !important; }';
         sheetWidth = '100%';
       }
 
@@ -87,7 +112,8 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
 
     html, body {
       width: 100%;
-      height: 100%;
+      min-height: 100%;
+      height: auto;
       background: #ffffff;
       color: #000000;
       font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -104,8 +130,6 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
       background: #ffffff;
       box-sizing: border-box;
       border: 1.5px solid #000000 !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
     }
 
     .print-sheet-break {
@@ -117,6 +141,17 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
       width: 100% !important;
       border-collapse: collapse !important;
       border-spacing: 0 !important;
+      page-break-inside: auto !important;
+      break-inside: auto !important;
+    }
+
+    thead {
+      display: table-header-group !important;
+    }
+
+    tr {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
     }
 
     th, td {
@@ -212,7 +247,7 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
     @media print {
       @page {
         size: ${paperSize === 'A5' ? '148mm 210mm portrait' : paperSize === '4x6' ? '4in 6in portrait' : 'A4 portrait'} !important;
-        margin: ${paperSize === 'A5' ? '4mm' : paperSize === '4x6' ? '2mm' : '6mm 8mm'} !important;
+        margin: ${paperSize === 'A5' ? '5mm' : paperSize === '4x6' ? '3mm' : '8mm 8mm'} !important;
       }
       html, body {
         margin: 0 !important;
@@ -224,9 +259,7 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
       }
       .print-sheet {
         box-shadow: none !important;
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
-        max-height: 275mm !important;
+        max-height: none !important;
       }
       .print-sheet-break {
         page-break-before: always !important;
@@ -247,7 +280,30 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
       frameDoc.write(fullHtml);
       frameDoc.close();
 
-      // Wait for all images to be loaded and decoded
+      // Safe cleanup function: removes frame only once
+      let cleanedUp = false;
+      const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        if (iframe.parentNode) {
+          iframe.parentNode.removeChild(iframe);
+        }
+      };
+
+      // Register afterprint cleanup handlers on both windows
+      try {
+        iframe.contentWindow?.addEventListener('afterprint', cleanup, { once: true });
+        window.addEventListener('afterprint', cleanup, { once: true });
+      } catch {
+        // Fallback gracefully if cross-origin access blocks listener
+      }
+
+      // 60-second safety removal timeout: NEVER remove after 3 seconds!
+      const safetyTimer = setTimeout(cleanup, 60000);
+
+      // Wait for all fonts and images to be completely ready before triggering print
+      const fontPromise = (frameDoc as any).fonts?.ready || (document as any).fonts?.ready || Promise.resolve();
+
       const images = Array.from(frameDoc.images);
       const imagePromises = images.map((img) => {
         if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
@@ -257,7 +313,7 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
         });
       });
 
-      Promise.all(imagePromises).then(() => {
+      Promise.all([fontPromise, ...imagePromises]).then(() => {
         setTimeout(() => {
           try {
             iframe.contentWindow?.focus();
@@ -265,15 +321,11 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
             resolve(true);
           } catch (printErr) {
             console.error('Direct print execution failed:', printErr);
+            clearTimeout(safetyTimer);
+            cleanup();
             resolve(false);
-          } finally {
-            setTimeout(() => {
-              if (iframe.parentNode) {
-                iframe.parentNode.removeChild(iframe);
-              }
-            }, 3000);
           }
-        }, 250);
+        }, 150);
       });
     } catch (err) {
       console.error('Execute direct print error:', err);

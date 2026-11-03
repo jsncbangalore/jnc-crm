@@ -45,6 +45,7 @@ import HelpPage from './pages/HelpPage';
 import PrivacyPage from './pages/PrivacyPage';
 import TermsPage from './pages/TermsPage';
 import ContactPage from './pages/ContactPage';
+import DedicatedPrintPage from './pages/DedicatedPrintPage';
 import CookieConsentBanner from './components/common/CookieConsentBanner';
 import ReconnectingBanner from './components/common/ReconnectingBanner';
 import RobotsMetaHandler from './components/common/RobotsMetaHandler';
@@ -226,6 +227,16 @@ function AppRoutes() {
       <Route path="/platform/login" element={<PlatformLoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<Navigate to="/forgot-password" replace />} />
+
+      {/* Dedicated Standalone Print Route (No app chrome, zero popup delay) */}
+      <Route
+        path="/print/:docType/:id"
+        element={
+          <ProtectedRoute>
+            <DedicatedPrintPage />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Standalone Protected Settings & Setup Routes */}
       <Route

@@ -261,32 +261,114 @@
   }
 }
 
-/* ─── Exact A4 Print Optimization for Invoices ─────────────────────────────── */
+/* ─── Exact Print Optimization & Isolation Engine ─────────────────────────── */
 @media print {
   @page {
     size: A4 portrait;
-    margin: 5mm;
+    margin: 8mm 8mm;
+  }
+
+  @page a4-portrait {
+    size: 210mm 297mm portrait;
+    margin: 8mm 8mm;
+  }
+
+  @page a5-portrait {
+    size: 148mm 210mm portrait;
+    margin: 5mm 5mm;
+  }
+
+  .paper-a4 {
+    page: a4-portrait;
+    max-width: 194mm !important;
+    margin: 0 auto !important;
+  }
+
+  .paper-a5 {
+    page: a5-portrait;
+    max-width: 138mm !important;
+    margin: 0 auto !important;
+    font-size: 9pt !important;
   }
 
   html, body {
     background: #ffffff !important;
     color: #000000 !important;
-    font-size: 10pt !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
-    height: 100% !important;
-    overflow: hidden !important;
+    min-height: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  #printable-tax-invoice {
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-    max-height: 280mm !important;
-  }
-
-  .print\:hidden {
+  /* Universal print isolation: hide navigation, app chrome, sidebars, modals overlays, notifications */
+  header:not(.print-document-header),
+  nav,
+  aside,
+  [data-testid="sidebar"],
+  [data-testid="navbar"],
+  .print\:hidden,
+  .no-print {
     display: none !important;
     visibility: hidden !important;
+  }
+
+  /* Modal backdrops & fixed overlays: strip modal dark backdrops when printing */
+  .fixed.inset-0.z-50:not(.print-document-surface) {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    position: static !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  /* Document containers: remove shadows and enforce pure white canvas */
+  .print-document-container,
+  #printable-tax-invoice,
+  .print-sheet {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Keep table headers repeating across pages */
+  table {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  /* Avoid page breaks inside rows and signature sections */
+  tr,
+  .print-row,
+  .print-avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 }

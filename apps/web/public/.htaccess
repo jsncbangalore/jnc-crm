@@ -61,12 +61,14 @@
   <If "%{REQUEST_URI} =~ m#^/(landing)?/?$#">
     Header always unset X-Robots-Tag
   </If>
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+  # Security Headers (Clickjacking, MIME sniffing, HSTS, CSP, Permissions, Noindex)
+  # frame-src 'self' blob: is explicitly configured to permit sandboxed PDF blob preview frames and print sandboxes without relaxing default-src
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
 
   # Dedicated framing policy for public inquiry and embeddable form paths
   <If "%{REQUEST_URI} =~ m#^/(inquiry|quote-request|api/v1/webhooks/website)#">
     Header always unset X-Frame-Options
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors *;"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors *;"
   </If>
 
   # index.html: no-cache, must-revalidate (never cache private SPA shell)

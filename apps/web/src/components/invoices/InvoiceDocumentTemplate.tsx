@@ -19,6 +19,7 @@ export interface InvoiceDocumentTemplateProps {
   activeTemplate: DocumentType;
   invoiceLogo?: string;
   copyLabel?: string;
+  paperSize?: 'A4' | 'A5';
   showLogoNotice?: boolean;
   onLogoNoticeClick?: () => void;
   // Print configuration toggles (all default to true)
@@ -97,6 +98,7 @@ export default function InvoiceDocumentTemplate({
   activeTemplate,
   invoiceLogo,
   copyLabel,
+  paperSize = 'A4',
   showLogoNotice = true,
   onLogoNoticeClick,
   includeHeader = true,
@@ -199,7 +201,7 @@ export default function InvoiceDocumentTemplate({
   // ─── PURCHASE ORDER (PO) TEMPLATE ─────────────────────────────────────────
   if (isPO) {
     return (
-      <div id="printable-tax-invoice" className="w-full max-w-[794px] mx-auto bg-white text-black font-sans text-[11px] leading-[1.3] shadow-2xl box-border border-2 border-black print:border-black print:shadow-none print:max-w-none print:w-[210mm] p-6 flex flex-col justify-between min-h-[1050px]">
+      <div id="printable-tax-invoice" className={`w-full ${paperSize === 'A5' ? 'max-w-[559px] print:w-[148mm] paper-a5 text-[9.5px]' : 'max-w-[794px] print:w-[210mm] paper-a4 text-[11px]'} mx-auto bg-white text-black font-sans leading-[1.3] shadow-2xl box-border border-2 border-black print:border-black print:shadow-none print:max-w-none p-6 flex flex-col justify-between min-h-[1050px]`}>
         <div>
           {/* Top Company Header with Logo & Details */}
           <div className="text-center space-y-1 pb-2 border-b border-black">
@@ -370,7 +372,7 @@ export default function InvoiceDocumentTemplate({
   return (
     <div
       id="printable-tax-invoice"
-      className="w-full max-w-[794px] mx-auto bg-white text-black font-sans text-[11px] leading-[1.25] shadow-2xl box-border border-2 border-black min-h-[1050px] flex flex-col justify-between print:border-black print:shadow-none print:max-w-none print:w-[210mm] print:min-h-0 print:h-auto select-none"
+      className={`w-full ${paperSize === 'A5' ? 'max-w-[559px] print:w-[148mm] paper-a5 text-[9.5px]' : 'max-w-[794px] print:w-[210mm] paper-a4 text-[11px]'} mx-auto bg-white text-black font-sans leading-[1.25] shadow-2xl box-border border-2 border-black min-h-[1050px] flex flex-col justify-between print:border-black print:shadow-none print:max-w-none print:min-h-0 print:h-auto select-none`}
     >
       <div>
         {/* ── 1. TOP DOCUMENT TITLE & STATUTORY COPY BADGE ───────────────── */}

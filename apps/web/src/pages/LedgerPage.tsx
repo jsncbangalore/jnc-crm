@@ -28,8 +28,10 @@ import {
   RotateCcw,
   CheckSquare,
   ListChecks,
+  Printer,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { openDedicatedPrintTab } from '../utils/printHelper';
 import {
   ledgerApi,
   invoicesApi,
@@ -497,6 +499,17 @@ export default function LedgerPage() {
             </button>
           )}
 
+          {/* Direct Print Button */}
+          <button
+            onClick={() => selectedPartyId && openDedicatedPrintTab('statement', selectedPartyId, { fy: selectedFY })}
+            disabled={!selectedPartyId || loadingStatement}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+            title={!selectedPartyId ? 'Select a party first' : 'Direct Print Statement'}
+          >
+            <Printer className="w-3.5 h-3.5 text-blue-500" />
+            <span>Print</span>
+          </button>
+
           {/* Download Dropdown (PDF, Excel, Email) */}
           <div className="relative" ref={downloadMenuRef}>
             <button
@@ -512,6 +525,16 @@ export default function LedgerPage() {
 
             {showDownloadMenu && selectedPartyId && (
               <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 py-1 text-xs">
+                <button
+                  onClick={() => {
+                    setShowDownloadMenu(false);
+                    openDedicatedPrintTab('statement', selectedPartyId, { fy: selectedFY });
+                  }}
+                  className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
+                >
+                  <Printer className="w-4 h-4 text-blue-500" />
+                  <span>Print Statement</span>
+                </button>
                 <button
                   onClick={handleDownloadPdf}
                   className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"

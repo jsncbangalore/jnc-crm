@@ -16,6 +16,7 @@ import CustomerAccountModal from '../components/common/CustomerAccountModal';
 import { useAuth } from '../contexts/AuthContext';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import { canStore } from '../utils/cookieConsent';
+import { openDedicatedPrintTab } from '../utils/printHelper';
 
 export default function InvoicesPage() {
   const { user } = useAuth();
@@ -603,9 +604,16 @@ export default function InvoicesPage() {
                           <button
                             onClick={() => handleOpenDoc(inv)}
                             className="p-1.5 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-transparent"
-                            title="View & Print Official Document"
+                            title="View Official Document"
                           >
                             <Eye size={13} />
+                          </button>
+                          <button
+                            onClick={() => openDedicatedPrintTab(inv.docType || 'tax_invoice', inv.id)}
+                            className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-transparent"
+                            title="Direct Print Document"
+                          >
+                            <Printer size={13} />
                           </button>
                           <button
                             onClick={() => handleOpenDoc(inv)}

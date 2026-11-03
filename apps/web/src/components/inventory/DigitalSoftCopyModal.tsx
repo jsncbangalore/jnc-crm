@@ -19,6 +19,7 @@ import { formatImageUrl } from './PurchaseBillsHub';
 import { fetchPrivateFileBlobUrl } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBranding } from '../../contexts/BrandingContext';
+import { openDedicatedPrintTab } from '../../utils/printHelper';
 
 interface DigitalSoftCopyModalProps {
   isOpen: boolean;
@@ -169,14 +170,18 @@ export const DigitalSoftCopyModal: React.FC<DigitalSoftCopyModalProps> = ({
   if (!isOpen || !bill) return null;
 
   const handlePrint = () => {
-    window.print();
+    if (!bill) return;
+    const opened = openDedicatedPrintTab('purchase_bill', bill.id, { paperSize: 'A4' });
+    if (!opened) {
+      window.print();
+    }
   };
 
   return (
     <AnimatePresence>
       <div
         data-testid="digital-soft-copy-backdrop"
-        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md overflow-y-auto cursor-pointer"
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md overflow-y-auto cursor-pointer print:static print:p-0 print:m-0 print:bg-white print:overflow-visible"
         onClick={onClose}
         role="dialog"
         aria-modal="true"
@@ -187,10 +192,10 @@ export const DigitalSoftCopyModal: React.FC<DigitalSoftCopyModalProps> = ({
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-4xl max-h-[94vh] flex flex-col shadow-2xl overflow-hidden my-auto cursor-default"
+          className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-4xl max-h-[94vh] flex flex-col shadow-2xl overflow-hidden my-auto cursor-default print:border-none print:shadow-none print:max-h-none print:h-auto print:max-w-none print:w-full print:bg-white print:text-black print:rounded-none print:static print:m-0 print:overflow-visible"
         >
           {/* Header Bar */}
-          <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230] flex items-center justify-between">
+          <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230] flex items-center justify-between print:hidden">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 shadow-glow-blue">
                 <FileText size={20} />

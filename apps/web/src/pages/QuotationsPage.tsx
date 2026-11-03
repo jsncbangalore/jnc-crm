@@ -22,6 +22,7 @@ import { BRAND_CONFIG } from '../config/brand';
 import { format } from 'date-fns';
 import { safeStatus } from '../utils/safeFormat';
 import { executeDirectPrint } from '../utils/directPrint';
+import { openDedicatedPrintTab, POPUP_BLOCKED_MESSAGE } from '../utils/printHelper';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import CreateQuotationModal from '../components/quotations/CreateQuotationModal';
 import CustomerAccountModal from '../components/common/CustomerAccountModal';
@@ -311,6 +312,11 @@ export default function QuotationsPage() {
   };
 
   const handlePrintQuote = (q: any) => {
+    // 1. Synchronously open dedicated print tab (allowed by browser popup blockers)
+    const opened = openDedicatedPrintTab('quotation', q.id, { paperSize: 'A4' });
+    if (opened) return;
+
+    // 2. Fallback to in-frame direct print if tab was blocked
     const sub = q.subtotal || 0;
     const tax = q.taxAmount || 0;
     const tot = q.totalAmount || 0;
