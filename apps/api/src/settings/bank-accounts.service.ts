@@ -18,7 +18,7 @@ import {
   validateBankAccount,
   validateIfsc,
   validateUpiId,
-} from '@crm/shared-validation';
+} from '../common/shared-validation';
 
 export interface CreateBankAccountDto {
   label?: string;
