@@ -3,7 +3,6 @@ import { canStore } from '../../utils/cookieConsent';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText,
-  Camera,
   Search,
   Receipt,
   Building2,
@@ -27,7 +26,6 @@ import {
   BarChart2,
 } from 'lucide-react';
 import { inventoryApi, fetchPrivateFileBlobUrl } from '../../services/api';
-import { SmartBillScannerModal } from './SmartBillScannerModal';
 import { DigitalSoftCopyModal } from './DigitalSoftCopyModal';
 
 interface PurchaseBillsHubProps {
@@ -73,7 +71,6 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
   };
 
   // Modals & Actions
-  const [showScannerModal, setShowScannerModal] = useState(false);
   const [selectedSoftCopyBill, setSelectedSoftCopyBill] = useState<any | null>(null);
   const [previewScanImage, setPreviewScanImage] = useState<{ url: string; title: string } | null>(null);
   const handleCloseScanPreview = () => {
@@ -266,22 +263,13 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
           {onRecordPurchase && (
             <button
               onClick={onRecordPurchase}
-              className="btn bg-white dark:bg-[#1E2230] hover:bg-slate-100 dark:hover:bg-[#202534] text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-[#2A3042] text-xs px-3.5 py-2 font-bold shadow-sm flex items-center gap-1.5"
+              className="btn-primary text-xs px-4 py-2 font-bold shadow-sm flex items-center gap-1.5"
               title="Record a purchase invoice / bill"
             >
-              <Receipt size={14} className="text-crm-blue" />
+              <Receipt size={14} />
               <span>Record Purchase</span>
             </button>
           )}
-
-          {/* Scan & Add Bill Button */}
-          <button
-            onClick={() => setShowScannerModal(true)}
-            className="btn-primary text-xs px-4 py-2 font-bold shadow-sm flex items-center gap-2"
-          >
-            <Camera size={14} />
-            <span>Scan & Add New Bill</span>
-          </button>
         </div>
       </div>
 
@@ -315,14 +303,16 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
                   <Receipt size={32} className="mx-auto text-slate-400 mb-2" />
                   <p className="font-bold text-slate-950 dark:text-white">No Purchase Bills Archived Yet</p>
                   <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                    Click "Scan & Add New Bill" to upload a paper receipt photo or invoice PDF.
+                    Click "Record Purchase" to add a bill.
                   </p>
-                  <button
-                    onClick={() => setShowScannerModal(true)}
-                    className="btn-primary text-xs px-4 py-2 mt-4 inline-flex items-center gap-1.5 shadow-sm font-bold"
-                  >
-                    <Camera size={14} /> Scan First Bill
-                  </button>
+                  {onRecordPurchase && (
+                    <button
+                      onClick={onRecordPurchase}
+                      className="btn-primary text-xs px-4 py-2 mt-4 inline-flex items-center gap-1.5 shadow-sm font-bold"
+                    >
+                      <Receipt size={14} /> Record Purchase
+                    </button>
+                  )}
                 </td>
               </tr>
             ) : (
@@ -426,15 +416,6 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
         </table>
       </div>
 
-      {/* Smart OCR Bill Scanner Modal */}
-      <SmartBillScannerModal
-        isOpen={showScannerModal}
-        onClose={() => setShowScannerModal(false)}
-        onSuccess={() => {
-          fetchBills();
-          onStockUpdated();
-        }}
-      />
 
       {/* Digital Soft Copy Viewer & Printer Modal */}
       <DigitalSoftCopyModal
