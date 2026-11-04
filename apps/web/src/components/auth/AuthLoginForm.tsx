@@ -74,9 +74,54 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
   const identifierRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
+  const [wakingSeconds, setWakingSeconds] = useState(0);
+  const [retryingWakeup, setRetryingWakeup] = useState(false);
+
   useEffect(() => {
     return subscribeColdStart((waking) => setIsWakingUp(waking));
   }, []);
+
+  useEffect(() => {
+    let interval: any = null;
+    let pollInterval: any = null;
+    if (isWakingUp) {
+      interval = setInterval(() => {
+        setWakingSeconds((s) => s + 1);
+      }, 1000);
+
+      // Poll health endpoint every 2.5 seconds
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch('/api/v1/health', { signal: AbortSignal.timeout(2000) });
+          if (res.ok) {
+            setIsWakingUp(false);
+          }
+        } catch {
+          // Still booting
+        }
+      }, 2500);
+    } else {
+      setWakingSeconds(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [isWakingUp]);
+
+  const handleRetryWakeup = async () => {
+    setRetryingWakeup(true);
+    try {
+      const res = await fetch('/api/v1/health', { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        setIsWakingUp(false);
+      }
+    } catch {
+      // Still waking up
+    } finally {
+      setTimeout(() => setRetryingWakeup(false), 600);
+    }
+  };
 
   // Check for expired session redirect message
   useEffect(() => {
@@ -406,9 +451,28 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
 
       {/* Cold Start Indicator */}
       {isWakingUp && (
-        <div className="flex items-center gap-2 p-3 rounded-[10px] bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-[13px] animate-pulse">
-          <Clock size={16} className="shrink-0 text-amber-600" />
-          <span>Waking up the server, this can take up to a minute...</span>
+        <div className="p-3.5 rounded-[12px] bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-[13px] shadow-xs">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="shrink-0 text-amber-600 animate-spin" style={{ animationDuration: '3s' }} />
+              <span className="font-semibold text-xs tracking-tight">The server is waking up, this can take up to a minute</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                {wakingSeconds}s
+              </span>
+              <button
+                type="button"
+                onClick={handleRetryWakeup}
+                disabled={retryingWakeup}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-200/70 hover:bg-amber-300 dark:bg-amber-800/60 dark:hover:bg-amber-700 text-amber-900 dark:text-amber-100 transition disabled:opacity-50 cursor-pointer"
+                title="Retry connecting to server"
+              >
+                <RefreshCw size={11} className={retryingWakeup ? 'animate-spin' : ''} />
+                <span>Retry</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
