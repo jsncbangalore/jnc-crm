@@ -424,9 +424,11 @@ model Lead {
   customerPhone   String
   customerEmail   String?
   city            String?
+  state           String?
   productCategory String?
   productName     String?
   quantity        Int?
+  unit            String?
   estimatedValue  Float?      @default(0)
   urgency         String?     @default("standard")
   queryMessage    String?

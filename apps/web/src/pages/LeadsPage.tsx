@@ -847,14 +847,23 @@ export default function LeadsPage() {
                             </div>
 
                             {/* Product / System Requirement Tag */}
-                            {(lead.productCategory || lead.productName) && (
-                              <div className={density === 'compact' ? 'mt-1.5' : 'mt-2.5'}>
-                                <span className={`inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042] text-slate-300 max-w-full truncate font-medium ${
-                                  density === 'compact' ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'
-                                }`}>
-                                  <Tag size={9} className="text-crm-teal shrink-0" />
-                                  <span className="truncate">{lead.productCategory || lead.productName}</span>
-                                </span>
+                            {(lead.productCategory || lead.productName || lead.quantity) && (
+                              <div className={`flex items-center gap-1.5 flex-wrap ${density === 'compact' ? 'mt-1.5' : 'mt-2.5'}`}>
+                                {(lead.productCategory || lead.productName) && (
+                                  <span className={`inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042] text-slate-300 max-w-full truncate font-medium ${
+                                    density === 'compact' ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'
+                                  }`}>
+                                    <Tag size={9} className="text-crm-teal shrink-0" />
+                                    <span className="truncate">{lead.productCategory || lead.productName}</span>
+                                  </span>
+                                )}
+                                {lead.quantity && lead.quantity > 0 ? (
+                                  <span className={`inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 font-bold font-mono ${
+                                    density === 'compact' ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[10px]'
+                                  }`}>
+                                    Qty: {lead.quantity} {lead.unit || 'NOS'}
+                                  </span>
+                                ) : null}
                               </div>
                             )}
 
@@ -958,7 +967,14 @@ export default function LeadsPage() {
                         {l.customerPhone || '—'}
                       </td>
                       <td className={`text-slate-800 dark:text-slate-200 font-semibold border-r border-slate-200 dark:border-[#2A3042]/30 ${density === 'compact' ? 'px-2 py-1.5' : 'px-3 py-2'}`}>
-                        {l.productCategory || l.productName || '—'}
+                        <div>
+                          <p>{l.productCategory || l.productName || '—'}</p>
+                          {l.quantity && l.quantity > 0 ? (
+                            <p className="text-[10px] text-slate-500 font-mono font-medium">
+                              Qty: {l.quantity} {l.unit || 'NOS'}
+                            </p>
+                          ) : null}
+                        </div>
                       </td>
                       <td className={`text-right text-amber-800 dark:text-crm-amber font-mono font-black border-r border-slate-200 dark:border-[#2A3042]/30 whitespace-nowrap ${density === 'compact' ? 'px-2 py-1.5' : 'px-3 py-2'}`}>
                         {l.estimatedValue ? `₹${l.estimatedValue.toLocaleString('en-IN')}` : '—'}
@@ -1229,6 +1245,12 @@ export default function LeadsPage() {
                   <div className="p-4 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] space-y-2 shadow-sm">
                     <p className="text-[10px] text-slate-700 dark:text-slate-400 font-bold uppercase tracking-wider">Requirement Specs</p>
                     <p className="text-slate-950 dark:text-white font-bold">{selectedLead.productCategory || selectedLead.productName || 'System Equipment'}</p>
+                    {selectedLead.productName && selectedLead.productCategory && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Product: {selectedLead.productName}</p>
+                    )}
+                    <p className="text-xs text-slate-700 dark:text-slate-300 font-semibold font-mono">
+                      Quantity: <strong className="text-slate-950 dark:text-white">{selectedLead.quantity || 1} {selectedLead.unit || 'NOS'}</strong>
+                    </p>
                     <p className="text-amber-700 dark:text-crm-amber font-mono font-black text-sm">
                       Est. Value: ₹{selectedLead.estimatedValue?.toLocaleString('en-IN') || '0'}
                     </p>

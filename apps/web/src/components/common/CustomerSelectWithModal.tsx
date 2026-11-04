@@ -9,6 +9,7 @@ import {
   validateAddress,
   toPlainText,
 } from '@crm/shared-validation';
+import { NameField, PhoneField, StateCityField } from './forms';
 
 export interface CustomerData {
   id: string;
@@ -256,11 +257,13 @@ function CreateCustomerModal({
   onCreated: (customer: CustomerData) => void;
 }) {
   const [name, setName] = useState(initialName || '');
+  const [contactPerson, setContactPerson] = useState('');
   const [gstin, setGstin] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [state, setState] = useState('Karnataka');
+  const [city, setCity] = useState('Bengaluru');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -293,8 +296,10 @@ function CreateCustomerModal({
     if (!nameRes.valid) newErrors.name = nameRes.error!;
 
     if (phone.trim()) {
-      const phoneRes = validatePhone(phone);
-      if (!phoneRes.valid) newErrors.phone = phoneRes.error!;
+      const cleanDigits = phone.replace(/\D/g, '');
+      if (cleanDigits.length < 10) {
+        newErrors.phone = 'Enter a 10-digit mobile number.';
+      }
     }
 
     if (email.trim()) {
@@ -327,8 +332,9 @@ function CreateCustomerModal({
         billingEmail: email.trim() || undefined,
         phone: phone.trim() || undefined,
         address: address.trim() || undefined,
-        state,
-        city: 'Bengaluru',
+        state: state.trim() || undefined,
+        city: city.trim() || undefined,
+        contactPerson: contactPerson.trim() || undefined,
       });
 
       const created = res.data;
@@ -382,18 +388,18 @@ function CreateCustomerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+      <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">Create New Customer</h3>
           </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-3 text-xs">
+        <form onSubmit={handleSubmit} className="p-4 space-y-3.5 text-xs overflow-y-auto">
           {errors.form && (
             <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 rounded-lg">
               {toPlainText(errors.form)}
@@ -407,6 +413,7 @@ function CreateCustomerModal({
             </div>
           )}
 
+          {/* Company Name */}
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Customer / Company Name <span className="text-rose-500">*</span>
@@ -414,28 +421,38 @@ function CreateCustomerModal({
             <input
               type="text"
               required
+              maxLength={100}
               placeholder="e.g. Acme Tech Solutions"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-indigo-500 font-medium"
             />
             {errors.name && <p className="text-rose-500 text-[10px] mt-0.5">{toPlainText(errors.name)}</p>}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Phone Number (Optional)
-              </label>
-              <input
-                type="text"
-                placeholder="10-digit number"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-              />
-              {errors.phone && <p className="text-rose-500 text-[10px] mt-0.5">{toPlainText(errors.phone)}</p>}
-            </div>
+          {/* Contact Person (Shared NameField) & Mobile (Shared PhoneField) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <NameField
+              id="cust-contact-person"
+              label="Contact Person"
+              value={contactPerson}
+              onChange={(val) => setContactPerson(val)}
+              placeholder="e.g. Rahul Sharma"
+              maxLength={60}
+            />
+
+            <PhoneField
+              id="cust-phone-field"
+              label="Phone Number"
+              value={phone}
+              onChange={(e164) => setPhone(e164)}
+              error={errors.phone}
+              placeholder="10-digit mobile number"
+            />
+          </div>
+
+          {/* GSTIN & Email */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 GSTIN (Optional)
@@ -443,6 +460,7 @@ function CreateCustomerModal({
               <input
                 type="text"
                 placeholder="15-character GSTIN"
+                maxLength={15}
                 value={gstin}
                 onChange={(e) => {
                   const val = e.target.value.toUpperCase();
@@ -466,13 +484,11 @@ function CreateCustomerModal({
                     });
                   }
                 }}
-                className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono uppercase"
+                className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono uppercase outline-none focus:border-indigo-500"
               />
               {errors.gstin && <p className="text-rose-500 text-[10px] mt-0.5">{toPlainText(errors.gstin)}</p>}
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Email Address
@@ -480,30 +496,26 @@ function CreateCustomerModal({
               <input
                 type="email"
                 placeholder="accounts@example.com"
+                maxLength={254}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-indigo-500"
               />
               {errors.email && <p className="text-rose-500 text-[10px] mt-0.5">{toPlainText(errors.email)}</p>}
             </div>
-            <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                State
-              </label>
-              <select
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-                className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-              >
-                {INDIAN_STATES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
 
+          {/* State & City via Shared StateCityField */}
+          <StateCityField
+            stateValue={state}
+            cityValue={city}
+            onStateChange={(st) => setState(st)}
+            onCityChange={(ct) => setCity(ct)}
+            stateLabel="State"
+            cityLabel="City / Location"
+          />
+
+          {/* Billing Address */}
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Billing Address
@@ -511,9 +523,10 @@ function CreateCustomerModal({
             <input
               type="text"
               placeholder="Building, Street, Area"
+              maxLength={300}
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-indigo-500"
             />
             {errors.address && <p className="text-rose-500 text-[10px] mt-0.5">{toPlainText(errors.address)}</p>}
           </div>
@@ -522,14 +535,14 @@ function CreateCustomerModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-semibold"
+              className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-semibold cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50"
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 cursor-pointer shadow-sm"
             >
               {submitting ? 'Creating...' : 'Create & Select'}
             </button>

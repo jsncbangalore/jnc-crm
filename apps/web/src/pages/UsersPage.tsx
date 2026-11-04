@@ -12,6 +12,7 @@ import api, { usersApi, authApi } from '../services/api';
 import { User, Role } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
+import { NameField, PhoneField } from '../components/common/forms';
 import TeamsTab from './TeamsTab';
 import { getProductName } from '../config/brand';
 import { ROLE_RANKS, ROLE_LABELS, getAllowedAssignableRoles, isPlatformOwner } from '../utils/roles';
@@ -1992,16 +1993,14 @@ export default function UsersPage() {
               </div>
 
               <form onSubmit={handleCreateSubmit} className="p-6 space-y-4">
-                <div>
-                  <label className="label">Full Name *</label>
-                  <input
-                    className="input text-xs"
-                    placeholder="Enter full name"
-                    value={createForm.name}
-                    onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
-                    required
-                  />
-                </div>
+                <NameField
+                  label="Full Name"
+                  required
+                  placeholder="Enter full name"
+                  value={createForm.name}
+                  onChange={(val) => setCreateForm({ ...createForm, name: val })}
+                  maxLength={60}
+                />
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -2016,13 +2015,12 @@ export default function UsersPage() {
                     />
                   </div>
                   <div>
-                    <label className="label">Phone Number *</label>
-                    <input
-                      className="input text-xs font-mono"
-                      placeholder="Enter phone number"
-                      value={createForm.phone}
-                      onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
+                    <PhoneField
+                      label="Phone Number"
                       required
+                      placeholder="10-digit mobile number"
+                      value={createForm.phone}
+                      onChange={(val) => setCreateForm({ ...createForm, phone: val })}
                     />
                   </div>
                 </div>
@@ -2230,15 +2228,14 @@ export default function UsersPage() {
               </div>
 
               <form onSubmit={handleUpdateSubmit} className="p-6 space-y-4">
-                <div>
-                  <label className="label">Full Name *</label>
-                  <input
-                    className="input text-xs"
-                    value={editingUser.name}
-                    onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
-                    required
-                  />
-                </div>
+                <NameField
+                  label="Full Name"
+                  required
+                  placeholder="Enter full name"
+                  value={editingUser.name}
+                  onChange={(val) => setEditingUser({ ...editingUser, name: val })}
+                  maxLength={60}
+                />
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -2250,11 +2247,11 @@ export default function UsersPage() {
                     />
                   </div>
                   <div>
-                    <label className="label">Phone Number</label>
-                    <input
-                      className="input text-xs font-mono"
+                    <PhoneField
+                      label="Phone Number"
+                      placeholder="10-digit mobile number"
                       value={editingUser.phone || ''}
-                      onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
+                      onChange={(val) => setEditingUser({ ...editingUser, phone: val })}
                     />
                   </div>
                 </div>

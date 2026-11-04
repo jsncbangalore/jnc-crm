@@ -13,6 +13,7 @@ import {
   validateGstin,
   validateAddress,
 } from '@crm/shared-validation';
+import { NameField, PhoneField, StateCityField } from '../components/common/forms';
 import { parseApiError } from '../utils/errorHelper';
 
 export default function SuppliersPage() {
@@ -48,6 +49,8 @@ export default function SuppliersPage() {
   });
 
   const [editingSupplier, setEditingSupplier] = useState<any | null>(null);
+  const [newSupplierState, setNewSupplierState] = useState('Karnataka');
+  const [editSupplierState, setEditSupplierState] = useState('Karnataka');
 
   // Validation States
   const [addErrors, setAddErrors] = useState<Record<string, string>>({});
@@ -465,26 +468,23 @@ export default function SuppliersPage() {
                 />
 
                 <div className="grid grid-cols-2 gap-3">
-                  <FormField
+                  <NameField
                     id="new-supplier-contactPerson"
                     label="Contact Person"
                     placeholder="Enter contact person"
                     value={newSupplier.contactPerson}
-                    onChange={(e) => setNewSupplier({ ...newSupplier, contactPerson: filterTextOnlyInput(e.target.value) })}
-                    maxLength={100}
+                    onChange={(val) => setNewSupplier({ ...newSupplier, contactPerson: val })}
+                    maxLength={60}
                   />
-                  <FormField
+                  <PhoneField
                     id="new-supplier-phone"
                     label="Phone Number"
-                    type="tel"
-                    inputMode="tel"
                     placeholder="10-digit mobile number"
                     value={newSupplier.phone}
-                    onChange={(e) => {
-                      const filtered = filterPhoneInput(e.target.value);
-                      setNewSupplier({ ...newSupplier, phone: filtered });
-                      if (addTouched.phone && filtered) {
-                        const res = validatePhone(filtered);
+                    onChange={(val) => {
+                      setNewSupplier({ ...newSupplier, phone: val });
+                      if (addTouched.phone && val) {
+                        const res = validatePhone(val);
                         setAddErrors((prev) => ({ ...prev, phone: res.valid ? '' : res.error! }));
                       }
                     }}
@@ -496,7 +496,6 @@ export default function SuppliersPage() {
                       }
                     }}
                     error={addTouched.phone ? addErrors.phone : null}
-                    maxLength={20}
                   />
                 </div>
 
@@ -551,33 +550,31 @@ export default function SuppliersPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField
-                    id="new-supplier-city"
-                    label="City / Location"
-                    placeholder="Enter city or location"
-                    value={newSupplier.city}
-                    onChange={(e) => setNewSupplier({ ...newSupplier, city: e.target.value })}
-                    maxLength={100}
-                  />
-                  <FormField
-                    id="new-supplier-leadTimeDays"
-                    label="Lead Time (Days)"
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="7"
-                    value={newSupplier.leadTimeDays}
-                    onChange={(e) => {
-                      const clean = filterIntegerInput(e.target.value);
-                      setNewSupplier({
-                        ...newSupplier,
-                        leadTimeDays: parseInt(clean, 10) || 0,
-                      });
-                    }}
-                    min={0}
-                    max={365}
-                  />
-                </div>
+                <StateCityField
+                  stateValue={newSupplierState}
+                  cityValue={newSupplier.city}
+                  onStateChange={(st) => setNewSupplierState(st)}
+                  onCityChange={(ct) => setNewSupplier({ ...newSupplier, city: ct })}
+                  cityLabel="City / Location"
+                />
+
+                <FormField
+                  id="new-supplier-leadTimeDays"
+                  label="Lead Time (Days)"
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="7"
+                  value={newSupplier.leadTimeDays}
+                  onChange={(e) => {
+                    const clean = filterIntegerInput(e.target.value);
+                    setNewSupplier({
+                      ...newSupplier,
+                      leadTimeDays: parseInt(clean, 10) || 0,
+                    });
+                  }}
+                  min={0}
+                  max={365}
+                />
 
                 <FormField
                   id="new-supplier-address"
@@ -656,26 +653,25 @@ export default function SuppliersPage() {
                 />
 
                 <div className="grid grid-cols-2 gap-3">
-                  <FormField
+                  <NameField
                     id="edit-supplier-contactPerson"
                     label="Contact Person"
+                    placeholder="Enter contact person"
                     value={editingSupplier.contactPerson || ''}
-                    onChange={(e) =>
-                      setEditingSupplier({ ...editingSupplier, contactPerson: e.target.value })
+                    onChange={(val) =>
+                      setEditingSupplier({ ...editingSupplier, contactPerson: val })
                     }
-                    maxLength={100}
+                    maxLength={60}
                   />
-                  <FormField
+                  <PhoneField
                     id="edit-supplier-phone"
                     label="Phone Number"
-                    type="tel"
-                    inputMode="tel"
+                    placeholder="10-digit mobile number"
                     value={editingSupplier.phone || ''}
-                    onChange={(e) => {
-                      const filtered = filterPhoneInput(e.target.value);
-                      setEditingSupplier({ ...editingSupplier, phone: filtered });
-                      if (editTouched.phone && filtered) {
-                        const res = validatePhone(filtered);
+                    onChange={(val) => {
+                      setEditingSupplier({ ...editingSupplier, phone: val });
+                      if (editTouched.phone && val) {
+                        const res = validatePhone(val);
                         setEditErrors((prev) => ({ ...prev, phone: res.valid ? '' : res.error! }));
                       }
                     }}
@@ -687,44 +683,42 @@ export default function SuppliersPage() {
                       }
                     }}
                     error={editTouched.phone ? editErrors.phone : null}
-                    maxLength={20}
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField
-                    id="edit-supplier-email"
-                    label="Email Address"
-                    type="email"
-                    inputMode="email"
-                    value={editingSupplier.email || ''}
-                    onChange={(e) => {
-                      setEditingSupplier({ ...editingSupplier, email: e.target.value });
-                      if (editTouched.email && e.target.value) {
-                        const res = validateEmail(e.target.value);
-                        setEditErrors((prev) => ({ ...prev, email: res.valid ? '' : res.error! }));
-                      }
-                    }}
-                    onBlur={() => {
-                      setEditTouched((prev) => ({ ...prev, email: true }));
-                      if (editingSupplier.email) {
-                        const res = validateEmail(editingSupplier.email);
-                        setEditErrors((prev) => ({ ...prev, email: res.valid ? '' : res.error! }));
-                      }
-                    }}
-                    error={editTouched.email ? editErrors.email : null}
-                    maxLength={254}
-                  />
-                  <FormField
-                    id="edit-supplier-city"
-                    label="City / Location"
-                    value={editingSupplier.city || ''}
-                    onChange={(e) =>
-                      setEditingSupplier({ ...editingSupplier, city: e.target.value })
+                <FormField
+                  id="edit-supplier-email"
+                  label="Email Address"
+                  type="email"
+                  inputMode="email"
+                  value={editingSupplier.email || ''}
+                  onChange={(e) => {
+                    setEditingSupplier({ ...editingSupplier, email: e.target.value });
+                    if (editTouched.email && e.target.value) {
+                      const res = validateEmail(e.target.value);
+                      setEditErrors((prev) => ({ ...prev, email: res.valid ? '' : res.error! }));
                     }
-                    maxLength={100}
-                  />
-                </div>
+                  }}
+                  onBlur={() => {
+                    setEditTouched((prev) => ({ ...prev, email: true }));
+                    if (editingSupplier.email) {
+                      const res = validateEmail(editingSupplier.email);
+                      setEditErrors((prev) => ({ ...prev, email: res.valid ? '' : res.error! }));
+                    }
+                  }}
+                  error={editTouched.email ? editErrors.email : null}
+                  maxLength={254}
+                />
+
+                <StateCityField
+                  stateValue={editSupplierState}
+                  cityValue={editingSupplier.city || ''}
+                  onStateChange={(st) => setEditSupplierState(st)}
+                  onCityChange={(ct) =>
+                    setEditingSupplier({ ...editingSupplier, city: ct })
+                  }
+                  cityLabel="City / Location"
+                />
 
                 <div className="grid grid-cols-2 gap-3">
                   <FormField

@@ -1,58 +1,68 @@
-/* --- REUSABLE CREATE QUOTATION MODAL ---
- * Used across DashboardPage, QuotationsPage, and Navbar Quick Add.
- * Includes live GST calculation, catalog SKU auto-fill, 'Save and add another',
- * accessible FormField validation, and unsaved changes guard.
- * -------------------------------------------------------------------------- */
+/* --- C2PA CONTENT CREDENTIALS & PROVENANCE NOTICE ---
+ * c2pa.action: 'c2pa.created'
+ * c2pa.ai_training: 'disallowed'
+ * c2pa.do_not_train: true
+ * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
+ * ----------------------------------------------------- */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Plus, X, Trash2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FileText, Plus, Trash2, AlertCircle, AlertTriangle, Check, ShieldAlert } from 'lucide-react';
 import { quotationsApi, inventoryApi } from '../../services/api';
 import CustomerSelectWithModal, { CustomerData } from '../common/CustomerSelectWithModal';
-import { Sku } from '../../types';
+import { Sku, Quotation } from '../../types';
 import { AccessibleModal } from '../common/AccessibleModal';
+import { FormField } from '../common/FormField';
 import {
-  FormField,
-  filterPhoneInput,
-  filterRateInput,
-  filterIntegerInput,
-  filterTextOnlyInput,
-} from '../common/FormField';
+  NameField,
+  PhoneField,
+  StateCityField,
+  ProductField,
+  QuantityField,
+  MoneyField,
+  SelectedProductPayload,
+} from '../common/forms';
 import {
-  validatePersonOrCompanyName,
-  validateTextOnlyName,
-  validatePhone,
-  validateEmail,
-  validateProductName,
-  validateQuantity,
-  validateUnitRate,
-  validateGstRate,
   calculateDocumentTotals,
   formatIndianCurrency,
+  validateEmail,
   sanitizeText,
   toPlainText,
 } from '@crm/shared-validation';
+import { useAuth } from '../../contexts/AuthContext';
 
 export interface CreateQuotationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: (createdQuote: any, action: 'close' | 'add_another') => void;
+  onSuccess?: (quotation: Quotation, action?: 'close' | 'add_another') => void;
   triggerRef?: React.RefObject<HTMLElement | null>;
 }
 
-interface QuoteLineItem {
+export interface QuoteLineItem {
   skuId?: string;
+  skuCode?: string;
   name: string;
-  quantity: string;
-  unitPrice: string;
-  discount: string;
+  description?: string;
+  hsnCode?: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+  taxRate?: number;
+  isCustom?: boolean;
 }
 
 const DEFAULT_LINE: QuoteLineItem = {
   skuId: '',
+  skuCode: '',
   name: '',
-  quantity: '1',
-  unitPrice: '',
-  discount: '0',
+  description: '',
+  hsnCode: '',
+  unit: 'NOS',
+  quantity: 1,
+  unitPrice: 0,
+  discount: 0,
+  taxRate: 18,
+  isCustom: false,
 };
 
 export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
@@ -61,29 +71,30 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
   onSuccess,
   triggerRef,
 }) => {
+  const { user } = useAuth();
+  const canEditPrice =
+    user?.role === 'tenant_admin' ||
+    user?.role === 'admin' ||
+    user?.role === 'platform_super_admin' ||
+    user?.effectivePages?.includes('edit_price') ||
+    (user as any)?.permissions?.includes('edit_price');
+
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [companyName, setCompanyName] = useState('');
-  const [shippingAddress, setShippingAddress] = useState('');
+  const [deliveryState, setDeliveryState] = useState('Karnataka');
+  const [deliveryCity, setDeliveryCity] = useState('Bengaluru');
   const [taxRate, setTaxRate] = useState<number>(18);
-  const [terms, setTerms] = useState('Payment: 50% advance along with Purchase Order, 50% against delivery.\nValidity: 30 days from quotation date.');
+  const [terms, setTerms] = useState(
+    'Payment: 50% advance along with Purchase Order, 50% against delivery.\nValidity: 30 days from quotation date.'
+  );
   const [lines, setLines] = useState<QuoteLineItem[]>([{ ...DEFAULT_LINE }]);
 
-  const [skus, setSkus] = useState<Sku[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
-
-  // Fetch catalog SKUs for autocomplete
-  useEffect(() => {
-    if (isOpen) {
-      inventoryApi.getSkus().then((res) => {
-        setSkus(res.data.items || res.data || []);
-      }).catch((e) => console.error('Failed to load SKUs', e));
-    }
-  }, [isOpen]);
 
   const resetForm = () => {
     setCustomerId(null);
@@ -91,9 +102,12 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
     setCustomerPhone('');
     setCustomerEmail('');
     setCompanyName('');
-    setShippingAddress('');
+    setDeliveryState('Karnataka');
+    setDeliveryCity('Bengaluru');
     setTaxRate(18);
-    setTerms('Payment: 50% advance along with Purchase Order, 50% against delivery.\nValidity: 30 days from quotation date.');
+    setTerms(
+      'Payment: 50% advance along with Purchase Order, 50% against delivery.\nValidity: 30 days from quotation date.'
+    );
     setLines([{ ...DEFAULT_LINE }]);
     setErrors({});
     setTouched({});
@@ -110,49 +124,72 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
     customerPhone.trim() ||
     customerEmail.trim() ||
     companyName.trim() ||
-    shippingAddress.trim() ||
-    lines.some((l) => l.name.trim() || l.unitPrice.trim())
+    lines.some((l) => l.name.trim() || l.unitPrice > 0)
   );
 
   // Calculate live totals
   const calcTotals = calculateDocumentTotals(
     lines.map((l) => ({
-      quantity: parseFloat(l.quantity) || 0,
-      unitPrice: parseFloat(l.unitPrice) || 0,
-      discount: parseFloat(l.discount) || 0,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      discount: l.discount,
     })),
     taxRate
   );
 
-  const handleLineChange = (index: number, field: keyof QuoteLineItem, val: string) => {
-    let cleanVal = val;
-    if (field === 'quantity') cleanVal = filterIntegerInput(val) || '1';
-    if (field === 'unitPrice' || field === 'discount') cleanVal = filterRateInput(val);
-
+  const handleProductSelect = (index: number, payload: SelectedProductPayload) => {
     setLines((prev) => {
       const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: cleanVal };
+      copy[index] = {
+        ...copy[index],
+        skuId: payload.skuId,
+        skuCode: payload.skuCode,
+        name: payload.name,
+        unit: payload.unit || 'NOS',
+        unitPrice: payload.unitPrice ?? copy[index].unitPrice,
+        hsnCode: payload.hsnCode,
+        taxRate: payload.taxRate ?? taxRate,
+        isCustom: payload.isCustom ?? false,
+      };
       return copy;
     });
 
-    if (errors[`line_${index}_${field}`]) {
+    if (errors[`line_${index}_name`]) {
       setErrors((prev) => {
         const next = { ...prev };
-        delete next[`line_${index}_${field}`];
+        delete next[`line_${index}_name`];
         return next;
       });
     }
   };
 
-  const handleSelectSku = (index: number, sku: Sku) => {
+  const handleLineQtyChange = (index: number, qty: number) => {
     setLines((prev) => {
       const copy = [...prev];
-      copy[index] = {
-        ...copy[index],
-        skuId: sku.id,
-        name: sku.name,
-        unitPrice: String(sku.unitPrice || ''),
-      };
+      copy[index] = { ...copy[index], quantity: qty };
+      return copy;
+    });
+  };
+
+  const handleLineRateChange = (index: number, rate: number) => {
+    const line = lines[index];
+    if (line.skuId && !canEditPrice) {
+      setErrors((prev) => ({
+        ...prev,
+        [`line_${index}_rate`]: 'Rate is locked to catalog price. "edit_price" permission required.',
+      }));
+      return;
+    }
+
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[`line_${index}_rate`];
+      return next;
+    });
+
+    setLines((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], unitPrice: rate };
       return copy;
     });
   };
@@ -169,43 +206,37 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
   const validateAll = (): boolean => {
     const nextErrors: Record<string, string> = {};
 
-    const nameRes = validateTextOnlyName(customerName);
-    if (!nameRes.valid) nextErrors.customerName = nameRes.error || 'Invalid name';
+    if (!customerName.trim() || customerName.trim().length < 2) {
+      nextErrors.customerName = 'Customer name is required.';
+    }
 
-    const phoneRes = validatePhone(customerPhone);
-    if (!phoneRes.valid) nextErrors.customerPhone = phoneRes.error || 'Invalid phone';
+    const cleanPhone = customerPhone.replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      nextErrors.customerPhone = 'Enter a 10-digit mobile number.';
+    }
 
     if (customerEmail.trim()) {
       const emailRes = validateEmail(customerEmail, false);
       if (!emailRes.valid) nextErrors.customerEmail = emailRes.error || 'Invalid email';
     }
 
-    if (companyName.trim()) {
-      const compRes = validateTextOnlyName(companyName);
-      if (!compRes.valid) nextErrors.companyName = compRes.error || 'Invalid company name';
-    }
-
     lines.forEach((l, idx) => {
-      const pRes = validateProductName(l.name);
-      if (!pRes.valid) nextErrors[`line_${idx}_name`] = pRes.error || 'Invalid product name';
-
-      const qRes = validateQuantity(l.quantity);
-      if (!qRes.valid) nextErrors[`line_${idx}_qty`] = qRes.error || 'Invalid qty';
-
-      const rRes = validateUnitRate(l.unitPrice);
-      if (!rRes.valid) nextErrors[`line_${idx}_rate`] = rRes.error || 'Invalid rate (no leading zeros)';
+      if (!l.name.trim()) {
+        nextErrors[`line_${idx}_name`] = 'Product is required';
+      }
+      if (l.quantity <= 0) {
+        nextErrors[`line_${idx}_qty`] = 'Quantity must be > 0';
+      }
     });
 
     setErrors(nextErrors);
-    setTouched({ customerName: true, customerPhone: true, customerEmail: true, companyName: true });
+    setTouched({
+      customerName: true,
+      customerPhone: true,
+      customerEmail: true,
+    });
 
-    if (Object.keys(nextErrors).length > 0) {
-      const firstField = Object.keys(nextErrors)[0];
-      const el = document.getElementById(firstField);
-      el?.focus();
-      return false;
-    }
-    return true;
+    return Object.keys(nextErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent, action: 'close' | 'add_another') => {
@@ -214,88 +245,63 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
 
     try {
       setSubmitting(true);
-      const payload = {
+      const payload: any = {
         customerId: customerId || undefined,
         customerName: sanitizeText(customerName),
         customerPhone: customerPhone.trim(),
         customerEmail: customerEmail.trim() || undefined,
         companyName: sanitizeText(companyName) || undefined,
-        shippingAddress: sanitizeText(shippingAddress) || undefined,
+        shippingAddress: `${deliveryCity}, ${deliveryState}`,
         taxRate,
-        terms: sanitizeText(terms) || undefined,
+        terms: sanitizeText(terms),
         lines: lines.map((l) => ({
           skuId: l.skuId || undefined,
           name: sanitizeText(l.name),
-          quantity: parseInt(l.quantity, 10) || 1,
-          unitPrice: parseFloat(l.unitPrice) || 0,
-          discount: parseFloat(l.discount) || 0,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+          discount: l.discount || 0,
+          unit: l.unit || 'NOS',
+          hsnCode: l.hsnCode || undefined,
         })),
       };
 
       const res = await quotationsApi.create(payload);
-      const createdQuote = res.data;
+      const created = res.data;
 
       if (action === 'add_another') {
         resetForm();
-        if (onSuccess) onSuccess(createdQuote, 'add_another');
-        const firstInput = document.getElementById('quoteCustomerName');
-        firstInput?.focus();
+        if (onSuccess) onSuccess(created, 'add_another');
       } else {
         onClose();
-        if (onSuccess) onSuccess(createdQuote, 'close');
+        if (onSuccess) onSuccess(created, 'close');
       }
     } catch (err: any) {
       const data = err?.response?.data;
-      const mappedErrors: Record<string, string> = {};
-
-      if (Array.isArray(data?.fieldErrors)) {
-        data.fieldErrors.forEach((item: any) => {
-          if (item?.field) mappedErrors[String(item.field)] = toPlainText(item.message || item);
-        });
-      } else if (data?.fieldErrors && typeof data.fieldErrors === 'object') {
-        Object.entries(data.fieldErrors).forEach(([k, v]) => {
-          mappedErrors[k] = toPlainText(v);
-        });
-      }
-
       if (Array.isArray(data?.message)) {
-        data.message.forEach((msg: any) => {
-          const text = toPlainText(msg);
-          if (text.includes('customerName') || text.includes('name')) mappedErrors.customerName = text;
-          else if (text.includes('customerPhone') || text.includes('phone')) mappedErrors.customerPhone = text;
-          else if (text.includes('unitPrice') || text.includes('rate')) mappedErrors.lines = text;
-        });
+        setErrors((prev) => ({ ...prev, form: data.message.join(', ') }));
+      } else if (data?.message) {
+        setErrors((prev) => ({ ...prev, form: toPlainText(data.message) }));
+      } else {
+        setErrors((prev) => ({
+          ...prev,
+          form: toPlainText(err?.message || 'Failed to generate quotation.'),
+        }));
       }
-
-      const formMsg = toPlainText(data?.message || err?.message || 'Failed to save quotation.');
-      setErrors((prev) => ({
-        ...prev,
-        ...(formMsg && Object.keys(mappedErrors).length === 0 ? { form: formMsg } : {}),
-        ...mappedErrors,
-      }));
     } finally {
       setSubmitting(false);
     }
   };
-
-  const isFormValid =
-    !errors.customerName &&
-    !errors.customerPhone &&
-    customerName.trim().length >= 2 &&
-    customerPhone.trim().length >= 10 &&
-    lines.length > 0 &&
-    lines.every((l) => l.name.trim().length >= 2 && parseFloat(l.unitPrice) > 0);
 
   return (
     <AccessibleModal
       isOpen={isOpen}
       onClose={onClose}
       title="Create New Quotation"
-      subtitle="Generate formal price estimate for client with live line totals"
+      subtitle="Generate an official client estimate with catalog products and live GST calculations"
       icon={<FileText size={20} />}
       isDirty={isDirty}
       triggerRef={triggerRef}
-      maxWidth="max-w-3xl"
+      maxWidth="max-w-4xl"
     >
       <form onSubmit={(e) => handleSubmit(e, 'close')} className="p-4 sm:p-6 space-y-4 text-left" noValidate autoComplete="off" data-lpignore="true">
         {errors.form && (
@@ -305,100 +311,56 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
           </div>
         )}
 
-        {/* Customer Account Picker & Creation */}
-        <div className="mb-2">
-          <CustomerSelectWithModal
-            selectedCustomerId={customerId}
-            onSelectCustomer={(c: CustomerData) => {
-              setCustomerId(c.id);
-              setCustomerName(c.name);
-              if (c.phone) setCustomerPhone(c.phone);
-              if (c.email) setCustomerEmail(c.email);
-              setCompanyName(c.name);
-              if (c.address) setShippingAddress(c.address);
-              setErrors((prev) => ({ ...prev, customerName: '', customerPhone: '', customerEmail: '' }));
-            }}
-            required={false}
-            label="Customer Master Account (Search or Create)"
+        {/* Existing Customer Account Selection */}
+        <CustomerSelectWithModal
+          selectedCustomerId={customerId}
+          onSelectCustomer={(c: CustomerData) => {
+            setCustomerId(c.id);
+            setCustomerName(c.name);
+            if (c.phone) setCustomerPhone(c.phone);
+            if (c.email) setCustomerEmail(c.email);
+            if (c.state) setDeliveryState(c.state);
+            setCompanyName(c.name);
+          }}
+          required={false}
+          label="Select Existing Client Account (Optional)"
+        />
+
+        {/* Client Name & Mobile Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <NameField
+            id="quoteCustomerName"
+            label="Client / Contact Name"
+            required
+            value={customerName}
+            onChange={(val) => setCustomerName(val)}
+            error={touched.customerName ? errors.customerName : null}
+            placeholder="e.g. Rahul Sharma"
+            maxLength={60}
+          />
+
+          <PhoneField
+            id="quoteCustomerPhone"
+            label="Mobile Number"
+            required
+            value={customerPhone}
+            onChange={(e164) => setCustomerPhone(e164)}
+            error={touched.customerPhone ? errors.customerPhone : null}
+            placeholder="10-digit mobile number"
           />
         </div>
 
-        {/* Client Info Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <FormField
-            id="quoteCustomerName"
-            label="Customer Name"
-            required
-            value={customerName}
-            onChange={(e) => {
-              const clean = filterTextOnlyInput(e.target.value);
-              setCustomerName(clean);
-              if (touched.customerName) {
-                const res = validateTextOnlyName(clean);
-                setErrors((prev) => ({ ...prev, customerName: res.valid ? '' : res.error || '' }));
-              }
-            }}
-            onBlur={() => {
-              setTouched((prev) => ({ ...prev, customerName: true }));
-              const res = validateTextOnlyName(customerName.trim());
-              setErrors((prev) => ({ ...prev, customerName: res.valid ? '' : res.error || '' }));
-            }}
-            error={touched.customerName ? errors.customerName : null}
-            placeholder="e.g. Anand Murthy"
-            maxLength={100}
-          />
-
-          <FormField
-            id="quoteCustomerPhone"
-            label="Mobile Number"
-            type="tel"
-            inputMode="tel"
-            required
-            value={customerPhone}
-            onChange={(e) => {
-              const clean = filterPhoneInput(e.target.value);
-              setCustomerPhone(clean);
-              if (touched.customerPhone) {
-                const res = validatePhone(clean);
-                setErrors((prev) => ({ ...prev, customerPhone: res.valid ? '' : res.error || '' }));
-              }
-            }}
-            onBlur={() => {
-              setTouched((prev) => ({ ...prev, customerPhone: true }));
-              const res = validatePhone(customerPhone.trim());
-              setErrors((prev) => ({ ...prev, customerPhone: res.valid ? '' : res.error || '' }));
-            }}
-            error={touched.customerPhone ? errors.customerPhone : null}
-            placeholder="10-digit mobile number"
-            maxLength={20}
-          />
-
+        {/* Company & Email Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField
             id="quoteCompanyName"
             label="Company / Organization"
             value={companyName}
-            onChange={(e) => {
-              const clean = filterTextOnlyInput(e.target.value);
-              setCompanyName(clean);
-              if (touched.companyName) {
-                const res = validateTextOnlyName(clean);
-                setErrors((prev) => ({ ...prev, companyName: res.valid ? '' : res.error || '' }));
-              }
-            }}
-            onBlur={() => {
-              setTouched((prev) => ({ ...prev, companyName: true }));
-              if (companyName.trim()) {
-                const res = validateTextOnlyName(companyName.trim());
-                setErrors((prev) => ({ ...prev, companyName: res.valid ? '' : res.error || '' }));
-              }
-            }}
-            error={touched.companyName ? errors.companyName : null}
+            onChange={(e) => setCompanyName(e.target.value)}
             placeholder="e.g. Zenith Infra Ltd"
             maxLength={100}
           />
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <FormField
             id="quoteCustomerEmail"
             label="Email Address"
@@ -406,43 +368,47 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
             inputMode="email"
             value={customerEmail}
             onChange={(e) => setCustomerEmail(e.target.value)}
-            onBlur={() => {
-              if (customerEmail.trim()) {
-                const res = validateEmail(customerEmail.trim(), false);
-                setErrors((prev) => ({ ...prev, customerEmail: res.valid ? '' : res.error || '' }));
-              }
-            }}
             error={errors.customerEmail}
             placeholder="client@example.com"
             maxLength={254}
           />
+        </div>
 
-          <FormField
-            id="quoteShippingAddress"
-            label="Delivery Location / City"
-            value={shippingAddress}
-            onChange={(e) => setShippingAddress(filterTextOnlyInput(e.target.value))}
-            placeholder="Enter destination city"
-            maxLength={300}
-          />
+        {/* Delivery Location via Shared StateCityField */}
+        <StateCityField
+          stateValue={deliveryState}
+          cityValue={deliveryCity}
+          onStateChange={(st) => setDeliveryState(st)}
+          onCityChange={(ct) => setDeliveryCity(ct)}
+          stateLabel="Delivery State"
+          cityLabel="Delivery City / Location"
+        />
 
+        {/* GST Rate */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField
             id="quoteGstRate"
-            label="GST Rate (%)"
+            label="Default GST Rate (%)"
             as="select"
             value={taxRate}
             onChange={(e) => setTaxRate(Number(e.target.value) || 18)}
             options={[
-              { label: '18% GST (Standard)', value: 18 },
+              { label: '18% GST (Standard Equipment)', value: 18 },
               { label: '12% GST', value: 12 },
               { label: '28% GST', value: 28 },
               { label: '5% GST', value: 5 },
               { label: '0% (Exempt)', value: 0 },
             ]}
           />
+
+          <div className="flex items-end pb-1.5">
+            <span className="text-xs text-slate-500 font-medium">
+              Tax Region: {deliveryState === 'Karnataka' ? 'Intra-State (CGST 9% + SGST 9%)' : 'Inter-State (IGST 18%)'}
+            </span>
+          </div>
         </div>
 
-        {/* Line Items Builder */}
+        {/* Line Items Builder with Shared ProductField & QuantityField */}
         <div className="pt-2">
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -451,124 +417,112 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
             <button
               type="button"
               onClick={addLine}
-              className="btn-ghost text-xs text-crm-amber hover:bg-crm-amber/10 gap-1 font-semibold"
+              className="btn-ghost text-xs text-crm-amber hover:bg-crm-amber/10 gap-1 font-semibold cursor-pointer"
             >
               <Plus size={13} /> Add Product Row
             </button>
           </div>
 
-          <div className="space-y-2.5">
+          <div className="space-y-3">
             {lines.map((line, idx) => (
               <div
                 key={idx}
-                className="flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 dark:bg-[#141722] p-2.5 rounded-xl border border-slate-200 dark:border-[#2A3042]"
+                className="p-3 bg-slate-50 dark:bg-[#141722] rounded-xl border border-slate-200 dark:border-[#2A3042] space-y-2.5"
               >
-                <div className="flex-1 min-w-0">
-                  <input
-                    list={`quote-sku-list-${idx}`}
-                    type="text"
-                    className={`input text-xs font-medium w-full ${errors[`line_${idx}_name`] ? 'border-red-500' : ''}`}
-                    placeholder="Product name or catalog SKU..."
-                    value={line.name}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      handleLineChange(idx, 'name', val);
-                      const matched = skus.find(
-                        (s) => `${s.skuCode} - ${s.name}` === val || s.name === val || s.skuCode === val
-                      );
-                      if (matched) handleSelectSku(idx, matched);
-                    }}
-                    required
-                  />
-                  <datalist id={`quote-sku-list-${idx}`}>
-                    {skus.map((s) => (
-                      <option key={s.id} value={`${s.skuCode} - ${s.name}`}>
-                        {formatIndianCurrency(s.unitPrice)}
-                      </option>
-                    ))}
-                  </datalist>
-                  {errors[`line_${idx}_name`] && (
-                    <p className="text-[10px] text-red-500 mt-0.5">{errors[`line_${idx}_name`]}</p>
-                  )}
-                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                  {/* Product Field */}
+                  <div className="sm:col-span-5">
+                    <ProductField
+                      value={line.name}
+                      selectedSkuCode={line.skuCode}
+                      onChange={(p) => handleProductSelect(idx, p)}
+                      error={errors[`line_${idx}_name`]}
+                      placeholder="Select SKU catalog or type custom..."
+                    />
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="w-20">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      className={`input text-xs text-center font-bold w-full ${errors[`line_${idx}_qty`] ? 'border-red-500' : ''}`}
-                      placeholder="Qty"
+                  {/* Quantity Field */}
+                  <div className="sm:col-span-3">
+                    <QuantityField
                       value={line.quantity}
-                      onChange={(e) => handleLineChange(idx, 'quantity', e.target.value)}
+                      unit={line.unit}
+                      onChange={(q) => handleLineQtyChange(idx, q)}
+                      min={1}
+                      max={999999}
                     />
                   </div>
 
-                  <div className="w-28">
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      className={`input text-xs text-right font-mono w-full ${errors[`line_${idx}_rate`] ? 'border-red-500' : ''}`}
-                      placeholder="Rate (₹)"
+                  {/* Rate Field */}
+                  <div className="sm:col-span-2">
+                    <MoneyField
+                      label={`Rate (${line.unit})`}
                       value={line.unitPrice}
-                      onChange={(e) => handleLineChange(idx, 'unitPrice', e.target.value)}
+                      onChange={(r) => handleLineRateChange(idx, r)}
+                      disabled={!canEditPrice && Boolean(line.skuId)}
+                      error={errors[`line_${idx}_rate`]}
                     />
                   </div>
 
-                  <div className="w-24 text-right font-mono font-bold text-xs text-crm-amber shrink-0">
-                    {formatIndianCurrency(calcTotals.lineTotals[idx] || 0)}
+                  {/* Row Total & Delete */}
+                  <div className="sm:col-span-2 flex items-center justify-between pb-1">
+                    <div className="text-right font-mono font-bold text-xs text-crm-amber">
+                      {formatIndianCurrency(calcTotals.lineTotals[idx] || 0)}
+                    </div>
+                    {lines.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeLine(idx)}
+                        className="text-slate-400 hover:text-red-500 p-1.5 transition cursor-pointer"
+                        title="Remove Line Item"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
-
-                  {lines.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeLine(idx)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
-                      title="Remove Row"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
                 </div>
+
+                {errors[`line_${idx}_rate`] && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 font-medium">
+                    <ShieldAlert size={12} />
+                    <span>{errors[`line_${idx}_rate`]}</span>
+                  </p>
+                )}
               </div>
             ))}
           </div>
         </div>
 
-        {/* Summary & Terms */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-200 dark:border-[#2A3042]">
-          <FormField
-            id="quoteTerms"
-            label="Terms & Conditions"
-            as="textarea"
-            value={terms}
-            onChange={(e) => setTerms(e.target.value)}
-            rows={3}
-            maxLength={1000}
-          />
-
-          <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042] space-y-2 text-xs font-mono">
-            <div className="flex justify-between text-slate-500 dark:text-slate-400">
-              <span>Taxable Subtotal:</span>
-              <span className="font-semibold">{formatIndianCurrency(calcTotals.taxableSubtotal)}</span>
-            </div>
-            <div className="flex justify-between text-slate-500 dark:text-slate-400">
-              <span>Estimated GST ({taxRate}%):</span>
-              <span className="font-semibold">{formatIndianCurrency(calcTotals.gstAmount)}</span>
-            </div>
-            <div className="flex justify-between text-slate-900 dark:text-white pt-2 border-t border-slate-300 dark:border-[#2A3042] text-sm font-bold">
-              <span>Grand Total:</span>
-              <span className="text-crm-amber">{formatIndianCurrency(calcTotals.grandTotal)}</span>
-            </div>
+        {/* Live Quotation Summary Box */}
+        <div className="bg-slate-50 dark:bg-[#141722] p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="space-y-1 text-xs text-slate-500">
+            <p>Subtotal: <strong className="text-slate-900 dark:text-white font-mono">{formatIndianCurrency(calcTotals.taxableSubtotal)}</strong></p>
+            <p>Total GST ({taxRate}%): <strong className="text-slate-900 dark:text-white font-mono">{formatIndianCurrency(calcTotals.gstAmount)}</strong></p>
+          </div>
+          <div className="text-right">
+            <span className="text-xs text-slate-500 font-medium">Total Quotation Value:</span>
+            <p className="text-xl font-black font-mono text-crm-amber">
+              {formatIndianCurrency(calcTotals.grandTotal)}
+            </p>
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Commercial Terms & Conditions */}
+        <FormField
+          id="quoteTerms"
+          label="Commercial Terms & Conditions"
+          as="textarea"
+          value={terms}
+          onChange={(e) => setTerms(e.target.value)}
+          rows={2}
+          maxLength={500}
+        />
+
+        {/* Modal Actions */}
         <div className="sticky bottom-0 bg-white dark:bg-[#181B26] p-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6 border-t border-slate-200 dark:border-[#2A3042] flex flex-col-reverse sm:flex-row items-center justify-between gap-3 z-10 shadow-xs">
           <button
             type="button"
             onClick={onClose}
-            className="w-full sm:w-auto btn-ghost text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            className="w-full sm:w-auto btn-ghost text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
           >
             Cancel
           </button>
@@ -576,18 +530,29 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
-              disabled={submitting || !isFormValid}
+              disabled={submitting}
               onClick={(e) => handleSubmit(e, 'add_another')}
-              className="flex-1 sm:flex-initial btn bg-slate-100 hover:bg-slate-200 dark:bg-[#1E2230] dark:hover:bg-[#252B3C] border border-slate-300 dark:border-[#2A3042] text-slate-800 dark:text-slate-200 text-xs font-semibold px-3 py-2 disabled:opacity-50"
+              className="w-full sm:w-auto btn-outline text-xs px-3 py-2 font-semibold disabled:opacity-50 cursor-pointer"
             >
               Save & Add Another
             </button>
+
             <button
               type="submit"
-              disabled={submitting || !isFormValid}
-              className="flex-1 sm:flex-initial btn bg-crm-amber hover:bg-crm-amber-hover text-black text-xs font-bold px-4 py-2 shadow-sm disabled:opacity-50"
+              disabled={submitting}
+              className="w-full sm:w-auto btn-primary text-xs px-4 py-2 font-bold shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
             >
-              {submitting ? 'Creating...' : 'Create Quotation'}
+              {submitting ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Generating Quote...</span>
+                </>
+              ) : (
+                <>
+                  <Check size={14} />
+                  <span>Generate Quotation</span>
+                </>
+              )}
             </button>
           </div>
         </div>

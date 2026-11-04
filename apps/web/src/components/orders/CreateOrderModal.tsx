@@ -17,6 +17,13 @@ import {
   filterTextOnlyInput,
 } from '../common/FormField';
 import {
+  NameField,
+  PhoneField,
+  ProductField,
+  QuantityField,
+  MoneyField,
+} from '../common/forms';
+import {
   validatePersonOrCompanyName,
   validateTextOnlyName,
   validatePhone,
@@ -304,16 +311,15 @@ export default function CreateOrderModal({
 
         {/* Customer Info */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormField
+          <NameField
             id="orderCustomerName"
             label="Customer / Company Name"
             required
             value={customerName}
-            onChange={(e) => {
-              const clean = filterTextOnlyInput(e.target.value);
-              setCustomerName(clean);
+            onChange={(val) => {
+              setCustomerName(val);
               if (touched.customerName) {
-                const res = validateTextOnlyName(clean);
+                const res = validateTextOnlyName(val);
                 setErrors((prev) => ({ ...prev, customerName: res.valid ? '' : res.error || '' }));
               }
             }}
@@ -324,22 +330,18 @@ export default function CreateOrderModal({
             }}
             error={touched.customerName ? errors.customerName : null}
             placeholder="e.g. Apex Industrial Pvt Ltd"
-            maxLength={100}
-            showCount
+            maxLength={60}
           />
 
-          <FormField
+          <PhoneField
             id="orderCustomerPhone"
             label="Customer Phone"
-            type="tel"
-            inputMode="tel"
             required
             value={customerPhone}
-            onChange={(e) => {
-              const clean = filterPhoneInput(e.target.value);
-              setCustomerPhone(clean);
+            onChange={(val) => {
+              setCustomerPhone(val);
               if (touched.customerPhone) {
-                const res = validatePhone(clean);
+                const res = validatePhone(val);
                 setErrors((prev) => ({ ...prev, customerPhone: res.valid ? '' : res.error || '' }));
               }
             }}
@@ -350,7 +352,6 @@ export default function CreateOrderModal({
             }}
             error={touched.customerPhone ? errors.customerPhone : null}
             placeholder="10-digit mobile number"
-            maxLength={20}
           />
         </div>
 
@@ -405,54 +406,38 @@ export default function CreateOrderModal({
                 className="flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 dark:bg-[#141722] p-2.5 rounded-xl border border-slate-200 dark:border-[#2A3042]"
               >
                 <div className="flex-1 min-w-0">
-                  <input
-                    list={`order-sku-list-${idx}`}
-                    type="text"
-                    className={`input text-xs font-medium w-full ${errors[`line_${idx}_name`] ? 'border-red-500' : ''}`}
-                    placeholder="Type custom product name or pick catalog SKU..."
-                    value={line.name}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      handleLineChange(idx, 'name', val);
-                      const matched = skus.find(
-                        (s) => `${s.skuCode} - ${s.name}` === val || s.name === val || s.skuCode === val
-                      );
-                      if (matched) handleSelectSku(idx, matched);
+                  <ProductField
+                    value={line.skuId || line.name}
+                    onChange={(payload) => {
+                      const next = [...lines];
+                      next[idx] = {
+                        ...next[idx],
+                        skuId: payload.skuId || '',
+                        name: payload.name,
+                        unitPrice: payload.unitPrice !== undefined ? String(payload.unitPrice) : next[idx].unitPrice,
+                      };
+                      setLines(next);
                     }}
-                    required
+                    placeholder="Pick catalog SKU or type custom item..."
                   />
-                  <datalist id={`order-sku-list-${idx}`}>
-                    {skus.map((s) => (
-                      <option key={s.id} value={`${s.skuCode} - ${s.name}`}>
-                        {formatIndianCurrency(s.unitPrice)}
-                      </option>
-                    ))}
-                  </datalist>
                   {errors[`line_${idx}_name`] && (
                     <p className="text-[10px] text-red-500 mt-0.5">{errors[`line_${idx}_name`]}</p>
                   )}
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <div className="w-20">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      className={`input text-xs text-center font-bold w-full ${errors[`line_${idx}_qty`] ? 'border-red-500' : ''}`}
-                      placeholder="Qty"
+                  <div className="w-24">
+                    <QuantityField
                       value={line.quantity}
-                      onChange={(e) => handleLineChange(idx, 'quantity', e.target.value)}
+                      onChange={(val) => handleLineChange(idx, 'quantity', String(val))}
                     />
                   </div>
 
                   <div className="w-28">
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      className={`input text-xs text-right font-mono w-full ${errors[`line_${idx}_rate`] ? 'border-red-500' : ''}`}
-                      placeholder="Rate (₹)"
+                    <MoneyField
                       value={line.unitPrice}
-                      onChange={(e) => handleLineChange(idx, 'unitPrice', e.target.value)}
+                      onChange={(val, raw) => handleLineChange(idx, 'unitPrice', raw !== undefined ? raw : String(val))}
+                      placeholder="Rate (₹)"
                     />
                   </div>
 

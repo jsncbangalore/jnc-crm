@@ -109,9 +109,11 @@ export interface Lead {
   customerPhone: string;
   customerEmail?: string;
   city?: string;
+  state?: string;
   productCategory?: string;
   productName?: string;
   quantity?: number;
+  unit?: string;
   estimatedValue?: number;
   urgency?: 'urgent' | 'standard' | 'planning';
   queryMessage?: string;
@@ -124,6 +126,17 @@ export interface Lead {
   capturedAt: string;
   createdAt: string;
   activities?: LeadActivity[];
+}
+
+export interface Quotation {
+  id: string;
+  quotationNumber: string;
+  customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  status: string;
+  totalAmount: number;
+  [key: string]: any;
 }
 
 export interface LeadActivity {

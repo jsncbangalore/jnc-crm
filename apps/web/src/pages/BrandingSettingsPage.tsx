@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { brandingApi } from '../services/api';
 import { FormFeedback, FormFieldError } from '../components/common/FormFeedback';
+import { PhoneField } from '../components/common/forms';
 import CompanyBankAccountsSection from '../components/settings/CompanyBankAccountsSection';
 
 async function resizeImageInBrowser(
@@ -521,25 +522,16 @@ export default function BrandingSettingsPage() {
             </div>
 
             <div>
-              <label htmlFor="branding-telephone" className="label">Official Phone / Hotline</label>
-              <div className="relative">
-                <input
-                  type="tel"
-                  name="brandingTelephone"
-                  id="branding-telephone"
-                  autoComplete="tel"
-                  data-testid="input-company-phone"
-                  className="input text-xs pl-8 font-mono"
-                  placeholder="Enter company phone number"
-                  value={companyPhone}
-                  onChange={(e) => setCompanyPhone(e.target.value)}
-                />
-                <Phone size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              </div>
-              <FormFieldError error={fieldErrors.companyPhone} id="error-company-phone" data-testid="error-company-phone" />
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                Included in outbound customer emails and documents.
-              </p>
+              <PhoneField
+                id="branding-telephone"
+                label="Official Phone / Hotline"
+                value={companyPhone}
+                onChange={(val) => setCompanyPhone(val)}
+                error={fieldErrors.companyPhone}
+                placeholder="Enter company phone number"
+                helperText="Included in outbound customer emails and documents."
+                dataTestId="input-company-phone"
+              />
             </div>
           </div>
         </div>

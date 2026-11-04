@@ -14,6 +14,7 @@ import { validateGstin, toPlainText } from '@crm/shared-validation';
 import { useAllowedPages } from '../../hooks/useAllowedPages';
 import FullCalendarPicker from '../common/FullCalendarPicker';
 import FormFeedback from '../common/FormFeedback';
+import { PhoneField, QuantityField } from '../common/forms';
 
 const PAYMENT_TERMS_OPTIONS = [
   'Due on Receipt / Immediate',
@@ -1043,22 +1044,13 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
               </div>
 
               <div>
-                <label className="label">Customer Phone</label>
-                <input
-                  type="text"
-                  name="cust_company_phone"
-                  autoComplete="off"
-                  data-lpignore="true"
-                  data-1p-ignore="true"
-                  data-form-type="other"
-                  className="input text-xs"
-                  placeholder="Enter phone number"
+                <PhoneField
+                  label="Customer Phone"
                   value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  onChange={(val) => setCustomerPhone(val)}
+                  error={fieldErrors.customerPhone}
+                  placeholder="Enter phone number"
                 />
-                {fieldErrors.customerPhone && (
-                  <p className="text-red-500 text-[11px] mt-1 font-semibold">{fieldErrors.customerPhone}</p>
-                )}
               </div>
 
               <div>
@@ -1245,15 +1237,10 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                     </div>
 
                     <div className="sm:col-span-1">
-                      <label className="text-[10px] font-bold text-slate-700 dark:text-slate-400 mb-1 block">Qty</label>
-                      <input
-                        type="number"
-                        min="1"
-                        required
-                        className="input text-xs text-center font-bold"
-                        placeholder="Qty"
-                        value={line.quantity === 0 || line.quantity === '' ? '' : line.quantity}
-                        onChange={(e) => handleUpdateLine(line.id, 'quantity', e.target.value === '' ? '' : (Number(e.target.value) || e.target.value))}
+                      <QuantityField
+                        label="Qty"
+                        value={Number(line.quantity) || 1}
+                        onChange={(val) => handleUpdateLine(line.id, 'quantity', val)}
                       />
                     </div>
 
