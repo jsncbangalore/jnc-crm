@@ -73,14 +73,16 @@
     "test:tenant-isolation": "node --env-file=.env.development node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-cross-tenant-isolation.ts",
     "test:idempotency-parallel": "node --env-file=.env.development node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-payment-idempotency-parallel.ts",
     "lint:hooks": "node node_modules/eslint/bin/eslint.js \"apps/web/src/**/*.{ts,tsx}\"",
-    "test:modal-hooks": "node scripts/test-hooks-modal-cycles.js"
+    "test:modal-hooks": "node scripts/test-hooks-modal-cycles.js",
+    "test:vitest": "node ./node_modules/vitest/vitest.mjs run"
   },
   "devDependencies": {
     "adm-zip": "^0.6.1",
     "pdf-parse": "^2.4.5",
     "playwright": "1.63.0",
     "playwright-core": "^1.62.1",
-    "supertest": "^7.3.1"
+    "supertest": "^7.3.1",
+    "vitest": "^5.1.0"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"

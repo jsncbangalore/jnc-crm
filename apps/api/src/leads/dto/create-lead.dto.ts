@@ -6,14 +6,14 @@
  * ----------------------------------------------------- */
 
 import { IsNotEmpty, IsString, IsOptional, IsNumber, IsIn, IsArray, IsBoolean, MaxLength, Min, Max } from 'class-validator';
-import { SanitizeText, TrimString, IsValidName, IsValidPhone, IsValidEmail } from '../../common/validation.transformers';
+import { SanitizeText, TrimString, IsValidName, IsValidContactName, IsValidPhone, IsValidEmail, IsValidQuantity } from '../../common/validation.transformers';
 
 export class CreateLeadDto {
   @SanitizeText()
   @IsNotEmpty()
   @IsString()
-  @MaxLength(100)
-  @IsValidName()
+  @MaxLength(60)
+  @IsValidContactName(60)
   customerName: string;
 
   @TrimString()
@@ -34,6 +34,12 @@ export class CreateLeadDto {
   @IsString()
   @MaxLength(100)
   city?: string;
+
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  state?: string;
 
   @IsOptional()
   @IsString()
@@ -56,7 +62,14 @@ export class CreateLeadDto {
   @IsNumber()
   @Min(0.0001)
   @Max(100000)
+  @IsValidQuantity()
   quantity?: number;
+
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  unit?: string;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })

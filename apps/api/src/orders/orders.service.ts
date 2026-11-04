@@ -36,6 +36,7 @@ import {
   IsValidPhone,
   IsValidEmail,
   IsValidProductName,
+  IsValidQuantity,
   IsValidUnitRate,
   IsValidHttpsUrl,
   IsValidCustomDate,
@@ -60,6 +61,7 @@ export class OrderLineItemDto {
   @IsNumber()
   @Min(0.0001)
   @Max(100000)
+  @IsValidQuantity()
   quantity: number;
 
   @IsNumber({ maxDecimalPlaces: 2 })

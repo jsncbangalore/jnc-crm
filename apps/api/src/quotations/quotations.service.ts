@@ -36,6 +36,7 @@ import {
   IsValidPhone,
   IsValidEmail,
   IsValidProductName,
+  IsValidQuantity,
   IsValidUnitRate,
   IsValidGstRate,
 } from '../common/validation.transformers';
@@ -58,6 +59,7 @@ export class QuotationLineItemDto {
   @IsNumber()
   @Min(0.0001)
   @Max(100000)
+  @IsValidQuantity()
   quantity: number;
 
   @IsNumber({ maxDecimalPlaces: 2 })

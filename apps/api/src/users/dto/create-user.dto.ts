@@ -1,14 +1,14 @@
 import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateIf, MaxLength, IsArray } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ALL_ROLES, UserRole } from '../../auth/roles';
-import { SanitizeText, TrimString, IsValidName, IsValidEmail, IsValidPhone } from '../../common/validation.transformers';
+import { SanitizeText, TrimString, IsValidContactName, IsValidEmail, IsValidPhone } from '../../common/validation.transformers';
 
 export class CreateUserDto {
   @SanitizeText()
   @IsString()
   @IsNotEmpty({ message: 'Name is required' })
-  @MaxLength(100)
-  @IsValidName()
+  @MaxLength(60)
+  @IsValidContactName(60)
   name: string;
 
   @TrimString()
