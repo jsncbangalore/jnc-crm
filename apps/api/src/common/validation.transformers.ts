@@ -33,6 +33,8 @@ import {
   validateDate,
   validateHttpsUrl,
   validateLogoField,
+  validateNameField,
+  validatePhoneField,
 } from './shared-validation';
 
 /**
@@ -77,6 +79,30 @@ export function IsValidName(validationOptions?: ValidationOptions) {
         defaultMessage(args: ValidationArguments) {
           const res = validatePersonOrCompanyName(args.value);
           return res.error || `${args.property} must be 2-100 characters and contain valid letters`;
+        },
+      },
+    });
+  };
+}
+
+/**
+ * Validates contact name for NameField: letters (any language), spaces, dot, hyphen, apostrophe; max 60 chars.
+ */
+export function IsValidContactName(max = 60, validationOptions?: ValidationOptions) {
+  return function (object: Object, propertyName: string) {
+    registerDecorator({
+      name: 'isValidContactName',
+      target: object.constructor,
+      propertyName: propertyName,
+      options: validationOptions,
+      validator: {
+        validate(value: any, _args: ValidationArguments) {
+          if (value === undefined || value === null || value === '') return false;
+          return validateNameField(value, true, max).valid;
+        },
+        defaultMessage(args: ValidationArguments) {
+          const res = validateNameField(args.value, true, max);
+          return res.error || 'Use letters only.';
         },
       },
     });
@@ -173,6 +199,30 @@ export function IsValidSku(validationOptions?: ValidationOptions) {
         defaultMessage(args: ValidationArguments) {
           const res = validateSku(args.value);
           return res.error || `${args.property} contains invalid SKU characters`;
+        },
+      },
+    });
+  };
+}
+
+/**
+ * Validates quantity (> 0, max 100,000, no exponents/negative, up to 3 decimals if allowed).
+ */
+export function IsValidQuantity(allowDecimals = true, validationOptions?: ValidationOptions) {
+  return function (object: Object, propertyName: string) {
+    registerDecorator({
+      name: 'isValidQuantity',
+      target: object.constructor,
+      propertyName: propertyName,
+      options: validationOptions,
+      validator: {
+        validate(value: any, _args: ValidationArguments) {
+          if (value === undefined || value === null || value === '') return true; // Optional by default
+          return validateQuantity(value, allowDecimals).valid;
+        },
+        defaultMessage(args: ValidationArguments) {
+          const res = validateQuantity(args.value, allowDecimals);
+          return res.error || `${args.property} must be a valid positive quantity`;
         },
       },
     });

@@ -16,10 +16,12 @@ import {
   SanitizeText,
   TrimString,
   IsValidName,
+  IsValidContactName,
   IsValidPhone,
   IsValidEmail,
   IsValidGstin,
 } from '../common/validation.transformers';
+import { normalizeToE164 } from '../common/shared-validation';
 
 export class CreateSupplierDto {
   @SanitizeText()
@@ -32,7 +34,8 @@ export class CreateSupplierDto {
   @SanitizeText()
   @IsString()
   @IsOptional()
-  @MaxLength(100)
+  @MaxLength(60)
+  @IsValidContactName(60)
   contactPerson?: string;
 
   @SanitizeText()
@@ -196,7 +199,7 @@ export class SuppliersService {
         name: dto.name,
         contactPerson: dto.contactPerson,
         email: dto.email,
-        phone: dto.phone,
+        phone: dto.phone ? normalizeToE164(dto.phone) : null,
         gstin: dto.gstin,
         address: dto.address,
         city: dto.city,
@@ -214,13 +217,19 @@ export class SuppliersService {
       where.isActive = query.isActive;
     }
     if (query.search) {
-      const searchOR = [
-        { name: { contains: query.search } },
-        { contactPerson: { contains: query.search } },
-        { city: { contains: query.search } },
-        { email: { contains: query.search } },
-        { gstin: { contains: query.search } },
+      const rawSearch = query.search.trim();
+      const digitsOnly = rawSearch.replace(/\D/g, '');
+      const searchOR: any[] = [
+        { name: { contains: rawSearch, mode: 'insensitive' } },
+        { contactPerson: { contains: rawSearch, mode: 'insensitive' } },
+        { phone: { contains: rawSearch } },
+        { city: { contains: rawSearch, mode: 'insensitive' } },
+        { email: { contains: rawSearch, mode: 'insensitive' } },
+        { gstin: { contains: rawSearch, mode: 'insensitive' } },
       ];
+      if (digitsOnly.length >= 7) {
+        searchOR.push({ phone: { contains: digitsOnly.slice(-10) } });
+      }
       if (scope.OR) {
         where.AND = [{ OR: scope.OR }, { OR: searchOR }];
         delete where.OR;

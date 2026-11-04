@@ -13,11 +13,23 @@ import { parsePagination } from '../common/pagination.util';
 import { getEffectivePagesForUser } from '../auth/effective-page-access';
 import { isPlatformOwner } from '../auth/roles';
 
-import { IsString, IsNotEmpty, IsOptional, IsEmail, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEmail, IsBoolean, MaxLength } from 'class-validator';
+import {
+  SanitizeText,
+  TrimString,
+  IsValidName,
+  IsValidContactName,
+  IsValidPhone,
+  IsValidEmail,
+} from '../common/validation.transformers';
+import { normalizeToE164 } from '../common/shared-validation';
 
 export class CreateCompanyDto {
+  @SanitizeText()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
+  @IsValidName()
   name: string;
 
   @IsString()
@@ -48,8 +60,11 @@ export class CreateCompanyDto {
   @IsOptional()
   billingEmail?: string;
 
+  @TrimString()
   @IsString()
   @IsOptional()
+  @MaxLength(20)
+  @IsValidPhone()
   phone?: string;
 
   @IsEmail()
@@ -116,16 +131,22 @@ export class UpdateCompanyDto {
 }
 
 export class CreateContactDto {
+  @SanitizeText()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(60)
+  @IsValidContactName(60)
   name: string;
 
   @IsEmail()
   @IsOptional()
   email?: string;
 
+  @TrimString()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(20)
+  @IsValidPhone()
   phone: string;
 
   @IsString()
@@ -147,7 +168,7 @@ export class CompaniesService {
   async create(dto: CreateCompanyDto, user: ScopedUser) {
     const tenantId = requireTenantId(user);
     const email = (dto.billingEmail || dto.email)?.trim().toLowerCase() || null;
-    const phone = dto.phone?.trim() || null;
+    const phone = dto.phone?.trim() ? normalizeToE164(dto.phone) : null;
 
     const company = await this.prisma.company.create({
       data: {
@@ -189,12 +210,18 @@ export class CompaniesService {
     const scope = this.scopingService.getCompanyScope(user);
     const where: any = { ...scope, deletedAt: null };
     if (query?.search) {
-      const searchOR = [
-        { name: { contains: query.search, mode: 'insensitive' } },
-        { gstin: { contains: query.search, mode: 'insensitive' } },
-        { city: { contains: query.search, mode: 'insensitive' } },
-        { billingEmail: { contains: query.search, mode: 'insensitive' } },
+      const rawSearch = query.search.trim();
+      const digitsOnly = rawSearch.replace(/\D/g, '');
+      const searchOR: any[] = [
+        { name: { contains: rawSearch, mode: 'insensitive' } },
+        { gstin: { contains: rawSearch, mode: 'insensitive' } },
+        { city: { contains: rawSearch, mode: 'insensitive' } },
+        { billingEmail: { contains: rawSearch, mode: 'insensitive' } },
+        { contacts: { some: { phone: { contains: rawSearch }, deletedAt: null } } },
       ];
+      if (digitsOnly.length >= 7) {
+        searchOR.push({ contacts: { some: { phone: { contains: digitsOnly.slice(-10) }, deletedAt: null } } });
+      }
       if (scope.OR) {
         where.AND = [{ OR: scope.OR }, { OR: searchOR }];
         delete where.OR;
@@ -368,7 +395,7 @@ export class CompaniesService {
         ...dto,
         name: dto.name?.trim(),
         email: dto.email?.trim().toLowerCase() || null,
-        phone: dto.phone?.trim(),
+        phone: dto.phone ? normalizeToE164(dto.phone) : '-',
         designation: dto.designation?.trim() || null,
         isPrimary: !!dto.isPrimary,
         tenantId,

@@ -25,6 +25,7 @@ import {
 } from '../settings/web-form-settings.util';
 import { parseExactOrigin } from '../common/public-cors';
 import { encryptAtRest, decryptAtRest } from '../common/encryption.util';
+import { normalizeToE164 } from '../common/shared-validation';
 
 function stripHtml(val?: any): string | undefined {
   if (val === null || val === undefined) return undefined;
@@ -841,12 +842,17 @@ export class WebhooksService {
       );
       return { isDuplicate: false, lead };
     } catch (err: any) {
-      if (err?.message?.includes('Duplicate lead detected')) {
+      if (err?.message?.includes('Duplicate lead detected') || err?.message?.includes('already exists')) {
         // Redelivery / duplicate phone fallback
+        const normE164 = normalizeToE164(customerPhone);
+        const digits = customerPhone.replace(/[^0-9]/g, '').slice(-10);
         const existing = await this.prisma.lead.findFirst({
           where: {
             tenantId,
-            customerPhone: { contains: customerPhone.replace(/[^0-9]/g, '').slice(-10) },
+            OR: [
+              { customerPhone: normE164 },
+              { customerPhone: { contains: digits } },
+            ],
             deletedAt: null,
           },
         });
@@ -997,11 +1003,16 @@ export class WebhooksService {
       });
       return { isDuplicate: false, lead };
     } catch (err: any) {
-      if (err?.message?.includes('Duplicate lead detected')) {
+      if (err?.message?.includes('Duplicate lead detected') || err?.message?.includes('already exists')) {
+        const normE164 = normalizeToE164(customerPhone);
+        const digits = customerPhone.replace(/[^0-9]/g, '').slice(-10);
         const existing = await this.prisma.lead.findFirst({
           where: {
             tenantId,
-            customerPhone: { contains: customerPhone.replace(/[^0-9]/g, '').slice(-10) },
+            OR: [
+              { customerPhone: normE164 },
+              { customerPhone: { contains: digits } },
+            ],
             deletedAt: null,
           },
         });

@@ -28,14 +28,14 @@ export const sanitizeText = (val: string): string => {
 
 // 2. Person & Company Name Rules
 // Required, trim, 2-100 chars, letters of any language, digits, space, and . , & - ' ( ) / only, at least one letter
-export const NAME_REGEX = /^[\p{L}\p{N}\s.,&\-'()\/]+$/u;
-export const HAS_LETTER_REGEX = /\p{L}/u;
-export const TEXT_ONLY_NAME_REGEX = /^[\p{L}\s.,&\-'()\/]+$/u;
+export const NAME_REGEX = /^[\p{L}\p{M}\p{N}\s.,&\-'()\/]+$/u;
+export const HAS_LETTER_REGEX = /[\p{L}\p{M}]/u;
+export const TEXT_ONLY_NAME_REGEX = /^[\p{L}\p{M}\s.,&\-'()\/]+$/u;
 
 // Filter text-only inputs (strips digits and disallowed symbols)
 export const filterTextOnly = (val: string): string => {
   if (typeof val !== 'string') return '';
-  return val.replace(/[0-9]/g, '').replace(/[^a-zA-Z\u00C0-\u024F\u1E00-\u1EFF\s.,&'\-()\/]/g, '');
+  return val.replace(/[0-9]/g, '').replace(/[^\p{L}\p{M}\s.,&'\-()\/]/gu, '');
 };
 
 export const validatePersonOrCompanyName = (raw: string): { valid: boolean; error?: string; value: string } => {
@@ -73,6 +73,39 @@ export const validateTextOnlyName = (raw: string): { valid: boolean; error?: str
     return { valid: false, error: 'Name must contain letters only (no numbers allowed).', value: base.value };
   }
   return base;
+};
+
+// NameField validation: letters AND combining marks of all scripts (\p{L}\p{M}), spaces, dot, hyphen, apostrophe; max 60 characters with counter; trims; plain message "Use letters only".
+export const NAME_FIELD_REGEX = /^[\p{L}\p{M}\s.\-']+$/u;
+
+export const filterNameInput = (val: string, max = 60): string => {
+  if (typeof val !== 'string') return '';
+  const filtered = val.replace(/[^\p{L}\p{M}\s.\-']/gu, '');
+  return max > 0 ? filtered.slice(0, max) : filtered;
+};
+
+export const validateNameField = (
+  raw?: string,
+  required = true,
+  max = 60
+): { valid: boolean; error?: string; value: string } => {
+  if (typeof raw !== 'string') {
+    return { valid: !required, error: required ? 'Name is required.' : undefined, value: '' };
+  }
+  const value = raw.trim();
+  if (!value) {
+    return { valid: !required, error: required ? 'Name is required.' : undefined, value: '' };
+  }
+  if (value.length < 2) {
+    return { valid: false, error: 'Name must be at least 2 characters.', value };
+  }
+  if (value.length > max) {
+    return { valid: false, error: `Name cannot exceed ${max} characters.`, value };
+  }
+  if (!NAME_FIELD_REGEX.test(value)) {
+    return { valid: false, error: 'Use letters only.', value };
+  }
+  return { valid: true, value };
 };
 
 // Narration & Note Validation: Require meaningful text (5+ chars, non-gibberish)
@@ -124,9 +157,10 @@ export const validateMeaningfulNarration = (
   return { valid: true, value };
 };
 
-// 3. Mobile Phone Rules
+// 3. Mobile & Landline Phone Rules
 // Clean +91, leading 0, spaces, dashes.
 // Indian mobile: 10 digits starting 6-9.
+// Indian landline: STD code (2-4 digits) + subscriber number (6-8 digits) = 10 digits total without leading 0.
 // Other countries: 8-15 digits with leading + and country code.
 export const cleanPhone = (raw: string): string => {
   if (!raw) return '';
@@ -146,16 +180,98 @@ export const normalizePhoneNumber = (raw: string): string => {
   return cleaned;
 };
 
-export const validatePhone = (raw: string): { valid: boolean; error?: string; value: string } => {
+// Check if a normalized 10-digit number is an Indian landline (starts with 0 STD or 10 digits with STD 1-8, or 8 digits local)
+export const isIndianLandline = (raw: string): boolean => {
+  const cleaned = cleanPhone(raw);
+  if (!cleaned) return false;
+  if (cleaned.startsWith('0') && cleaned.length >= 9 && cleaned.length <= 11) {
+    return true;
+  }
+  const norm = normalizePhoneNumber(raw);
+  return /^[1-8]\d{7,9}$/.test(norm) && (norm.length === 10 || norm.length === 8);
+};
+
+export const normalizeToE164 = (phone?: string, defaultCountry = '+91'): string => {
+  if (!phone) return '';
+  const cleaned = cleanPhone(phone);
+  if (!cleaned) return '';
+
+  if (cleaned.startsWith('+')) {
+    const digitsOnly = cleaned.slice(1).replace(/\D/g, '');
+    if (cleaned.startsWith('+91')) {
+      const national = cleaned.slice(3).replace(/\D/g, '');
+      return `+91${national.slice(-10)}`;
+    }
+    return `+${digitsOnly}`;
+  }
+
+  const digits = cleaned.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return `+${digits}`;
+  }
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return `${defaultCountry}${digits.slice(1)}`;
+  }
+  if (digits.length === 10) {
+    return `${defaultCountry}${digits}`;
+  }
+  if (digits.length > 10 && (defaultCountry === '+91' || defaultCountry === '91')) {
+    return `${defaultCountry.startsWith('+') ? defaultCountry : `+${defaultCountry}`}${digits.slice(-10)}`;
+  }
+  const prefix = defaultCountry.startsWith('+') ? defaultCountry : `+${defaultCountry}`;
+  return `${prefix}${digits}`;
+};
+
+export const comparePhoneNumbers = (a?: string, b?: string): boolean => {
+  if (!a || !b) return false;
+  const e164A = normalizeToE164(a);
+  const e164B = normalizeToE164(b);
+  if (e164A && e164B && e164A === e164B) return true;
+
+  // Compare trailing 10 digits for Indian numbers
+  const digA = a.replace(/\D/g, '').slice(-10);
+  const digB = b.replace(/\D/g, '').slice(-10);
+  return digA.length === 10 && digA === digB;
+};
+
+export const validatePhone = (
+  raw: string,
+  type: 'mobile' | 'landline' | 'any' = 'any'
+): { valid: boolean; error?: string; value: string; isLandline?: boolean } => {
   const cleaned = cleanPhone(raw);
   if (!cleaned) {
     return { valid: false, error: 'Phone number is required.', value: '' };
   }
 
-  // If Indian mobile or business phone number (10 digits starting 1-9)
   const indianNormalized = normalizePhoneNumber(cleaned);
-  if (/^[1-9]\d{9}$/.test(indianNormalized)) {
-    return { valid: true, value: indianNormalized };
+
+  // If explicitly requested landline
+  if (type === 'landline') {
+    if (/^[1-8]\d{7,9}$/.test(indianNormalized) && (indianNormalized.length === 10 || indianNormalized.length === 8)) {
+      return { valid: true, value: indianNormalized, isLandline: true };
+    }
+    return { valid: false, error: 'Enter a valid landline number (STD code + number).', value: indianNormalized };
+  }
+
+  // If explicitly requested mobile
+  if (type === 'mobile') {
+    if (/^[6-9]\d{9}$/.test(indianNormalized)) {
+      return { valid: true, value: indianNormalized, isLandline: false };
+    }
+    return { valid: false, error: 'Enter a 10-digit mobile number.', value: indianNormalized };
+  }
+
+  // If type is 'any':
+  // If Indian mobile number (10 digits starting 6-9) and did NOT explicitly start with 0 STD code
+  if (/^[6-9]\d{9}$/.test(indianNormalized) && !cleaned.startsWith('0')) {
+    return { valid: true, value: indianNormalized, isLandline: false };
+  }
+
+  // If Indian landline number (starts with 0, or 8 digits, or 10 digits starting with 1-8)
+  if (cleaned.startsWith('0') || isIndianLandline(cleaned)) {
+    if (/^[1-8]\d{7,9}$/.test(indianNormalized) && (indianNormalized.length === 10 || indianNormalized.length === 8)) {
+      return { valid: true, value: indianNormalized, isLandline: true };
+    }
   }
 
   // Check if international format with leading + (non-Indian)
@@ -170,20 +286,128 @@ export const validatePhone = (raw: string): { valid: boolean; error?: string; va
     return { valid: true, value: cleaned };
   }
 
-  if (!/^\d+$/.test(indianNormalized)) {
-    return { valid: false, error: 'Phone number may only contain digits.', value: indianNormalized };
+  if (/^[6-9]\d{9}$/.test(indianNormalized)) {
+    return { valid: true, value: indianNormalized, isLandline: false };
   }
-  if (indianNormalized.length !== 10) {
+
+  return {
+    valid: false,
+    error: 'Enter a 10-digit mobile number or landline with STD code.',
+    value: indianNormalized,
+  };
+};
+
+export const checkPhonePaste = (
+  val: string,
+  countryCode = '+91'
+): { valid: boolean; digits: string; error?: string } => {
+  if (!val) return { valid: true, digits: '' };
+  let cleaned = val.replace(/[\s\-\(\)\.]/g, '').trim();
+  if (cleaned.startsWith('+91')) {
+    cleaned = cleaned.substring(3);
+  } else if (cleaned.startsWith('91') && cleaned.length > 10) {
+    cleaned = cleaned.substring(2);
+  } else if (cleaned.startsWith('0') && cleaned.length === 11) {
+    cleaned = cleaned.substring(1);
+  }
+  const digits = cleaned.replace(/\D/g, '');
+  if (countryCode === '+91' || countryCode === '91') {
+    if (digits.length > 10) {
+      return {
+        valid: false,
+        digits,
+        error: 'Pasted number has too many digits. Please enter a 10-digit number.',
+      };
+    }
+  } else if (digits.length > 15) {
     return {
       valid: false,
-      error: `Phone number must be exactly 10 digits (received ${indianNormalized.length}).`,
-      value: indianNormalized,
+      digits,
+      error: 'Pasted number has too many digits for selected country.',
+    };
+  }
+  return { valid: true, digits };
+};
+
+export const cleanPhonePaste = (val: string, countryCode = '+91'): string => {
+  if (!val) return '';
+  let cleaned = val.replace(/[\s\-\(\)\.]/g, '').trim();
+  if (cleaned.startsWith('+91')) {
+    cleaned = cleaned.substring(3);
+  } else if (cleaned.startsWith('91') && cleaned.length > 10) {
+    cleaned = cleaned.substring(2);
+  } else if (cleaned.startsWith('0') && cleaned.length === 11) {
+    cleaned = cleaned.substring(1);
+  }
+  return cleaned.replace(/\D/g, '');
+};
+
+export const formatToE164 = (nationalNumber: string, countryCode = '+91'): string => {
+  const cleanDigits = nationalNumber.replace(/\D/g, '');
+  if (!cleanDigits) return '';
+  const code = countryCode.startsWith('+') ? countryCode : `+${countryCode}`;
+  return `${code}${cleanDigits}`;
+};
+
+export const validatePhoneField = (
+  nationalNumber: string,
+  countryCode = '+91',
+  phoneType: 'mobile' | 'landline' = 'mobile'
+): { valid: boolean; error?: string; value: string; e164: string } => {
+  const cleanDigits = nationalNumber.replace(/\D/g, '');
+  if (!cleanDigits) {
+    return {
+      valid: false,
+      error: phoneType === 'landline' ? 'Enter a valid landline number (STD code + number).' : 'Enter a 10-digit mobile number.',
+      value: '',
+      e164: '',
+    };
+  }
+
+  if (countryCode === '+91' || countryCode === '91') {
+    if (phoneType === 'landline') {
+      if (cleanDigits.length < 8 || cleanDigits.length > 10 || !/^[1-5]/.test(cleanDigits)) {
+        return {
+          valid: false,
+          error: 'Enter a valid landline number (STD code + number).',
+          value: cleanDigits,
+          e164: `+91${cleanDigits}`,
+        };
+      }
+      return {
+        valid: true,
+        value: cleanDigits,
+        e164: `+91${cleanDigits}`,
+      };
+    }
+
+    if (cleanDigits.length !== 10 || !/^[6-9]/.test(cleanDigits)) {
+      return {
+        valid: false,
+        error: 'Enter a 10-digit mobile number.',
+        value: cleanDigits,
+        e164: `+91${cleanDigits}`,
+      };
+    }
+    return {
+      valid: true,
+      value: cleanDigits,
+      e164: `+91${cleanDigits}`,
+    };
+  }
+
+  if (cleanDigits.length < 8 || cleanDigits.length > 15) {
+    return {
+      valid: false,
+      error: 'Enter a valid phone number for selected country.',
+      value: cleanDigits,
+      e164: `${countryCode}${cleanDigits}`,
     };
   }
   return {
-    valid: false,
-    error: 'Phone number must be a valid 10-digit number.',
-    value: indianNormalized,
+    valid: true,
+    value: cleanDigits,
+    e164: `${countryCode}${cleanDigits}`,
   };
 };
 

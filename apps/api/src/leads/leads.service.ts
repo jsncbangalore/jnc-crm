@@ -16,7 +16,7 @@ import { parsePagination } from '../common/pagination.util';
 import { sanitizeHtml, stripAllHtml } from '../common/html-sanitize.util';
 import { getEffectivePagesForUser } from '../auth/effective-page-access';
 import { isPlatformOwner } from '../auth/roles';
-
+import { normalizeToE164, comparePhoneNumbers } from '../common/shared-validation';
 
 @Injectable()
 export class LeadsService {
@@ -32,10 +32,7 @@ export class LeadsService {
 
   private normalizePhone(phone?: string): string {
     if (!phone) return '';
-    const cleaned = phone.replace(/[^0-9]/g, '');
-    if (cleaned.length === 10) return `91${cleaned}`;
-    if (cleaned.startsWith('0') && cleaned.length === 11) return `91${cleaned.substring(1)}`;
-    return cleaned;
+    return normalizeToE164(phone);
   }
 
   async getNextAssigneeId(tenantId: string): Promise<string | null> {
@@ -74,11 +71,16 @@ export class LeadsService {
 
     // Match duplicates strictly on BOTH exact normalised phone AND exact normalised email
     let existingLead: any = null;
-    if (normPhone && normPhone.length >= 10 && normEmail) {
+    const digitsOnly = (dto.customerPhone || '').replace(/\D/g, '');
+    const tenDigits = digitsOnly.slice(-10);
+    if (tenDigits.length >= 7 && normEmail) {
       existingLead = await this.prisma.lead.findFirst({
         where: {
           tenantId,
-          customerPhone: { endsWith: normPhone.slice(-10) },
+          OR: [
+            { customerPhone: normPhone },
+            { customerPhone: { contains: tenDigits } },
+          ],
           customerEmail: { equals: normEmail, mode: 'insensitive' },
           deletedAt: null,
         },
@@ -137,12 +139,14 @@ export class LeadsService {
         source: dto.source || 'manual',
         status: 'new',
         customerName: stripAllHtml(dto.customerName) || 'Lead',
-        customerPhone: stripAllHtml(dto.customerPhone) || '',
+        customerPhone: normPhone || stripAllHtml(dto.customerPhone) || '',
         customerEmail: stripAllHtml(dto.customerEmail),
         city: stripAllHtml(dto.city),
+        state: stripAllHtml(dto.state),
         productCategory: stripAllHtml(dto.productCategory),
         productName: stripAllHtml(dto.productName),
         quantity: dto.quantity ? Number(dto.quantity) : 1,
+        unit: stripAllHtml(dto.unit) || 'NOS',
         estimatedValue: dto.estimatedValue ? Number(dto.estimatedValue) : 0,
         urgency: (dto as any).urgency || 'standard',
         queryMessage: sanitizeHtml(dto.queryMessage),
@@ -224,7 +228,10 @@ export class LeadsService {
         matchedLead = await this.prisma.lead.findFirst({
           where: {
             tenantId,
-            customerPhone: { contains: phoneKey },
+            OR: [
+              { customerPhone: customerPhone },
+              { customerPhone: { contains: phoneKey } },
+            ],
             createdAt: { gte: thirtyDaysAgo },
             deletedAt: null,
           },
@@ -312,15 +319,20 @@ export class LeadsService {
       };
     }
     if (query.search) {
-      const searchOR = [
-        { leadNumber: { contains: query.search, mode: 'insensitive' } },
-        { customerName: { contains: query.search, mode: 'insensitive' } },
-        { customerPhone: { contains: query.search, mode: 'insensitive' } },
-        { customerEmail: { contains: query.search, mode: 'insensitive' } },
-        { city: { contains: query.search, mode: 'insensitive' } },
-        { productCategory: { contains: query.search, mode: 'insensitive' } },
-        { productName: { contains: query.search, mode: 'insensitive' } },
+      const rawSearch = query.search.trim();
+      const searchOR: any[] = [
+        { leadNumber: { contains: rawSearch, mode: 'insensitive' } },
+        { customerName: { contains: rawSearch, mode: 'insensitive' } },
+        { customerPhone: { contains: rawSearch, mode: 'insensitive' } },
+        { customerEmail: { contains: rawSearch, mode: 'insensitive' } },
+        { city: { contains: rawSearch, mode: 'insensitive' } },
+        { productCategory: { contains: rawSearch, mode: 'insensitive' } },
+        { productName: { contains: rawSearch, mode: 'insensitive' } },
       ];
+      const digits = rawSearch.replace(/\D/g, '');
+      if (digits.length >= 7) {
+        searchOR.push({ customerPhone: { contains: digits.slice(-10) } });
+      }
       if (scopeWhere.OR) {
         where.AND = [{ OR: scopeWhere.OR }, { OR: searchOR }];
         delete where.OR;
