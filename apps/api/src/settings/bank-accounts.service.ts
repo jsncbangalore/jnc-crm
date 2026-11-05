@@ -19,31 +19,8 @@ import {
   validateIfsc,
   validateUpiId,
 } from '../common/shared-validation';
-
-export interface CreateBankAccountDto {
-  label?: string;
-  bankName: string;
-  holderName?: string;
-  accountNumber: string;
-  ifsc: string;
-  branch?: string;
-  upiId?: string;
-  isDefault?: boolean;
-  isDocumentDefault?: boolean;
-}
-
-export interface UpdateBankAccountDto {
-  label?: string;
-  bankName?: string;
-  holderName?: string;
-  accountNumber?: string;
-  ifsc?: string;
-  branch?: string;
-  upiId?: string;
-  isDefault?: boolean;
-  isDocumentDefault?: boolean;
-  isActive?: boolean;
-}
+import { CreateBankAccountDto, UpdateBankAccountDto } from './dto/bank-account.dto';
+export { CreateBankAccountDto, UpdateBankAccountDto };
 
 @Injectable()
 export class BankAccountsService {

@@ -179,6 +179,10 @@ export class CreateDirectInvoiceDto {
   @IsOptional()
   isSez?: boolean;
 
+  @IsString()
+  @IsOptional()
+  sezType?: string;
+
   @IsNumber()
   @IsOptional()
   advancePercent?: number;
@@ -322,6 +326,10 @@ export class UpdateInvoiceDto {
   @IsBoolean()
   @IsOptional()
   isSez?: boolean;
+
+  @IsString()
+  @IsOptional()
+  sezType?: string;
 
   @IsNumber()
   @IsOptional()

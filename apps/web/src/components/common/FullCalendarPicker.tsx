@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, X, Check } from 'lucide-react';
+import { formatDisplayDate } from '@crm/shared-validation';
 
 interface FullCalendarPickerProps {
   value: string; // Format: YYYY-MM-DD or ''
@@ -41,7 +42,7 @@ export const FullCalendarPicker: React.FC<FullCalendarPickerProps> = ({
   value,
   onChange,
   label,
-  placeholder = 'Select date',
+  placeholder = 'Select date (e.g. 05 Nov 2026)',
   required = false,
   name,
   minYear = 1990,
@@ -52,17 +53,53 @@ export const FullCalendarPicker: React.FC<FullCalendarPickerProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Parse current date or default to today's year & month for view
+  // Parse date string (YYYY-MM-DD, DD/MM/YYYY, or '05 Nov 2026')
   const parseDate = (str: string) => {
     if (!str) return null;
-    const parts = str.split('-');
-    if (parts.length === 3) {
-      const y = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10) - 1;
-      const d = parseInt(parts[2], 10);
-      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+    const trimmed = str.trim();
+
+    // 1. YYYY-MM-DD or YYYY/MM/DD
+    const ymdMatch = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+    if (ymdMatch) {
+      const y = parseInt(ymdMatch[1], 10);
+      const m = parseInt(ymdMatch[2], 10) - 1;
+      const d = parseInt(ymdMatch[3], 10);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d) && m >= 0 && m <= 11 && d >= 1 && d <= 31) {
         return { year: y, month: m, day: d };
       }
+    }
+
+    // 2. DD-MM-YYYY or DD/MM/YYYY
+    const dmyMatch = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (dmyMatch) {
+      const d = parseInt(dmyMatch[1], 10);
+      const m = parseInt(dmyMatch[2], 10) - 1;
+      const y = parseInt(dmyMatch[3], 10);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d) && m >= 0 && m <= 11 && d >= 1 && d <= 31) {
+        return { year: y, month: m, day: d };
+      }
+    }
+
+    // 3. DD Mon YYYY (e.g. '05 Nov 2026')
+    const wordMatch = trimmed.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})$/);
+    if (wordMatch) {
+      const d = parseInt(wordMatch[1], 10);
+      const monStr = wordMatch[2].toLowerCase();
+      const monthIdx = MONTH_NAMES.findIndex((mn) => mn.toLowerCase().startsWith(monStr));
+      const y = parseInt(wordMatch[3], 10);
+      if (monthIdx !== -1 && !isNaN(d) && !isNaN(y) && d >= 1 && d <= 31) {
+        return { year: y, month: monthIdx, day: d };
+      }
+    }
+
+    // 4. ISO Date fallback
+    const nativeDate = new Date(trimmed);
+    if (!isNaN(nativeDate.getTime())) {
+      return {
+        year: nativeDate.getFullYear(),
+        month: nativeDate.getMonth(),
+        day: nativeDate.getDate(),
+      };
     }
     return null;
   };
@@ -75,17 +112,21 @@ export const FullCalendarPicker: React.FC<FullCalendarPickerProps> = ({
 
   const [viewYear, setViewYear] = useState<number>(parsed?.year || todayYear);
   const [viewMonth, setViewMonth] = useState<number>(parsed?.month ?? todayMonth);
-  const [inputValue, setInputValue] = useState<string>(value || '');
+  const [inputValue, setInputValue] = useState<string>(value ? formatDisplayDate(value) : '');
 
   // Keep internal input in sync with external value
   useEffect(() => {
-    setInputValue(value || '');
     if (value) {
       const p = parseDate(value);
       if (p) {
         setViewYear(p.year);
         setViewMonth(p.month);
+        setInputValue(formatDisplayDate(value));
+      } else {
+        setInputValue(value);
       }
+    } else {
+      setInputValue('');
     }
   }, [value]);
 
@@ -136,7 +177,7 @@ export const FullCalendarPicker: React.FC<FullCalendarPickerProps> = ({
   const handleSelectDay = (day: number) => {
     const formatted = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     onChange(formatted);
-    setInputValue(formatted);
+    setInputValue(formatDisplayDate(formatted));
     setIsOpen(false);
   };
 
@@ -145,7 +186,7 @@ export const FullCalendarPicker: React.FC<FullCalendarPickerProps> = ({
     setViewYear(todayYear);
     setViewMonth(todayMonth);
     onChange(formatted);
-    setInputValue(formatted);
+    setInputValue(formatDisplayDate(formatted));
     setIsOpen(false);
   };
 
@@ -159,42 +200,18 @@ export const FullCalendarPicker: React.FC<FullCalendarPickerProps> = ({
     const trimmed = inputValue.trim();
     if (!trimmed) {
       onChange('');
+      setInputValue('');
       return;
     }
-    // Accept YYYY-MM-DD or DD/MM/YYYY or DD-MM-YYYY
-    const dmyRegex = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/;
-    const ymdRegex = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/;
-
-    if (ymdRegex.test(trimmed)) {
-      const match = trimmed.match(ymdRegex);
-      if (match) {
-        const y = parseInt(match[1], 10);
-        const m = parseInt(match[2], 10);
-        const d = parseInt(match[3], 10);
-        if (y >= minYear && y <= maxYear && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-          const formatted = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-          onChange(formatted);
-          setInputValue(formatted);
-          setViewYear(y);
-          setViewMonth(m - 1);
-          return;
-        }
-      }
-    } else if (dmyRegex.test(trimmed)) {
-      const match = trimmed.match(dmyRegex);
-      if (match) {
-        const d = parseInt(match[1], 10);
-        const m = parseInt(match[2], 10);
-        const y = parseInt(match[3], 10);
-        if (y >= minYear && y <= maxYear && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-          const formatted = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-          onChange(formatted);
-          setInputValue(formatted);
-          setViewYear(y);
-          setViewMonth(m - 1);
-          return;
-        }
-      }
+    const p = parseDate(trimmed);
+    if (p && p.year >= minYear && p.year <= maxYear) {
+      const formatted = `${p.year}-${String(p.month + 1).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+      onChange(formatted);
+      setInputValue(formatDisplayDate(formatted));
+      setViewYear(p.year);
+      setViewMonth(p.month);
+    } else {
+      setInputValue(value ? formatDisplayDate(value) : '');
     }
   };
 

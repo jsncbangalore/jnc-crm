@@ -977,7 +977,7 @@ export const validateUpiId = (
 // 21. Payment Reference Validation Rules by Mode
 export const UPI_REF_REGEX = /^\d{12}$/;
 export const CHEQUE_REF_REGEX = /^\d{6}$/;
-export const NEFT_RTGS_IMPS_REF_REGEX = /^[a-zA-Z0-9/_\-\.\:\s]{4,50}$/;
+export const NEFT_RTGS_IMPS_REF_REGEX = /^[A-Za-z0-9]{8,22}$/;
 
 export const getPaymentReferenceHint = (method: string): string => {
   const m = (method || '').toUpperCase();
@@ -990,7 +990,7 @@ export const getPaymentReferenceHint = (method: string): string => {
   if (m === 'UPI') {
     return 'UPI reference must be a 12-digit transaction number (UTR).';
   }
-  return 'NEFT/RTGS/IMPS reference must be 4 to 50 characters (letters, numbers, / or -).';
+  return 'NEFT/RTGS/IMPS reference must be 8 to 22 letters and digits.';
 };
 
 export const validatePaymentReference = (
@@ -1002,6 +1002,9 @@ export const validatePaymentReference = (
   const hint = getPaymentReferenceHint(method);
 
   if (m === 'CASH') {
+    if (value) {
+      return { valid: false, error: 'Cash payments do not take a reference number.', hint, value: '' };
+    }
     return { valid: true, hint, value: '' };
   }
 
@@ -1023,21 +1026,32 @@ export const validatePaymentReference = (
     return { valid: true, hint, value };
   }
 
-  if (!NEFT_RTGS_IMPS_REF_REGEX.test(value) || !/[a-zA-Z0-9]/.test(value)) {
-    return { valid: false, error: 'NEFT/RTGS/IMPS reference must be 4 to 50 characters (letters, numbers, / or -).', hint, value };
+  if (!NEFT_RTGS_IMPS_REF_REGEX.test(value)) {
+    return { valid: false, error: 'NEFT/RTGS/IMPS reference must be 8 to 22 letters and digits.', hint, value };
   }
 
   return { valid: true, hint, value };
 };
 
-// 22. Standard Display Date Formatter ('24 Aug 2026')
+// 22. Standard Display Date Formatter ('05 Nov 2026')
 const MONTH_ABBRS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export const formatDisplayDate = (raw?: string | Date | null): string => {
   if (!raw) return '-';
+  if (typeof raw === 'string') {
+    const ymdMatch = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (ymdMatch) {
+      const year = parseInt(ymdMatch[1], 10);
+      const monthIdx = parseInt(ymdMatch[2], 10) - 1;
+      const day = ymdMatch[3];
+      if (monthIdx >= 0 && monthIdx < 12) {
+        return `${day} ${MONTH_ABBRS[monthIdx]} ${year}`;
+      }
+    }
+  }
   const d = typeof raw === 'string' ? new Date(raw) : raw;
   if (isNaN(d.getTime())) return '-';
-  const day = d.getDate();
+  const day = String(d.getDate()).padStart(2, '0');
   const month = MONTH_ABBRS[d.getMonth()];
   const year = d.getFullYear();
   return `${day} ${month} ${year}`;

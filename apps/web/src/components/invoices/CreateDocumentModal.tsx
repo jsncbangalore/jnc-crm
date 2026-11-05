@@ -117,6 +117,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerGstin, setCustomerGstin] = useState('');
+  const customerGstinInputRef = useRef<HTMLInputElement>(null);
   const [customerState, setCustomerState] = useState('Karnataka');
   const [billingAddress, setBillingAddress] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -351,7 +352,17 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
   const advanceAmount = isProforma ? Number(((grandTotal * (advancePercent || 50)) / 100).toFixed(2)) : 0;
   const balanceDue = Math.max(0, Number((grandTotal - (advanceAdjusted || 0)).toFixed(2)));
   const amountWords = numberToIndianWords(grandTotal);
-  const lutStatus = validateLutStatus(lutBondNo, lutValidity, invoiceDate);
+  const scrollAndFocusGstin = () => {
+    setTimeout(() => {
+      if (customerGstinInputRef.current) {
+        customerGstinInputRef.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+        customerGstinInputRef.current.focus({ preventScroll: true });
+      }
+    }, 50);
+  };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -381,8 +392,9 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
     if (customerGstin.trim()) {
       const gstinRes = validateGstin(customerGstin);
       if (!gstinRes.valid) {
-        setFormError(gstinRes.error || 'Invalid GSTIN.');
+        setFormError(null);
         setFieldErrors({ customerGstin: gstinRes.error || 'Invalid GSTIN.' });
+        scrollAndFocusGstin();
         return;
       }
     }
@@ -485,6 +497,14 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         for (const [k, v] of Object.entries(fErrors)) {
           normalizedErrors[k] = toPlainText(v);
         }
+      }
+
+      if (normalizedErrors.customerGstin || (msg.toLowerCase().includes('gstin') && !msg.toLowerCase().includes('company profile'))) {
+        const gstinError = normalizedErrors.customerGstin || msg;
+        setFormError(null);
+        setFieldErrors({ customerGstin: gstinError });
+        scrollAndFocusGstin();
+        return;
       }
 
       setFormError(`Failed to ${editInvoice ? 'update' : 'create'} document: ${msg}`);
@@ -1072,13 +1092,17 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
               <div>
                 <label className="label">GST Number (GSTIN)</label>
                 <input
+                  ref={customerGstinInputRef}
                   type="text"
                   name="cust_company_gstin"
+                  id="customerGstinInput"
                   autoComplete="off"
                   data-lpignore="true"
                   data-1p-ignore="true"
                   data-form-type="other"
-                  className="input text-xs font-mono uppercase"
+                  className={`input text-xs font-mono uppercase ${
+                    fieldErrors.customerGstin ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''
+                  }`}
                   placeholder="e.g. 29ABCDE1234F1Z5"
                   value={customerGstin}
                   onChange={(e) => {

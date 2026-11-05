@@ -67,8 +67,26 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
           code = 'UNKNOWN_FIELD';
           const rawUnknowns = obj.unknownFields || (Array.isArray(obj.message) ? obj.message.filter((m: string) => typeof m === 'string' && m.includes('should not exist')) : [obj.message]);
           this.logger.warn(`[${requestId}] Rejected unrecognized parameter(s): ${JSON.stringify(rawUnknowns)}`);
-          message = 'The submitted form contains unrecognized parameters. Please refresh and try again.';
-          fieldErrors = [];
+
+          const extractedFields = (Array.isArray(rawUnknowns) ? rawUnknowns : [rawUnknowns])
+            .map((item: any) => {
+              if (typeof item !== 'string') return '';
+              const match = item.match(/property\s+([a-zA-Z0-9_.-]+)\s+should not exist/i);
+              return match ? match[1] : item.replace(/^property\s+/i, '').replace(/\s+should not exist$/i, '').trim();
+            })
+            .filter(Boolean);
+
+          const isDev = process.env.NODE_ENV !== 'production';
+          if (isDev && extractedFields.length > 0) {
+            message = `The submitted form contains unrecognized parameters: ${extractedFields.join(', ')}. Please refresh and try again.`;
+            fieldErrors = extractedFields.map((field) => ({
+              field,
+              message: `Unrecognized parameter: ${field}`,
+            }));
+          } else {
+            message = 'The submitted form contains unrecognized parameters. Please refresh and try again.';
+            fieldErrors = [];
+          }
         } else if (Array.isArray(obj.fieldErrors)) {
           fieldErrors = obj.fieldErrors.map((fe: any) => ({
             field: String(fe.field || 'general'),
