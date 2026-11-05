@@ -16,6 +16,8 @@ import Papa from 'papaparse';
 import { CompanyComponentLibraryModal } from './CompanyComponentLibraryModal';
 import { ValidationErrorPanel } from '../common/ValidationErrorPanel';
 import { parseValidationErrors, ParsedValidationError, jumpToErrorField } from '../../utils/validationErrorHandler';
+import { BRAND_CONFIG } from '../../config/brand';
+import { executeDirectPrint } from '../../utils/directPrint';
 
 export default function ProjectStockPositionView() {
   const { user } = useAuth();
@@ -305,8 +307,74 @@ export default function ProjectStockPositionView() {
   };
 
   // Print Work Order / Picking Slip
-  const handlePrintWorkOrder = () => {
-    window.print();
+  const handlePrintWorkOrder = async () => {
+    const listTitle =
+      activeTab === 'what_to_collect'
+        ? 'Warehouse Picking & Workbench Issue List'
+        : activeTab === 'what_to_buy'
+        ? 'Procurement & Material Shortage List'
+        : 'Full BOM Production Position Sheet';
+
+    const itemsToPrint =
+      activeTab === 'what_to_collect'
+        ? collectItems
+        : activeTab === 'what_to_buy'
+        ? buyItems
+        : positions;
+
+    const contentHtml = `
+      <div class="print-sheet" style="padding: 16px;">
+        <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
+          <div>
+            <h1 style="font-size: 16px; font-weight: 900; margin: 0;">${BRAND_CONFIG.displayName}</h1>
+            <p style="font-size: 11px; margin-top: 2px;">${listTitle}</p>
+          </div>
+          <div style="text-align: right; font-size: 11px;">
+            <div><strong>Project:</strong> ${selectedProject === 'all' ? 'All Active Projects' : selectedProject}</div>
+            <div><strong>Date:</strong> ${new Date().toLocaleDateString('en-IN')}</div>
+          </div>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+          <thead>
+            <tr style="background: #f1f5f9;">
+              <th style="border: 1px solid #000; padding: 4px; text-align: left;">Item Code / SKU</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: left;">Description</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: center;">Circuit Tag</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: right;">BOM Qty</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: right;">Store Balance</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: right;">Shortage</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsToPrint.map((p) => `
+              <tr>
+                <td style="border: 1px solid #000; padding: 4px; font-family: monospace; font-weight: bold;">${p.itemCode}</td>
+                <td style="border: 1px solid #000; padding: 4px;">${p.partValue || p.itemCode} ${p.package ? `(${p.package})` : ''}</td>
+                <td style="border: 1px solid #000; padding: 4px; text-align: center;">${p.reference || '—'}</td>
+                <td style="border: 1px solid #000; padding: 4px; text-align: right;">${p.plannedRequirement}</td>
+                <td style="border: 1px solid #000; padding: 4px; text-align: right;">${p.presentStock}</td>
+                <td style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold; color: ${p.shortage > 0 ? '#b91c1c' : '#15803d'};">${p.shortage}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div style="margin-top: 30px; display: flex; justify-content: space-between; font-size: 11px;">
+          <div>
+            <div style="border-top: 1px solid #000; width: 140px; margin-top: 25px; text-align: center; font-weight: bold;">Store Issued By</div>
+          </div>
+          <div>
+            <div style="border-top: 1px solid #000; width: 140px; margin-top: 25px; text-align: center; font-weight: bold;">Received By (Technician)</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    await executeDirectPrint(contentHtml, {
+      title: `Picking_Slip_${selectedProject}`,
+      paperSize: 'A4',
+    });
   };
 
   return (

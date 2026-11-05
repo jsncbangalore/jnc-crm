@@ -136,7 +136,7 @@ export class WebhooksController {
     // 1. Resolve tenant by key hash (returns 404 if not found)
     const tenant = await this.webhooksService.findTenantByWebhookKey(key);
 
-    const configuredToken = process.env.INDIAMART_WEBHOOK_SECRET;
+    const configuredToken = process.env.INDIAMART_WEBHOOK_SECRET || (process.env.NODE_ENV !== 'production' ? 'dev_indiamart_secret' : undefined);
     if (!configuredToken) {
       this.logger.warn('IndiaMART webhook integration is not configured on server (INDIAMART_WEBHOOK_SECRET unset).');
       throw new ServiceUnavailableException('IndiaMART webhook integration is not configured on this server.');

@@ -173,9 +173,11 @@ export default function LeadsPage() {
   // Manual Add Lead Modal
   const [searchParams] = useSearchParams();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [leadToEdit, setLeadToEdit] = useState<any | null>(null);
 
   useEffect(() => {
     if (searchParams.get('action') === 'create') {
+      setLeadToEdit(null);
       setShowAddModal(true);
     }
   }, [searchParams]);
@@ -546,7 +548,10 @@ export default function LeadsPage() {
 
           {/* New Lead */}
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => {
+              setLeadToEdit(null);
+              setShowAddModal(true);
+            }}
             className="btn-primary text-xs gap-1.5 shadow-glow-blue font-bold"
           >
             <Plus size={14} /> New Lead
@@ -705,7 +710,10 @@ export default function LeadsPage() {
           sourceCountsToday={sourceCountsToday}
           onLeadCreated={fetchLeads}
           onNavigateToPipeline={() => setActiveTab('pipeline')}
-          onOpenAddLead={() => setShowAddModal(true)}
+          onOpenAddLead={() => {
+            setLeadToEdit(null);
+            setShowAddModal(true);
+          }}
           onOpenShareModal={() => setShowShareModal(true)}
         />
       )}
@@ -1371,16 +1379,27 @@ export default function LeadsPage() {
               </div>
 
               {/* Drawer Footer */}
-              <div className="p-4 border-t border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230] flex justify-between items-center">
-                <button
-                  onClick={() => setSelectedLead(null)}
-                  className="btn bg-white dark:bg-white/5 border border-slate-300 dark:border-white/10 text-slate-800 dark:text-white text-xs font-bold px-4 py-2"
-                >
-                  Close
-                </button>
+              <div className="p-4 border-t border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#1E2230] flex justify-between items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setLeadToEdit(selectedLead);
+                      setShowAddModal(true);
+                    }}
+                    className="btn bg-white dark:bg-white/5 border border-slate-300 dark:border-white/10 text-slate-800 dark:text-white text-xs font-bold px-3 py-2 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Edit3 size={14} /> Edit Lead
+                  </button>
+                  <button
+                    onClick={() => setSelectedLead(null)}
+                    className="btn bg-white dark:bg-white/5 border border-slate-300 dark:border-white/10 text-slate-800 dark:text-white text-xs font-bold px-4 py-2 cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
                 <a
                   href={`/quotations?leadId=${selectedLead.id}`}
-                  className="btn bg-crm-amber hover:bg-crm-amber-hover text-black font-bold text-xs gap-1.5 shadow-glow-amber px-4 py-2"
+                  className="btn bg-crm-amber hover:bg-crm-amber-hover text-black font-bold text-xs gap-1.5 shadow-glow-amber px-4 py-2 cursor-pointer"
                 >
                   <FileText size={14} /> Create Quotation
                 </a>
@@ -1393,11 +1412,19 @@ export default function LeadsPage() {
       {/* ─── MODAL: Manual Add Lead ──────────────────────────────────────── */}
       <CreateLeadModal
         isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onSuccess={(_lead, action) => {
+        leadToEdit={leadToEdit}
+        onClose={() => {
+          setShowAddModal(false);
+          setLeadToEdit(null);
+        }}
+        onSuccess={(savedLead, action) => {
           fetchLeads();
+          if (selectedLead && savedLead && selectedLead.id === savedLead.id) {
+            setSelectedLead(savedLead);
+          }
           if (action === 'close') {
             setShowAddModal(false);
+            setLeadToEdit(null);
           }
         }}
       />

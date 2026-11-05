@@ -296,9 +296,9 @@ function CreateCustomerModal({
     if (!nameRes.valid) newErrors.name = nameRes.error!;
 
     if (phone.trim()) {
-      const cleanDigits = phone.replace(/\D/g, '');
-      if (cleanDigits.length < 10) {
-        newErrors.phone = 'Enter a 10-digit mobile number.';
+      const phoneRes = validatePhone(phone, 'landline');
+      if (!phoneRes.valid) {
+        newErrors.phone = phoneRes.error || 'Enter a valid phone number (6 to 12 digits).';
       }
     }
 
@@ -444,10 +444,11 @@ function CreateCustomerModal({
             <PhoneField
               id="cust-phone-field"
               label="Phone Number"
+              phoneType="landline"
               value={phone}
               onChange={(e164) => setPhone(e164)}
               error={errors.phone}
-              placeholder="10-digit mobile number"
+              placeholder="Landline or mobile (6 to 12 digits)"
             />
           </div>
 

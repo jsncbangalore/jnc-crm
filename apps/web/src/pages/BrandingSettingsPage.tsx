@@ -526,9 +526,10 @@ export default function BrandingSettingsPage() {
                 id="branding-telephone"
                 label="Official Phone / Hotline"
                 value={companyPhone}
+                phoneType="landline"
                 onChange={(val) => setCompanyPhone(val)}
                 error={fieldErrors.companyPhone}
-                placeholder="Enter company phone number"
+                placeholder="Enter company phone number (e.g. 0802345678)"
                 helperText="Included in outbound customer emails and documents."
                 dataTestId="input-company-phone"
               />

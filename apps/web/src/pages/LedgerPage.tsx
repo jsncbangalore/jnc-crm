@@ -32,6 +32,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { openDedicatedPrintTab } from '../utils/printHelper';
+import { BRAND_CONFIG } from '../config/brand';
+import { executeDirectPrint } from '../utils/directPrint';
 import {
   ledgerApi,
   invoicesApi,
@@ -365,6 +367,71 @@ export default function LedgerPage() {
     }
   };
 
+  const handleDirectPrintStatement = async () => {
+    if (!selectedPartyId || !statement) return;
+    const partyName = selectedParty?.partyName || statement.party?.partyName || 'Party';
+    const contentHtml = `
+      <div class="print-sheet" style="padding: 16px;">
+        <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
+          <div>
+            <h1 style="font-size: 16px; font-weight: 900; margin: 0;">${BRAND_CONFIG.displayName}</h1>
+            <p style="font-size: 11px; margin-top: 2px;">STATEMENT OF ACCOUNT</p>
+          </div>
+          <div style="text-align: right; font-size: 11px;">
+            <div><strong>FY:</strong> ${selectedFY}</div>
+            <div><strong>Date:</strong> ${new Date().toLocaleDateString('en-IN')}</div>
+          </div>
+        </div>
+
+        <div style="border: 1px solid #000; padding: 8px; margin-bottom: 12px; background: #f8fafc; font-size: 11px;">
+          <strong style="text-transform: uppercase;">Account Of:</strong> ${partyName}
+          <div>GSTIN: ${statement.party?.gstin || 'Unregistered'}</div>
+          <div>Phone: ${statement.party?.phone || '—'} | Email: ${statement.party?.email || '—'}</div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; border: 1px solid #000; padding: 6px; margin-bottom: 8px; background: #f1f5f9; font-size: 11px; font-weight: bold;">
+          <span>Opening Balance</span>
+          <span>₹${Number(statement.openingBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${statement.openingSide || ''}</span>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+          <thead>
+            <tr style="background: #f1f5f9;">
+              <th style="border: 1px solid #000; padding: 4px; text-align: left; width: 70px;">Date</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: left; width: 100px;">Ref No</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: left;">Particulars</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: right; width: 80px;">Debit (₹)</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: right; width: 80px;">Credit (₹)</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: right; width: 90px;">Balance (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(statement.entries || []).map((entry) => `
+              <tr>
+                <td style="border: 1px solid #000; padding: 4px;">${entry.entryDate || '—'}</td>
+                <td style="border: 1px solid #000; padding: 4px; font-family: monospace;">${entry.voucherNo || '—'}</td>
+                <td style="border: 1px solid #000; padding: 4px;">${entry.particulars || 'Transaction'}</td>
+                <td style="border: 1px solid #000; padding: 4px; text-align: right;">${Number(entry.debit || 0) > 0 ? Number(entry.debit).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}</td>
+                <td style="border: 1px solid #000; padding: 4px; text-align: right;">${Number(entry.credit || 0) > 0 ? Number(entry.credit).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}</td>
+                <td style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">₹${Number(entry.runningBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${entry.runningSide ? entry.runningSide.toUpperCase() : ''}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div style="display: flex; justify-content: space-between; border: 1px solid #000; padding: 6px; margin-top: 10px; background: #f8fafc; font-size: 11px; font-weight: bold;">
+          <span>Closing Balance:</span>
+          <span>₹${Number(statement.closingBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${statement.closingSide || ''}</span>
+        </div>
+      </div>
+    `;
+
+    await executeDirectPrint(contentHtml, {
+      title: `Statement_${partyName}_${selectedFY}`,
+      paperSize: 'A4',
+    });
+  };
+
   const handleExportCsv = () => {
     if (!statement || !statement.entries) return;
     setShowDownloadMenu(false);
@@ -501,7 +568,7 @@ export default function LedgerPage() {
 
           {/* Direct Print Button */}
           <button
-            onClick={() => selectedPartyId && openDedicatedPrintTab('statement', selectedPartyId, { fy: selectedFY })}
+            onClick={handleDirectPrintStatement}
             disabled={!selectedPartyId || loadingStatement}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
             title={!selectedPartyId ? 'Select a party first' : 'Direct Print Statement'}
@@ -528,7 +595,7 @@ export default function LedgerPage() {
                 <button
                   onClick={() => {
                     setShowDownloadMenu(false);
-                    openDedicatedPrintTab('statement', selectedPartyId, { fy: selectedFY });
+                    handleDirectPrintStatement();
                   }}
                   className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
                 >

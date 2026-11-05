@@ -19,6 +19,7 @@
     "bundle:test-linux": "node scripts/bundle-test-linux.js",
     "release:pack": "node scripts/release-pack.js",
     "release:verify": "node scripts/release-verify.js",
+    "test:print-csp": "node scripts/test-print-csp-suite.js",
     "verify:live": "node scripts/verify-live.js",
     "db:dev:up": "node scripts/db-dev.js up",
     "db:dev:migrate": "node scripts/db-dev.js migrate",

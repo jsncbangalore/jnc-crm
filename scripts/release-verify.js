@@ -212,6 +212,20 @@ async function run() {
     process.exit(1);
   }
 
+  // Step 0.5: Strict Production CSP Playwright Direct Print Suite
+  console.log(' [VERIFY] Running Strict CSP Direct Print Playwright Suite (scripts/test-print-csp-suite.js)...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/test-print-csp-suite.js', {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'inherit',
+    });
+    console.log(' [SUCCESS] Strict CSP direct print suite passed across all viewports and color schemes with 0 violations.');
+  } catch (err) {
+    console.error(' [FAIL] CSP direct print violations or regressions detected! Deployment blocked.');
+    process.exit(1);
+  }
+
   // Resolve health URL: try /health if path contains /api/v1, or /api/v1/health if root
   let healthUrl = baseUrl.endsWith('/health')
     ? baseUrl

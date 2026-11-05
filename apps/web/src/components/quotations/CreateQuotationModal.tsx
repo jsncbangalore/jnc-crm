@@ -13,7 +13,6 @@ import { Sku, Quotation } from '../../types';
 import { AccessibleModal } from '../common/AccessibleModal';
 import { FormField } from '../common/FormField';
 import {
-  NameField,
   PhoneField,
   StateCityField,
   ProductField,
@@ -25,6 +24,7 @@ import {
   calculateDocumentTotals,
   formatIndianCurrency,
   validateEmail,
+  validatePersonOrCompanyName,
   sanitizeText,
   toPlainText,
 } from '@crm/shared-validation';
@@ -72,13 +72,6 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
   triggerRef,
 }) => {
   const { user } = useAuth();
-  const canEditPrice =
-    user?.role === 'tenant_admin' ||
-    user?.role === 'admin' ||
-    user?.role === 'platform_super_admin' ||
-    user?.effectivePages?.includes('edit_price') ||
-    (user as any)?.permissions?.includes('edit_price');
-
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -173,10 +166,10 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
 
   const handleLineRateChange = (index: number, rate: number) => {
     const line = lines[index];
-    if (line.skuId && !canEditPrice) {
+    if (line.skuId) {
       setErrors((prev) => ({
         ...prev,
-        [`line_${index}_rate`]: 'Rate is locked to catalog price. "edit_price" permission required.',
+        [`line_${index}_rate`]: 'Rate is locked to catalog price.',
       }));
       return;
     }
@@ -206,8 +199,9 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
   const validateAll = (): boolean => {
     const nextErrors: Record<string, string> = {};
 
-    if (!customerName.trim() || customerName.trim().length < 2) {
-      nextErrors.customerName = 'Customer name is required.';
+    const nameRes = validatePersonOrCompanyName(customerName);
+    if (!nameRes.valid) {
+      nextErrors.customerName = nameRes.error || 'Customer / client name is required.';
     }
 
     const cleanPhone = customerPhone.replace(/\D/g, '');
@@ -328,15 +322,26 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
 
         {/* Client Name & Mobile Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <NameField
+          <FormField
             id="quoteCustomerName"
-            label="Client / Contact Name"
+            label="Client / Customer Name"
             required
             value={customerName}
-            onChange={(val) => setCustomerName(val)}
+            onChange={(e) => {
+              setCustomerName(e.target.value);
+              if (touched.customerName) {
+                const res = validatePersonOrCompanyName(e.target.value);
+                setErrors((prev) => ({ ...prev, customerName: res.valid ? '' : res.error || '' }));
+              }
+            }}
+            onBlur={() => {
+              setTouched((prev) => ({ ...prev, customerName: true }));
+              const res = validatePersonOrCompanyName(customerName);
+              setErrors((prev) => ({ ...prev, customerName: res.valid ? '' : res.error || '' }));
+            }}
             error={touched.customerName ? errors.customerName : null}
-            placeholder="e.g. Rahul Sharma"
-            maxLength={60}
+            placeholder="e.g. Rahul Sharma or Zenith Infra Ltd"
+            maxLength={100}
           />
 
           <PhoneField
@@ -458,7 +463,8 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                       label={`Rate (${line.unit})`}
                       value={line.unitPrice}
                       onChange={(r) => handleLineRateChange(idx, r)}
-                      disabled={!canEditPrice && Boolean(line.skuId)}
+                      disabled={Boolean(line.skuId)}
+                      helperText={line.skuId ? 'Catalog price' : undefined}
                       error={errors[`line_${idx}_rate`]}
                     />
                   </div>

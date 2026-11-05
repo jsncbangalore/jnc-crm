@@ -70,7 +70,7 @@ export default function SuppliersPage() {
     if (!nameRes.valid) errs.name = nameRes.error!;
 
     if (vals.phone && vals.phone.trim()) {
-      const phoneRes = validatePhone(vals.phone);
+      const phoneRes = validatePhone(vals.phone, 'landline');
       if (!phoneRes.valid) errs.phone = phoneRes.error!;
     }
     if (vals.email && vals.email.trim()) {
@@ -479,19 +479,20 @@ export default function SuppliersPage() {
                   <PhoneField
                     id="new-supplier-phone"
                     label="Phone Number"
-                    placeholder="10-digit mobile number"
+                    phoneType="landline"
+                    placeholder="Landline or mobile (6 to 12 digits)"
                     value={newSupplier.phone}
                     onChange={(val) => {
                       setNewSupplier({ ...newSupplier, phone: val });
                       if (addTouched.phone && val) {
-                        const res = validatePhone(val);
+                        const res = validatePhone(val, 'landline');
                         setAddErrors((prev) => ({ ...prev, phone: res.valid ? '' : res.error! }));
                       }
                     }}
                     onBlur={() => {
                       setAddTouched((prev) => ({ ...prev, phone: true }));
                       if (newSupplier.phone) {
-                        const res = validatePhone(newSupplier.phone);
+                        const res = validatePhone(newSupplier.phone, 'landline');
                         setAddErrors((prev) => ({ ...prev, phone: res.valid ? '' : res.error! }));
                       }
                     }}
@@ -666,19 +667,20 @@ export default function SuppliersPage() {
                   <PhoneField
                     id="edit-supplier-phone"
                     label="Phone Number"
-                    placeholder="10-digit mobile number"
+                    phoneType="landline"
+                    placeholder="Landline or mobile (6 to 12 digits)"
                     value={editingSupplier.phone || ''}
                     onChange={(val) => {
                       setEditingSupplier({ ...editingSupplier, phone: val });
                       if (editTouched.phone && val) {
-                        const res = validatePhone(val);
+                        const res = validatePhone(val, 'landline');
                         setEditErrors((prev) => ({ ...prev, phone: res.valid ? '' : res.error! }));
                       }
                     }}
                     onBlur={() => {
                       setEditTouched((prev) => ({ ...prev, phone: true }));
                       if (editingSupplier.phone) {
-                        const res = validatePhone(editingSupplier.phone);
+                        const res = validatePhone(editingSupplier.phone, 'landline');
                         setEditErrors((prev) => ({ ...prev, phone: res.valid ? '' : res.error! }));
                       }
                     }}

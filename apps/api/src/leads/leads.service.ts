@@ -8,7 +8,7 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopingService, ScopedUser } from '../auth/scoping.service';
-import { CreateLeadDto, UpdateLeadStatusDto, CreateLeadActivityDto } from './dto/create-lead.dto';
+import { CreateLeadDto, UpdateLeadDto, UpdateLeadStatusDto, CreateLeadActivityDto } from './dto/create-lead.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
@@ -64,30 +64,88 @@ export class LeadsService {
     return assignee.id;
   }
 
-  async createLead(dto: CreateLeadDto, actor?: ScopedUser) {
-    const tenantId = requireTenantId(actor);
-    const normPhone = this.normalizePhone(dto.customerPhone);
-    const normEmail = (dto.customerEmail || '').trim().toLowerCase();
+  /**
+   * Universal duplicate lead finder across all phone formats:
+   * '9876543210', '+91 98765 43210', '+919876543210', and optional email.
+   */
+  async findDuplicateLead(tenantId: string, phone?: string, email?: string) {
+    if (!phone && !email) return null;
 
-    // Match duplicates strictly on BOTH exact normalised phone AND exact normalised email
-    let existingLead: any = null;
-    const digitsOnly = (dto.customerPhone || '').replace(/\D/g, '');
+    const normEmail = (email || '').trim().toLowerCase();
+    const rawPhone = (phone || '').trim();
+    const normPhone = rawPhone ? normalizeToE164(rawPhone) : '';
+    const digitsOnly = rawPhone.replace(/\D/g, '');
     const tenDigits = digitsOnly.slice(-10);
-    if (tenDigits.length >= 7 && normEmail) {
-      existingLead = await this.prisma.lead.findFirst({
+
+    // 1. Build OR conditions for candidate leads
+    const orConditions: any[] = [];
+    if (normPhone) orConditions.push({ customerPhone: normPhone });
+    if (rawPhone && rawPhone !== normPhone) orConditions.push({ customerPhone: rawPhone });
+    if (tenDigits.length >= 7) {
+      orConditions.push({ customerPhone: tenDigits });
+      orConditions.push({ customerPhone: { contains: tenDigits } });
+      const spaceFormat = `+91 ${tenDigits.slice(0, 5)} ${tenDigits.slice(5)}`;
+      orConditions.push({ customerPhone: { contains: spaceFormat } });
+    }
+    if (normEmail) {
+      orConditions.push({ customerEmail: { equals: normEmail, mode: 'insensitive' } });
+    }
+
+    if (orConditions.length > 0) {
+      const candidates = await this.prisma.lead.findMany({
         where: {
           tenantId,
-          OR: [
-            { customerPhone: normPhone },
-            { customerPhone: { contains: tenDigits } },
-          ],
-          customerEmail: { equals: normEmail, mode: 'insensitive' },
           deletedAt: null,
+          OR: orConditions,
         },
         orderBy: { createdAt: 'desc' },
+        take: 10,
         include: { assignedTo: true },
       });
+
+      for (const candidate of candidates) {
+        if (normEmail && candidate.customerEmail && candidate.customerEmail.toLowerCase() === normEmail) {
+          return candidate;
+        }
+        if (rawPhone && candidate.customerPhone && comparePhoneNumbers(candidate.customerPhone, rawPhone)) {
+          return candidate;
+        }
+      }
+
+      if (candidates.length > 0 && !rawPhone) {
+        return candidates[0];
+      }
     }
+
+    // 2. Fallback SQL regex match on digits only for edge case formatting (dashes, parentheses, dots)
+    if (tenDigits.length === 10) {
+      try {
+        const rawMatches = await this.prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM "Lead"
+          WHERE "tenantId" = ${tenantId}
+            AND "deletedAt" IS NULL
+            AND regexp_replace("customerPhone", '\D', '', 'g') LIKE ${'%' + tenDigits}
+          ORDER BY "createdAt" DESC
+          LIMIT 1
+        `;
+        if (rawMatches && rawMatches.length > 0) {
+          return this.prisma.lead.findUnique({
+            where: { id: rawMatches[0].id },
+            include: { assignedTo: true },
+          });
+        }
+      } catch (err: any) {
+        this.logger.warn(`Fallback SQL duplicate check error: ${err.message}`);
+      }
+    }
+
+    return null;
+  }
+
+  async createLead(dto: CreateLeadDto, actor?: ScopedUser) {
+    const tenantId = requireTenantId(actor);
+    const normPhone = normalizeToE164(dto.customerPhone);
+    const existingLead = await this.findDuplicateLead(tenantId, dto.customerPhone, dto.customerEmail);
 
     if (existingLead && !dto.forceSave && !dto.allowDuplicate && dto.source !== 'web') {
       throw new ConflictException({
@@ -413,6 +471,77 @@ export class LeadsService {
     }
 
     return lead;
+  }
+
+  async updateLead(id: string, dto: UpdateLeadDto, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    const existing = await this.prisma.lead.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) {
+      throw new NotFoundException('Lead not found');
+    }
+
+    let phoneToSave = existing.customerPhone;
+    if (dto.customerPhone !== undefined) {
+      const trimmedPhone = dto.customerPhone.trim();
+      // If phone was NOT changed, accept existing legacy value without validation
+      const isUnchanged =
+        trimmedPhone === existing.customerPhone ||
+        trimmedPhone.replace(/\D/g, '') === existing.customerPhone.replace(/\D/g, '');
+
+      if (isUnchanged) {
+        phoneToSave = existing.customerPhone;
+      } else {
+        // Phone was changed: validate strictly (10-digit Indian mobile starting with 6-9)
+        const digits = trimmedPhone.replace(/\D/g, '');
+        if (digits.length === 10) {
+          if (!/^[6-9]/.test(digits)) {
+            throw new BadRequestException('Mobile number must start with 6, 7, 8, or 9.');
+          }
+        } else {
+          throw new BadRequestException('Enter a 10-digit mobile number.');
+        }
+        phoneToSave = normalizeToE164(trimmedPhone);
+      }
+    }
+
+    const updated = await this.prisma.lead.update({
+      where: { id },
+      data: {
+        ...(dto.customerName !== undefined ? { customerName: dto.customerName } : {}),
+        ...(dto.customerPhone !== undefined ? { customerPhone: phoneToSave } : {}),
+        ...(dto.customerEmail !== undefined ? { customerEmail: dto.customerEmail || null } : {}),
+        ...(dto.city !== undefined ? { city: dto.city || null } : {}),
+        ...(dto.state !== undefined ? { state: dto.state || null } : {}),
+        ...(dto.companyName !== undefined ? { companyName: dto.companyName || null } : {}),
+        ...(dto.productCategory !== undefined ? { productCategory: dto.productCategory || null } : {}),
+        ...(dto.productName !== undefined ? { productName: dto.productName || null } : {}),
+        ...(dto.quantity !== undefined ? { quantity: dto.quantity } : {}),
+        ...(dto.unit !== undefined ? { unit: dto.unit || null } : {}),
+        ...(dto.estimatedValue !== undefined ? { estimatedValue: dto.estimatedValue } : {}),
+        ...(dto.queryMessage !== undefined ? { queryMessage: dto.queryMessage || null } : {}),
+        ...(dto.urgency !== undefined ? { urgency: dto.urgency || null } : {}),
+        ...(dto.assignedToId !== undefined ? { assignedToId: dto.assignedToId || null } : {}),
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
+      },
+      include: {
+        assignedTo: { select: { id: true, name: true, employeeCode: true } },
+      },
+    });
+
+    await this.auditService.log({
+      tenantId,
+      actorId: user.id,
+      actorName: user.employeeCode,
+      action: 'UPDATE',
+      entityName: 'Lead',
+      entityId: id,
+      beforeState: { customerPhone: existing.customerPhone },
+      afterState: { customerPhone: phoneToSave },
+    });
+
+    return updated;
   }
 
   async updateStatus(id: string, dto: UpdateLeadStatusDto, user: ScopedUser) {

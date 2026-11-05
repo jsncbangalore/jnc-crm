@@ -72,12 +72,23 @@ export function ErrorStateCard({
       {is401 ? (
         <button
           onClick={() => {
+            let hadSession = false;
             try {
+              hadSession = Boolean(
+                localStorage.getItem('crm_user') ||
+                sessionStorage.getItem('crm_user') ||
+                sessionStorage.getItem('crm_tab_user_id') ||
+                localStorage.getItem('crm_refresh_token_fb') ||
+                sessionStorage.getItem('crm_refresh_token_fb')
+              );
               localStorage.removeItem('crm_staff_token');
               localStorage.removeItem('crm_platform_token');
               sessionStorage.clear();
+              if (hadSession) {
+                sessionStorage.setItem('crm_session_expired', 'Your session expired, please sign in');
+              }
             } catch {}
-            window.location.href = '/login?expired=1';
+            window.location.href = hadSession ? '/login?expired=1' : '/login';
           }}
           type="button"
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-crm-blue text-white text-xs font-bold hover:bg-crm-blue-dark transition-all shadow-sm active:scale-95 cursor-pointer"

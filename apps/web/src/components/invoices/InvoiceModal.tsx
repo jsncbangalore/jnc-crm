@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Printer, Mail, Ban, CheckCircle2, AlertTriangle, FileText,
@@ -16,6 +16,7 @@ import UnifiedRecordPaymentModal from '../common/UnifiedRecordPaymentModal';
 import RelatedDocumentsPanel from '../common/RelatedDocumentsPanel';
 import InvoiceDocumentTemplate, { numberToIndianWords } from './InvoiceDocumentTemplate';
 import { openDedicatedPrintTab, POPUP_BLOCKED_MESSAGE } from '../../utils/printHelper';
+import { executeDirectPrint } from '../../utils/directPrint';
 
 export { numberToIndianWords };
 
@@ -85,6 +86,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [popupBlockedMsg, setPopupBlockedMsg] = useState<string | null>(null);
+  const printableRef = useRef<HTMLDivElement>(null);
 
   if (!invoice) return null;
 
@@ -138,14 +140,36 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!invoice) return;
     setPopupBlockedMsg(null);
-    const opened = openDedicatedPrintTab(activeTemplate, invoice.id, {
-      paperSize: 'A4',
-    });
-    if (!opened) {
-      setPopupBlockedMsg(POPUP_BLOCKED_MESSAGE);
+    setIsPrinting(true);
+    try {
+      const renderedHtml = printableRef.current?.innerHTML || '';
+      if (!renderedHtml) {
+        throw new Error('Printable invoice container not found.');
+      }
+      const cleanNum = invoice.invoiceNumber.replace(/[\/\\]/g, '_');
+      const docTitle = isDC
+        ? 'Delivery_Challan'
+        : isProforma
+        ? 'Proforma_Invoice'
+        : isCreditNote
+        ? 'Credit_Note'
+        : isPO
+        ? 'Purchase_Order'
+        : isSEZ
+        ? 'SEZ_Tax_Invoice'
+        : 'Tax_Invoice';
+
+      await executeDirectPrint(renderedHtml, {
+        title: `${docTitle}_${cleanNum}`,
+        paperSize: 'A4',
+      });
+    } catch (err: any) {
+      console.error('Invoice direct print failed:', err);
+    } finally {
+      setIsPrinting(false);
     }
   };
 
@@ -515,6 +539,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
 
             {/* Scaled Document Wrapper */}
             <div
+              ref={printableRef}
               style={{
                 transform: `scale(${zoom})`,
                 transformOrigin: 'top center',

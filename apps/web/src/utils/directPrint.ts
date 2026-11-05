@@ -16,6 +16,36 @@ export interface DirectPrintOptions {
   documentId?: string;
 }
 
+// Singleton print sandbox tracking ensuring strictly only one print frame exists at any time
+let activePrintIframe: HTMLIFrameElement | null = null;
+let activeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Removes any existing print sandbox iframe and clears active fallback timers.
+ */
+export function cleanupActivePrintFrame(): void {
+  if (activeSafetyTimer) {
+    clearTimeout(activeSafetyTimer);
+    activeSafetyTimer = null;
+  }
+  if (activePrintIframe) {
+    try {
+      if (activePrintIframe.parentNode) {
+        activePrintIframe.parentNode.removeChild(activePrintIframe);
+      }
+    } catch {
+      // ignore
+    }
+    activePrintIframe = null;
+  }
+  if (typeof document !== 'undefined') {
+    const existing = document.getElementById('crm-direct-print-sandbox');
+    if (existing && existing.parentNode) {
+      existing.parentNode.removeChild(existing);
+    }
+  }
+}
+
 /**
  * Detects phone or tablet user agents and touch form-factors where hidden-frame printing fails.
  */
@@ -31,26 +61,14 @@ export function isMobileOrTabletDevice(): boolean {
  * Executes a direct, sandboxed print job straight to the connected printer.
  * Uses an A4-sized off-screen DOM iframe (794x1123px) rather than 0x0/1x1.
  * Waits for fonts and images, triggers print once, and cleans up strictly on afterprint
- * or after a 60-second safety window (NEVER after 3 seconds).
- * For mobile/tablet devices, redirects to the dedicated print page or PDF.
+ * or after a 2-minute (120000ms) safety window (NEVER after 3 seconds).
+ * Guarantees only one print frame exists in the DOM at any time.
  */
 export function executeDirectPrint(htmlContent: string, options: DirectPrintOptions = {}): Promise<boolean> {
-  // Mobile / tablet interception: fallback to dedicated print page or PDF
-  if (isMobileOrTabletDevice() && options.docType && options.documentId) {
-    const targetUrl = `/print/${encodeURIComponent(options.docType)}/${encodeURIComponent(options.documentId)}`;
-    const newWindow = window.open(targetUrl, '_blank');
-    if (newWindow) {
-      return Promise.resolve(true);
-    }
-  }
-
   return new Promise((resolve) => {
     try {
-      // Remove any previous print sandbox iframe
-      const oldFrame = document.getElementById('crm-direct-print-sandbox');
-      if (oldFrame) {
-        oldFrame.remove();
-      }
+      // Guarantee only one print frame exists in the DOM at any time
+      cleanupActivePrintFrame();
 
       const iframe = document.createElement('iframe');
       iframe.id = 'crm-direct-print-sandbox';
@@ -65,10 +83,12 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
       iframe.style.pointerEvents = 'none';
       iframe.setAttribute('aria-hidden', 'true');
       document.body.appendChild(iframe);
+      activePrintIframe = iframe;
 
       const frameDoc = iframe.contentWindow?.document || iframe.contentDocument;
       if (!frameDoc) {
         console.error('Direct print: Unable to access iframe document.');
+        cleanupActivePrintFrame();
         resolve(false);
         return;
       }
@@ -96,11 +116,25 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
         `
         : '';
 
+      // Collect stylesheets and styles from main document to preserve Tailwind utility styling
+      const headLinks = typeof document !== 'undefined'
+        ? Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+            .map((link) => `<link rel="stylesheet" href="${(link as HTMLLinkElement).href}">`)
+            .join('\n')
+        : '';
+      const headStyles = typeof document !== 'undefined'
+        ? Array.from(document.querySelectorAll('style'))
+            .map((style) => `<style>${style.innerHTML}</style>`)
+            .join('\n')
+        : '';
+
       const fullHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <title>${options.title || 'Print_Job'}</title>
+  ${headLinks}
+  ${headStyles}
   <style>
     ${pageRule}
 
@@ -285,21 +319,19 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
       const cleanup = () => {
         if (cleanedUp) return;
         cleanedUp = true;
-        if (iframe.parentNode) {
-          iframe.parentNode.removeChild(iframe);
-        }
+        cleanupActivePrintFrame();
       };
 
       // Register afterprint cleanup handlers on both windows
       try {
         iframe.contentWindow?.addEventListener('afterprint', cleanup, { once: true });
-        window.addEventListener('afterprint', cleanup, { once: true });
       } catch {
         // Fallback gracefully if cross-origin access blocks listener
       }
+      window.addEventListener('afterprint', cleanup, { once: true });
 
-      // 60-second safety removal timeout: NEVER remove after 3 seconds!
-      const safetyTimer = setTimeout(cleanup, 60000);
+      // 2-minute safety removal timeout: NEVER remove after 3 seconds!
+      activeSafetyTimer = setTimeout(cleanup, 120000);
 
       // Wait for all fonts and images to be completely ready before triggering print
       const fontPromise = (frameDoc as any).fonts?.ready || (document as any).fonts?.ready || Promise.resolve();
@@ -321,7 +353,6 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
             resolve(true);
           } catch (printErr) {
             console.error('Direct print execution failed:', printErr);
-            clearTimeout(safetyTimer);
             cleanup();
             resolve(false);
           }
@@ -329,6 +360,7 @@ export function executeDirectPrint(htmlContent: string, options: DirectPrintOpti
       });
     } catch (err) {
       console.error('Execute direct print error:', err);
+      cleanupActivePrintFrame();
       resolve(false);
     }
   });

@@ -175,3 +175,94 @@ export class ImportLeadsDto {
   @IsArray()
   records: any[];
 }
+
+export class UpdateLeadDto {
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  @IsValidContactName(60)
+  customerName?: string;
+
+  @TrimString()
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  customerPhone?: string;
+
+  @SanitizeText()
+  @IsOptional()
+  @MaxLength(254)
+  @IsValidEmail()
+  customerEmail?: string;
+
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  city?: string;
+
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  state?: string;
+
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  companyName?: string;
+
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  productCategory?: string;
+
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  productName?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.0001)
+  @Max(100000)
+  @IsValidQuantity()
+  quantity?: number;
+
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  unit?: string;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100000000)
+  estimatedValue?: number;
+
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  queryMessage?: string;
+
+  @SanitizeText()
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  urgency?: string;
+
+  @IsOptional()
+  @IsString()
+  assignedToId?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+

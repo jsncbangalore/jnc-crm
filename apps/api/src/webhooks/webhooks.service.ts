@@ -842,20 +842,9 @@ export class WebhooksService {
       );
       return { isDuplicate: false, lead };
     } catch (err: any) {
-      if (err?.message?.includes('Duplicate lead detected') || err?.message?.includes('already exists')) {
+      if (err?.message?.includes('Duplicate lead detected') || err?.message?.includes('already exists') || err?.status === 409) {
         // Redelivery / duplicate phone fallback
-        const normE164 = normalizeToE164(customerPhone);
-        const digits = customerPhone.replace(/[^0-9]/g, '').slice(-10);
-        const existing = await this.prisma.lead.findFirst({
-          where: {
-            tenantId,
-            OR: [
-              { customerPhone: normE164 },
-              { customerPhone: { contains: digits } },
-            ],
-            deletedAt: null,
-          },
-        });
+        const existing = await this.leadsService.findDuplicateLead(tenantId, customerPhone);
         return { isDuplicate: true, lead: existing };
       }
       throw err;
@@ -1003,19 +992,8 @@ export class WebhooksService {
       });
       return { isDuplicate: false, lead };
     } catch (err: any) {
-      if (err?.message?.includes('Duplicate lead detected') || err?.message?.includes('already exists')) {
-        const normE164 = normalizeToE164(customerPhone);
-        const digits = customerPhone.replace(/[^0-9]/g, '').slice(-10);
-        const existing = await this.prisma.lead.findFirst({
-          where: {
-            tenantId,
-            OR: [
-              { customerPhone: normE164 },
-              { customerPhone: { contains: digits } },
-            ],
-            deletedAt: null,
-          },
-        });
+      if (err?.message?.includes('Duplicate lead detected') || err?.message?.includes('already exists') || err?.status === 409) {
+        const existing = await this.leadsService.findDuplicateLead(tenantId, customerPhone);
         await this.logWebhookDelivery(tenantId, leadSource, 'DUPLICATE', { summary: `Duplicate phone lead match ${customerPhone}` });
         return { isDuplicate: true, lead: existing };
       }
@@ -1140,23 +1118,8 @@ export class WebhooksService {
       }
     }
 
-    // 7. Duplicate Check: Match ONLY on exact normalised 10-digit phone AND exact normalised email
-    const normPhone = customerPhone.replace(/[^0-9]/g, '').slice(-10);
-    const normEmail = customerEmail.trim().toLowerCase();
-
-    let existingDuplicate: any = null;
-    if (normPhone.length === 10 && normEmail) {
-      existingDuplicate = await this.prisma.lead.findFirst({
-        where: {
-          tenantId,
-          customerPhone: { endsWith: normPhone },
-          customerEmail: { equals: normEmail, mode: 'insensitive' },
-          deletedAt: null,
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-    }
-
+    // 7. Duplicate Check: Match across phone formats and optional email
+    const existingDuplicate = await this.leadsService.findDuplicateLead(tenantId, customerPhone, customerEmail);
     const isDuplicate = Boolean(existingDuplicate);
 
     // 8. Create lead in database strictly under tenantId (Merge NOTHING silently!)
@@ -1165,7 +1128,7 @@ export class WebhooksService {
         customerName: customerName || existingDuplicate?.customerName || 'Website Visitor',
         customerPhone: customerPhone || existingDuplicate?.customerPhone || '',
         customerEmail: customerEmail || existingDuplicate?.customerEmail || undefined,
-        companyName: companyName || existingDuplicate?.companyName || undefined,
+        companyName: companyName || (existingDuplicate as any)?.company?.name || undefined,
         city: city || existingDuplicate?.city || undefined,
         productName: productName || undefined,
         productCategory: productName || (isDuplicate ? 'Website Inquiry (Repeat)' : 'Website Inquiry'),

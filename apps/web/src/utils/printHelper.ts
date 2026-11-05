@@ -104,21 +104,9 @@ export async function downloadDocumentPdf(
 
     if (!blob) return false;
 
-    // Detect mobile browsers: mobile Safari/Chrome can navigate directly to blob or open in tab
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent || ''
-    );
-
     const blobUrl = window.URL.createObjectURL(blob);
 
-    if (isMobile) {
-      // On mobile, opening a dedicated tab with the PDF blob provides the cleanest native viewer
-      window.open(blobUrl, '_blank');
-      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 120000);
-      return true;
-    }
-
-    // Standard desktop download anchor
+    // Universal anchor download (avoids window.open after await which gets blocked by popup blockers)
     const link = document.createElement('a');
     link.href = blobUrl;
     link.download = targetName || 'document.pdf';

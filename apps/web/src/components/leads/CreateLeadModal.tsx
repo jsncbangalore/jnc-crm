@@ -32,6 +32,7 @@ export interface CreateLeadModalProps {
   onClose: () => void;
   onSuccess?: (createdLead: any, action: 'close' | 'add_another') => void;
   triggerRef?: React.RefObject<HTMLElement | null>;
+  leadToEdit?: any;
 }
 
 const SKU_CATEGORIES = [
@@ -93,6 +94,7 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
   onClose,
   onSuccess,
   triggerRef,
+  leadToEdit,
 }) => {
   const navigate = useNavigate();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
@@ -103,6 +105,8 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
     message: string;
     existingLeadId?: string;
   } | null>(null);
+
+  const initialPhone = leadToEdit?.customerPhone || '';
 
   // Check if form is dirty
   const isDirty = Boolean(
@@ -117,12 +121,34 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setForm(INITIAL_FORM);
+      if (leadToEdit) {
+        setForm({
+          customerName: leadToEdit.customerName || '',
+          customerPhone: leadToEdit.customerPhone || '',
+          customerEmail: leadToEdit.customerEmail || '',
+          companyName: leadToEdit.companyName || leadToEdit.company?.name || '',
+          state: leadToEdit.state || 'Karnataka',
+          city: leadToEdit.city || 'Bengaluru',
+          productCategory: leadToEdit.productCategory || 'CCTV Surveillance',
+          customCategory: '',
+          productName: leadToEdit.productName || '',
+          selectedSkuCode: '',
+          quantity: leadToEdit.quantity || 1,
+          unit: leadToEdit.unit || 'NOS',
+          unitPrice: 0,
+          estimatedValue: leadToEdit.estimatedValue || 0,
+          isAutoValue: false,
+          urgency: leadToEdit.urgency || 'standard',
+          queryMessage: leadToEdit.queryMessage || leadToEdit.notes || '',
+        });
+      } else {
+        setForm(INITIAL_FORM);
+      }
       setErrors({});
       setTouched({});
       setDuplicateWarning(null);
     }
-  }, [isOpen]);
+  }, [isOpen, leadToEdit]);
 
   // Recalculate auto deal value when quantity or unit price changes
   const handleQuantityChange = (qty: number) => {
@@ -170,9 +196,15 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
       nextErrors.customerName = 'Contact name is required (at least 2 letters).';
     }
 
-    const cleanPhone = form.customerPhone.replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 10) {
-      nextErrors.customerPhone = 'Enter a 10-digit mobile number.';
+    // Phone validation only runs when the phone value was changed from initial value
+    const isPhoneChanged = form.customerPhone.trim() !== (initialPhone || '').trim();
+    if (isPhoneChanged) {
+      const cleanPhone = form.customerPhone.replace(/\D/g, '');
+      if (!cleanPhone || cleanPhone.length < 10) {
+        nextErrors.customerPhone = 'Enter a 10-digit mobile number.';
+      } else if (cleanPhone.length === 10 && !/^[6-9]/.test(cleanPhone)) {
+        nextErrors.customerPhone = 'Mobile number must start with 6, 7, 8, or 9.';
+      }
     }
 
     if (form.customerEmail.trim()) {
@@ -207,37 +239,57 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
           ? (form.customCategory.trim() || 'Other')
           : form.productCategory;
 
-      const payload: any = {
-        customerName: sanitizeText(form.customerName),
-        customerPhone: form.customerPhone.trim(),
-        customerEmail: form.customerEmail.trim() || undefined,
-        companyName: sanitizeText(form.companyName) || undefined,
-        state: form.state || undefined,
-        city: sanitizeText(form.city) || undefined,
-        productCategory: sanitizeText(finalCategory) || undefined,
-        productName: sanitizeText(form.productName) || undefined,
-        quantity: form.quantity > 0 ? form.quantity : 1,
-        unit: form.unit || 'NOS',
-        estimatedValue: form.estimatedValue > 0 ? form.estimatedValue : undefined,
-        urgency: form.urgency,
-        queryMessage: sanitizeText(form.queryMessage) || undefined,
-        source: 'manual',
-        forceSave,
-        allowDuplicate: forceSave,
-      };
+      let savedLead: any;
+      if (leadToEdit?.id) {
+        const updatePayload: any = {
+          customerName: sanitizeText(form.customerName),
+          customerPhone: form.customerPhone.trim(),
+          customerEmail: form.customerEmail.trim() || undefined,
+          companyName: sanitizeText(form.companyName) || undefined,
+          state: form.state || undefined,
+          city: sanitizeText(form.city) || undefined,
+          productCategory: sanitizeText(finalCategory) || undefined,
+          productName: sanitizeText(form.productName) || undefined,
+          quantity: form.quantity > 0 ? form.quantity : 1,
+          unit: form.unit || 'NOS',
+          estimatedValue: form.estimatedValue > 0 ? form.estimatedValue : undefined,
+          urgency: form.urgency,
+          queryMessage: sanitizeText(form.queryMessage) || undefined,
+        };
+        const res = await leadsApi.update(leadToEdit.id, updatePayload);
+        savedLead = res.data;
+      } else {
+        const payload: any = {
+          customerName: sanitizeText(form.customerName),
+          customerPhone: form.customerPhone.trim(),
+          customerEmail: form.customerEmail.trim() || undefined,
+          companyName: sanitizeText(form.companyName) || undefined,
+          state: form.state || undefined,
+          city: sanitizeText(form.city) || undefined,
+          productCategory: sanitizeText(finalCategory) || undefined,
+          productName: sanitizeText(form.productName) || undefined,
+          quantity: form.quantity > 0 ? form.quantity : 1,
+          unit: form.unit || 'NOS',
+          estimatedValue: form.estimatedValue > 0 ? form.estimatedValue : undefined,
+          urgency: form.urgency,
+          queryMessage: sanitizeText(form.queryMessage) || undefined,
+          source: 'manual',
+          forceSave,
+          allowDuplicate: forceSave,
+        };
+        const res = await leadsApi.create(payload);
+        savedLead = res.data;
+      }
 
-      const res = await leadsApi.create(payload);
-      const createdLead = res.data;
-
-      if (action === 'add_another') {
+      if (action === 'add_another' && !leadToEdit) {
         setForm(INITIAL_FORM);
         setErrors({});
         setTouched({});
         setDuplicateWarning(null);
-        if (onSuccess) onSuccess(createdLead, 'add_another');
+        if (onSuccess) onSuccess(savedLead, 'add_another');
       } else {
         onClose();
-        if (onSuccess) onSuccess(createdLead, 'close');
+        if (onSuccess) onSuccess(savedLead, 'close');
       }
     } catch (err: any) {
       const data = err?.response?.data;
@@ -276,9 +328,9 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
     <AccessibleModal
       isOpen={isOpen}
       onClose={onClose}
-      title="Create New Lead"
-      subtitle="Manually register an inquiry or sales prospect with catalog items"
-      icon={<UserPlus size={20} />}
+      title={leadToEdit ? "Edit Lead" : "Create New Lead"}
+      subtitle={leadToEdit ? "Update lead inquiry details" : "Manually register an inquiry or sales prospect with catalog items"}
+      icon={leadToEdit ? <Edit3 size={20} /> : <UserPlus size={20} />}
       isDirty={isDirty}
       triggerRef={triggerRef}
       maxWidth="max-w-2xl"
@@ -343,6 +395,7 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
             label="Mobile Number"
             required
             value={form.customerPhone}
+            initialValue={initialPhone}
             onChange={(e164) => setForm((prev) => ({ ...prev, customerPhone: e164 }))}
             error={touched.customerPhone ? errors.customerPhone : null}
             placeholder="10-digit mobile number"
@@ -541,14 +594,16 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
           </button>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={(e) => handleSubmit(e, 'add_another')}
-              className="w-full sm:w-auto btn-outline text-xs px-3 py-2 font-semibold disabled:opacity-50"
-            >
-              Save & Add Another
-            </button>
+            {!leadToEdit && (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={(e) => handleSubmit(e, 'add_another')}
+                className="w-full sm:w-auto btn-outline text-xs px-3 py-2 font-semibold disabled:opacity-50"
+              >
+                Save & Add Another
+              </button>
+            )}
 
             <button
               type="submit"
@@ -560,10 +615,15 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
                   <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   <span>Saving...</span>
                 </>
-              ) : (
+              ) : leadToEdit ? (
                 <>
                   <Check size={14} />
-                  <span>Save Lead</span>
+                  <span>Save Changes</span>
+                </>
+              ) : (
+                <>
+                  <Plus size={14} />
+                  <span>Create Lead</span>
                 </>
               )}
             </button>

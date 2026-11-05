@@ -62,8 +62,8 @@
     Header always unset X-Robots-Tag
   </If>
   # Security Headers (Clickjacking, MIME sniffing, HSTS, CSP, Permissions, Noindex)
-  # frame-src 'self' blob: is explicitly configured to permit sandboxed PDF blob preview frames and print sandboxes without relaxing default-src
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' {{API_ORIGIN}}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+  # Strict frame-src 'self' and object-src 'none'. Direct printing uses DOM HTML iframe rather than blob:
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; frame-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' {{API_ORIGIN}}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
 
   # Dedicated framing policy for public inquiry and embeddable form paths
   <If "%{REQUEST_URI} =~ m#^/(inquiry|quote-request|api/v1/webhooks/website)#">

@@ -27,8 +27,9 @@ export const sanitizeText = (val: string): string => {
 };
 
 // 2. Person & Company Name Rules
-// Required, trim, 2-100 chars, letters of any language, digits, space, and . , & - ' ( ) / only, at least one letter
-export const NAME_REGEX = /^[\p{L}\p{M}\p{N}\s.,&\-'()\/]+$/u;
+// Required, trim, 2-100 chars, letters of any language, digits, space, and . , & - ' ( ) / # only, at least one letter
+export const NAME_REGEX = /^[\p{L}\p{M}\p{N}\s.,&\-'()\/#]+$/u;
+export const COMPANY_NAME_REGEX = /^[\p{L}\p{M}\p{N}\s.,&\-'()\/#]+$/u;
 export const HAS_LETTER_REGEX = /[\p{L}\p{M}]/u;
 export const TEXT_ONLY_NAME_REGEX = /^[\p{L}\p{M}\s.,&\-'()\/]+$/u;
 
@@ -59,12 +60,14 @@ export const validatePersonOrCompanyName = (raw: string): { valid: boolean; erro
   if (!NAME_REGEX.test(value)) {
     return {
       valid: false,
-      error: 'Name may only contain letters, digits, spaces, and . , & - \' ( ) /',
+      error: 'Name may only contain letters, digits, spaces, and . , & - \' ( ) / #',
       value,
     };
   }
   return { valid: true, value };
 };
+
+export const validateCompanyName = validatePersonOrCompanyName;
 
 export const validateTextOnlyName = (raw: string): { valid: boolean; error?: string; value: string } => {
   const base = validatePersonOrCompanyName(raw);
@@ -200,7 +203,7 @@ export const normalizeToE164 = (phone?: string, defaultCountry = '+91'): string 
     const digitsOnly = cleaned.slice(1).replace(/\D/g, '');
     if (cleaned.startsWith('+91')) {
       const national = cleaned.slice(3).replace(/\D/g, '');
-      return `+91${national.slice(-10)}`;
+      return `+91${national.replace(/^0+/, '')}`;
     }
     return `+${digitsOnly}`;
   }
@@ -215,6 +218,10 @@ export const normalizeToE164 = (phone?: string, defaultCountry = '+91'): string 
   if (digits.length === 10) {
     return `${defaultCountry}${digits}`;
   }
+  if (digits.length >= 6 && digits.length <= 12) {
+    const trimmed = digits.replace(/^0+/, '');
+    return `${defaultCountry}${trimmed}`;
+  }
   if (digits.length > 10 && (defaultCountry === '+91' || defaultCountry === '91')) {
     return `${defaultCountry.startsWith('+') ? defaultCountry : `+${defaultCountry}`}${digits.slice(-10)}`;
   }
@@ -228,10 +235,12 @@ export const comparePhoneNumbers = (a?: string, b?: string): boolean => {
   const e164B = normalizeToE164(b);
   if (e164A && e164B && e164A === e164B) return true;
 
-  // Compare trailing 10 digits for Indian numbers
-  const digA = a.replace(/\D/g, '').slice(-10);
-  const digB = b.replace(/\D/g, '').slice(-10);
-  return digA.length === 10 && digA === digB;
+  // Compare trailing digits for Indian numbers or landline exact match
+  const digA = a.replace(/\D/g, '').replace(/^0+/, '');
+  const digB = b.replace(/\D/g, '').replace(/^0+/, '');
+  if (digA && digB && digA === digB) return true;
+  if (digA.length >= 10 && digB.length >= 10 && digA.slice(-10) === digB.slice(-10)) return true;
+  return false;
 };
 
 export const validatePhone = (
@@ -245,12 +254,13 @@ export const validatePhone = (
 
   const indianNormalized = normalizePhoneNumber(cleaned);
 
-  // If explicitly requested landline
+  // If explicitly requested landline / other (6 to 12 digits, optional STD code)
   if (type === 'landline') {
-    if (/^[1-8]\d{7,9}$/.test(indianNormalized) && (indianNormalized.length === 10 || indianNormalized.length === 8)) {
-      return { valid: true, value: indianNormalized, isLandline: true };
+    const digitsOnly = cleaned.replace(/\D/g, '');
+    if (digitsOnly.length >= 6 && digitsOnly.length <= 12) {
+      return { valid: true, value: digitsOnly, isLandline: true };
     }
-    return { valid: false, error: 'Enter a valid landline number (STD code + number).', value: indianNormalized };
+    return { valid: false, error: 'Enter a valid landline or phone number (6 to 12 digits, optional STD code).', value: digitsOnly };
   }
 
   // If explicitly requested mobile
@@ -267,11 +277,10 @@ export const validatePhone = (
     return { valid: true, value: indianNormalized, isLandline: false };
   }
 
-  // If Indian landline number (starts with 0, or 8 digits, or 10 digits starting with 1-8)
-  if (cleaned.startsWith('0') || isIndianLandline(cleaned)) {
-    if (/^[1-8]\d{7,9}$/.test(indianNormalized) && (indianNormalized.length === 10 || indianNormalized.length === 8)) {
-      return { valid: true, value: indianNormalized, isLandline: true };
-    }
+  // If Indian landline / other phone number (6 to 12 digits)
+  const digitsOnly = cleaned.replace(/\D/g, '');
+  if (digitsOnly.length >= 6 && digitsOnly.length <= 12) {
+    return { valid: true, value: digitsOnly, isLandline: true };
   }
 
   // Check if international format with leading + (non-Indian)
@@ -286,10 +295,6 @@ export const validatePhone = (
     return { valid: true, value: cleaned };
   }
 
-  if (/^[6-9]\d{9}$/.test(indianNormalized)) {
-    return { valid: true, value: indianNormalized, isLandline: false };
-  }
-
   return {
     valid: false,
     error: 'Enter a 10-digit mobile number or landline with STD code.',
@@ -299,7 +304,8 @@ export const validatePhone = (
 
 export const checkPhonePaste = (
   val: string,
-  countryCode = '+91'
+  countryCode = '+91',
+  phoneType: 'mobile' | 'landline' = 'mobile'
 ): { valid: boolean; digits: string; error?: string } => {
   if (!val) return { valid: true, digits: '' };
   let cleaned = val.replace(/[\s\-\(\)\.]/g, '').trim();
@@ -312,11 +318,14 @@ export const checkPhonePaste = (
   }
   const digits = cleaned.replace(/\D/g, '');
   if (countryCode === '+91' || countryCode === '91') {
-    if (digits.length > 10) {
+    const maxDigits = phoneType === 'landline' ? 12 : 10;
+    if (digits.length > maxDigits) {
       return {
         valid: false,
         digits,
-        error: 'Pasted number has too many digits. Please enter a 10-digit number.',
+        error: phoneType === 'landline'
+          ? 'Pasted number has too many digits. Landline / other allows 6 to 12 digits.'
+          : 'Pasted number has too many digits. Please enter a 10-digit number.',
       };
     }
   } else if (digits.length > 15) {
@@ -366,18 +375,18 @@ export const validatePhoneField = (
 
   if (countryCode === '+91' || countryCode === '91') {
     if (phoneType === 'landline') {
-      if (cleanDigits.length < 8 || cleanDigits.length > 10 || !/^[1-5]/.test(cleanDigits)) {
+      if (cleanDigits.length < 6 || cleanDigits.length > 12) {
         return {
           valid: false,
-          error: 'Enter a valid landline number (STD code + number).',
+          error: 'Enter a valid landline or phone number (6 to 12 digits, optional STD code).',
           value: cleanDigits,
-          e164: `+91${cleanDigits}`,
+          e164: `+91${cleanDigits.replace(/^0+/, '')}`,
         };
       }
       return {
         valid: true,
         value: cleanDigits,
-        e164: `+91${cleanDigits}`,
+        e164: `+91${cleanDigits.replace(/^0+/, '')}`,
       };
     }
 

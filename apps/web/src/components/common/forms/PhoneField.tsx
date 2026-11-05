@@ -15,6 +15,7 @@ export interface PhoneFieldProps {
   name?: string;
   label?: string;
   value?: string;
+  initialValue?: string;
   phoneType?: 'mobile' | 'landline';
   allowTypeSwitch?: boolean;
   onChange?: (e164: string, national?: string, type?: 'mobile' | 'landline') => void;
@@ -48,6 +49,7 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
   name,
   label = 'Mobile Number',
   value = '',
+  initialValue,
   phoneType: initialPhoneType = 'mobile',
   allowTypeSwitch = true,
   onChange,
@@ -83,12 +85,12 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
         return { countryCode: match[1], national: match[2] };
       }
     }
-    // Default assumption for 10 digits or digits without +
+    // Default assumption for digits without +
     const digits = trimmed.replace(/\D/g, '');
-    if (digits.length === 12 && digits.startsWith('91')) {
+    if (digits.length >= 12 && digits.startsWith('91')) {
       return { countryCode: '+91', national: digits.slice(2) };
     }
-    return { countryCode: '+91', national: digits.slice(-10) };
+    return { countryCode: '+91', national: digits };
   };
 
   const initialParsed = parseInitial(value);
@@ -114,16 +116,29 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
 
   const displayError = toPlainText(externalError || internalError);
 
+  const isValueUnchanged = (digits: string, country: string): boolean => {
+    if (!initialValue) return false;
+    const initClean = initialValue.replace(/\D/g, '');
+    const currentClean = `${country}${digits}`.replace(/\D/g, '');
+    if (initClean && currentClean && initClean === currentClean) return true;
+    if (value && value.trim() === initialValue.trim()) return true;
+    return false;
+  };
+
   const validateNumber = (digits: string, country: string, type: 'mobile' | 'landline' = currentPhoneType): string | null => {
+    if (isValueUnchanged(digits, country)) {
+      return null;
+    }
+
     if (!digits) {
-      if (required) return type === 'landline' ? 'Enter a valid landline number (STD code + number).' : 'Enter a 10-digit mobile number.';
+      if (required) return type === 'landline' ? 'Enter a valid landline / other phone number (6 to 12 digits).' : 'Enter a 10-digit mobile number.';
       return null;
     }
 
     if (country === '+91') {
       if (type === 'landline') {
-        if (digits.length < 8 || digits.length > 11 || !/^[0-5]/.test(digits)) {
-          return 'Enter a valid landline number (STD code + number).';
+        if (digits.length < 6 || digits.length > 12) {
+          return 'Enter a valid landline / other phone number (6 to 12 digits, optional STD code).';
         }
         return null;
       }
@@ -172,8 +187,8 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
     const raw = e.target.value;
     let digits = raw.replace(/\D/g, '');
 
-    // For +91 mobile, block more than 10 digits; for landline allow up to 11 (STD + 6-8 digits)
-    const maxDigits = selectedCountry === '+91' ? (currentPhoneType === 'landline' ? 11 : 10) : 15;
+    // For +91 mobile, block more than 10 digits; for landline allow up to 12 (STD + local digits)
+    const maxDigits = selectedCountry === '+91' ? (currentPhoneType === 'landline' ? 12 : 10) : 15;
     if (digits.length > maxDigits) {
       digits = digits.slice(0, maxDigits);
     }
@@ -181,6 +196,11 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
     setNationalNumber(digits);
     const e164 = digits ? formatToE164(digits, selectedCountry) : '';
     onChange?.(e164, digits, currentPhoneType);
+
+    if (isValueUnchanged(digits, selectedCountry)) {
+      setInternalError(null);
+      return;
+    }
 
     // Live validation feedback
     if (selectedCountry === '+91') {
@@ -193,7 +213,7 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
           setInternalError(null);
         }
       } else {
-        if (digits.length >= 8 && digits.length <= 11) {
+        if (digits.length >= 6 && digits.length <= 12) {
           setInternalError(null);
         }
       }
@@ -218,9 +238,9 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
     }
 
     // Do NOT silently truncate too-long pasted numbers; show message
-    const check = checkPhonePaste(pasted, targetCountry);
+    const check = checkPhonePaste(pasted, targetCountry, currentPhoneType);
     if (!check.valid) {
-      setInternalError(check.error || 'Pasted number has too many digits. Please enter a 10-digit number.');
+      setInternalError(check.error || 'Pasted number has too many digits. Please enter a valid number.');
       return;
     }
 
@@ -235,6 +255,11 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
   };
 
   const handleBlurEvent = () => {
+    if (isValueUnchanged(nationalNumber, selectedCountry)) {
+      setInternalError(null);
+      onBlur?.(value || (nationalNumber ? formatToE164(nationalNumber, selectedCountry) : ''));
+      return;
+    }
     const err = validateNumber(nationalNumber, selectedCountry, currentPhoneType);
     setInternalError(err);
     const e164 = nationalNumber ? formatToE164(nationalNumber, selectedCountry) : '';
@@ -280,7 +305,7 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
                   : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
               }`}
             >
-              Landline
+              Landline / other
             </button>
           </div>
         )}
@@ -320,11 +345,11 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
               placeholder ||
               (selectedCountry === '+91'
                 ? currentPhoneType === 'landline'
-                  ? 'STD code + number (e.g. 0802345678)'
+                  ? 'STD code + number (6 to 12 digits, e.g. 0802345678)'
                   : '10-digit mobile number'
                 : 'Phone digits')
             }
-            maxLength={selectedCountry === '+91' ? (currentPhoneType === 'landline' ? 11 : 10) : 15}
+            maxLength={selectedCountry === '+91' ? (currentPhoneType === 'landline' ? 12 : 10) : 15}
             autoComplete="tel-national"
             data-lpignore="true"
             data-testid={dataTestId}

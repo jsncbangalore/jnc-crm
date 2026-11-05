@@ -20,6 +20,7 @@ import { fetchPrivateFileBlobUrl } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBranding } from '../../contexts/BrandingContext';
 import { openDedicatedPrintTab } from '../../utils/printHelper';
+import { executeDirectPrint } from '../../utils/directPrint';
 
 interface DigitalSoftCopyModalProps {
   isOpen: boolean;
@@ -169,12 +170,16 @@ export const DigitalSoftCopyModal: React.FC<DigitalSoftCopyModalProps> = ({
 
   if (!isOpen || !bill) return null;
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!bill) return;
-    const opened = openDedicatedPrintTab('purchase_bill', bill.id, { paperSize: 'A4' });
-    if (!opened) {
-      window.print();
+    if (printRef.current) {
+      await executeDirectPrint(printRef.current.innerHTML, {
+        title: `Purchase_Bill_${bill.invoiceNumber || bill.id}`,
+        paperSize: 'A4',
+      });
+      return;
     }
+    openDedicatedPrintTab('purchase_bill', bill.id, { paperSize: 'A4' });
   };
 
   return (

@@ -13,7 +13,7 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { LeadsService } from './leads.service';
-import { CreateLeadDto, UpdateLeadStatusDto, CreateLeadActivityDto, ShareLeadDto, ImportLeadsDto } from './dto/create-lead.dto';
+import { CreateLeadDto, UpdateLeadDto, UpdateLeadStatusDto, CreateLeadActivityDto, ShareLeadDto, ImportLeadsDto } from './dto/create-lead.dto';
 import { validateUploadedFile } from '../common/file-validator';
 import { sanitizeRowForImport } from '../common/csv-sanitize.util';
 import { parseExcelSafely } from '../common/safe-excel-parser';
@@ -69,6 +69,16 @@ export class LeadsController {
   @Get(':id')
   async getLead(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.leadsService.findOne(id, user);
+  }
+
+  @Patch(':id')
+  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
+  async updateLead(
+    @Param('id') id: string,
+    @Body() dto: UpdateLeadDto,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.leadsService.updateLead(id, dto, user);
   }
 
   @Patch(':id/status')

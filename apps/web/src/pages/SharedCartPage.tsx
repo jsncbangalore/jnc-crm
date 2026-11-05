@@ -32,6 +32,7 @@ import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { decodeCartFromUrl, SharedCartItem } from '../utils/cartShare';
 import { BRAND_CONFIG } from '../config/brand';
+import { executeDirectPrint } from '../utils/directPrint';
 
 export default function SharedCartPage() {
   const [searchParams] = useSearchParams();
@@ -121,6 +122,71 @@ export default function SharedCartPage() {
     [items]
   );
   const grandTotalAmount = subtotalAmount + totalGstAmount;
+
+  // Direct print cart document
+  const handlePrintCart = async () => {
+    const contentHtml = `
+      <div class="print-sheet" style="padding: 16px;">
+        <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
+          <div>
+            <h1 style="font-size: 16px; font-weight: 900; margin: 0;">${BRAND_CONFIG.displayName}</h1>
+            <p style="font-size: 11px; margin-top: 2px;">${metaTitle}</p>
+          </div>
+          <div style="text-align: right; font-size: 11px;">
+            <div><strong>Date:</strong> ${metaDate}</div>
+            <div><strong>Total Items:</strong> ${items.length}</div>
+          </div>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+          <thead>
+            <tr style="background: #f1f5f9;">
+              <th style="border: 1px solid #000; padding: 4px; text-align: center; width: 30px;">#</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: left;">Part Number / SKU</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: left;">Item Name</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: left;">Supplier</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: right;">Unit Price (₹)</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: right;">Qty</th>
+              <th style="border: 1px solid #000; padding: 4px; text-align: right;">Total (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map((item, idx) => `
+              <tr>
+                <td style="border: 1px solid #000; padding: 4px; text-align: center;">${idx + 1}</td>
+                <td style="border: 1px solid #000; padding: 4px; font-family: monospace; font-weight: bold;">${item.skuCode || '—'}</td>
+                <td style="border: 1px solid #000; padding: 4px;">${item.name || 'Component'}</td>
+                <td style="border: 1px solid #000; padding: 4px;">${item.supplier || '—'}</td>
+                <td style="border: 1px solid #000; padding: 4px; text-align: right;">${Number(item.unitPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                <td style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">${item.quantityToBuy}</td>
+                <td style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">${(Number(item.unitPrice || 0) * Number(item.quantityToBuy || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div style="width: 260px; margin-left: auto; margin-top: 14px; font-size: 11px;">
+          <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+            <span>Subtotal:</span>
+            <span>₹${subtotalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+            <span>Est. GST:</span>
+            <span>₹${totalGstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 4px 0; font-weight: 900; border-top: 2px solid #000;">
+            <span>Grand Total:</span>
+            <span>₹${grandTotalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    await executeDirectPrint(contentHtml, {
+      title: `Procurement_Cart_${metaDate}`,
+      paperSize: 'A4',
+    });
+  };
 
   // Copy current URL
   const handleCopyLink = () => {
@@ -260,7 +326,7 @@ export default function SharedCartPage() {
             </button>
 
             <button
-              onClick={() => window.print()}
+              onClick={handlePrintCart}
               className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1C2234] text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#252D44] flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
             >
               <Printer size={14} />

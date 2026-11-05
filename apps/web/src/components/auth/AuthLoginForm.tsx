@@ -123,16 +123,35 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
     }
   };
 
-  // Check for expired session redirect message
+  // Check for expired session redirect message - only when a session existed in this browser
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       const expiredParam = params.get('expired');
       const storedExpired = sessionStorage.getItem('crm_session_expired');
-      if (expiredParam || storedExpired) {
+
+      const hadSession = Boolean(
+        storedExpired ||
+        localStorage.getItem('crm_user') ||
+        sessionStorage.getItem('crm_user') ||
+        localStorage.getItem('crm_platform_user') ||
+        sessionStorage.getItem('crm_platform_user') ||
+        sessionStorage.getItem('crm_tab_user_id') ||
+        localStorage.getItem('crm_refresh_token_fb') ||
+        sessionStorage.getItem('crm_refresh_token_fb') ||
+        (typeof document !== 'undefined' && (document.cookie.includes('crm_session_active') || document.cookie.includes('crm_platform_session_active')))
+      );
+
+      if (hadSession && (expiredParam || storedExpired)) {
         setError(storedExpired || 'Your session expired, please sign in');
-        sessionStorage.removeItem('crm_session_expired');
+      } else if (expiredParam && !hadSession) {
+        // First visit or direct link without prior session: clean URL and show plain login page
+        params.delete('expired');
+        const cleanQuery = params.toString();
+        const cleanUrl = window.location.pathname + (cleanQuery ? `?${cleanQuery}` : '');
+        window.history.replaceState({}, '', cleanUrl);
       }
+      sessionStorage.removeItem('crm_session_expired');
     } catch {}
   }, []);
 

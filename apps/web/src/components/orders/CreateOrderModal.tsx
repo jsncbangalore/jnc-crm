@@ -17,7 +17,6 @@ import {
   filterTextOnlyInput,
 } from '../common/FormField';
 import {
-  NameField,
   PhoneField,
   ProductField,
   QuantityField,
@@ -25,7 +24,6 @@ import {
 } from '../common/forms';
 import {
   validatePersonOrCompanyName,
-  validateTextOnlyName,
   validatePhone,
   validateEmail,
   validateProductName,
@@ -165,7 +163,7 @@ export default function CreateOrderModal({
   const validateAll = (): boolean => {
     const nextErrors: Record<string, string> = {};
 
-    const nameRes = validateTextOnlyName(customerName);
+    const nameRes = validatePersonOrCompanyName(customerName);
     if (!nameRes.valid) nextErrors.customerName = nameRes.error || 'Invalid name';
 
     const phoneRes = validatePhone(customerPhone);
@@ -311,26 +309,27 @@ export default function CreateOrderModal({
 
         {/* Customer Info */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <NameField
+          <FormField
             id="orderCustomerName"
             label="Customer / Company Name"
             required
             value={customerName}
-            onChange={(val) => {
-              setCustomerName(val);
+            onChange={(e) => {
+              setCustomerName(e.target.value);
               if (touched.customerName) {
-                const res = validateTextOnlyName(val);
+                const res = validatePersonOrCompanyName(e.target.value);
                 setErrors((prev) => ({ ...prev, customerName: res.valid ? '' : res.error || '' }));
               }
             }}
             onBlur={() => {
               setTouched((prev) => ({ ...prev, customerName: true }));
-              const res = validateTextOnlyName(customerName.trim());
+              const res = validatePersonOrCompanyName(customerName.trim());
               setErrors((prev) => ({ ...prev, customerName: res.valid ? '' : res.error || '' }));
             }}
             error={touched.customerName ? errors.customerName : null}
-            placeholder="e.g. Apex Industrial Pvt Ltd"
-            maxLength={60}
+            placeholder="e.g. 3M India, A&B Traders, or Sri Ganesh (P) Ltd."
+            maxLength={100}
+            showCount
           />
 
           <PhoneField

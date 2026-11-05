@@ -330,6 +330,42 @@ if (typeof window !== 'undefined') {
   (window as any).getAccessToken = getAccessToken;
 }
 
+let _cookieBlockedOverride: boolean | null = null;
+let _cookieBlockedDetected: boolean = false;
+
+export const setCookieBlockedOverride = (blocked: boolean | null) => {
+  _cookieBlockedOverride = blocked;
+};
+
+export const markCookieBlocked = (blocked: boolean) => {
+  _cookieBlockedDetected = blocked;
+};
+
+export const isBrowserCookieBlocked = (): boolean => {
+  if (_cookieBlockedOverride !== null) {
+    return _cookieBlockedOverride;
+  }
+  if (_cookieBlockedDetected) {
+    return true;
+  }
+  if (typeof window === 'undefined') return false;
+  if (typeof navigator !== 'undefined' && navigator.cookieEnabled === false) {
+    return true;
+  }
+  try {
+    if (typeof document !== 'undefined') {
+      const testKey = '__crm_cookie_check__';
+      document.cookie = `${testKey}=1; path=/; SameSite=Lax`;
+      const supported = document.cookie.includes(testKey);
+      document.cookie = `${testKey}=; path=/; max-age=0; SameSite=Lax`;
+      if (!supported) return true;
+    }
+  } catch {
+    return true;
+  }
+  return false;
+};
+
 export const getStoredRefreshToken = (isPlatform?: boolean): string | null => {
   if (typeof window === 'undefined') return null;
   const key = isPlatform ? PLATFORM_REFRESH_KEY : STAFF_REFRESH_KEY;
@@ -345,6 +381,13 @@ export const setStoredRefreshToken = (token: string | null, isPlatform?: boolean
   const key = isPlatform ? PLATFORM_REFRESH_KEY : STAFF_REFRESH_KEY;
   try {
     if (token) {
+      // Security: crm_refresh_token_fb must be written ONLY after the browser cookie
+      // is detected as blocked, never otherwise.
+      if (!isBrowserCookieBlocked()) {
+        localStorage.removeItem(key);
+        sessionStorage.removeItem(key);
+        return;
+      }
       localStorage.setItem(key, token);
       sessionStorage.setItem(key, token);
     } else {
@@ -509,6 +552,14 @@ api.interceptors.request.use((config) => {
 
 // Helper to terminate session and navigate to login on expired refresh
 export const handleSessionExpired = (isPlatform: boolean = false) => {
+  const hadSession = Boolean(
+    (isPlatform ? _inMemoryPlatformToken : _inMemoryStaffToken) ||
+    getStoredRefreshToken(isPlatform) ||
+    (typeof localStorage !== 'undefined' && (localStorage.getItem(isPlatform ? 'crm_platform_user' : 'crm_user') || localStorage.getItem(isPlatform ? 'platform_refresh_token_fb' : 'crm_refresh_token_fb'))) ||
+    (typeof sessionStorage !== 'undefined' && (sessionStorage.getItem(isPlatform ? 'crm_platform_user' : 'crm_user') || sessionStorage.getItem(isPlatform ? 'crm_tab_platform_user_id' : 'crm_tab_user_id'))) ||
+    (typeof document !== 'undefined' && document.cookie.includes(isPlatform ? 'crm_platform_session_active' : 'crm_session_active'))
+  );
+
   if (isPlatform) {
     setPlatformAccessToken(null);
     setStoredRefreshToken(null, true);
@@ -523,10 +574,14 @@ export const handleSessionExpired = (isPlatform: boolean = false) => {
     }
   }
   if (typeof window !== 'undefined' && !isPublicRoute(window.location.pathname)) {
-    try {
-      sessionStorage.setItem('crm_session_expired', 'Your session expired, please sign in');
-    } catch {}
-    window.location.href = '/login?expired=1';
+    if (hadSession) {
+      try {
+        sessionStorage.setItem('crm_session_expired', 'Your session expired, please sign in');
+      } catch {}
+      window.location.href = isPlatform ? '/platform/login?expired=1' : '/login?expired=1';
+    } else {
+      window.location.href = isPlatform ? '/platform/login' : '/login';
+    }
   }
 };
 
@@ -1252,6 +1307,7 @@ export const leadsApi = {
   get: (id: string) => api.get(`/leads/${id}`),
   create: (data: any) => api.post('/leads', data),
   createLead: (data: any) => api.post('/leads', data),
+  update: (id: string, data: any) => api.patch(`/leads/${id}`, data),
   updateStatus: (id: string, data: any) => api.patch(`/leads/${id}/status`, data),
   addActivity: (id: string, data: any) => api.post(`/leads/${id}/activities`, data),
   shareLead: (id: string, targetUserId: string) => api.post(`/leads/${id}/share`, { targetUserId }),

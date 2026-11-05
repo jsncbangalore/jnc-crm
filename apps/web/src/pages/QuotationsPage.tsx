@@ -312,11 +312,7 @@ export default function QuotationsPage() {
   };
 
   const handlePrintQuote = (q: any) => {
-    // 1. Synchronously open dedicated print tab (allowed by browser popup blockers)
-    const opened = openDedicatedPrintTab('quotation', q.id, { paperSize: 'A4' });
-    if (opened) return;
-
-    // 2. Fallback to in-frame direct print if tab was blocked
+    // Direct in-frame print without popups or navigation
     const sub = q.subtotal || 0;
     const tax = q.taxAmount || 0;
     const tot = q.totalAmount || 0;
