@@ -310,7 +310,7 @@ for (const entry of loadedWebZip.getEntries()) {
     }
     // Rule: "localhost" in the web bundle (the web build must not call localhost)
     // Exclude Axios third-party platform fallback (window.location.href || "http://localhost")
-    const nonLibraryText = text.replace(/window\.location\.href\s*\|\|\s*["']http:\/\/localhost["']/g, '');
+    const nonLibraryText = text.replace(/(?:[a-zA-Z_$0-9]+\s*&&\s*)?window\.location\.href\s*\|\|\s*[`"']http:\/\/localhost[`"']/g, '');
     if (nonLibraryText.includes('localhost')) {
       violations.push({ zip: 'web-dist.zip', file: name, rule: 'PROHIBITED "localhost" string found in web bundle' });
     }
