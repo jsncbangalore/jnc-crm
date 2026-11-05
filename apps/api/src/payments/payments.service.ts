@@ -123,10 +123,34 @@ export class PaymentsService {
 
     // Payment reference validation by mode
     if (dto.paymentMethod) {
-      const refToValidate = dto.transactionRef || dto.reference || (dto as any).referenceNumber;
+      const refToValidate = dto.reference || dto.transactionRef;
       const refCheck = validatePaymentReference(dto.paymentMethod, refToValidate);
       if (!refCheck.valid) {
         throw new BadRequestException(refCheck.error);
+      }
+    }
+
+    // Bank account tenant isolation check
+    let bankAccountLabel: string | null = null;
+    if (dto.bankAccountId) {
+      const bankId = dto.bankAccountId.trim();
+      if (bankId.startsWith('tenant-')) {
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { id: true, bankName: true, bankAccountNumber: true },
+        });
+        if (!tenant || `tenant-${tenant.id}` !== bankId) {
+          throw new BadRequestException('Invalid bank account selected or account belongs to another organization.');
+        }
+        bankAccountLabel = tenant.bankName ? `${tenant.bankName} ••••${(tenant.bankAccountNumber || '').slice(-4)}` : 'Company Bank';
+      } else {
+        const bank = await this.prisma.companyBankAccount.findFirst({
+          where: { id: bankId, tenantId },
+        });
+        if (!bank) {
+          throw new BadRequestException('Invalid bank account selected or account belongs to another organization.');
+        }
+        bankAccountLabel = bank.label || `${bank.bankName} ••••${bank.accountNumberLast4}`;
       }
     }
 
@@ -237,8 +261,8 @@ export class PaymentsService {
           }
         }
 
-        const effectiveNotes = dto.bankAccount?.trim()
-          ? (dto.notes?.trim() ? `${dto.notes.trim()} • Account: ${dto.bankAccount.trim()}` : `Account: ${dto.bankAccount.trim()}`)
+        const effectiveNotes = bankAccountLabel
+          ? (dto.notes?.trim() ? `${dto.notes.trim()} • Account: ${bankAccountLabel}` : `Account: ${bankAccountLabel}`)
           : (dto.notes?.trim() || null);
 
         const paymentNumber = dto.reference?.trim() || `SPAY-${Date.now()}`;
@@ -535,10 +559,11 @@ export class PaymentsService {
           amount,
           paymentType: dto.paymentType || (targetOrder && !primaryInvoice ? 'advance' : 'full_payment'),
           paymentMethod: dto.paymentMethod || 'NEFT',
-          transactionRef: dto.transactionRef?.trim() || seriesInfo.formattedNumber,
+          transactionRef: (dto.reference || dto.transactionRef)?.trim() || seriesInfo.formattedNumber,
           paymentDate: payDate,
           notes: dto.notes?.trim() || null,
-          bankAccountLabel: dto.bankAccount?.trim() || null,
+          bankAccountId: dto.bankAccountId?.trim() || null,
+          bankAccountLabel: bankAccountLabel || null,
           recordedById: user.id,
         },
       });

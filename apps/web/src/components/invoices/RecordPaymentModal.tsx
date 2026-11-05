@@ -11,6 +11,7 @@ import { invoicesApi, ordersApi } from '../../services/api';
 import FullCalendarPicker from '../common/FullCalendarPicker';
 import { parseApiError, ParsedApiError } from '../../utils/errorHelper';
 import FormErrorBanner from '../common/FormErrorBanner';
+import { validatePaymentReference, getPaymentReferenceHint } from '@crm/shared-validation';
 
 interface RecordPaymentModalProps {
   isOpen: boolean;
@@ -67,6 +68,12 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     e.preventDefault();
     if (numAmount <= 0) {
       setError('Please enter a valid payment amount greater than ₹0.');
+      return;
+    }
+
+    const refCheck = validatePaymentReference(paymentMethod, transactionRef);
+    if (!refCheck.valid) {
+      setError(refCheck.error || `Invalid reference for ${paymentMethod} payments.`);
       return;
     }
 
@@ -264,7 +271,10 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                 </label>
                 <select
                   value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  onChange={(e) => {
+                    setPaymentMethod(e.target.value);
+                    if (e.target.value === 'Cash') setTransactionRef('');
+                  }}
                   className="w-full px-3 py-2 bg-white dark:bg-[#141722] border border-slate-300 dark:border-[#2A3042] rounded-xl text-slate-900 dark:text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                 >
                   <option value="NEFT">Bank NEFT</option>
@@ -278,15 +288,32 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
 
               <div>
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  UTR / Transaction / Cheque No.
+                  UTR / Transaction / Cheque No.{' '}
+                  {['NEFT', 'RTGS', 'UPI', 'Cheque'].includes(paymentMethod) && (
+                    <span className="text-rose-500">*</span>
+                  )}
                 </label>
                 <input
                   type="text"
+                  disabled={paymentMethod === 'Cash'}
                   value={transactionRef}
                   onChange={(e) => setTransactionRef(e.target.value)}
-                  className="w-full px-3 py-2 bg-white dark:bg-[#141722] border border-slate-300 dark:border-[#2A3042] rounded-xl text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-400 dark:placeholder:text-slate-600"
-                  placeholder="e.g. UTR-BANK-REF-001"
+                  className={`w-full px-3 py-2 bg-white dark:bg-[#141722] border border-slate-300 dark:border-[#2A3042] rounded-xl text-slate-900 dark:text-white font-mono text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 ${
+                    paymentMethod === 'Cash' ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-[#1f2333]' : ''
+                  }`}
+                  placeholder={
+                    paymentMethod === 'Cash'
+                      ? 'Not applicable for Cash payments'
+                      : paymentMethod === 'UPI'
+                      ? '12-digit UTR'
+                      : paymentMethod === 'Cheque'
+                      ? '6-digit Cheque No'
+                      : '8 to 22 letters and digits'
+                  }
                 />
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                  {getPaymentReferenceHint(paymentMethod)}
+                </p>
               </div>
             </div>
 

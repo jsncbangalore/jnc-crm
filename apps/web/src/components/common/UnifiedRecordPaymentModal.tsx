@@ -26,6 +26,7 @@ import {
 } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import StyledSelect, { SelectOption } from './StyledSelect';
+import FullCalendarPicker from './FullCalendarPicker';
 import {
   validateMeaningfulNarration,
   validatePaymentReference,
@@ -189,6 +190,7 @@ export default function UnifiedRecordPaymentModal({
   const [paymentMethod, setPaymentMethod] = useState<string>('NEFT');
   const [reference, setReference] = useState<string>('');
   const [bankAccount, setBankAccount] = useState<string>(companyBankDetails || '');
+  const [bankAccountId, setBankAccountId] = useState<string>('');
   const [bankAccountsList, setBankAccountsList] = useState<SelectOption[]>([]);
   const [narration, setNarration] = useState<string>('');
   const [allowAdvance, setAllowAdvance] = useState(false);
@@ -227,6 +229,7 @@ export default function UnifiedRecordPaymentModal({
       setPaymentMethod('NEFT');
       setReference('');
       setBankAccount(companyBankDetails || '');
+      setBankAccountId('');
       setNarration('');
       setAllowAdvance(false);
       setAllocations([]);
@@ -267,14 +270,15 @@ export default function UnifiedRecordPaymentModal({
       const list = ensureArray(res?.data);
       if (list.length > 0) {
         const options: SelectOption[] = list.map((acc: any) => ({
-          value: acc.displayLabel || `${acc.bankName} ••••${acc.accountNumberLast4}`,
-          label: `${acc.bankName} ••••${acc.accountNumberLast4}`,
+          value: acc.id,
+          label: acc.displayLabel || `${acc.bankName} ••••${acc.accountNumberLast4}`,
           sublabel: `${acc.holderName || acc.label || 'Company Account'} • IFSC: ${acc.ifsc || '-'}${acc.isDefault ? ' (Default)' : ''}`,
         }));
         setBankAccountsList(options);
-        if (!bankAccount) {
+        if (!bankAccountId) {
           const def: any = list.find((a: any) => a.isDefault) || list[0];
           if (def) {
+            setBankAccountId(def.id);
             setBankAccount(def.displayLabel || `${def.bankName} ••••${def.accountNumberLast4}`);
           }
         }
@@ -588,12 +592,13 @@ export default function UnifiedRecordPaymentModal({
       const created = res.data;
       const createdLabel = created.displayLabel || `${created.bankName} ••••${created.accountNumberLast4}`;
       const newOption: SelectOption = {
-        value: createdLabel,
+        value: created.id,
         label: createdLabel,
         sublabel: `${created.label} • IFSC: ${created.ifsc || '-'}`,
       };
 
       setBankAccountsList((prev) => [newOption, ...prev]);
+      setBankAccountId(created.id);
       setBankAccount(createdLabel);
       setShowAddBankModal(false);
     } catch (err: any) {
@@ -715,12 +720,9 @@ export default function UnifiedRecordPaymentModal({
         amount: enteredAmt,
         paymentDate,
         paymentMethod,
-        referenceNumber: reference.trim() || undefined,
         reference: reference.trim() || undefined,
-        transactionRef: reference.trim() || undefined,
-        bankAccount: paymentMethod === 'Cash' ? undefined : (bankAccount || undefined),
+        bankAccountId: paymentMethod === 'Cash' ? undefined : (bankAccountId || undefined),
         notes: narration.trim() || undefined,
-        narration: narration.trim() || undefined,
         isAdvance: isAdvance || overrideAdvance || confirmAdvanceOverride,
         allowAdvance: allowAdvance || overrideAdvance || confirmAdvanceOverride,
         confirmDuplicate,
@@ -873,15 +875,14 @@ export default function UnifiedRecordPaymentModal({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1.5">
-                    Payment Date *
-                  </label>
-                  <input
-                    type="date"
+                  <FullCalendarPicker
+                    label="Payment Date"
                     required
+                    name="paymentDate"
                     value={paymentDate}
-                    onChange={(e) => setPaymentDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-white dark:bg-[#141722] border border-slate-300 dark:border-[#2A3042] rounded-xl focus:ring-2 focus:ring-indigo-500"
+                    onChange={(val) => setPaymentDate(val)}
+                    minYear={1990}
+                    maxYear={3000}
                   />
                 </div>
               </div>
@@ -946,7 +947,10 @@ export default function UnifiedRecordPaymentModal({
                 </label>
                 <StyledSelect
                   value={paymentMethod}
-                  onChange={(val) => setPaymentMethod(val)}
+                  onChange={(val) => {
+                    setPaymentMethod(val);
+                    if (val === 'Cash') setReference('');
+                  }}
                   options={methodOptions}
                 />
               </div>
@@ -966,10 +970,21 @@ export default function UnifiedRecordPaymentModal({
                   data-lpignore="true"
                   data-1p-ignore="true"
                   data-form-type="other"
-                  placeholder={paymentMethod === 'Cash' ? 'Optional for Cash' : (paymentMethod === 'UPI' ? '12-digit UTR' : (paymentMethod === 'Cheque' ? '6-digit Cheque No' : 'e.g. UTR / Bank Reference No'))}
+                  disabled={paymentMethod === 'Cash'}
+                  placeholder={
+                    paymentMethod === 'Cash'
+                      ? 'Not applicable for Cash payments'
+                      : paymentMethod === 'UPI'
+                      ? '12-digit UTR'
+                      : paymentMethod === 'Cheque'
+                      ? '6-digit Cheque No'
+                      : '8 to 22 letters and digits'
+                  }
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white dark:bg-[#141722] border border-slate-300 dark:border-[#2A3042] rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono"
+                  className={`w-full px-3 py-2 text-xs bg-white dark:bg-[#141722] border border-slate-300 dark:border-[#2A3042] rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono ${
+                    paymentMethod === 'Cash' ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-[#1f2333]' : ''
+                  }`}
                 />
                 <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
                   {getPaymentReferenceHint(paymentMethod)}
@@ -999,8 +1014,12 @@ export default function UnifiedRecordPaymentModal({
                 )}
                 {bankAccountsList.length > 0 ? (
                   <StyledSelect
-                    value={bankAccount}
-                    onChange={(val) => setBankAccount(val)}
+                    value={bankAccountId}
+                    onChange={(val) => {
+                      setBankAccountId(val);
+                      const opt = bankAccountsList.find((b) => b.value === val);
+                      if (opt) setBankAccount(opt.label);
+                    }}
                     options={bankAccountsList}
                     placeholder="Select bank account..."
                   />

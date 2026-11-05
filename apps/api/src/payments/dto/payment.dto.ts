@@ -83,6 +83,10 @@ export class RecordPaymentDto {
   @IsOptional()
   reference?: string;
 
+  @IsString({ message: 'Bank account ID requires a valid text entry.' })
+  @IsOptional()
+  bankAccountId?: string;
+
   @IsOptional()
   paymentDate?: string | Date;
 
