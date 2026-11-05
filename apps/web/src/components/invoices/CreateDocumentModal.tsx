@@ -309,6 +309,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
   const isSEZ = docType === 'sez_invoice';
   const isDC = docType === 'delivery_challan';
   const isProforma = docType === 'proforma_invoice';
+  const lutStatus = validateLutStatus(lutBondNo, lutValidity, invoiceDate);
 
   const isInterState =
     customerState?.toLowerCase() !== 'karnataka' &&

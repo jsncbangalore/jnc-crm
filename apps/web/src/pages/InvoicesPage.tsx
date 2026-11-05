@@ -4,7 +4,8 @@ import {
   Search, Plus, FileText, Printer, Mail, Ban, RefreshCw, ShieldCheck,
   Truck, FileSpreadsheet, Layers, Filter, CheckCircle2, DollarSign,
   Calendar, Eye, ArrowUpRight, Check, Download, Edit3, ChevronLeft,
-  ChevronRight, ChevronsLeft, ChevronsRight, X, BarChart2, Link as LinkIcon
+  ChevronRight, ChevronsLeft, ChevronsRight, X, BarChart2, Link as LinkIcon,
+  MoreVertical
 } from 'lucide-react';
 import { invoicesApi, api } from '../services/api';
 import { Invoice, DocumentType, SignatorySettings } from '../types';
@@ -13,10 +14,164 @@ import InvoiceModal from '../components/invoices/InvoiceModal';
 import CreateDocumentModal from '../components/invoices/CreateDocumentModal';
 import InvoiceSettingsModal from '../components/invoices/InvoiceSettingsModal';
 import CustomerAccountModal from '../components/common/CustomerAccountModal';
+import DropdownPortal from '../components/common/DropdownPortal';
 import { useAuth } from '../contexts/AuthContext';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import { canStore } from '../utils/cookieConsent';
 import { openDedicatedPrintTab } from '../utils/printHelper';
+
+interface InvoiceRowActionsProps {
+  inv: Invoice;
+  density: 'compact' | 'normal';
+  onOpenDoc: (inv: Invoice) => void;
+  onEditDoc: (inv: Invoice) => void;
+  onDownloadPdf: (inv: Invoice, e?: React.MouseEvent) => void;
+  onPrintDoc: (docType: string, id: string) => void;
+  onLinkInvoice: (inv: Invoice) => void;
+  isUnlinked: boolean;
+}
+
+function InvoiceRowActions({
+  inv,
+  density,
+  onOpenDoc,
+  onEditDoc,
+  onDownloadPdf,
+  onPrintDoc,
+  onLinkInvoice,
+  isUnlinked,
+}: InvoiceRowActionsProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  return (
+    <div className="relative inline-flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen((prev) => !prev);
+        }}
+        className={`w-7 h-7 rounded-lg inline-flex items-center justify-center transition-colors cursor-pointer ${
+          isOpen
+            ? 'bg-crm-blue text-white shadow-xs'
+            : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-white/10'
+        }`}
+        title="Document Actions"
+        aria-label={`Actions for invoice ${inv.invoiceNumber}`}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+      >
+        <MoreVertical size={16} />
+      </button>
+
+      <DropdownPortal
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        triggerRef={triggerRef}
+        preferredPlacement="bottom-end"
+        className="w-52 py-1.5 bg-white dark:bg-[#1E2230] border border-slate-200 dark:border-[#2A3042] rounded-xl shadow-xl text-xs z-50 text-left"
+      >
+        <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-[#2A3042] flex items-center justify-between">
+          <span className="font-mono text-slate-700 dark:text-slate-300 font-bold truncate max-w-[120px]">{inv.invoiceNumber}</span>
+          <span className="text-slate-400">Actions</span>
+        </div>
+
+        {/* View Document */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen(false);
+            onOpenDoc(inv);
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors font-medium cursor-pointer"
+        >
+          <Eye size={14} className="text-slate-500 dark:text-slate-400 shrink-0" />
+          <span>View Document</span>
+        </button>
+
+        {/* Edit Document */}
+        {!inv.isVoided && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(false);
+              onEditDoc(inv);
+            }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors font-medium cursor-pointer"
+          >
+            <Edit3 size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>Edit Document</span>
+          </button>
+        )}
+
+        {/* Download Vector PDF */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen(false);
+            onDownloadPdf(inv, e);
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors font-medium cursor-pointer"
+        >
+          <Download size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span>Download PDF</span>
+        </button>
+
+        {/* Direct Print Document */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen(false);
+            onPrintDoc(inv.docType || 'tax_invoice', inv.id);
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors font-medium cursor-pointer"
+        >
+          <Printer size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+          <span>Print Document</span>
+        </button>
+
+        {/* Email to Customer */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen(false);
+            onOpenDoc(inv);
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-blue-700 dark:text-crm-blue hover:bg-blue-50 dark:hover:bg-crm-blue/10 transition-colors font-medium cursor-pointer"
+        >
+          <Mail size={14} className="text-blue-600 dark:text-crm-blue shrink-0" />
+          <span>Email to Customer</span>
+        </button>
+
+        {/* One-click Link to Customer action */}
+        {isUnlinked && (
+          <>
+            <div className="my-1 border-t border-slate-100 dark:border-[#2A3042]" />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsOpen(false);
+                onLinkInvoice(inv);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors font-bold cursor-pointer"
+            >
+              <LinkIcon size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>Link to Customer</span>
+            </button>
+          </>
+        )}
+      </DropdownPortal>
+    </div>
+  );
+}
 
 export default function InvoicesPage() {
   const { user } = useAuth();
@@ -434,17 +589,17 @@ export default function InvoicesPage() {
         >
           <table className={`crm-table w-full ${density === 'compact' ? 'text-[11px]' : 'text-xs'}`}>
             <thead>
-              <tr className="border-b border-slate-200 dark:border-[#2A3042] bg-slate-100 dark:bg-[#141722] text-slate-800 dark:text-slate-400 font-bold uppercase tracking-wider sticky top-0 z-20">
-                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>Document Type</th>
-                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>Doc Number</th>
-                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>Customer & State</th>
-                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>Buyer Order / PO</th>
-                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>Dated</th>
-                <th className={`text-right whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>Taxable (₹)</th>
-                <th className={`text-right whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>GST / Tax</th>
-                <th className={`text-right whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>Total Amount</th>
-                <th className={`text-center whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>Status</th>
-                <th className={`text-center whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>Actions</th>
+              <tr className="border-b border-slate-200 dark:border-[#2A3042] bg-slate-100 dark:bg-[#141722] text-slate-800 dark:text-slate-400 font-bold uppercase tracking-wider sticky top-0 z-20 text-[10.5px]">
+                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Document Type</th>
+                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Doc Number</th>
+                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Customer & State</th>
+                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Buyer Order / PO</th>
+                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Dated</th>
+                <th className={`text-right whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Taxable (₹)</th>
+                <th className={`text-right whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>GST / Tax</th>
+                <th className={`text-right whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Total Amount</th>
+                <th className={`text-center whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Status</th>
+                <th className={`text-center whitespace-nowrap w-12 ${density === 'compact' ? 'py-2 px-2' : 'py-3 px-2'}`}>Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-[#2A3042]/50">
@@ -491,10 +646,10 @@ export default function InvoicesPage() {
                       className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors group cursor-pointer"
                       onClick={() => handleOpenDoc(inv)}
                     >
-                      <td className={`whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>
+                      <td className={`whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
                         {getDocBadge(inv.docType, inv.isSez)}
                       </td>
-                      <td className={`font-mono font-bold text-slate-950 dark:text-white whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>
+                      <td className={`font-mono font-bold text-slate-950 dark:text-white whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
                         {inv.invoiceNumber}
                         {inv.isVoided && (
                           <span className="ml-1.5 px-1.5 py-0.2 rounded text-[9.5px] bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-crm-coral font-bold uppercase">
@@ -502,7 +657,7 @@ export default function InvoicesPage() {
                           </span>
                         )}
                       </td>
-                      <td className={density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}>
+                      <td className={`min-w-[140px] max-w-[210px] ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -512,32 +667,36 @@ export default function InvoicesPage() {
                               setAccountCustomerName(inv.customerName);
                             }
                           }}
-                          className={`font-bold text-left max-w-[180px] truncate block ${
+                          className={`font-bold text-left truncate block max-w-full ${
                             (inv as any).customerId || inv.companyId
                               ? 'text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer'
                               : 'text-slate-950 dark:text-white'
                           }`}
-                          title="Click to view Customer Account"
+                          title={inv.customerName}
                         >
                           {inv.customerName}
                         </button>
-                        {isUnlinked && (
-                          <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30 uppercase">
-                            Unlinked
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10.5px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                            {inv.customerState || 'Karnataka'}
                           </span>
-                        )}
-                        <div className="text-[10.5px] text-slate-600 dark:text-slate-400 font-medium">{inv.customerState || 'Karnataka'}</div>
+                          {isUnlinked && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30 uppercase shrink-0">
+                              Unlinked
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className={`font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>
+                      <td className={`font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
                         {inv.buyerOrderNo || inv.order?.orderNumber || '-'}
                       </td>
-                      <td className={`text-slate-700 dark:text-slate-300 whitespace-nowrap font-medium ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>
+                      <td className={`text-slate-700 dark:text-slate-300 whitespace-nowrap font-medium ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
                         {format(new Date(inv.invoiceDate), 'dd MMM yyyy')}
                       </td>
-                      <td className={`text-right font-mono text-slate-800 dark:text-slate-300 font-medium ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>
+                      <td className={`text-right font-mono text-slate-800 dark:text-slate-300 font-medium whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
                         ₹{inv.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 0 })}
                       </td>
-                      <td className={`text-right font-mono ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>
+                      <td className={`text-right font-mono whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
                         {isDC ? (
                           <span className="text-slate-400">-</span>
                         ) : isSez && gstVal === 0 ? (
@@ -546,10 +705,10 @@ export default function InvoicesPage() {
                           <span className="text-amber-700 dark:text-crm-amber font-bold">₹{gstVal.toLocaleString('en-IN', { minimumFractionDigits: 0 })}</span>
                         )}
                       </td>
-                      <td className={`text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 text-sm ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>
+                      <td className={`text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 text-sm whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
                         {isDC ? '-' : `₹${effectiveTotal.toLocaleString('en-IN', { minimumFractionDigits: 0 })}`}
                       </td>
-                      <td className={`text-center whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>
+                      <td className={`text-center whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
                         {inv.paymentStatus === 'paid' ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold uppercase whitespace-nowrap bg-emerald-50 text-emerald-700 dark:bg-green-500/15 dark:text-green-400 border border-emerald-300 dark:border-green-500/30">
                             Paid
@@ -564,65 +723,20 @@ export default function InvoicesPage() {
                           </span>
                         )}
                       </td>
-                      <td className={`text-center ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`} onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* One-click Link to Customer action */}
-                          {isUnlinked && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleLinkInvoice(inv);
-                              }}
-                              className="px-2 py-1 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-400 text-[10.5px] font-bold border border-amber-500/30 flex items-center gap-1 shadow-xs"
-                              title="One-click Link to Customer Master"
-                            >
-                              <LinkIcon size={11} /> Link
-                            </button>
-                          )}
-
-                          {/* Edit Document Button */}
-                          {!inv.isVoided && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingInvoice(inv);
-                                setShowCreateModal(true);
-                              }}
-                              className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/15 hover:bg-amber-100 dark:hover:bg-amber-500/25 text-amber-800 dark:text-crm-amber border border-amber-300 dark:border-amber-500/30 font-bold"
-                              title="Edit Document, Prices, Items & Customer Details"
-                            >
-                              <Edit3 size={13} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleDirectDownloadPdf(inv)}
-                            className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 hover:bg-emerald-100 dark:hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-transparent"
-                            title="Download Vector PDF"
-                          >
-                            <Download size={13} />
-                          </button>
-                          <button
-                            onClick={() => handleOpenDoc(inv)}
-                            className="p-1.5 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-transparent"
-                            title="View Official Document"
-                          >
-                            <Eye size={13} />
-                          </button>
-                          <button
-                            onClick={() => openDedicatedPrintTab(inv.docType || 'tax_invoice', inv.id)}
-                            className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 hover:bg-indigo-100 dark:hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-transparent"
-                            title="Direct Print Document"
-                          >
-                            <Printer size={13} />
-                          </button>
-                          <button
-                            onClick={() => handleOpenDoc(inv)}
-                            className="p-1.5 rounded-lg bg-blue-50 dark:bg-crm-blue/15 hover:bg-blue-100 dark:hover:bg-crm-blue/25 text-blue-700 dark:text-crm-blue border border-blue-200 dark:border-transparent"
-                            title="Email to Customer"
-                          >
-                            <Mail size={13} />
-                          </button>
-                        </div>
+                      <td className={`text-center whitespace-nowrap w-12 ${density === 'compact' ? 'py-2 px-2' : 'py-2.5 px-2'}`} onClick={(e) => e.stopPropagation()}>
+                        <InvoiceRowActions
+                          inv={inv}
+                          density={density}
+                          onOpenDoc={handleOpenDoc}
+                          onEditDoc={(invoice) => {
+                            setEditingInvoice(invoice);
+                            setShowCreateModal(true);
+                          }}
+                          onDownloadPdf={handleDirectDownloadPdf}
+                          onPrintDoc={openDedicatedPrintTab}
+                          onLinkInvoice={handleLinkInvoice}
+                          isUnlinked={isUnlinked}
+                        />
                       </td>
                     </tr>
                   );
