@@ -1138,9 +1138,12 @@ export default function UnifiedRecordPaymentModal({
 
             {/* 7. Internal Notes */}
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Internal Notes / Narration
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300">
+                  Internal Notes / Narration
+                </label>
+                <span className="text-[10.5px] text-slate-400 dark:text-slate-500 font-medium">Optional</span>
+              </div>
               <textarea
                 rows={2}
                 value={narration}
@@ -1148,6 +1151,9 @@ export default function UnifiedRecordPaymentModal({
                 placeholder="e.g. Received via NEFT on 28 Oct 2026"
                 className="w-full px-3 py-2 text-xs bg-white dark:bg-[#141722] border border-slate-300 dark:border-[#2A3042] rounded-xl focus:ring-2 focus:ring-indigo-500"
               />
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                Optional. Leave blank, or enter at least 5 meaningful characters if adding notes.
+              </p>
             </div>
 
           </div>
