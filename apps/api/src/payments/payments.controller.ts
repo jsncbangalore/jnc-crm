@@ -80,4 +80,32 @@ export class PaymentsController {
   ) {
     return this.paymentsService.getCustomerAccountSummary(customerId, user);
   }
+
+  @Get('payments/:id/receipt')
+  async getPaymentReceipt(
+    @Param('id') id: string,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.paymentsService.getPaymentReceipt(id, user);
+  }
+
+  @Post('payments/:id/email')
+  @HttpCode(HttpStatus.OK)
+  async sendReceiptEmail(
+    @Param('id') id: string,
+    @Body('recipientEmail') recipientEmail: string,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.paymentsService.sendReceiptEmail(id, recipientEmail, user);
+  }
+
+  @Post('payments/:id/refund')
+  @HttpCode(HttpStatus.OK)
+  async refundAdvance(
+    @Param('id') id: string,
+    @Body() dto: { amount: number; refundMode?: string; reference?: string; notes?: string },
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.paymentsService.refundAdvance(id, dto, user);
+  }
 }

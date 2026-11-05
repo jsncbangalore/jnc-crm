@@ -1703,6 +1703,7 @@ export interface LedgerParty {
   partyPhone?: string | null;
   closingBalance: number;
   balanceSide: "dr" | "cr" | "Dr" | "Cr";
+  advanceAmount?: number;
   outstandingAmount?: number;
   hasOverdue?: boolean;
   hasPostedInvoices?: boolean;
@@ -1786,6 +1787,17 @@ export interface LedgerStatementResponse {
   };
   availableFinancialYears?: string[];
   alternativeFyWithEntries?: string | null;
+  explanation?: {
+    openBillsTotal: number;
+    openBillsCount: number;
+    unallocatedAdvancesTotal: number;
+    unallocatedAdvancesCount: number;
+    deductionsTotal: number;
+    deductionsCount: number;
+    finalBalance: number;
+    balanceSide: "dr" | "cr";
+    plainText: string;
+  };
 }
 
 export const ledgerApi = {
@@ -1867,6 +1879,8 @@ export const paymentsApi = {
   getRelated: (type: string, id: string) => api.get("/documents/" + type + "/" + id + "/related"),
   getCustomerAccountSummary: (customerId: string) => api.get("/customers/" + customerId + "/account-summary"),
   checkIdempotency: (key: string) => api.get(`/payments/idempotency/${encodeURIComponent(key)}`),
+  getReceipt: (id: string) => api.get(`/payments/${id}/receipt`),
+  sendReceiptEmail: (id: string, recipientEmail: string) => api.post(`/payments/${id}/email`, { recipientEmail }),
 };
 
 export const bankAccountsApi = {

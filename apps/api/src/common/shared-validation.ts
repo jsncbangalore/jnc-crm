@@ -1098,3 +1098,42 @@ export const formatFriendlyErrorMessage = (error: any, fallback = 'An unexpected
   return 'Failed to save changes. Please try again.';
 };
 
+export type DeductionType =
+  | 'tds'
+  | 'discount_allowed'
+  | 'discount_received'
+  | 'bank_charges'
+  | 'rounding_off'
+  | 'tds_deducted'
+  | 'other';
+
+export const DEDUCTION_TYPE_OPTIONS = [
+  { value: 'tds', label: 'TDS (Tax Deducted at Source)', partyType: 'customer' },
+  { value: 'discount_allowed', label: 'Discount Allowed', partyType: 'customer' },
+  { value: 'bank_charges', label: 'Bank Charges / Fees', partyType: 'customer' },
+  { value: 'rounding_off', label: 'Rounding Off', partyType: 'both' },
+  { value: 'tds_deducted', label: 'TDS Deducted by Us', partyType: 'supplier' },
+  { value: 'discount_received', label: 'Discount Received', partyType: 'supplier' },
+  { value: 'other', label: 'Other Deduction', partyType: 'both' },
+];
+
+export function formatDeductionType(type: string): string {
+  switch (type?.toLowerCase()) {
+    case 'tds':
+      return 'TDS';
+    case 'discount_allowed':
+      return 'Discount Allowed';
+    case 'discount_received':
+      return 'Discount Received';
+    case 'bank_charges':
+      return 'Bank Charges';
+    case 'rounding_off':
+      return 'Rounding Off';
+    case 'tds_deducted':
+      return 'TDS Deducted';
+    case 'other':
+    default:
+      return 'Other Deduction';
+  }
+}
+

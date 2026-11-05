@@ -58,6 +58,7 @@ export const CANONICAL_RECEIPT_KEYS = [
   'confirmedLargePayment',
   'typedConfirmation',
   'allocations',
+  'deductions',
   'idempotencyKey',
 ];
 

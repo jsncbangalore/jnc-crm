@@ -78,6 +78,28 @@ export class InvoiceLineItemDto {
   taxRate?: number;
 }
 
+export class RecordPaymentNowDto {
+  @IsNumber()
+  @IsOptional()
+  amount?: number;
+
+  @IsString()
+  @IsOptional()
+  paymentMethod?: string;
+
+  @IsString()
+  @IsOptional()
+  reference?: string;
+
+  @IsString()
+  @IsOptional()
+  bankAccountId?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+}
+
 export class CreateDirectInvoiceDto {
   @IsString()
   @IsOptional()
@@ -228,6 +250,15 @@ export class CreateDirectInvoiceDto {
   @IsNumber()
   @IsOptional()
   shippingCharges?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RecordPaymentNowDto)
+  recordPaymentNow?: RecordPaymentNowDto;
+
+  @IsBoolean()
+  @IsOptional()
+  applyAdvance?: boolean;
 }
 
 export class UpdateInvoiceDto {

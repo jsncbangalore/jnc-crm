@@ -19,6 +19,26 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+export class PaymentDeductionDto {
+  @IsString({ message: 'Deduction type is required.' })
+  @IsIn(['tds', 'discount_allowed', 'discount_received', 'bank_charges', 'rounding_off', 'tds_deducted', 'other'], {
+    message: 'Invalid deduction type.',
+  })
+  type: string;
+
+  @IsNumber({}, { message: 'Deduction amount requires a valid number entry.' })
+  @Min(0.01, { message: 'Deduction amount must be greater than zero.' })
+  amount: number;
+
+  @IsString({ message: 'Deduction note must be a string.' })
+  @IsOptional()
+  note?: string;
+
+  @IsString({ message: 'Deduction notes must be a string.' })
+  @IsOptional()
+  notes?: string;
+}
+
 export class PaymentAllocationDto {
   @IsString({ message: 'Please provide a valid document ID.' })
   @IsOptional()
@@ -38,6 +58,11 @@ export class PaymentAllocationDto {
 }
 
 export class RecordPaymentDto {
+  @IsArray({ message: 'Deductions require a list of deduction records.' })
+  @ValidateNested({ each: true })
+  @Type(() => PaymentDeductionDto)
+  @IsOptional()
+  deductions?: PaymentDeductionDto[];
   @IsString({ message: 'Party type should be "customer" or "supplier".' })
   @IsIn(['customer', 'supplier'], { message: 'Party type should be either "customer" or "supplier".' })
   @IsOptional()

@@ -30,6 +30,7 @@ export interface LedgerPartySummary {
   isDemo?: boolean;
   source?: string;
   hasPostedInvoices?: boolean;
+  advanceAmount?: number;
   ageing: {
     current: number; // 0-30 days
     days30: number;  // 31-60 days
@@ -112,6 +113,22 @@ export interface PartyStatementResponse {
     totalCredit?: number;
     closingBalance: number;
     closingSide: 'Dr' | 'Cr';
+  };
+  explanation?: {
+    openBillsTotal: number;
+    openBillsCount: number;
+    unallocatedAdvancesTotal: number;
+    unallocatedAdvancesCount: number;
+    deductionsTotal: number;
+    deductionsCount: number;
+    finalBalance: number;
+    balanceSide: 'Dr' | 'Cr';
+    plainText: string;
+    details: {
+      openBills: Array<{ documentNumber: string; balanceDue: number; date: string }>;
+      advances: Array<{ reference: string; date: string; amount: number; unallocated: number }>;
+      deductions: Array<{ type: string; note: string; amount: number; date: string }>;
+    };
   };
 }
 
@@ -289,6 +306,7 @@ export class LedgerService {
         where: {
           tenantId,
           customerId: comp.id,
+          paymentType: { not: 'refund' },
           reversalOfId: null,
           reversals: { none: {} },
         },
@@ -572,6 +590,16 @@ export class LedgerService {
           },
         });
 
+        // Compute unallocated advances for customer
+        const custPayments = await this.prisma.paymentRecord.findMany({
+          where: { tenantId, customerId: comp.id, paymentType: { not: 'refund' }, reversalOfId: null, amount: { gt: 0 } },
+          include: { allocations: true },
+        });
+        const unallocatedAdvance = custPayments.reduce((sum, p) => {
+          const allocSum = (p.allocations || []).reduce((s: number, a: any) => s + Number(a.amount), 0);
+          return sum + Math.max(0, p.amount - allocSum);
+        }, 0);
+
         results.push({
           partyId: comp.id,
           partyType: 'customer',
@@ -586,6 +614,7 @@ export class LedgerService {
           isDemo: Boolean((comp as any).isDemo),
           source: (comp as any).source || ((comp as any).isDemo ? 'demo' : 'manual'),
           hasPostedInvoices: postedInvoicesCount > 0 || balance.amount > 0.01,
+          advanceAmount: Number(unallocatedAdvance.toFixed(2)),
           ageing,
         });
       }
@@ -703,6 +732,16 @@ export class LedgerService {
           },
         });
 
+        // Compute unallocated advances for supplier
+        const supPayments = await this.prisma.supplierPayment.findMany({
+          where: { tenantId, supplierId: sup.id, amount: { gt: 0 } },
+          include: { allocations: true },
+        });
+        const unallocatedAdvance = supPayments.reduce((sum, p) => {
+          const allocSum = (p.allocations || []).reduce((s: number, a: any) => s + Number(a.amount), 0);
+          return sum + Math.max(0, Number(p.amount) - allocSum);
+        }, 0);
+
         results.push({
           partyId: sup.id,
           partyType: 'supplier',
@@ -717,6 +756,7 @@ export class LedgerService {
           isDemo: Boolean((sup as any).isDemo),
           source: (sup as any).source || ((sup as any).isDemo ? 'demo' : 'manual'),
           hasPostedInvoices: postedBillsCount > 0 || balance.amount > 0.01,
+          advanceAmount: Number(unallocatedAdvance.toFixed(2)),
           ageing,
         });
       }
@@ -1363,6 +1403,122 @@ export class LedgerService {
     const lock = await this.prisma.ledgerLock.findUnique({ where: { tenantId } });
     const lockedUntil = lock?.lockedUntil ? lock.lockedUntil.toISOString().slice(0, 10) : null;
 
+    // 10. "How is this balance made?" Explanation Calculation
+    const openBillsTotal = Number(openBills.reduce((s, b) => s + Number(b.balanceDue || 0), 0).toFixed(2));
+    const openBillsCount = openBills.length;
+
+    let unallocatedAdvancesTotal = 0;
+    const advancesList: Array<{ reference: string; date: string; amount: number; unallocated: number }> = [];
+
+    if (partyType === 'customer' && partyId !== 'not-linked' && !partyId.startsWith('unlinked:')) {
+      const custPayments = await this.prisma.paymentRecord.findMany({
+        where: { tenantId, customerId: partyId, paymentType: { not: 'refund' }, reversalOfId: null, amount: { gt: 0 } },
+        include: { allocations: true },
+        orderBy: { paymentDate: 'desc' },
+      });
+      for (const p of custPayments) {
+        const allocSum = (p.allocations || []).reduce((s: number, a: any) => s + Number(a.amount), 0);
+        const unalloc = Number((p.amount - allocSum).toFixed(2));
+        if (unalloc > 0.01) {
+          unallocatedAdvancesTotal += unalloc;
+          advancesList.push({
+            reference: p.transactionRef || `REC-${p.id.slice(0, 8)}`,
+            date: p.paymentDate.toISOString().slice(0, 10),
+            amount: p.amount,
+            unallocated: unalloc,
+          });
+        }
+      }
+    } else if (partyType === 'supplier') {
+      const supPayments = await this.prisma.supplierPayment.findMany({
+        where: { tenantId, supplierId: partyId, amount: { gt: 0 } },
+        include: { allocations: true },
+        orderBy: { paymentDate: 'desc' },
+      });
+      for (const p of supPayments) {
+        const allocSum = (p.allocations || []).reduce((s: number, a: any) => s + Number(a.amount), 0);
+        const unalloc = Number((Number(p.amount) - allocSum).toFixed(2));
+        if (unalloc > 0.01) {
+          unallocatedAdvancesTotal += unalloc;
+          advancesList.push({
+            reference: p.paymentNumber || p.reference || 'Advance',
+            date: p.paymentDate.toISOString().slice(0, 10),
+            amount: Number(p.amount),
+            unallocated: unalloc,
+          });
+        }
+      }
+    }
+    unallocatedAdvancesTotal = Number(unallocatedAdvancesTotal.toFixed(2));
+
+    // Deductions applied
+    const deductionEntries = await this.prisma.ledgerEntry.findMany({
+      where: {
+        tenantId,
+        partyType,
+        partyId: partyIdFilter,
+        sourceType: { in: ['payment_deduction', 'supplier_payment_deduction'] },
+        reversals: { none: {} },
+      },
+      orderBy: { entryDate: 'desc' },
+    });
+    const deductionsTotal = Number(
+      deductionEntries.reduce((s, e) => s + (partyType === 'customer' ? Number(e.credit) : Number(e.debit)), 0).toFixed(2)
+    );
+    const deductionsList = deductionEntries.map((e) => ({
+      type: e.voucherType,
+      note: e.particulars,
+      amount: partyType === 'customer' ? Number(e.credit) : Number(e.debit),
+      date: e.entryDate.toISOString().slice(0, 10),
+    }));
+
+    // Plain words narrative
+    let plainText = '';
+    if (closingAmount <= 0.01) {
+      plainText = 'This party has settled all transactions and obligations in full. Outstanding balance is ₹0.00.';
+    } else if (partyType === 'customer') {
+      if (closingSide === 'Dr') {
+        plainText = `Customer has ${openBillsCount} open invoice(s) totaling ₹${openBillsTotal.toLocaleString('en-IN')}${
+          unallocatedAdvancesTotal > 0 ? `, minus ₹${unallocatedAdvancesTotal.toLocaleString('en-IN')} held in unallocated advances` : ''
+        }, resulting in a net receivable of ₹${closingAmount.toLocaleString('en-IN')} Dr.`;
+      } else {
+        plainText = `Customer has unallocated advances totaling ₹${closingAmount.toLocaleString('en-IN')} Cr available to apply against future invoices.`;
+      }
+    } else {
+      if (closingSide === 'Cr') {
+        plainText = `Supplier has ${openBillsCount} pending bill(s) totaling ₹${openBillsTotal.toLocaleString('en-IN')}${
+          unallocatedAdvancesTotal > 0 ? `, minus ₹${unallocatedAdvancesTotal.toLocaleString('en-IN')} in prepaid advances` : ''
+        }, leaving a net payable of ₹${closingAmount.toLocaleString('en-IN')} Cr.`;
+      } else {
+        plainText = `Prepaid advances of ₹${closingAmount.toLocaleString('en-IN')} Dr are on record with this supplier.`;
+      }
+    }
+
+    if (deductionsTotal > 0) {
+      plainText += ` Deductions totaling ₹${deductionsTotal.toLocaleString('en-IN')} (such as TDS or discounts) have reduced the party's balance.`;
+    }
+
+    const explanation = {
+      openBillsTotal,
+      openBillsCount,
+      unallocatedAdvancesTotal,
+      unallocatedAdvancesCount: advancesList.length,
+      deductionsTotal,
+      deductionsCount: deductionsList.length,
+      finalBalance: closingAmount,
+      balanceSide: closingSide,
+      plainText,
+      details: {
+        openBills: openBills.map((b) => ({
+          documentNumber: b.documentNumber,
+          balanceDue: b.balanceDue,
+          date: b.date,
+        })),
+        advances: advancesList,
+        deductions: deductionsList,
+      },
+    };
+
     const startIso = bounds.start.toISOString().slice(0, 10);
     const endIso = bounds.end.toISOString().slice(0, 10);
 
@@ -1394,6 +1550,7 @@ export class LedgerService {
       availableFinancialYears,
       alternativeFyWithEntries,
       lockedUntil,
+      explanation,
       totals: {
         debitTotal: Number(debitTotal.toFixed(2)),
         creditTotal: Number(creditTotal.toFixed(2)),

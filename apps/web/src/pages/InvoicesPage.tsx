@@ -14,6 +14,7 @@ import InvoiceModal from '../components/invoices/InvoiceModal';
 import CreateDocumentModal from '../components/invoices/CreateDocumentModal';
 import InvoiceSettingsModal from '../components/invoices/InvoiceSettingsModal';
 import CustomerAccountModal from '../components/common/CustomerAccountModal';
+import UnifiedRecordPaymentModal from '../components/common/UnifiedRecordPaymentModal';
 import DropdownPortal from '../components/common/DropdownPortal';
 import { useAuth } from '../contexts/AuthContext';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
@@ -28,6 +29,7 @@ interface InvoiceRowActionsProps {
   onDownloadPdf: (inv: Invoice, e?: React.MouseEvent) => void;
   onPrintDoc: (docType: string, id: string) => void;
   onLinkInvoice: (inv: Invoice) => void;
+  onMarkAsPaid?: (inv: Invoice) => void;
   isUnlinked: boolean;
 }
 
@@ -39,6 +41,7 @@ function InvoiceRowActions({
   onDownloadPdf,
   onPrintDoc,
   onLinkInvoice,
+  onMarkAsPaid,
   isUnlinked,
 }: InvoiceRowActionsProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -91,6 +94,22 @@ function InvoiceRowActions({
           <Eye size={14} className="text-slate-500 dark:text-slate-400 shrink-0" />
           <span>View Document</span>
         </button>
+
+        {/* Mark as fully paid shortcut */}
+        {!inv.isVoided && inv.paymentStatus !== 'paid' && ((inv.balanceDue ?? inv.totalAmount) > 0.01) && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(false);
+              onMarkAsPaid?.(inv);
+            }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors font-bold cursor-pointer"
+          >
+            <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>Mark as fully paid</span>
+          </button>
+        )}
 
         {/* Edit Document */}
         {!inv.isVoided && (
@@ -214,6 +233,25 @@ export default function InvoicesPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSignatorySettings, setShowSignatorySettings] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  const [paymentModalState, setPaymentModalState] = useState<{
+    isOpen: boolean;
+    customerId?: string;
+    customerName?: string;
+    invoiceId?: string;
+    amount?: number;
+  }>({ isOpen: false });
+
+  const handleMarkAsPaid = (inv: Invoice) => {
+    const balance = inv.balanceDue != null ? Number(inv.balanceDue) : Number(inv.totalAmount || 0);
+    setPaymentModalState({
+      isOpen: true,
+      customerId: (inv as any).customerId || (inv as any).companyId,
+      customerName: inv.customerName,
+      invoiceId: inv.id,
+      amount: balance,
+    });
+  };
 
   // Density & Horizontal Table Navigation
   const [density, setDensity] = useState<'compact' | 'normal'>('compact');
@@ -735,6 +773,7 @@ export default function InvoicesPage() {
                           onDownloadPdf={handleDirectDownloadPdf}
                           onPrintDoc={openDedicatedPrintTab}
                           onLinkInvoice={handleLinkInvoice}
+                          onMarkAsPaid={handleMarkAsPaid}
                           isUnlinked={isUnlinked}
                         />
                       </td>
@@ -791,7 +830,21 @@ export default function InvoicesPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-bold text-slate-950 dark:text-white font-mono">{inv.invoiceNumber}</h3>
-                    <p className="text-xs text-slate-800 dark:text-slate-300 font-bold">{inv.customerName}</p>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const cid = (inv as any).customerId || inv.companyId;
+                        if (cid) {
+                          setAccountCustomerId(cid);
+                          setAccountCustomerName(inv.customerName);
+                        }
+                      }}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline text-left block"
+                      title={inv.customerName}
+                    >
+                      {inv.customerName}
+                    </button>
                     <p className="text-[11px] text-slate-600 dark:text-slate-400">{inv.customerState || 'Karnataka'}</p>
                   </div>
                   {!isDC && (
@@ -838,6 +891,18 @@ export default function InvoicesPage() {
                         title="Edit Invoice"
                       >
                         <Edit3 size={12} /> Edit
+                      </button>
+                    )}
+                    {!inv.isVoided && inv.paymentStatus !== 'paid' && ((inv.balanceDue ?? inv.totalAmount) > 0.01) && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMarkAsPaid(inv);
+                        }}
+                        className="btn bg-green-600 hover:bg-green-700 text-white text-xs py-1 px-2.5 font-bold flex items-center gap-1 shadow-xs"
+                        title="Mark as fully paid"
+                      >
+                        <CheckCircle2 size={12} /> Pay
                       </button>
                     )}
                     <button
@@ -930,6 +995,20 @@ export default function InvoicesPage() {
           }}
         />
       )}
+
+      {/* Unified Record Payment Modal for Full Payment Shortcut */}
+      <UnifiedRecordPaymentModal
+        isOpen={paymentModalState.isOpen}
+        onClose={() => setPaymentModalState({ isOpen: false })}
+        defaultInvoiceId={paymentModalState.invoiceId}
+        defaultCustomerId={paymentModalState.customerId}
+        defaultCustomerName={paymentModalState.customerName}
+        defaultAmount={paymentModalState.amount}
+        onSuccess={(msg) => {
+          fetchInvoices();
+          setSuccessToast(msg || 'Payment recorded. Invoice balance is now ₹0.00.');
+        }}
+      />
     </div>
   );
 }

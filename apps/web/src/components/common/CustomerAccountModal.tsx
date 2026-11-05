@@ -13,8 +13,11 @@ import {
   ArrowUpRight,
   Clock,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Printer,
+  RotateCcw,
 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import { paymentsApi } from '../../services/api';
 import { useAllowedPages } from '../../hooks/useAllowedPages';
 import { useNavigate } from 'react-router-dom';
@@ -32,12 +35,35 @@ export default function CustomerAccountModal({
   customerName,
   onClose,
 }: CustomerAccountModalProps) {
+  const { user } = useAuth();
+  const canReverse = ['admin', 'tenant_admin', 'accountant', 'finance', 'platform_super_admin'].includes(user?.role || '');
+
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'quotes' | 'orders' | 'invoices' | 'payments' | 'ledger'>('invoices');
   const { hasPage } = useAllowedPages();
   const navigate = useNavigate();
+
+  // Reversal state
+  const [reversalPayment, setReversalPayment] = useState<any | null>(null);
+  const [reversalReason, setReversalReason] = useState('');
+  const [reversing, setReversing] = useState(false);
+  const [reversalError, setReversalError] = useState<string | null>(null);
+  const [reversalSuccess, setReversalSuccess] = useState<string | null>(null);
+
+  const loadData = () => {
+    setLoading(true);
+    paymentsApi.getCustomerAccountSummary(customerId)
+      .then((res) => {
+        setData(res.data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.response?.data?.message || 'Failed to load customer account');
+        setLoading(false);
+      });
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -66,6 +92,27 @@ export default function CustomerAccountModal({
       mounted = false;
     };
   }, [customerId]);
+
+  const handleConfirmReversal = async () => {
+    if (!reversalPayment) return;
+    if (!reversalReason.trim() || reversalReason.trim().length < 3) {
+      setReversalError('Please provide a reason of at least 3 characters.');
+      return;
+    }
+    setReversing(true);
+    setReversalError(null);
+    try {
+      await paymentsApi.reverse(reversalPayment.id, reversalReason.trim());
+      setReversalSuccess(`Payment ${reversalPayment.receiptNumber} was reversed.`);
+      setReversalPayment(null);
+      setReversalReason('');
+      loadData();
+    } catch (err: any) {
+      setReversalError(err.response?.data?.message || 'Failed to reverse payment');
+    } finally {
+      setReversing(false);
+    }
+  };
 
   const formatCurrency = (amt: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -154,29 +201,44 @@ export default function CustomerAccountModal({
             </div>
           ) : (
             <>
-              {/* Numbers That Agree: 4 Summary Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Quoted Value</span>
-                  <p className="text-lg font-bold text-slate-800 dark:text-slate-200 mt-1">
+              {reversalSuccess && (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 font-medium flex items-center justify-between">
+                  <span>{reversalSuccess}</span>
+                  <button onClick={() => setReversalSuccess(null)} className="text-emerald-500 hover:text-emerald-700">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* Numbers That Agree: 5 Summary Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Quoted Value</span>
+                  <p className="text-base font-bold text-slate-800 dark:text-slate-200 mt-1">
                     {formatCurrency(data?.summary?.quotedValue || 0)}
                   </p>
                 </div>
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Ordered Value</span>
-                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Ordered Value</span>
+                  <p className="text-base font-bold text-blue-600 dark:text-blue-400 mt-1">
                     {formatCurrency(data?.summary?.orderedValue || 0)}
                   </p>
                 </div>
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Invoiced Total</span>
-                  <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Invoiced Total</span>
+                  <p className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-1">
                     {formatCurrency(data?.summary?.invoicedTotal || 0)}
                   </p>
                 </div>
-                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                  <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Outstanding Receivable</span>
-                  <p className="text-lg font-bold text-amber-600 dark:text-amber-400 mt-1">
+                <div className="p-3.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-900/40">
+                  <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">Advances Held</span>
+                  <p className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                    {formatCurrency(data?.summary?.advanceAmount || 0)}
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                  <span className="text-[11px] font-medium text-amber-700 dark:text-amber-400">Outstanding Receivable</span>
+                  <p className="text-base font-bold text-amber-600 dark:text-amber-400 mt-1">
                     {formatCurrency(data?.summary?.outstandingReceivable || 0)}
                   </p>
                 </div>
@@ -381,14 +443,53 @@ export default function CustomerAccountModal({
                                     ADVANCE
                                   </span>
                                 )}
+                                {p.isReversed && (
+                                  <span className="text-[10px] uppercase px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 font-bold">
+                                    REVERSED
+                                  </span>
+                                )}
+                                {p.reversalOfId && (
+                                  <span className="text-[10px] uppercase px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold">
+                                    REVERSAL
+                                  </span>
+                                )}
                               </div>
                               <span className="text-xs text-slate-400">
                                 {formatDate(p.paymentDate)} • {p.paymentMethod || 'Bank Transfer'}
+                                {p.referenceNumber ? ` • Ref: ${p.referenceNumber}` : ''}
                               </span>
                             </div>
-                            <span className="font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                              +{formatCurrency(p.amount)}
-                            </span>
+                            <div className="flex items-center gap-3">
+                              <span className={`font-bold text-sm ${
+                                p.isReversed ? 'line-through text-slate-400' : p.reversalOfId ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                              }`}>
+                                {p.reversalOfId ? '-' : '+'}{formatCurrency(p.amount)}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => window.open(`/print/receipt/${p.id}`, '_blank')}
+                                  title="Print Receipt Voucher"
+                                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                </button>
+                                {canReverse && !p.isReversed && !p.reversalOfId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReversalError(null);
+                                      setReversalReason('');
+                                      setReversalPayment(p);
+                                    }}
+                                    title="Reverse Payment"
+                                    className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 transition"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -465,6 +566,71 @@ export default function CustomerAccountModal({
             Close
           </button>
         </div>
+
+        {/* Reversal Confirmation Dialog */}
+        {reversalPayment && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs">
+            <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-slate-900 dark:text-white">Reverse Payment</h4>
+                  <p className="text-xs text-slate-500">
+                    Receipt: <span className="font-mono font-semibold">{reversalPayment.receiptNumber}</span> (₹{reversalPayment.amount})
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300">
+                Reversing this payment will restore open balances on settled invoices/orders and post append-only reversal journal entries. This action cannot be undone.
+              </div>
+
+              {reversalError && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl text-xs text-rose-700 dark:text-rose-300">
+                  {toPlainText(reversalError)}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Reason for Reversal <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={reversalReason}
+                  onChange={(e) => setReversalReason(e.target.value)}
+                  placeholder="e.g., Cheque bounced / Payment made in error..."
+                  className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500 outline-hidden"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={reversing}
+                  onClick={() => {
+                    setReversalPayment(null);
+                    setReversalReason('');
+                    setReversalError(null);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={reversing || !reversalReason.trim()}
+                  onClick={handleConfirmReversal}
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs disabled:opacity-50"
+                >
+                  {reversing ? 'Reversing...' : 'Confirm Reversal'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

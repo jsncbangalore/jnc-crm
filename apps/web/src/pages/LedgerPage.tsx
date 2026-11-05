@@ -29,6 +29,7 @@ import {
   CheckSquare,
   ListChecks,
   Printer,
+  HelpCircle,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { openDedicatedPrintTab } from '../utils/printHelper';
@@ -542,23 +543,37 @@ export default function LedgerPage() {
   const renderPartyBalanceLine = (p: LedgerParty) => {
     const bal = p.closingBalance || 0;
     const side = (p.balanceSide || 'dr').toLowerCase();
-    if (bal <= 0.01) {
-      return <span className="text-slate-400">₹0.00</span>;
-    }
-    const formatted = `₹${formatIndianCurrency(bal)}`;
-    if (partyType === 'customer') {
-      if (side === 'dr') {
-        return <span className="text-rose-600 dark:text-rose-400 font-bold">Owes you {formatted}</span>;
+    const adv = p.advanceAmount || 0;
+    let mainBadge = <span className="text-slate-400">₹0.00</span>;
+
+    if (bal > 0.01) {
+      const formatted = `₹${formatIndianCurrency(bal)}`;
+      if (partyType === 'customer') {
+        if (side === 'dr') {
+          mainBadge = <span className="text-rose-600 dark:text-rose-400 font-bold">Owes you {formatted}</span>;
+        } else {
+          mainBadge = <span className="text-emerald-600 dark:text-emerald-400 font-bold">Advance {formatted}</span>;
+        }
       } else {
-        return <span className="text-emerald-600 dark:text-emerald-400 font-bold">Advance {formatted}</span>;
-      }
-    } else {
-      if (side === 'cr') {
-        return <span className="text-amber-600 dark:text-amber-400 font-bold">You owe {formatted}</span>;
-      } else {
-        return <span className="text-emerald-600 dark:text-emerald-400 font-bold">Advance {formatted}</span>;
+        if (side === 'cr') {
+          mainBadge = <span className="text-amber-600 dark:text-amber-400 font-bold">You owe {formatted}</span>;
+        } else {
+          mainBadge = <span className="text-emerald-600 dark:text-emerald-400 font-bold">Advance {formatted}</span>;
+        }
       }
     }
+
+    if (adv > 0.01) {
+      return (
+        <span className="flex flex-col items-end">
+          {mainBadge}
+          <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+            Adv: ₹{formatIndianCurrency(adv)}
+          </span>
+        </span>
+      );
+    }
+    return mainBadge;
   };
 
   return (
@@ -1152,6 +1167,81 @@ export default function LedgerPage() {
                   </p>
                 </div>
               </div>
+
+              {/* ─── HOW IS THIS BALANCE MADE? EXPLANATION PANEL ─── */}
+              {statement.explanation && (
+                <div data-testid="balance-explanation-panel" className="p-4 rounded-xl border border-indigo-200/80 dark:border-indigo-900/60 bg-gradient-to-br from-indigo-50/70 via-white to-slate-50 dark:from-indigo-950/30 dark:via-slate-900 dark:to-slate-900/60 shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 flex items-center justify-center shrink-0 mt-0.5">
+                      <HelpCircle className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 space-y-2.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                          How is this balance made?
+                        </h3>
+                        <span className="text-[11px] font-medium text-slate-500">
+                          Clear balance calculation & breakdown
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium bg-white/60 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                        {statement.explanation.plainText}
+                      </p>
+
+                      {/* Breakdown 4-col items */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                        <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                          <span className="text-[10px] text-slate-500 font-medium block">
+                            {partyType === 'customer' ? 'Open Invoices' : 'Open Bills'}
+                          </span>
+                          <span className="text-xs font-bold text-slate-900 dark:text-white">
+                            ₹{formatIndianCurrency(statement.explanation.openBillsTotal)}{' '}
+                            <span className="text-[10px] font-normal text-slate-400">
+                              ({statement.explanation.openBillsCount})
+                            </span>
+                          </span>
+                        </div>
+
+                        <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                          <span className="text-[10px] text-slate-500 font-medium block">
+                            Advances Held
+                          </span>
+                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                            ₹{formatIndianCurrency(statement.explanation.unallocatedAdvancesTotal)}{' '}
+                            <span className="text-[10px] font-normal text-slate-400">
+                              ({statement.explanation.unallocatedAdvancesCount})
+                            </span>
+                          </span>
+                        </div>
+
+                        <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                          <span className="text-[10px] text-slate-500 font-medium block">
+                            Deductions
+                          </span>
+                          <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
+                            ₹{formatIndianCurrency(statement.explanation.deductionsTotal)}{' '}
+                            <span className="text-[10px] font-normal text-slate-400">
+                              ({statement.explanation.deductionsCount})
+                            </span>
+                          </span>
+                        </div>
+
+                        <div className="bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                          <span className="text-[10px] text-slate-500 font-medium block">
+                            Final Balance
+                          </span>
+                          <span className="text-xs font-black text-indigo-700 dark:text-indigo-300">
+                            ₹{formatIndianCurrency(statement.explanation.finalBalance)}{' '}
+                            <span className="text-[10px] uppercase font-bold text-slate-400">
+                              {statement.explanation.balanceSide}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* ─── STATEMENT TRANSACTIONS TABLE ──────────────────────────────── */}
               <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">

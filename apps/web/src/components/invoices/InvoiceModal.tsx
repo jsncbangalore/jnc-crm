@@ -395,6 +395,16 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 <Printer size={13} className="text-crm-blue" /> {isPrinting ? 'Printing...' : 'Print'}
               </button>
 
+              {!invoice.isVoided && invoice.paymentStatus !== 'paid' && ((invoice.balanceDue ?? invoice.totalAmount) > 0.01) && (
+                <button
+                  onClick={() => setShowPaymentModal(true)}
+                  className="btn bg-green-600 hover:bg-green-700 text-white text-xs gap-1.5 py-1.5 shadow-sm font-bold"
+                  title="Open receipt with exact balance pre-filled to mark fully paid"
+                >
+                  <CheckCircle2 size={13} /> Mark as fully paid
+                </button>
+              )}
+
               <button
                 onClick={() => setShowPaymentModal(true)}
                 disabled={invoice.isVoided}

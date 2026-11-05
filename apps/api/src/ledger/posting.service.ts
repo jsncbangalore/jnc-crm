@@ -135,7 +135,7 @@ export class PostingService {
     const fy = getIndianFinancialYear(entryDate);
 
     // Create reversal entry with swapped debit and credit
-    return tx.ledgerEntry.create({
+    const invReversal = await tx.ledgerEntry.create({
       data: {
         tenantId,
         partyType: original.partyType,
@@ -153,6 +153,74 @@ export class PostingService {
         createdById: user?.id,
       },
     });
+
+    // Also reverse any tied payment/advance records & credit entries for this invoice
+    const tiedPayments = await tx.paymentRecord.findMany({
+      where: {
+        tenantId,
+        invoiceId: invoice.id,
+        reversalOfId: null,
+        reversals: { none: {} },
+      },
+    });
+
+    for (const p of tiedPayments) {
+      const revPayment = await tx.paymentRecord.create({
+        data: {
+          tenantId,
+          invoiceId: invoice.id,
+          customerId: p.customerId,
+          amount: -Number(p.amount),
+          paymentType: 'reversal',
+          paymentMethod: p.paymentMethod,
+          transactionRef: `REV-${p.transactionRef || p.id.slice(0, 8)}`,
+          paymentDate: voidDate,
+          notes: `Invoice voided: ${reason || 'Voided by Administrator'}`,
+          recordedById: user?.id,
+          reversalOfId: p.id,
+        },
+      });
+
+      const pLedger = await tx.ledgerEntry.findFirst({
+        where: {
+          tenantId,
+          sourceType: 'payment',
+          sourceId: p.id,
+          reversalOfId: null,
+        },
+      });
+
+      if (pLedger) {
+        await tx.ledgerEntry.create({
+          data: {
+            tenantId,
+            partyType: pLedger.partyType,
+            partyId: pLedger.partyId,
+            entryDate: voidDate,
+            financialYear: fy,
+            voucherType: 'reversal',
+            voucherNo: `REV-${pLedger.voucherNo}`,
+            particulars: `Reversal of ${pLedger.voucherNo} (Invoice #${invoice.invoiceNumber} Voided)`,
+            debit: pLedger.credit,
+            credit: pLedger.debit,
+            sourceType: 'payment_reversal',
+            sourceId: revPayment.id,
+            reversalOfId: pLedger.id,
+            createdById: user?.id,
+          },
+        });
+      }
+    }
+
+    // Clear payment allocations on this voided invoice
+    await tx.paymentAllocation.deleteMany({
+      where: {
+        tenantId,
+        invoiceId: invoice.id,
+      },
+    });
+
+    return invReversal;
   }
 
   /**

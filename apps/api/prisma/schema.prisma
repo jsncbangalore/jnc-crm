@@ -1283,6 +1283,7 @@ model PaymentRecord {
   reversalOfId    String?
   bankAccountId   String?
   bankAccountLabel String?
+  deductions      Json?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -1405,6 +1406,7 @@ model SupplierPayment {
   paymentMethod String    @default("NEFT")
   reference     String?
   notes         String?
+  deductions    Json?
   createdById   String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

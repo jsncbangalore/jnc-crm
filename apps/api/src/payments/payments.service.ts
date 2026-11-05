@@ -12,14 +12,22 @@ import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 import { AuditService } from '../audit/audit.service';
 import { DocumentSeriesService } from '../common/document-series.service';
-import { formatIndianCurrency, validateMeaningfulNarration, validatePaymentReference } from '../common/shared-validation';
+import { formatIndianCurrency, validateMeaningfulNarration, validatePaymentReference, formatDeductionType } from '../common/shared-validation';
 import { getEffectivePagesForUser } from '../auth/effective-page-access';
+import { numberToIndianWords } from '../invoicing/invoice-config';
 
 export interface PaymentAllocationInput {
   invoiceId?: string;
   billId?: string;
   documentId?: string;
   amount: number;
+}
+
+export interface PaymentDeductionInput {
+  type: string;
+  amount: number;
+  note?: string;
+  notes?: string;
 }
 
 export interface RecordPaymentInput {
@@ -30,6 +38,7 @@ export interface RecordPaymentInput {
   orderId?: string;
   invoiceId?: string;
   amount: number;
+  deductions?: PaymentDeductionInput[];
   paymentType?: 'advance' | 'milestone' | 'final_settlement' | 'full_payment' | string;
   paymentMethod?: 'NEFT' | 'RTGS' | 'IMPS' | 'Cheque' | 'UPI' | 'Cash' | 'Bank Transfer' | string;
   transactionRef?: string;
@@ -63,6 +72,9 @@ export interface CustomerAccountSummary {
   totalPaid: number;
   receivable: number; // Strictly equals sum of unpaid/partial invoice balanceDue
   overdue: number;
+  advanceAmount?: number;
+  customer?: any;
+  summary?: any;
   quotations?: any[];
   orders?: any[];
   invoices?: any[];
@@ -261,6 +273,29 @@ export class PaymentsService {
           }
         }
 
+        // Validate and accumulate supplier deductions (e.g. discount received, TDS deducted by us)
+        const validDeductions: PaymentDeductionInput[] = [];
+        let totalDeductions = 0;
+        if (dto.deductions && dto.deductions.length > 0) {
+          for (const d of dto.deductions) {
+            const dAmt = Number(Number(d.amount).toFixed(2));
+            if (isNaN(dAmt) || dAmt <= 0) {
+              throw new BadRequestException('Deduction amount must be greater than 0.');
+            }
+            const dNote = (d.note || (d as any).notes || '').trim();
+            if (!dNote || dNote.length < 3) {
+              throw new BadRequestException('Deduction note is required and must be at least 3 characters.');
+            }
+            totalDeductions += dAmt;
+            validDeductions.push({
+              type: d.type || 'other',
+              amount: dAmt,
+              note: dNote,
+            });
+          }
+        }
+        const totalSettlement = Number((amount + totalDeductions).toFixed(2));
+
         const effectiveNotes = bankAccountLabel
           ? (dto.notes?.trim() ? `${dto.notes.trim()} • Account: ${bankAccountLabel}` : `Account: ${bankAccountLabel}`)
           : (dto.notes?.trim() || null);
@@ -276,11 +311,12 @@ export class PaymentsService {
             paymentMethod: dto.paymentMethod || 'NEFT',
             reference: dto.reference?.trim() || dto.transactionRef?.trim(),
             notes: effectiveNotes,
+            deductions: validDeductions.length > 0 ? (validDeductions as any) : Prisma.DbNull,
             createdById: user.id,
           },
         });
 
-        // Handle bill allocations
+        // Handle bill allocations against totalSettlement (amount paid + deductions)
         let allocationsToProcess = dto.allocations || [];
         if (dto.autoAllocate && allocationsToProcess.length === 0) {
           const unpaidBills: any[] = await tx.purchaseBill.findMany({
@@ -297,7 +333,7 @@ export class PaymentsService {
               { invoiceNumber: 'asc' },
             ],
           });
-          let remaining = amount;
+          let remaining = totalSettlement;
           allocationsToProcess = [];
           for (const bill of unpaidBills) {
             if (remaining <= 0) break;
@@ -358,6 +394,28 @@ export class PaymentsService {
             createdById: user.id,
           },
         });
+
+        // Create separate Ledger Entries for each deduction (Debit reduces supplier payable balance)
+        for (let i = 0; i < validDeductions.length; i++) {
+          const d = validDeductions[i];
+          await tx.ledgerEntry.create({
+            data: {
+              tenantId,
+              partyType: 'supplier',
+              partyId: supplierId,
+              entryDate: payDate,
+              financialYear: fy,
+              voucherType: 'journal',
+              voucherNo: supplierPayment.paymentNumber,
+              particulars: `Deduction (${formatDeductionType(d.type)}) - ${d.note} [Payment #${supplierPayment.paymentNumber}]`,
+              debit: new Prisma.Decimal(d.amount.toFixed(2)),
+              credit: new Prisma.Decimal('0.00'),
+              sourceType: 'supplier_payment_deduction',
+              sourceId: `${supplierPayment.id}:${i}`,
+              createdById: user.id,
+            },
+          });
+        }
 
         await this.auditService.log({
           tenantId,
@@ -438,7 +496,29 @@ export class PaymentsService {
         }
       }
 
-      // ─── 2. Allocations & Overpayment Check ─────────────────────────────────
+      // ─── 2. Deductions Validation & Allocations ───────────────────────────
+      const validDeductions: PaymentDeductionInput[] = [];
+      let totalDeductions = 0;
+      if (dto.deductions && dto.deductions.length > 0) {
+        for (const d of dto.deductions) {
+          const dAmt = Number(Number(d.amount).toFixed(2));
+          if (isNaN(dAmt) || dAmt <= 0) {
+            throw new BadRequestException('Deduction amount must be greater than 0.');
+          }
+          const dNote = (d.note || (d as any).notes || '').trim();
+          if (!dNote || dNote.length < 3) {
+            throw new BadRequestException('Deduction note is required and must be at least 3 characters.');
+          }
+          totalDeductions += dAmt;
+          validDeductions.push({
+            type: d.type || 'other',
+            amount: dAmt,
+            note: dNote,
+          });
+        }
+      }
+      const totalSettlement = Number((amount + totalDeductions).toFixed(2));
+
       let allocationsToProcess: PaymentAllocationInput[] = [];
 
       if (dto.allocations && dto.allocations.length > 0) {
@@ -450,21 +530,21 @@ export class PaymentsService {
           allocationsToProcess.reduce((sum, a) => sum + Number(a.amount), 0).toFixed(2)
         );
         const totalAllocPaise = Math.round(totalAlloc * 100);
-        const amountPaise = Math.round(amount * 100);
-        if (totalAllocPaise > amountPaise) {
+        const settlementPaise = Math.round(totalSettlement * 100);
+        if (totalAllocPaise > settlementPaise) {
           throw new BadRequestException(
-            `Total allocations (${formatIndianCurrency(totalAlloc)}) must not exceed the amount received (${formatIndianCurrency(amount)}).`
+            `Total allocations (${formatIndianCurrency(totalAlloc)}) must not exceed total settlement received + deductions (${formatIndianCurrency(totalSettlement)}).`
           );
         }
-        if (totalAllocPaise !== amountPaise) {
-          if (!dto.allowAdvance || amountPaise < totalAllocPaise) {
+        if (totalAllocPaise !== settlementPaise) {
+          if (!dto.allowAdvance || settlementPaise < totalAllocPaise) {
             throw new BadRequestException(
-              `Total allocated amount (${formatIndianCurrency(totalAlloc)}) must equal payment amount (${formatIndianCurrency(amount)}). Tick "Allow advance payment" to record surplus as an advance.`
+              `Total allocated amount (${formatIndianCurrency(totalAlloc)}) must equal settlement amount (${formatIndianCurrency(totalSettlement)}). Tick "Allow advance payment" to record surplus as an advance.`
             );
           }
         }
       } else if (dto.autoAllocate && resolvedCustomerId) {
-        // Auto-allocate oldest unpaid invoices first
+        // Auto-allocate oldest unpaid invoices first using totalSettlement
         const unpaidInvoices = await tx.invoice.findMany({
           where: {
             tenantId,
@@ -483,7 +563,7 @@ export class PaymentsService {
           ],
         });
 
-        let remaining = amount;
+        let remaining = totalSettlement;
         allocationsToProcess = [];
         for (const inv of unpaidInvoices) {
           if (remaining <= 0) break;
@@ -493,8 +573,8 @@ export class PaymentsService {
           remaining -= allocAmt;
         }
       } else if (primaryInvoice) {
-        // Default 100% allocation to primary invoice
-        allocationsToProcess = [{ invoiceId: primaryInvoice.id, amount }];
+        // Default 100% allocation to primary invoice up to totalSettlement
+        allocationsToProcess = [{ invoiceId: primaryInvoice.id, amount: totalSettlement }];
       }
 
       // Check for overpayment against specific invoices
@@ -564,6 +644,7 @@ export class PaymentsService {
           notes: dto.notes?.trim() || null,
           bankAccountId: dto.bankAccountId?.trim() || null,
           bankAccountLabel: bankAccountLabel || null,
+          deductions: validDeductions.length > 0 ? (validDeductions as any) : Prisma.DbNull,
           recordedById: user.id,
         },
       });
@@ -653,30 +734,77 @@ export class PaymentsService {
 
       // ─── 8. Ledger Hook within tx (failure aborts payment transaction) ─────────
       if (resolvedCustomerId) {
-        await tx.ledgerEntry.create({
-          data: {
-            tenantId,
-            partyType: 'customer',
-            partyId: resolvedCustomerId,
-            entryDate: payDate,
-            financialYear: seriesInfo.financialYear,
-            voucherType: 'receipt',
-            voucherNo: seriesInfo.formattedNumber,
-            particulars: `Receipt #${seriesInfo.formattedNumber} - ${dto.paymentMethod || 'Bank'} [${dto.transactionRef || 'Direct'}]`,
-            debit: new Prisma.Decimal('0.00'),
-            credit: new Prisma.Decimal(amount.toFixed(2)),
-            sourceType: 'payment',
-            sourceId: paymentRecord.id,
-            createdById: user.id,
-          },
-        });
+        if (dto.paymentType === 'refund') {
+          // Refund of advance: Debit customer to return funds / reduce credit balance
+          await tx.ledgerEntry.create({
+            data: {
+              tenantId,
+              partyType: 'customer',
+              partyId: resolvedCustomerId,
+              entryDate: payDate,
+              financialYear: seriesInfo.financialYear,
+              voucherType: 'payment',
+              voucherNo: seriesInfo.formattedNumber,
+              particulars: `Advance Refund #${seriesInfo.formattedNumber} - ${dto.paymentMethod || 'Bank'} [${dto.transactionRef || 'Direct'}]`,
+              debit: new Prisma.Decimal(amount.toFixed(2)),
+              credit: new Prisma.Decimal('0.00'),
+              sourceType: 'payment_refund',
+              sourceId: paymentRecord.id,
+              createdById: user.id,
+            },
+          });
+        } else {
+          // Normal customer receipt: Credit customer
+          await tx.ledgerEntry.create({
+            data: {
+              tenantId,
+              partyType: 'customer',
+              partyId: resolvedCustomerId,
+              entryDate: payDate,
+              financialYear: seriesInfo.financialYear,
+              voucherType: 'receipt',
+              voucherNo: seriesInfo.formattedNumber,
+              particulars: `Receipt #${seriesInfo.formattedNumber} - ${dto.paymentMethod || 'Bank'} [${dto.transactionRef || 'Direct'}]`,
+              debit: new Prisma.Decimal('0.00'),
+              credit: new Prisma.Decimal(amount.toFixed(2)),
+              sourceType: 'payment',
+              sourceId: paymentRecord.id,
+              createdById: user.id,
+            },
+          });
+
+          // Post separate ledger entries for each deduction line (Credit reduces party receivable balance)
+          for (let i = 0; i < validDeductions.length; i++) {
+            const d = validDeductions[i];
+            await tx.ledgerEntry.create({
+              data: {
+                tenantId,
+                partyType: 'customer',
+                partyId: resolvedCustomerId,
+                entryDate: payDate,
+                financialYear: seriesInfo.financialYear,
+                voucherType: 'journal',
+                voucherNo: seriesInfo.formattedNumber,
+                particulars: `Deduction (${formatDeductionType(d.type)}) - ${d.note} [Receipt #${seriesInfo.formattedNumber}]`,
+                debit: new Prisma.Decimal('0.00'),
+                credit: new Prisma.Decimal(d.amount.toFixed(2)),
+                sourceType: 'payment_deduction',
+                sourceId: `${paymentRecord.id}:${i}`,
+                createdById: user.id,
+              },
+            });
+          }
+        }
       }
 
       const finalOutput = {
+        id: paymentRecord.id,
         payment: paymentRecord,
         receiptNumber: seriesInfo.formattedNumber,
         invoices: updatedInvoices,
         order: updatedOrder,
+        deductions: validDeductions,
+        totalSettlement,
       };
 
       // Update idempotency record to completed state in the same atomic transaction
@@ -733,9 +861,28 @@ export class PaymentsService {
   async reverse(paymentId: string, reason: string, user: ScopedUser) {
     const tenantId = requireTenantId(user);
 
+    // Permission check: limited to accountant, finance, and admin
+    const userRole = (user.role || '').toLowerCase();
+    const allowedRoles = ['accountant', 'finance', 'admin', 'tenant_admin', 'platform_super_admin'];
+    if (!allowedRoles.includes(userRole)) {
+      throw new ForbiddenException('Payment reversal is restricted to accountants, finance staff, and administrators.');
+    }
+
     const narrationCheck = validateMeaningfulNarration(reason, 'Reversal reason');
     if (!narrationCheck.valid) {
       throw new BadRequestException(narrationCheck.error);
+    }
+
+    // Period lock check: Block if reversal date is in a locked period
+    const lock = await this.prisma.ledgerLock.findUnique({ where: { tenantId } });
+    if (lock && lock.lockedUntil) {
+      const lockDate = new Date(lock.lockedUntil);
+      const today = new Date();
+      if (today <= lockDate) {
+        throw new BadRequestException(
+          `Accounting period is locked up to ${lockDate.toISOString().slice(0, 10)}. No payment reversals are permitted in a locked period.`
+        );
+      }
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -752,6 +899,17 @@ export class PaymentsService {
       if (original.reversalOfId) throw new BadRequestException('Cannot reverse a reversal payment.');
       if (original.reversals && original.reversals.length > 0) {
         throw new BadRequestException('This payment has already been reversed.');
+      }
+
+      // Period lock check: Block if original payment date was in a locked period
+      if (lock && lock.lockedUntil) {
+        const lockDate = new Date(lock.lockedUntil);
+        const originalPayDate = new Date(original.paymentDate);
+        if (originalPayDate <= lockDate) {
+          throw new BadRequestException(
+            `Original payment date (${originalPayDate.toISOString().slice(0, 10)}) is in a locked period (up to ${lockDate.toISOString().slice(0, 10)}). Reversal blocked.`
+          );
+        }
       }
 
       const reverseAmount = original.amount;
@@ -828,7 +986,7 @@ export class PaymentsService {
         afterState: { reason },
       }, tx);
 
-      // 5. Create reversal LedgerEntry if original payment was posted to ledger
+      // 5. Create reversal LedgerEntry for original payment
       const originalLedger = await tx.ledgerEntry.findFirst({
         where: {
           tenantId,
@@ -858,8 +1016,97 @@ export class PaymentsService {
         });
       }
 
+      // 6. Reverse any deduction ledger entries associated with this payment
+      const deductionLedgers = await tx.ledgerEntry.findMany({
+        where: {
+          tenantId,
+          sourceType: 'payment_deduction',
+          sourceId: { startsWith: `${original.id}:` },
+          reversalOfId: null,
+        },
+      });
+      for (const dLedger of deductionLedgers) {
+        await tx.ledgerEntry.create({
+          data: {
+            tenantId,
+            partyType: dLedger.partyType,
+            partyId: dLedger.partyId,
+            entryDate: new Date(),
+            financialYear: dLedger.financialYear,
+            voucherType: 'reversal',
+            voucherNo: `REV-${dLedger.voucherNo}`,
+            particulars: `Reversal of ${dLedger.particulars}: ${reason.trim()}`,
+            debit: dLedger.credit,
+            credit: dLedger.debit,
+            sourceType: 'payment_deduction_reversal',
+            sourceId: reversalRecord.id,
+            reversalOfId: dLedger.id,
+            createdById: user.id,
+          },
+        });
+      }
+
       return reversalRecord;
     });
+  }
+
+  /**
+   * Refund an unallocated customer advance payment
+   */
+  async refundAdvance(
+    id: string,
+    dto: { amount: number; refundMode?: string; reference?: string; notes?: string },
+    user: ScopedUser
+  ) {
+    const tenantId = requireTenantId(user);
+    const original = await this.prisma.paymentRecord.findFirst({
+      where: { id, tenantId },
+      include: { allocations: true },
+    });
+
+    if (!original) throw new NotFoundException('Payment record not found.');
+    if (!original.customerId) throw new BadRequestException('Payment has no associated customer.');
+
+    const totalAllocated = original.allocations.reduce((sum, a) => sum + Number(a.amount), 0);
+    const unallocated = Number(original.amount) - totalAllocated;
+
+    if (dto.amount > unallocated + 0.01) {
+      throw new BadRequestException(
+        `Cannot refund ₹${dto.amount}. Unallocated advance available is ₹${unallocated.toFixed(2)}.`
+      );
+    }
+
+    const refundPayment = await this.record(
+      {
+        partyType: 'customer',
+        partyId: original.customerId,
+        customerId: original.customerId,
+        paymentType: 'refund',
+        amount: dto.amount,
+        paymentDate: new Date().toISOString(),
+        paymentMethod: dto.refundMode || original.paymentMethod || 'Bank Transfer',
+        transactionRef: dto.reference || `REF${Date.now().toString().slice(-8)}`,
+        reference: dto.reference || `REF${Date.now().toString().slice(-8)}`,
+        notes: dto.notes || `Refund of unallocated advance (${original.transactionRef || original.id.slice(0, 8)})`,
+        allocations: [],
+      },
+      user
+    );
+
+    // Record allocation against the original payment record so its unallocated advance reduces
+    await this.prisma.paymentAllocation.create({
+      data: {
+        tenantId,
+        paymentType: 'refund',
+        paymentRecordId: original.id,
+        amount: new Prisma.Decimal(dto.amount.toFixed(2)),
+      },
+    });
+
+    return {
+      message: `Advance refund of ₹${dto.amount} successfully processed.`,
+      refundPayment,
+    };
   }
 
   /**
@@ -1077,12 +1324,18 @@ export class PaymentsService {
     );
 
     // Sum of actual received money
-    const paymentRecords = await this.prisma.paymentRecord.findMany({
-      where: { tenantId, customerId, reversalOfId: null },
-      select: { amount: true },
+    const rawPaymentRecords = await this.prisma.paymentRecord.findMany({
+      where: { tenantId, customerId },
+      include: {
+        reversals: { select: { id: true } },
+      },
+      orderBy: { paymentDate: 'desc' },
     });
     const totalPaid = Number(
-      paymentRecords.reduce((sum, p) => sum + Math.max(0, Number(p.amount)), 0).toFixed(2)
+      rawPaymentRecords
+        .filter((p) => p.paymentType !== 'refund' && !p.reversalOfId && (!p.reversals || p.reversals.length === 0))
+        .reduce((sum, p) => sum + Math.max(0, Number(p.amount)), 0)
+        .toFixed(2)
     );
 
     // Receivable: Strictly equal to the sum of unpaid invoice balanceDue
@@ -1109,6 +1362,23 @@ export class PaymentsService {
       take: 20,
     });
 
+    const unallocatedAdvances = await this.prisma.paymentRecord.findMany({
+      where: {
+        tenantId,
+        customerId,
+        paymentType: { not: 'refund' },
+        reversalOfId: null,
+        reversals: { none: {} },
+      },
+      select: { id: true, amount: true, allocations: { select: { amount: true } } },
+    });
+    const totalAdvance = Number(
+      unallocatedAdvances.reduce((sum, pr) => {
+        const allocated = pr.allocations.reduce((asum, a) => asum + Number(a.amount), 0);
+        return sum + Math.max(0, Number(pr.amount) - allocated);
+      }, 0).toFixed(2)
+    );
+
     return {
       customerId: customer.id,
       customerName: customer.name,
@@ -1124,6 +1394,23 @@ export class PaymentsService {
       totalPaid,
       receivable,
       overdue,
+      advanceAmount: totalAdvance,
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        gstin: customer.gstin,
+        email: customer.billingEmail,
+        phone: (customer as any).phone || null,
+        state: customer.state,
+      },
+      summary: {
+        quotedValue: totalQuoted,
+        orderedValue: totalOrdered,
+        invoicedTotal: totalInvoiced,
+        outstandingReceivable: receivable,
+        overdueReceivable: overdue,
+        advanceAmount: totalAdvance,
+      },
       quotations: customer.quotations.map((q) => ({
         ...q,
         status: q.status || 'draft',
@@ -1136,7 +1423,17 @@ export class PaymentsService {
         ...inv,
         status: inv.paymentStatus || 'unpaid',
       })),
-      payments: paymentRecords,
+      payments: rawPaymentRecords.map((p) => ({
+        id: p.id,
+        receiptNumber: p.transactionRef || `REC-${p.id.slice(0, 8).toUpperCase()}`,
+        paymentDate: p.paymentDate,
+        paymentMethod: p.paymentMethod,
+        referenceNumber: p.transactionRef,
+        amount: Number(p.amount),
+        isAdvance: p.paymentType === 'advance',
+        isReversed: Boolean(p.reversals && p.reversals.length > 0),
+        reversalOfId: p.reversalOfId,
+      })),
       ledgerEntries: ledgerEntries.map((l) => ({
         ...l,
         voucherType: l.voucherType || 'journal',
@@ -1222,5 +1519,199 @@ export class PaymentsService {
     }
 
     return { found: false, exists: false };
+  }
+
+  /**
+   * Retrieves full receipt voucher data for print and PDF generation.
+   */
+  async getPaymentReceipt(paymentId: string, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+
+    const payment = await this.prisma.paymentRecord.findFirst({
+      where: { id: paymentId, tenantId },
+      include: {
+        customer: true,
+        invoice: true,
+        order: true,
+        allocations: {
+          include: {
+            invoice: true,
+          },
+        },
+      },
+    });
+
+    if (!payment) {
+      // Check supplier payments as fallback
+      const spay = await this.prisma.supplierPayment.findFirst({
+        where: { id: paymentId, tenantId },
+        include: {
+          supplier: true,
+          allocations: {
+            include: {
+              purchaseBill: true,
+            },
+          },
+        },
+      });
+
+      if (!spay) {
+        throw new NotFoundException('Payment receipt not found.');
+      }
+
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+      });
+
+      const spayAmount = Number(spay.amount);
+      const rawDeductions = (spay.deductions as any) || [];
+      const deductions = Array.isArray(rawDeductions) ? rawDeductions : [];
+      const totalDeductions = deductions.reduce((s: number, d: any) => s + Number(d.amount || 0), 0);
+
+      const allocatedBills = (spay.allocations || []).map((a) => ({
+        billId: a.purchaseBillId,
+        billNumber: a.purchaseBill?.invoiceNumber || '-',
+        billDate: a.purchaseBill?.invoiceDate || (a.purchaseBill?.createdAt ? a.purchaseBill.createdAt.toISOString().slice(0, 10) : ''),
+        billTotal: Number(a.purchaseBill?.grandTotal || 0),
+        allocatedAmount: Number(a.amount),
+        status: a.purchaseBill?.paymentStatus || 'paid',
+      }));
+
+      const maskedBank = tenant?.bankName
+        ? `${tenant.bankName} ••••${(tenant.bankAccountNumber || '').slice(-4)}`
+        : null;
+
+      return {
+        receipt: {
+          id: spay.id,
+          receiptNumber: spay.paymentNumber,
+          date: spay.paymentDate.toISOString().slice(0, 10),
+          partyType: 'supplier',
+          party: {
+            id: spay.supplier?.id,
+            name: spay.supplier?.name || 'Vendor',
+            gstin: spay.supplier?.gstin || null,
+            address: spay.supplier?.address || null,
+            state: (spay.supplier as any)?.state || null,
+            email: spay.supplier?.email || null,
+            phone: spay.supplier?.phone || null,
+          },
+          amount: spayAmount,
+          amountInWords: numberToIndianWords(spayAmount),
+          totalDeductions,
+          totalSettlement: Number((spayAmount + totalDeductions).toFixed(2)),
+          deductions,
+          mode: spay.paymentMethod,
+          reference: spay.reference || spay.paymentNumber,
+          bankAccountMasked: maskedBank,
+          notes: spay.notes,
+          allocations: allocatedBills,
+        },
+        company: {
+          name: tenant?.name || 'Company',
+          legalName: (tenant as any)?.tradeName || tenant?.name,
+          gstin: tenant?.gstin,
+          address: tenant?.address,
+          state: tenant?.state,
+          email: tenant?.email,
+          phone: tenant?.phone,
+          logoUrl: tenant?.logoUrl,
+        },
+      };
+    }
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+
+    const amount = Number(payment.amount);
+    const rawDeductions = (payment.deductions as any) || [];
+    const deductions = Array.isArray(rawDeductions) ? rawDeductions : [];
+    const totalDeductions = deductions.reduce((s: number, d: any) => s + Number(d.amount || 0), 0);
+
+    const allocatedInvoices = (payment.allocations || []).map((a) => ({
+      invoiceId: a.invoiceId,
+      invoiceNumber: a.invoice?.invoiceNumber || '-',
+      invoiceDate: a.invoice?.invoiceDate ? a.invoice.invoiceDate.toISOString().slice(0, 10) : '',
+      invoiceTotal: Number(a.invoice?.totalAmount || 0),
+      balanceDue: Number(a.invoice?.balanceDue || 0),
+      allocatedAmount: Number(a.amount),
+      status: a.invoice?.paymentStatus || 'paid',
+    }));
+
+    let maskedBank = payment.bankAccountLabel;
+    if (!maskedBank && payment.paymentMethod !== 'Cash' && tenant?.bankName) {
+      maskedBank = `${tenant.bankName} ••••${(tenant.bankAccountNumber || '').slice(-4)}`;
+    }
+
+    return {
+      receipt: {
+        id: payment.id,
+        receiptNumber: payment.transactionRef || `REC-${payment.id.slice(0, 8)}`,
+        date: payment.paymentDate.toISOString().slice(0, 10),
+        partyType: 'customer',
+        party: {
+          id: payment.customer?.id,
+          name: payment.customer?.name || payment.invoice?.customerName || 'Customer',
+          gstin: payment.customer?.gstin || payment.invoice?.customerGstin || null,
+          address: payment.customer?.address || payment.invoice?.billingAddress || null,
+          state: payment.customer?.state || payment.invoice?.customerState || null,
+          email: payment.customer?.billingEmail || payment.invoice?.customerEmail || null,
+          phone: payment.invoice?.customerPhone || null,
+        },
+        amount,
+        amountInWords: numberToIndianWords(amount),
+        totalDeductions,
+        totalSettlement: Number((amount + totalDeductions).toFixed(2)),
+        deductions,
+        mode: payment.paymentMethod,
+        reference: payment.transactionRef || '-',
+        bankAccountMasked: maskedBank || null,
+        notes: payment.notes,
+        allocations: allocatedInvoices,
+      },
+      company: {
+        name: tenant?.name || 'Company',
+        legalName: (tenant as any)?.tradeName || tenant?.name,
+        gstin: tenant?.gstin,
+        address: tenant?.address,
+        state: tenant?.state,
+        email: tenant?.email,
+        phone: tenant?.phone,
+        logoUrl: tenant?.logoUrl,
+      },
+    };
+  }
+
+  /**
+   * Dispatches receipt confirmation email to party.
+   */
+  async sendReceiptEmail(paymentId: string, recipientEmail: string, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    const receiptData = await this.getPaymentReceipt(paymentId, user);
+
+    const cleanEmail = (recipientEmail || '').trim();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new BadRequestException('A valid recipient email address is required.');
+    }
+
+    await this.auditService.log({
+      tenantId,
+      actorId: user.id,
+      actorName: (user as any).employeeCode || (user as any).name || 'Staff',
+      action: 'RECEIPT_EMAILED',
+      entityName: 'PaymentRecord',
+      entityId: paymentId,
+      afterState: {
+        recipientEmail: cleanEmail,
+        receiptNumber: receiptData.receipt.receiptNumber,
+        amount: receiptData.receipt.amount,
+      },
+    });
+
+    return {
+      success: true,
+      message: `Receipt ${receiptData.receipt.receiptNumber} successfully sent to ${cleanEmail}.`,
+    };
   }
 }

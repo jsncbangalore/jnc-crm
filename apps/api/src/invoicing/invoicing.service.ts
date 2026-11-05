@@ -7,6 +7,7 @@
 
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Optional, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { ScopingService, ScopedUser } from '../auth/scoping.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
@@ -543,19 +544,6 @@ export class InvoicingService {
         }
       }
 
-      const advancePercent = dto.advancePercent ?? (docType === 'proforma_invoice' ? 50 : undefined);
-      const advanceAmount = advancePercent ? Number(((totalAmount * advancePercent) / 100).toFixed(2)) : undefined;
-      const advanceAdjusted = dto.advanceAdjusted ? Number(dto.advanceAdjusted) : 0;
-      const balanceDue = Math.max(0, Number((totalAmount - advanceAdjusted).toFixed(2)));
-      let initialStatus = dto.paymentStatus || 'unpaid';
-      if (!dto.paymentStatus) {
-        if (advanceAdjusted >= totalAmount - 0.5 && totalAmount > 0) {
-          initialStatus = 'paid';
-        } else if (advanceAdjusted > 0) {
-          initialStatus = 'partial';
-        }
-      }
-
       let resolvedCompanyId = (dto as any).companyId || (dto as any).customerId || undefined;
       if (!resolvedCompanyId) {
         if (dto.customerGstin?.trim()) {
@@ -577,6 +565,63 @@ export class InvoicingService {
             resolvedCompanyId = matchedByName[0].id;
           }
         }
+      }
+
+      const advancePercent = dto.advancePercent ?? (docType === 'proforma_invoice' ? 50 : undefined);
+      const advanceAmount = advancePercent ? Number(((totalAmount * advancePercent) / 100).toFixed(2)) : undefined;
+
+      // Handle Advances: Query unallocated customer advances if applyAdvance is requested
+      let effectiveAdvanceAdjusted = dto.advanceAdjusted ? Number(dto.advanceAdjusted) : 0;
+      if (effectiveAdvanceAdjusted > Number(totalAmount.toFixed(2))) {
+        throw new BadRequestException(
+          `Advance payment (₹${effectiveAdvanceAdjusted.toFixed(2)}) cannot exceed the invoice total amount of ₹${totalAmount.toFixed(2)}.`
+        );
+      }
+      const availableAdvancePayments: Array<{ payment: any; unallocated: number }> = [];
+      if ((dto as any).applyAdvance && resolvedCompanyId) {
+        const unallocatedPayments = await tx.paymentRecord.findMany({
+          where: {
+            tenantId,
+            customerId: resolvedCompanyId,
+            reversalOfId: null,
+            amount: { gt: 0 },
+          },
+          include: { allocations: true },
+          orderBy: { paymentDate: 'asc' },
+        });
+        let availableAdvance = 0;
+        for (const p of unallocatedPayments) {
+          const allocSum = (p.allocations || []).reduce((s: number, a: any) => s + Number(a.amount), 0);
+          const unallocated = Number((p.amount - allocSum).toFixed(2));
+          if (unallocated > 0.01) {
+            availableAdvance += unallocated;
+            availableAdvancePayments.push({ payment: p, unallocated });
+          }
+        }
+        const maxAdvanceToApply = Math.min(Number(totalAmount.toFixed(2)), Number(availableAdvance.toFixed(2)));
+        effectiveAdvanceAdjusted = Math.max(effectiveAdvanceAdjusted, maxAdvanceToApply);
+      }
+
+      const coveredByExisting = availableAdvancePayments.reduce((s, a) => s + a.unallocated, 0);
+      const advanceCoveredByExisting = Math.min(effectiveAdvanceAdjusted, coveredByExisting);
+      const newAdvanceToRecord = Number((effectiveAdvanceAdjusted - advanceCoveredByExisting).toFixed(2));
+
+      // Handle Record Payment Now: Single-transaction cash or electronic settlement
+      const payNow = (dto as any).recordPaymentNow;
+      let payNowAmount = 0;
+      if (payNow && Number(payNow.amount) > 0) {
+        payNowAmount = Number(Number(payNow.amount).toFixed(2));
+      }
+
+      // Calculate Derived Payment Status & Balance Due (NEVER manual status)
+      const postAdvanceBalance = Math.max(0, Number((totalAmount - effectiveAdvanceAdjusted).toFixed(2)));
+      const finalBalanceDue = Math.max(0, Number((postAdvanceBalance - payNowAmount).toFixed(2)));
+
+      let derivedStatus = 'unpaid';
+      if (finalBalanceDue <= 0.01 && totalAmount > 0) {
+        derivedStatus = 'paid';
+      } else if (totalAmount - finalBalanceDue > 0.01) {
+        derivedStatus = 'partial';
       }
 
       let invoice;
@@ -607,11 +652,11 @@ export class InvoicingService {
             isSez,
             advancePercent,
             advanceAmount,
-            advanceAdjusted,
-            balanceDue,
-            paymentStatus: initialStatus,
-            paymentMethod: (dto as any).paymentMethod,
-            transactionRef: (dto as any).transactionRef,
+            advanceAdjusted: effectiveAdvanceAdjusted,
+            balanceDue: finalBalanceDue,
+            paymentStatus: derivedStatus,
+            paymentMethod: payNow?.paymentMethod || (dto as any).paymentMethod,
+            transactionRef: payNow?.reference || (dto as any).transactionRef,
             subtotal: Number(subtotal.toFixed(2)),
             cgstAmount: Number(totalCgst.toFixed(2)),
             sgstAmount: Number(totalSgst.toFixed(2)),
@@ -648,6 +693,25 @@ export class InvoicingService {
         });
       }
 
+      // If advance was applied, create PaymentAllocation from existing advance payments (No double posting to ledger)
+      if (availableAdvancePayments.length > 0 && effectiveAdvanceAdjusted > 0) {
+        let remAdvance = effectiveAdvanceAdjusted;
+        for (const adv of availableAdvancePayments) {
+          if (remAdvance <= 0.01) break;
+          const allocAmt = Math.min(remAdvance, adv.unallocated);
+          await tx.paymentAllocation.create({
+            data: {
+              tenantId,
+              paymentType: 'customer_receipt',
+              paymentRecordId: adv.payment.id,
+              invoiceId: invoice.id,
+              amount: new Prisma.Decimal(allocAmt.toFixed(2)),
+            },
+          });
+          remAdvance = Number((remAdvance - allocAmt).toFixed(2));
+        }
+      }
+
       // Record Audit Log within tx
       await this.auditService.log({
         actorId: user.id,
@@ -655,7 +719,7 @@ export class InvoicingService {
         action: 'CREATE',
         entityName: 'Invoice',
         entityId: invoice.id,
-        afterState: { invoiceNumber, docType, totalAmount },
+        afterState: { invoiceNumber, docType, totalAmount, balanceDue: finalBalanceDue, paymentStatus: derivedStatus },
       }, tx);
 
       // Automated LUT Validity Verification for SEZ Invoices
@@ -684,10 +748,164 @@ export class InvoicingService {
         }
       }
 
-      // Post to ledger within the same interactive transaction
+      // Post to ledger within the same interactive transaction (Debit party totalAmount)
       await this.postingService?.postInvoice(invoice, user, tx);
 
-      return invoice;
+      // If an Advance Payment was entered directly on the invoice, create Receipt & post Ledger Credit in the SAME transaction
+      if (newAdvanceToRecord > 0) {
+        const advSeries = await this.documentSeriesService.getNextDocumentNumber(
+          tenantId,
+          'receipt',
+          invoiceDateObj,
+          tx
+        );
+
+        const advBankRef = ((dto as any).transactionRef || (dto as any).advanceRef || '')?.trim();
+        const advRecord = await tx.paymentRecord.create({
+          data: {
+            tenantId,
+            invoiceId: invoice.id,
+            customerId: resolvedCompanyId || null,
+            amount: newAdvanceToRecord,
+            paymentType: 'advance',
+            paymentMethod: (dto as any).paymentMethod || 'Bank Transfer',
+            transactionRef: advBankRef || advSeries.formattedNumber,
+            paymentDate: invoiceDateObj,
+            notes: `Advance payment recorded at invoice creation [${invoice.invoiceNumber}]`,
+            bankAccountId: (dto as any).bankAccountId?.trim() || null,
+            recordedById: user.id,
+          },
+        });
+
+        await tx.paymentAllocation.create({
+          data: {
+            tenantId,
+            paymentType: 'customer_receipt',
+            paymentRecordId: advRecord.id,
+            invoiceId: invoice.id,
+            amount: new Prisma.Decimal(newAdvanceToRecord.toFixed(2)),
+          },
+        });
+
+        if (resolvedCompanyId) {
+          const refText = advBankRef ? ` [Ref: ${advBankRef}]` : '';
+          await tx.ledgerEntry.create({
+            data: {
+              tenantId,
+              partyType: 'customer',
+              partyId: resolvedCompanyId,
+              entryDate: invoiceDateObj,
+              financialYear: advSeries.financialYear,
+              voucherType: 'receipt',
+              voucherNo: advSeries.formattedNumber,
+              particulars: `Advance Receipt for Invoice #${invoice.invoiceNumber}${refText}`,
+              debit: new Prisma.Decimal('0.00'),
+              credit: new Prisma.Decimal(newAdvanceToRecord.toFixed(2)),
+              sourceType: 'payment',
+              sourceId: advRecord.id,
+              createdById: user.id,
+            },
+          });
+        }
+
+        await this.auditService.log({
+          tenantId,
+          actorId: user.id,
+          actorName: user.employeeCode,
+          action: 'PAYMENT_RECORDED',
+          entityName: 'PaymentRecord',
+          entityId: advRecord.id,
+          afterState: {
+            receiptNumber: advSeries.formattedNumber,
+            amount: newAdvanceToRecord,
+            invoiceId: invoice.id,
+            type: 'advance',
+            bankRef: advBankRef,
+          },
+        }, tx);
+      }
+
+      // If Record Payment Now was requested, create Receipt & post Ledger Credit in the SAME transaction
+      if (payNowAmount > 0) {
+        const receiptSeries = await this.documentSeriesService.getNextDocumentNumber(
+          tenantId,
+          'receipt',
+          invoiceDateObj,
+          tx
+        );
+
+        const payRecord = await tx.paymentRecord.create({
+          data: {
+            tenantId,
+            invoiceId: invoice.id,
+            customerId: resolvedCompanyId || null,
+            amount: payNowAmount,
+            paymentType: finalBalanceDue <= 0.01 ? 'full_payment' : 'partial',
+            paymentMethod: payNow.paymentMethod || 'Cash',
+            transactionRef: (payNow.reference || payNow.transactionRef)?.trim() || receiptSeries.formattedNumber,
+            paymentDate: invoiceDateObj,
+            notes: 'Payment recorded at invoice creation',
+            bankAccountId: payNow.bankAccountId?.trim() || null,
+            recordedById: user.id,
+          },
+        });
+
+        await tx.paymentAllocation.create({
+          data: {
+            tenantId,
+            paymentType: 'customer_receipt',
+            paymentRecordId: payRecord.id,
+            invoiceId: invoice.id,
+            amount: new Prisma.Decimal(payNowAmount.toFixed(2)),
+          },
+        });
+
+        if (resolvedCompanyId) {
+          await tx.ledgerEntry.create({
+            data: {
+              tenantId,
+              partyType: 'customer',
+              partyId: resolvedCompanyId,
+              entryDate: invoiceDateObj,
+              financialYear: receiptSeries.financialYear,
+              voucherType: 'receipt',
+              voucherNo: receiptSeries.formattedNumber,
+              particulars: `Receipt #${receiptSeries.formattedNumber} - ${payNow.paymentMethod || 'Cash'} [${payNow.reference || 'Creation'}]`,
+              debit: new Prisma.Decimal('0.00'),
+              credit: new Prisma.Decimal(payNowAmount.toFixed(2)),
+              sourceType: 'payment',
+              sourceId: payRecord.id,
+              createdById: user.id,
+            },
+          });
+        }
+
+        await this.auditService.log({
+          tenantId,
+          actorId: user.id,
+          actorName: user.employeeCode,
+          action: 'PAYMENT_RECORDED',
+          entityName: 'PaymentRecord',
+          entityId: payRecord.id,
+          afterState: {
+            receiptNumber: receiptSeries.formattedNumber,
+            amount: payNowAmount,
+            invoiceId: invoice.id,
+          },
+        }, tx);
+      }
+
+      const freshInvoice = await tx.invoice.findFirst({
+        where: { id: invoice.id, tenantId },
+        include: {
+          lines: { include: { sku: true } },
+          order: true,
+          payments: true,
+          createdBy: { select: { id: true, name: true, employeeCode: true } },
+        },
+      });
+
+      return freshInvoice || invoice;
     });
   }
 
@@ -796,6 +1014,11 @@ export class InvoicingService {
     const advancePercent = dto.advancePercent !== undefined ? dto.advancePercent : existing.advancePercent;
     const advanceAmount = advancePercent ? Number(((totalAmount * advancePercent) / 100).toFixed(2)) : undefined;
     const advanceAdjusted = dto.advanceAdjusted !== undefined ? Number(dto.advanceAdjusted) : (existing.advanceAdjusted || 0);
+    if (advanceAdjusted > Number(totalAmount.toFixed(2))) {
+      throw new BadRequestException(
+        `Advance payment (₹${advanceAdjusted.toFixed(2)}) cannot exceed the invoice total amount of ₹${totalAmount.toFixed(2)}.`
+      );
+    }
     const balanceDue = Math.max(0, Number((totalAmount - advanceAdjusted).toFixed(2)));
     let paymentStatus = dto.paymentStatus || (dto.status as string) || existing.paymentStatus;
     if (!dto.paymentStatus && !dto.status) {

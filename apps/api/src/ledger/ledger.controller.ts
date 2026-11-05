@@ -191,10 +191,10 @@ export class LedgerController {
     @Headers('idempotency-key') idempotencyKey?: string,
     @Headers('x-idempotency-key') xIdempotencyKey?: string,
   ) {
-    const allocations = dto.allocations?.map((a) => ({
-      invoiceId: a.documentId,
-      billId: a.documentId,
-      documentId: a.documentId,
+    const allocations = dto.allocations?.map((a: any) => ({
+      invoiceId: a.invoiceId || a.documentId,
+      billId: a.billId || a.documentId,
+      documentId: a.documentId || a.invoiceId || a.billId,
       amount: a.amount,
     }));
 
@@ -212,6 +212,8 @@ export class LedgerController {
         notes: dto.notes,
         autoAllocate: dto.autoAllocate,
         allocations,
+        deductions: (dto as any).deductions,
+        allowAdvance: (dto as any).allowAdvance,
         confirmDuplicate: dto.confirmDuplicate,
         idempotencyKey: dto.idempotencyKey || idempotencyKey || xIdempotencyKey,
       },

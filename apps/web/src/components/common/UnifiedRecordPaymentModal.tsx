@@ -14,6 +14,8 @@ import {
   Layers,
   AlertTriangle,
   AlertOctagon,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import {
   paymentsApi,
@@ -37,6 +39,8 @@ import {
   formatDisplayDate,
   formatFriendlyErrorMessage,
   toPlainText,
+  DEDUCTION_TYPE_OPTIONS,
+  formatDeductionType,
 } from '@crm/shared-validation';
 
 // Safe array extraction helper
@@ -194,6 +198,7 @@ export default function UnifiedRecordPaymentModal({
   const [bankAccountsList, setBankAccountsList] = useState<SelectOption[]>([]);
   const [narration, setNarration] = useState<string>('');
   const [allowAdvance, setAllowAdvance] = useState(false);
+  const [deductions, setDeductions] = useState<Array<{ id: string; type: string; amount: string; note: string }>>([]);
 
   const [allocations, setAllocations] = useState<AllocationRow[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -232,6 +237,7 @@ export default function UnifiedRecordPaymentModal({
       setBankAccountId('');
       setNarration('');
       setAllowAdvance(false);
+      setDeductions([]);
       setAllocations([]);
       setErr(null);
       setDuplicateWarning(null);
@@ -436,11 +442,16 @@ export default function UnifiedRecordPaymentModal({
 
   // Exact paise arithmetic
   const numEnteredAmountPaise = toPaise(amountInput);
+  const totalDeductionsPaise = deductions.reduce((sum, d) => sum + toPaise(d.amount), 0);
+  const totalDeductions = fromPaise(totalDeductionsPaise);
+  const totalSettlementPaise = numEnteredAmountPaise + totalDeductionsPaise;
+  const totalSettlement = fromPaise(totalSettlementPaise);
+
   const totalAllocatedPaise = allocations
     .filter((a) => a.selected)
     .reduce((sum, a) => sum + toPaise(a.allocatedAmount), 0);
   const totalAllocated = fromPaise(totalAllocatedPaise);
-  const surplusPaise = Math.max(0, numEnteredAmountPaise - totalAllocatedPaise);
+  const surplusPaise = Math.max(0, totalSettlementPaise - totalAllocatedPaise);
   const surplusAmount = fromPaise(surplusPaise);
 
   // Derived isAdvance: true when order advance without invoice, no invoices selected, or surplus with allowAdvance
@@ -450,6 +461,36 @@ export default function UnifiedRecordPaymentModal({
     totalAllocatedPaise === 0 ||
     (allowAdvance && surplusPaise > 0)
   );
+
+  const deductionOptions = useMemo(() => {
+    return DEDUCTION_TYPE_OPTIONS.filter((opt) => opt.partyType === 'both' || opt.partyType === partyType).map((opt) => ({
+      value: opt.value,
+      label: opt.label,
+    }));
+  }, [partyType]);
+
+  const handleAddDeduction = () => {
+    const defaultType = partyType === 'customer' ? 'tds' : 'discount_received';
+    setDeductions((prev) => [
+      ...prev,
+      {
+        id: `ded-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: defaultType,
+        amount: '',
+        note: '',
+      },
+    ]);
+  };
+
+  const handleUpdateDeduction = (id: string, field: 'type' | 'amount' | 'note', val: string) => {
+    setDeductions((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, [field]: val } : d))
+    );
+  };
+
+  const handleRemoveDeduction = (id: string) => {
+    setDeductions((prev) => prev.filter((d) => d.id !== id));
+  };
 
   const handleToggleRow = (documentId: string) => {
     setAllocations((prev) => {
@@ -488,12 +529,12 @@ export default function UnifiedRecordPaymentModal({
   };
 
   const handleAutoAllocateOldestFirst = () => {
-    if (numEnteredAmountPaise <= 0) {
-      setErr('Enter an amount first to auto-allocate.');
+    if (totalSettlementPaise <= 0) {
+      setErr('Enter an amount or deduction first to auto-allocate.');
       return;
     }
     setErr(null);
-    let remainingPaise = numEnteredAmountPaise;
+    let remainingPaise = totalSettlementPaise;
     setAllocations((prev) =>
       prev.map((r) => {
         if (remainingPaise <= 0) return { ...r, allocatedAmount: 0, selected: false };
@@ -635,9 +676,21 @@ export default function UnifiedRecordPaymentModal({
       return false;
     }
 
-    if (numEnteredAmountPaise <= 0) {
-      setErr('Amount must be greater than zero.');
+    if (numEnteredAmountPaise <= 0 && totalDeductionsPaise <= 0) {
+      setErr('Amount or deductions must be greater than zero.');
       return false;
+    }
+
+    for (let i = 0; i < deductions.length; i++) {
+      const d = deductions[i];
+      if (toPaise(d.amount) <= 0) {
+        setErr(`Deduction #${i + 1}: please enter a valid amount greater than zero.`);
+        return false;
+      }
+      if (!d.note.trim() || d.note.trim().length < 3) {
+        setErr(`Deduction #${i + 1}: a descriptive note (at least 3 characters) is required.`);
+        return false;
+      }
     }
 
     const refCheck = validatePaymentReference(paymentMethod, reference);
@@ -646,14 +699,18 @@ export default function UnifiedRecordPaymentModal({
       return false;
     }
 
-    // Total allocations must not exceed the amount received
-    if (totalAllocatedPaise > numEnteredAmountPaise) {
-      setErr(`Total allocated amount (₹${formatIndianCurrency(totalAllocated)}) must not exceed payment amount (₹${formatIndianCurrency(fromPaise(numEnteredAmountPaise))}).`);
+    // Total allocations must not exceed total settlement (received + deductions)
+    if (totalAllocatedPaise > totalSettlementPaise) {
+      setErr(
+        `Total allocated amount (₹${formatIndianCurrency(totalAllocated)}) must not exceed total settlement [Received + Deductions] (₹${formatIndianCurrency(totalSettlement)}).`
+      );
       return false;
     }
 
-    if (!allowAdvance && allocations.length > 0 && numEnteredAmountPaise > totalAllocatedPaise && totalAllocatedPaise > 0) {
-      setErr(`Amount (₹${formatIndianCurrency(fromPaise(numEnteredAmountPaise))}) exceeds allocated total (₹${formatIndianCurrency(totalAllocated)}). Tick "Allow advance payment" to record surplus as an advance.`);
+    if (!allowAdvance && allocations.length > 0 && totalSettlementPaise > totalAllocatedPaise && totalAllocatedPaise > 0) {
+      setErr(
+        `Total settlement (₹${formatIndianCurrency(totalSettlement)}) exceeds allocated total (₹${formatIndianCurrency(totalAllocated)}). Tick "Allow advance payment" to record surplus as an advance.`
+      );
       return false;
     }
 
@@ -711,6 +768,14 @@ export default function UnifiedRecordPaymentModal({
       const keyToUse = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idem-${Date.now()}`);
       if (!idempotencyKey) setIdempotencyKey(keyToUse);
 
+      const validDeductions = deductions
+        .filter((d) => toPaise(d.amount) > 0)
+        .map((d) => ({
+          type: d.type,
+          amount: fromPaise(toPaise(d.amount)),
+          note: d.note.trim(),
+        }));
+
       const payload: any = {
         partyType,
         partyId: selectedPartyId,
@@ -723,6 +788,7 @@ export default function UnifiedRecordPaymentModal({
         reference: reference.trim() || undefined,
         bankAccountId: paymentMethod === 'Cash' ? undefined : (bankAccountId || undefined),
         notes: narration.trim() || undefined,
+        deductions: validDeductions.length > 0 ? validDeductions : undefined,
         isAdvance: isAdvance || overrideAdvance || confirmAdvanceOverride,
         allowAdvance: allowAdvance || overrideAdvance || confirmAdvanceOverride,
         confirmDuplicate,
@@ -887,12 +953,97 @@ export default function UnifiedRecordPaymentModal({
                 </div>
               </div>
 
-              {/* ONE SUMMARY LINE: "Receiving Rs. X: applied to 2 invoices, Rs. 0 advance" */}
-              {numEnteredAmountPaise > 0 && (
+              {/* ONE SUMMARY LINE: "Received + deductions = applied to invoices" */}
+              {(numEnteredAmountPaise > 0 || totalDeductionsPaise > 0) && (
                 <div className="p-2.5 rounded-lg bg-white dark:bg-[#141722] border border-indigo-200 dark:border-indigo-800 text-xs font-semibold text-indigo-900 dark:text-indigo-300 flex items-center justify-between">
                   <span>
-                    {partyType === 'customer' ? 'Receiving' : 'Paying'} ₹{formatIndianCurrency(fromPaise(numEnteredAmountPaise))}: applied to {allocations.filter((a) => a.selected && toPaise(a.allocatedAmount) > 0).length} {partyType === 'customer' ? (allocations.filter((a) => a.selected && toPaise(a.allocatedAmount) > 0).length === 1 ? 'invoice' : 'invoices') : (allocations.filter((a) => a.selected && toPaise(a.allocatedAmount) > 0).length === 1 ? 'bill' : 'bills')}, ₹{formatIndianCurrency(surplusAmount)} advance
+                    {partyType === 'customer' ? 'Received' : 'Paid'} (₹{formatIndianCurrency(fromPaise(numEnteredAmountPaise))}) + deductions (₹{formatIndianCurrency(totalDeductions)}) = applied to {partyType === 'customer' ? 'invoices' : 'bills'} (₹{formatIndianCurrency(totalAllocated)})
+                    {surplusPaise > 0 && `, ₹${formatIndianCurrency(surplusAmount)} advance`}
                   </span>
+                </div>
+              )}
+            </div>
+
+            {/* Deductions Section (TDS, discount, bank charges, rounding off, other) */}
+            <div className="space-y-2 p-3 bg-slate-50 dark:bg-[#131620] rounded-xl border border-slate-200 dark:border-[#2A3042]">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                    Deductions & Adjustments
+                  </span>
+                  {totalDeductionsPaise > 0 && (
+                    <span className="text-[10.5px] font-mono font-bold text-amber-700 dark:text-amber-400">
+                      (+₹{formatIndianCurrency(totalDeductions)})
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddDeduction}
+                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus size={13} /> Add deduction line
+                </button>
+              </div>
+
+              {deductions.length === 0 ? (
+                <p className="text-[10.5px] text-slate-400">
+                  Optional: Add TDS, discount, bank charges or rounding off to settle invoice balance alongside payment.
+                </p>
+              ) : (
+                <div className="space-y-2 pt-1">
+                  {deductions.map((d) => (
+                    <div
+                      key={d.id}
+                      className="p-2 bg-white dark:bg-[#181C28] border border-slate-200 dark:border-[#2A3042] rounded-lg grid grid-cols-1 sm:grid-cols-12 gap-2 items-center text-xs"
+                    >
+                      <div className="sm:col-span-4">
+                        <select
+                          value={d.type}
+                          onChange={(e) => handleUpdateDeduction(d.id, 'type', e.target.value)}
+                          className="w-full px-2 py-1 text-xs bg-slate-50 dark:bg-[#131620] border border-slate-300 dark:border-[#2A3042] rounded-md font-semibold"
+                        >
+                          {deductionOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="sm:col-span-3 relative">
+                        <input
+                          type="text"
+                          placeholder="Amount (₹)"
+                          value={d.amount}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/,/g, '');
+                            if (/^\d*\.?\d*$/.test(raw)) handleUpdateDeduction(d.id, 'amount', raw);
+                          }}
+                          className="w-full px-2 py-1 pl-5 text-xs bg-slate-50 dark:bg-[#131620] border border-slate-300 dark:border-[#2A3042] rounded-md font-mono font-bold"
+                        />
+                        <span className="absolute left-1.5 top-1 text-[11px] text-slate-400 font-bold">₹</span>
+                      </div>
+                      <div className="sm:col-span-4">
+                        <input
+                          type="text"
+                          placeholder="Required note (e.g. 2% TDS u/s 194C)"
+                          value={d.note}
+                          onChange={(e) => handleUpdateDeduction(d.id, 'note', e.target.value)}
+                          className="w-full px-2 py-1 text-xs bg-slate-50 dark:bg-[#131620] border border-slate-300 dark:border-[#2A3042] rounded-md"
+                        />
+                      </div>
+                      <div className="sm:col-span-1 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDeduction(d.id)}
+                          className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition cursor-pointer"
+                          title="Remove deduction"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

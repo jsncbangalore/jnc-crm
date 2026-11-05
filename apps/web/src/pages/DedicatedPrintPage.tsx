@@ -7,8 +7,8 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Printer, Download, X, AlertTriangle, RefreshCw, FileText } from 'lucide-react';
-import { invoicesApi, quotationsApi, ledgerApi, inventoryApi, brandingApi } from '../services/api';
+import { Printer, Download, X, AlertTriangle, RefreshCw, FileText, Mail, CheckCircle2, Send } from 'lucide-react';
+import { invoicesApi, quotationsApi, ledgerApi, inventoryApi, brandingApi, paymentsApi } from '../services/api';
 import { useAllowedPages } from '../hooks/useAllowedPages';
 import { BRAND_CONFIG } from '../config/brand';
 import InvoiceDocumentTemplate, { numberToIndianWords } from '../components/invoices/InvoiceDocumentTemplate';
@@ -23,6 +23,10 @@ export default function DedicatedPrintPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [emailing, setEmailing] = useState(false);
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState('');
   const [docData, setDocData] = useState<any>(null);
   const [brandingProfile, setBrandingProfile] = useState<any>(null);
 
@@ -52,6 +56,7 @@ export default function DedicatedPrintPage() {
   const isQuotation = normalizedDocType === 'quotation';
   const isStatement = normalizedDocType === 'statement' || normalizedDocType === 'ledger';
   const isPurchaseBill = normalizedDocType === 'purchase_bill' || normalizedDocType === 'bill';
+  const isReceipt = ['receipt', 'payment', 'payment_receipt'].includes(normalizedDocType);
 
   // Permission Verification
   const hasAccess = (() => {
@@ -59,6 +64,7 @@ export default function DedicatedPrintPage() {
     if (isQuotation) return hasPage('quotations');
     if (isStatement) return hasPage('ledger');
     if (isPurchaseBill) return hasPage('bills') || hasPage('inventory');
+    if (isReceipt) return hasPage('invoices') || hasPage('ledger');
     return true;
   })();
 
@@ -122,6 +128,9 @@ export default function DedicatedPrintPage() {
           }
         } else if (isPurchaseBill) {
           const res = await inventoryApi.getPurchaseBill(id!);
+          if (isMounted) setDocData(res.data);
+        } else if (isReceipt) {
+          const res = await paymentsApi.getReceipt(id!);
           if (isMounted) setDocData(res.data);
         } else {
           throw new Error(`Unsupported document type: ${docType}`);
@@ -196,6 +205,20 @@ export default function DedicatedPrintPage() {
       console.error('Download PDF error:', err);
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleSendReceiptEmail = async () => {
+    if (!recipientEmail.trim() || emailing) return;
+    try {
+      setEmailing(true);
+      await paymentsApi.sendReceiptEmail(id!, recipientEmail.trim());
+      setEmailSuccess(`Receipt voucher emailed to ${recipientEmail.trim()}`);
+      setShowEmailModal(false);
+    } catch (e: any) {
+      alert(e?.response?.data?.message || 'Failed to send receipt email');
+    } finally {
+      setEmailing(false);
     }
   };
 
@@ -282,16 +305,33 @@ export default function DedicatedPrintPage() {
                 ? 'Formal Price Quotation'
                 : isStatement
                 ? 'Statement of Account'
+                : isReceipt
+                ? 'Payment Receipt Voucher'
                 : 'Purchase Bill Soft Copy'}
             </h1>
             <p className="text-[11px] font-mono text-blue-400">
-              {docData.invoiceNumber || docData.quoteNumber || docData.billNumber || docData.party?.partyName || id}
+              {docData.invoiceNumber || docData.quoteNumber || docData.billNumber || docData.receipt?.receiptNumber || docData.party?.partyName || id}
             </p>
           </div>
         </div>
 
         {/* Print Configuration Controls */}
         <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Send Receipt by Email */}
+          {isReceipt && (
+            <button
+              onClick={() => {
+                setRecipientEmail(docData?.receipt?.party?.email || '');
+                setShowEmailModal(true);
+              }}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition active:scale-95"
+              title="Send receipt by email"
+            >
+              <Mail className="w-3.5 h-3.5" />
+              <span>Send Receipt</span>
+            </button>
+          )}
+
           {/* Copy Label Selector (Applicable for Invoices / Challans) */}
           {isInvoiceFamily && (
             <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700 text-xs">
@@ -683,8 +723,219 @@ export default function DedicatedPrintPage() {
               </div>
             </div>
           )}
+
+          {/* OFFICIAL RECEIPT VOUCHER TEMPLATE */}
+          {isReceipt && docData?.receipt && (
+            <div
+              className={`w-full ${paperSize === 'A5' ? 'max-w-[559px] paper-a5 text-[9.5px]' : 'max-w-[794px] paper-a4 text-[11px]'} bg-white text-black p-6 border-2 border-black shadow-2xl print:border-black print:shadow-none print:m-0`}
+            >
+              {/* Header with Company Logo & Details */}
+              <div className="border-b-2 border-black pb-3 mb-4 flex justify-between items-start">
+                <div>
+                  {(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl || BRAND_CONFIG.logoUrl) && (
+                    <img
+                      src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl || BRAND_CONFIG.logoUrl}
+                      alt="Company Logo"
+                      className="max-h-12 max-w-[180px] object-contain mb-2 inline-block"
+                    />
+                  )}
+                  <h2 className="text-base font-black uppercase text-black">
+                    {brandingProfile?.companyName || docData.company?.legalName || docData.company?.name || BRAND_CONFIG.displayName}
+                  </h2>
+                  <p className="text-[10px] text-black">{brandingProfile?.address || docData.company?.address || ''}</p>
+                  <p className="text-[10px] text-black">GSTIN: {brandingProfile?.gstin || docData.company?.gstin || 'Unregistered'}</p>
+                </div>
+                <div className="text-right">
+                  <h1 className="text-lg font-black tracking-wide text-black uppercase">
+                    {docData.receipt.partyType === 'supplier' ? 'PAYMENT VOUCHER' : 'OFFICIAL RECEIPT'}
+                  </h1>
+                  <p className="font-bold text-xs mt-1 text-black font-mono">
+                    Voucher No: {docData.receipt.receiptNumber}
+                  </p>
+                  <p className="text-[10px] text-black">
+                    Date: {docData.receipt.date}
+                  </p>
+                  <p className="text-[10px] text-black font-medium mt-1">
+                    Mode: <span className="font-bold">{docData.receipt.mode}</span> | Ref: <span className="font-mono font-bold">{docData.receipt.reference || '—'}</span>
+                  </p>
+                  {docData.receipt.bankAccountMasked && (
+                    <p className="text-[10px] text-black font-mono">
+                      Bank: {docData.receipt.bankAccountMasked}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Party Info */}
+              <div className="border border-black p-3 mb-4 bg-gray-50 text-black flex justify-between items-start">
+                <div>
+                  <span className="font-bold text-[10px] uppercase text-black">
+                    {docData.receipt.partyType === 'supplier' ? 'Paid To:' : 'Received With Thanks From:'}
+                  </span>
+                  <p className="font-bold text-sm text-black">{docData.receipt.party?.name || 'Party'}</p>
+                  <p className="text-[10px] text-black">{docData.receipt.party?.address || ''}</p>
+                  <p className="text-[10px] text-black">State: {docData.receipt.party?.state || '—'} | GSTIN: {docData.receipt.party?.gstin || 'Unregistered'}</p>
+                </div>
+                <div className="text-right">
+                  <span className="font-bold text-[10px] uppercase text-black">Amount Received / Paid:</span>
+                  <p className="text-xl font-black text-black font-mono">
+                    ₹{Number(docData.receipt.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </p>
+                  {docData.receipt.totalDeductions > 0 && (
+                    <p className="text-[10px] text-black font-medium">
+                      + Deductions: ₹{Number(docData.receipt.totalDeductions).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Amount in words */}
+              <div className="border border-black p-2.5 mb-4 bg-gray-100 text-black">
+                <span className="text-[10px] uppercase font-bold text-gray-700 block">Amount in words:</span>
+                <p className="font-bold text-xs uppercase tracking-wide text-black">
+                  {docData.receipt.amountInWords || numberToIndianWords(docData.receipt.amount)} Only
+                </p>
+              </div>
+
+              {/* Allocated Invoices / Bills */}
+              {docData.receipt.allocations && docData.receipt.allocations.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="font-bold text-xs uppercase mb-1.5 text-black">
+                    Allocated Against {docData.receipt.partyType === 'supplier' ? 'Bills' : 'Invoices'}:
+                  </h3>
+                  <table className="w-full border-collapse border border-black text-black">
+                    <thead>
+                      <tr className="bg-gray-100 text-black border-b border-black">
+                        <th className="border border-black p-1.5 text-left text-[10px]">Document No</th>
+                        <th className="border border-black p-1.5 text-left text-[10px]">Date</th>
+                        <th className="border border-black p-1.5 text-right text-[10px]">Total (₹)</th>
+                        <th className="border border-black p-1.5 text-right text-[10px]">Allocated (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {docData.receipt.allocations.map((a: any, idx: number) => (
+                        <tr key={idx} className="border-b border-black">
+                          <td className="border border-black p-1.5 font-mono text-[10px] font-bold">
+                            {a.invoiceNumber || a.billNumber || a.invoiceId || '—'}
+                          </td>
+                          <td className="border border-black p-1.5 text-[10px]">{a.invoiceDate || a.billDate || '—'}</td>
+                          <td className="border border-black p-1.5 text-right text-[10px]">
+                            ₹{Number(a.invoiceTotal || a.billTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="border border-black p-1.5 text-right text-[10px] font-bold font-mono">
+                            ₹{Number(a.allocatedAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Deductions Breakdown */}
+              {docData.receipt.deductions && docData.receipt.deductions.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="font-bold text-xs uppercase mb-1.5 text-black">Deductions Applied:</h3>
+                  <table className="w-full border-collapse border border-black text-black">
+                    <thead>
+                      <tr className="bg-gray-100 text-black border-b border-black">
+                        <th className="border border-black p-1.5 text-left text-[10px]">Deduction Type</th>
+                        <th className="border border-black p-1.5 text-left text-[10px]">Note</th>
+                        <th className="border border-black p-1.5 text-right text-[10px]">Amount (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {docData.receipt.deductions.map((d: any, idx: number) => (
+                        <tr key={idx} className="border-b border-black">
+                          <td className="border border-black p-1.5 text-[10px] font-bold uppercase">{d.type?.replace(/_/g, ' ')}</td>
+                          <td className="border border-black p-1.5 text-[10px]">{d.note || '—'}</td>
+                          <td className="border border-black p-1.5 text-right text-[10px] font-bold font-mono">
+                            ₹{Number(d.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Settlement Summary */}
+              <div className="border border-black p-3 mb-6 bg-gray-50 flex justify-between items-center text-xs">
+                <span className="font-bold text-black">Total Settlement Applied to Invoices:</span>
+                <span className="font-mono font-black text-sm text-black">
+                  ₹{Number(docData.receipt.totalSettlement || docData.receipt.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {/* Signatory Box */}
+              <div className="mt-8 pt-4 flex justify-between items-end border-t border-gray-300">
+                <div className="text-[9.5px] text-gray-500 max-w-xs">
+                  <p>This is a computer-generated official receipt voucher. Retain for tax & audit verification.</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-xs text-black uppercase">For {brandingProfile?.companyName || docData.company?.name || 'Company'}</p>
+                  <div className="h-14" />
+                  <p className="font-semibold text-[10px] text-black border-t border-black pt-1">Authorized Signatory</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </main>
+
+      {/* Email Receipt Modal */}
+      {showEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm print:hidden">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl text-white">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Mail className="w-4 h-4 text-indigo-400" />
+                Send Receipt Voucher
+              </h3>
+              <button onClick={() => setShowEmailModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1 font-semibold">Recipient Email *</label>
+                <input
+                  type="email"
+                  value={recipientEmail}
+                  onChange={(e) => setRecipientEmail(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono"
+                  placeholder="client@example.com"
+                />
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Sends official receipt details directly through company's configured email account.
+              </p>
+              {emailSuccess && (
+                <div className="p-2 bg-green-950/40 border border-green-800 text-green-300 rounded-lg flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-400" />
+                  <span>{emailSuccess}</span>
+                </div>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setShowEmailModal(false)}
+                  className="px-3 py-1.5 text-xs text-slate-300 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSendReceiptEmail}
+                  disabled={emailing || !recipientEmail.trim()}
+                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {emailing ? 'Sending...' : 'Send Receipt'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
