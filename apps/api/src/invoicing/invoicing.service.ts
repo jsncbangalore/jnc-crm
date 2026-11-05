@@ -556,13 +556,36 @@ export class InvoicingService {
         }
       }
 
+      let resolvedCompanyId = (dto as any).companyId || (dto as any).customerId || undefined;
+      if (!resolvedCompanyId) {
+        if (dto.customerGstin?.trim()) {
+          const matchedByGstin = await tx.company.findFirst({
+            where: { tenantId, gstin: { equals: dto.customerGstin.trim(), mode: 'insensitive' }, deletedAt: null },
+            select: { id: true },
+          });
+          if (matchedByGstin) {
+            resolvedCompanyId = matchedByGstin.id;
+          }
+        }
+        if (!resolvedCompanyId && dto.customerName?.trim()) {
+          const matchedByName = await tx.company.findMany({
+            where: { tenantId, name: { equals: dto.customerName.trim(), mode: 'insensitive' }, deletedAt: null },
+            select: { id: true },
+          });
+          // Only auto-link if EXACTLY ONE company exists with this name (prevents ambiguity if two companies share name)
+          if (matchedByName.length === 1) {
+            resolvedCompanyId = matchedByName[0].id;
+          }
+        }
+      }
+
       let invoice;
       try {
         invoice = await tx.invoice.create({
           data: {
             tenantId,
-            companyId: (dto as any).companyId || (dto as any).customerId || undefined,
-            customerId: (dto as any).customerId || (dto as any).companyId || undefined,
+            companyId: resolvedCompanyId || undefined,
+            customerId: resolvedCompanyId || undefined,
             invoiceNumber,
             docType,
             createdById: user.id,
@@ -1279,6 +1302,22 @@ export class InvoicingService {
 
     // Ensure invoice is posted to ledger
     await this.postingService?.postInvoice(updated, user);
+
+    // Audit log customer linking
+    await this.auditService.log({
+      tenantId,
+      actorId: user.id,
+      actorName: user.employeeCode || 'User',
+      action: 'LINK_CUSTOMER',
+      entityName: 'Invoice',
+      entityId: id,
+      afterState: {
+        invoiceNumber: invoice.invoiceNumber,
+        targetCompanyId: targetCompany.id,
+        targetCompanyName: targetCompany.name,
+        targetCompanyGstin: targetCompany.gstin,
+      },
+    });
 
     return {
       success: true,

@@ -52,6 +52,15 @@ export class LedgerController {
   }
 
   /**
+   * Unlinked Invoices endpoint for reconciliation and linking
+   */
+  @Get('unlinked-invoices')
+  async getUnlinkedInvoices(@CurrentUser() user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    return this.ledgerService.getUnlinkedInvoices(tenantId);
+  }
+
+  /**
    * All-years open documents endpoint for payment recording & allocation
    */
   @Get('open-documents')

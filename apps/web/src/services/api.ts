@@ -1444,6 +1444,8 @@ export const invoicesApi = {
   generateFromOrder: (orderId: string, data?: any) =>
     api.post(`/invoices/order/${orderId}/generate`, data),
   voidInvoice: (id: string, reason: string) => api.patch(`/invoices/${id}/void`, { reason }),
+  linkCustomer: (id: string, customerId?: string) =>
+    api.patch(`/invoices/${id}/link-customer`, { customerId }),
   recordPayment: (id: string, data: any) => api.post(`/invoices/${id}/payments`, data),
   emailInvoice: (id: string, data?: { recipientEmail?: string; customNote?: string; templateType?: string }) =>
     api.post(`/invoices/${id}/email`, data || {}),
@@ -1703,6 +1705,7 @@ export interface LedgerParty {
   balanceSide: "dr" | "cr" | "Dr" | "Cr";
   outstandingAmount?: number;
   hasOverdue?: boolean;
+  hasPostedInvoices?: boolean;
   isUnlinked?: boolean;
   unlinkedCount?: number;
   isDemo?: boolean;
@@ -1802,6 +1805,20 @@ export const ledgerApi = {
   getStatement: (params: { partyType: "customer" | "supplier"; partyId: string; financialYear?: string; fromDate?: string; toDate?: string }) =>
     api.get<LedgerStatementResponse>("/ledger/statement", { params }),
   getLock: () => api.get<{ lockedUntil: string | null }>("/ledger/lock"),
+  getUnlinkedInvoices: () =>
+    api.get<Array<{
+      id: string;
+      invoiceNumber: string;
+      invoiceDate: string;
+      dueDate?: string;
+      docType: string;
+      customerName: string;
+      customerGstin?: string | null;
+      totalAmount: number;
+      balanceDue: number;
+      paymentStatus: string;
+      reason: string;
+    }>>("/ledger/unlinked-invoices"),
   getPartySourceReport: () => api.get<{
     totalCustomers: number;
     totalSuppliers: number;

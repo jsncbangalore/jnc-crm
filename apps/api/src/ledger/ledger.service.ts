@@ -29,6 +29,7 @@ export interface LedgerPartySummary {
   unlinkedCount?: number;
   isDemo?: boolean;
   source?: string;
+  hasPostedInvoices?: boolean;
   ageing: {
     current: number; // 0-30 days
     days30: number;  // 31-60 days
@@ -257,12 +258,12 @@ export class LedgerService {
       const ledgerBal = await this.calculatePartyBalance(tenantId, 'customer', comp.id);
       const ledgerClosing = ledgerBal.side === 'Dr' ? ledgerBal.amount : -ledgerBal.amount;
 
-      // Active issued tax and SEZ invoices (excluding voided)
+      // Active issued tax and SEZ invoices, debit notes, and bills of supply (excluding voided)
       const invoices = await this.prisma.invoice.findMany({
         where: {
           tenantId,
           OR: [{ companyId: comp.id }, { customerId: comp.id }],
-          docType: { in: ['tax_invoice', 'sez_invoice'] },
+          docType: { in: ['tax_invoice', 'sez_invoice', 'debit_note', 'bill_of_supply'] },
           isVoided: false,
           paymentStatus: { not: 'paid' },
         },
@@ -415,7 +416,7 @@ export class LedgerService {
         whereClause = {
           tenantId,
           companyId: null,
-          docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note'] },
+          docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note', 'debit_note', 'bill_of_supply'] },
           isVoided: false,
           paymentStatus: { not: 'paid' },
         };
@@ -434,7 +435,7 @@ export class LedgerService {
         whereClause = {
           tenantId,
           AND: matchConditions,
-          docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note'] },
+          docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note', 'debit_note', 'bill_of_supply'] },
           isVoided: false,
           paymentStatus: { not: 'paid' },
         };
@@ -445,6 +446,12 @@ export class LedgerService {
           select: { id: true, name: true, gstin: true },
         });
 
+        const sameNameCount = company
+          ? await this.prisma.company.count({
+              where: { tenantId, name: company.name, deletedAt: null },
+            })
+          : 0;
+
         const orConditions: any[] = [{ companyId: partyId }, { customerId: partyId }];
         if (company?.gstin?.trim()) {
           orConditions.push({
@@ -452,7 +459,7 @@ export class LedgerService {
             customerGstin: { equals: company.gstin.trim(), mode: 'insensitive' },
           });
         }
-        if (company?.name?.trim()) {
+        if (company?.name?.trim() && sameNameCount === 1) {
           orConditions.push({
             companyId: null,
             customerName: { equals: company.name.trim(), mode: 'insensitive' },
@@ -556,6 +563,15 @@ export class LedgerService {
         const email = comp.billingEmail || contact?.email || (comp as any).email || null;
         const hasOverdue = ageing.days30 > 0 || ageing.days60 > 0 || ageing.days90Plus > 0;
 
+        const postedInvoicesCount = await this.prisma.invoice.count({
+          where: {
+            tenantId,
+            OR: [{ companyId: comp.id }, { customerId: comp.id }],
+            docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note', 'debit_note', 'bill_of_supply'] },
+            isVoided: false,
+          },
+        });
+
         results.push({
           partyId: comp.id,
           partyType: 'customer',
@@ -569,6 +585,7 @@ export class LedgerService {
           hasOverdue,
           isDemo: Boolean((comp as any).isDemo),
           source: (comp as any).source || ((comp as any).isDemo ? 'demo' : 'manual'),
+          hasPostedInvoices: postedInvoicesCount > 0 || balance.amount > 0.01,
           ageing,
         });
       }
@@ -578,6 +595,7 @@ export class LedgerService {
         where: {
           tenantId,
           companyId: null,
+          docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note', 'debit_note', 'bill_of_supply'] },
           isVoided: false,
         },
         select: {
@@ -640,6 +658,7 @@ export class LedgerService {
             hasOverdue,
             isUnlinked: true,
             unlinkedCount: invList.length,
+            hasPostedInvoices: true,
             ageing: {
               current: Number(groupTotalBalance.toFixed(2)),
               days30: 0,
@@ -676,6 +695,14 @@ export class LedgerService {
         const ageing = await this.calculatePartyAgeing(tenantId, 'supplier', sup.id);
         const hasOverdue = ageing.days30 > 0 || ageing.days60 > 0 || ageing.days90Plus > 0;
 
+        const postedBillsCount = await this.prisma.purchaseBill.count({
+          where: {
+            tenantId,
+            supplierId: sup.id,
+            deletedAt: null,
+          },
+        });
+
         results.push({
           partyId: sup.id,
           partyType: 'supplier',
@@ -689,6 +716,7 @@ export class LedgerService {
           hasOverdue,
           isDemo: Boolean((sup as any).isDemo),
           source: (sup as any).source || ((sup as any).isDemo ? 'demo' : 'manual'),
+          hasPostedInvoices: postedBillsCount > 0 || balance.amount > 0.01,
           ageing,
         });
       }
@@ -709,20 +737,56 @@ export class LedgerService {
     partyId: string,
     asOfDate?: Date
   ): Promise<{ amount: number; side: 'Dr' | 'Cr' }> {
+    let partyIdFilter: any = partyId;
     if (partyId === 'not-linked') {
       const unlinkedInvs = await this.prisma.invoice.findMany({
-        where: { tenantId, companyId: null, isVoided: false },
+        where: {
+          tenantId,
+          companyId: null,
+          docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note', 'debit_note', 'bill_of_supply'] },
+          isVoided: false,
+        },
         select: { totalAmount: true, balanceDue: true },
       });
       const unlinkedSum = unlinkedInvs.reduce((sum, i) => sum + (Number(i.balanceDue ?? i.totalAmount) || 0), 0);
       return { amount: Number(unlinkedSum.toFixed(2)), side: 'Dr' };
+    } else if (partyId.startsWith('unlinked:')) {
+      const parts = partyId.split(':');
+      const targetName = decodeURIComponent(parts[1] || '').trim();
+      const targetGstin = decodeURIComponent(parts[2] || '').trim();
+      partyIdFilter = {
+        in: [
+          partyId,
+          targetName,
+          ...(targetGstin ? [targetGstin] : []),
+        ],
+      };
+    } else if (partyType === 'customer') {
+      const comp = await this.prisma.company.findUnique({
+        where: { id: partyId },
+        select: { id: true, name: true, gstin: true },
+      });
+      if (comp) {
+        const sameNameCount = await this.prisma.company.count({
+          where: { tenantId, name: comp.name, deletedAt: null },
+        });
+        const ids = [partyId];
+        if (comp.gstin?.trim()) {
+          ids.push(`unlinked:${encodeURIComponent(comp.name.trim())}:${encodeURIComponent(comp.gstin.trim().toUpperCase())}`);
+        }
+        if (comp.name?.trim() && sameNameCount === 1) {
+          ids.push(`unlinked:${encodeURIComponent(comp.name.trim())}:`);
+          ids.push(comp.name.trim());
+        }
+        partyIdFilter = ids.length === 1 ? partyId : { in: ids };
+      }
     }
 
     const entries = await this.prisma.ledgerEntry.findMany({
       where: {
         tenantId,
         partyType,
-        partyId,
+        partyId: partyIdFilter,
         ...(asOfDate ? { entryDate: { lte: asOfDate } } : {}),
       },
     });
@@ -888,6 +952,20 @@ export class LedgerService {
             phone: (comp as any).phone || contact?.phone || null,
             creditPeriod: 30,
           };
+        } else if (partyId.startsWith('unlinked:')) {
+          const parts = partyId.split(':');
+          const targetName = decodeURIComponent(parts[1] || '').trim();
+          const targetGstin = decodeURIComponent(parts[2] || '').trim();
+          partyInfo = {
+            id: partyId,
+            type: 'customer',
+            name: targetName || 'Unlinked Customer',
+            gstin: targetGstin || null,
+            address: 'Invoices without registered master account',
+            email: null,
+            phone: null,
+            creditPeriod: 30,
+          };
         } else {
           // Fallback customer
           partyInfo = { id: partyId, type: 'customer', name: partyId, creditPeriod: 30 };
@@ -921,10 +999,40 @@ export class LedgerService {
       };
     }
 
-    const partyIdFilter: any =
-      partyId === 'not-linked'
-        ? { in: ['not-linked', ...unlinkedNames] }
-        : partyId;
+    let partyIdFilter: any = partyId;
+    if (partyId === 'not-linked') {
+      partyIdFilter = { in: ['not-linked', ...unlinkedNames] };
+    } else if (partyId.startsWith('unlinked:')) {
+      const parts = partyId.split(':');
+      const targetName = decodeURIComponent(parts[1] || '').trim();
+      const targetGstin = decodeURIComponent(parts[2] || '').trim();
+      partyIdFilter = {
+        in: [
+          partyId,
+          targetName,
+          ...(targetGstin ? [targetGstin] : []),
+        ],
+      };
+    } else if (partyType === 'customer') {
+      const comp = await this.prisma.company.findUnique({
+        where: { id: partyId },
+        select: { id: true, name: true, gstin: true },
+      });
+      if (comp) {
+        const sameNameCount = await this.prisma.company.count({
+          where: { tenantId, name: comp.name, deletedAt: null },
+        });
+        const ids = [partyId];
+        if (comp.gstin?.trim()) {
+          ids.push(`unlinked:${encodeURIComponent(comp.name.trim())}:${encodeURIComponent(comp.gstin.trim().toUpperCase())}`);
+        }
+        if (comp.name?.trim() && sameNameCount === 1) {
+          ids.push(`unlinked:${encodeURIComponent(comp.name.trim())}:`);
+          ids.push(comp.name.trim());
+        }
+        partyIdFilter = ids.length === 1 ? partyId : { in: ids };
+      }
+    }
 
     // 2. Resolve opening balance for the financial year
     // Rule: opening b/f = the sum of all entries dated BEFORE the FY start (carry forward) + the one opening entry of that FY.
@@ -1105,19 +1213,77 @@ export class LedgerService {
     // 5. Query open bills
     let openBills: OpenBillItem[] = [];
     if (partyType === 'customer') {
-      const whereInv: any = {
-        tenantId,
-        paymentStatus: { not: 'paid' },
-        isVoided: false,
-      };
+      let whereInv: any;
       if (partyId === 'not-linked') {
-        whereInv.companyId = null;
+        whereInv = {
+          tenantId,
+          companyId: null,
+          docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note'] },
+          isVoided: false,
+          paymentStatus: { not: 'paid' },
+        };
+      } else if (partyId.startsWith('unlinked:')) {
+        const parts = partyId.split(':');
+        const targetName = decodeURIComponent(parts[1] || '').trim();
+        const targetGstin = decodeURIComponent(parts[2] || '').trim();
+
+        const matchConditions: any[] = [{ companyId: null }];
+        if (targetGstin) {
+          matchConditions.push({ customerGstin: { equals: targetGstin, mode: 'insensitive' } });
+        } else if (targetName) {
+          matchConditions.push({ customerName: { equals: targetName, mode: 'insensitive' } });
+        }
+
+        whereInv = {
+          tenantId,
+          AND: matchConditions,
+          docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note'] },
+          isVoided: false,
+          paymentStatus: { not: 'paid' },
+        };
       } else {
-        whereInv.companyId = partyId;
+        const comp = await this.prisma.company.findUnique({
+          where: { id: partyId },
+          select: { id: true, name: true, gstin: true },
+        });
+
+        const sameNameCount = comp
+          ? await this.prisma.company.count({
+              where: { tenantId, name: comp.name, deletedAt: null },
+            })
+          : 0;
+
+        const orConditions: any[] = [{ companyId: partyId }, { customerId: partyId }];
+        if (comp?.gstin?.trim()) {
+          orConditions.push({
+            companyId: null,
+            customerId: null,
+            customerGstin: { equals: comp.gstin.trim(), mode: 'insensitive' },
+          });
+        }
+        if (comp?.name?.trim() && sameNameCount === 1) {
+          orConditions.push({
+            companyId: null,
+            customerId: null,
+            customerName: { equals: comp.name.trim(), mode: 'insensitive' },
+            OR: [
+              { customerGstin: null },
+              { customerGstin: '' },
+            ],
+          });
+        }
+
+        whereInv = {
+          tenantId,
+          OR: orConditions,
+          docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note', 'debit_note', 'bill_of_supply'] },
+          isVoided: false,
+          paymentStatus: { not: 'paid' },
+        };
       }
       const unpaidInvoices = await this.prisma.invoice.findMany({
         where: whereInv,
-        orderBy: { invoiceDate: 'asc' },
+        orderBy: [{ invoiceDate: 'asc' }, { dueDate: 'asc' }, { invoiceNumber: 'asc' }],
       });
       openBills = unpaidInvoices.map((inv) => {
         const due = inv.dueDate ? new Date(inv.dueDate) : new Date(inv.invoiceDate);
@@ -1640,7 +1806,7 @@ export class LedgerService {
       where: {
         tenantId,
         isVoided: false,
-        docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note'] },
+        docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note', 'debit_note', 'bill_of_supply'] },
       },
       select: { id: true, invoiceNumber: true, docType: true },
     });
@@ -1682,7 +1848,7 @@ export class LedgerService {
 
     for (const series of seriesList) {
       let allocatedNumbers: number[] = [];
-      if (['tax_invoice', 'sez_invoice', 'credit_note', 'delivery_challan', 'proforma_invoice'].includes(series.docType)) {
+      if (['tax_invoice', 'sez_invoice', 'credit_note', 'debit_note', 'bill_of_supply', 'delivery_challan', 'proforma_invoice'].includes(series.docType)) {
         const docs = await this.prisma.invoice.findMany({
           where: { tenantId, docType: series.docType },
           select: { invoiceNumber: true },
@@ -1735,5 +1901,129 @@ export class LedgerService {
       documentsWithoutLedger,
       numberGaps,
     };
+  }
+
+  /**
+   * Return all invoices that are not deterministically linked to a single registered customer
+   * according to the strict 3-step hierarchy:
+   * 1. customerId/companyId
+   * 2. GSTIN match
+   * 3. Name match ONLY when invoice has no customerId and no GSTIN, and exactly one party has that exact name
+   *
+   * Anything else (unlinked, unmatched GSTIN, ambiguous names with multiple parties) is returned here.
+   */
+  async getUnlinkedInvoices(tenantId: string) {
+    const invoices = await this.prisma.invoice.findMany({
+      where: {
+        tenantId,
+        isVoided: false,
+        docType: { in: ['tax_invoice', 'sez_invoice', 'credit_note', 'debit_note', 'bill_of_supply'] },
+      },
+      orderBy: [{ invoiceDate: 'desc' }, { invoiceNumber: 'desc' }],
+    });
+
+    const companies = await this.prisma.company.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { id: true, name: true, gstin: true },
+    });
+
+    const companyById = new Map<string, any>();
+    const gstinMap = new Map<string, any[]>();
+    const nameMap = new Map<string, any[]>();
+
+    for (const c of companies) {
+      companyById.set(c.id, c);
+      if (c.gstin?.trim()) {
+        const gKey = c.gstin.trim().toUpperCase();
+        const list = gstinMap.get(gKey) || [];
+        list.push(c);
+        gstinMap.set(gKey, list);
+      }
+      if (c.name?.trim()) {
+        const nKey = c.name.trim().toLowerCase();
+        const list = nameMap.get(nKey) || [];
+        list.push(c);
+        nameMap.set(nKey, list);
+      }
+    }
+
+    const unlinkedList: any[] = [];
+
+    for (const inv of invoices) {
+      // Step 1: Linked by customerId or companyId
+      const compId = inv.customerId || inv.companyId;
+      if (compId && companyById.has(compId)) {
+        continue; // Deterministically linked
+      }
+
+      const invGstin = (inv.customerGstin || '').trim().toUpperCase();
+      const invName = (inv.customerName || '').trim().toLowerCase();
+
+      // Step 2: Match by GSTIN
+      if (invGstin) {
+        const gMatches = gstinMap.get(invGstin) || [];
+        if (gMatches.length === 1) {
+          continue; // Deterministically matched by unique GSTIN
+        }
+        // Ambiguous GSTIN or no company with this GSTIN
+        unlinkedList.push({
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          invoiceDate: inv.invoiceDate,
+          dueDate: inv.dueDate,
+          docType: inv.docType,
+          customerName: inv.customerName,
+          customerGstin: inv.customerGstin,
+          totalAmount: Number(inv.totalAmount),
+          balanceDue: Number(inv.balanceDue ?? inv.totalAmount),
+          paymentStatus: inv.paymentStatus,
+          reason: gMatches.length > 1
+            ? `Ambiguous GSTIN: ${gMatches.length} parties have GSTIN "${inv.customerGstin}"`
+            : `Unmatched GSTIN: No customer found with GSTIN "${inv.customerGstin}"`,
+        });
+        continue;
+      }
+
+      // Step 3: Match by name ONLY if invoice has no customerId and no GSTIN and exactly one party has that exact name
+      if (invName) {
+        const nMatches = nameMap.get(invName) || [];
+        if (nMatches.length === 1) {
+          continue; // Deterministically matched by unique name
+        }
+        unlinkedList.push({
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          invoiceDate: inv.invoiceDate,
+          dueDate: inv.dueDate,
+          docType: inv.docType,
+          customerName: inv.customerName,
+          customerGstin: null,
+          totalAmount: Number(inv.totalAmount),
+          balanceDue: Number(inv.balanceDue ?? inv.totalAmount),
+          paymentStatus: inv.paymentStatus,
+          reason: nMatches.length > 1
+            ? `Ambiguous Party: ${nMatches.length} parties exist with name "${inv.customerName}". Please link manually.`
+            : `Unlinked Party: No registered customer matches "${inv.customerName}".`,
+        });
+        continue;
+      }
+
+      // No name, no GSTIN, no ID
+      unlinkedList.push({
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        invoiceDate: inv.invoiceDate,
+        dueDate: inv.dueDate,
+        docType: inv.docType,
+        customerName: inv.customerName || 'Unknown',
+        customerGstin: null,
+        totalAmount: Number(inv.totalAmount),
+        balanceDue: Number(inv.balanceDue ?? inv.totalAmount),
+        paymentStatus: inv.paymentStatus,
+        reason: 'Invoice has no customer ID, name, or GSTIN.',
+      });
+    }
+
+    return unlinkedList;
   }
 }

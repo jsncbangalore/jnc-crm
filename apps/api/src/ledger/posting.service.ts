@@ -18,8 +18,8 @@ export class PostingService {
     if (!invoice || invoice.isVoided) return null;
 
     const docType = invoice.docType || 'tax_invoice';
-    const nonPostingDocTypes = ['proforma_invoice', 'delivery_challan', 'purchase_order'];
-    if (nonPostingDocTypes.includes(docType)) {
+    const postingDocTypes = ['tax_invoice', 'sez_invoice', 'credit_note', 'debit_note', 'bill_of_supply'];
+    if (!postingDocTypes.includes(docType)) {
       this.logger.debug(`Skipping non-posting document type: ${docType} (Invoice #${invoice.invoiceNumber})`);
       return null;
     }
@@ -37,10 +37,14 @@ export class PostingService {
       );
     }
 
-    // Party is customerId/companyId or fallback customer name/identifier
-    const partyId = invoice.customerId || invoice.companyId || invoice.customerGstin || invoice.customerName;
+    // Party is customerId/companyId or structured unlinked customer identifier
+    const resolvedPartyId = invoice.customerId || invoice.companyId;
+    const partyId = resolvedPartyId
+      ? resolvedPartyId
+      : `unlinked:${encodeURIComponent((invoice.customerName || 'Unlinked').trim())}:${encodeURIComponent((invoice.customerGstin || '').trim().toUpperCase())}`;
     const isCreditNote = docType === 'credit_note';
-    const voucherType = isCreditNote ? 'credit_note' : 'sales';
+    const isDebitNote = docType === 'debit_note';
+    const voucherType = isCreditNote ? 'credit_note' : isDebitNote ? 'debit_note' : 'sales';
     const amount = Number(invoice.totalAmount ?? (invoice as any).total ?? 0);
 
     const debit = isCreditNote ? 0.00 : amount;
@@ -48,6 +52,10 @@ export class PostingService {
 
     const particulars = isCreditNote
       ? `Credit Note #${invoice.invoiceNumber} - ${invoice.customerName}`
+      : isDebitNote
+      ? `Debit Note #${invoice.invoiceNumber} - ${invoice.customerName}`
+      : docType === 'bill_of_supply'
+      ? `Bill of Supply #${invoice.invoiceNumber} - ${invoice.customerName}`
       : `Sales Tax Invoice #${invoice.invoiceNumber} - ${invoice.customerName}`;
 
     // Upsert uniquely on [tenantId, sourceType, sourceId, voucherType]
