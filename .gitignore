@@ -44,3 +44,7 @@ apps/api/data/*.json
 purchase-documents/
 logs/
 *.traineddata
+
+# Development/Inspection scripts (do not commit)
+scripts/set-dev-password.js
+scripts/inspect-db.js

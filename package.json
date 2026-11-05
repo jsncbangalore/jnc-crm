@@ -19,6 +19,8 @@
     "bundle:test-linux": "node scripts/bundle-test-linux.js",
     "release:pack": "node scripts/release-pack.js",
     "release:verify": "node scripts/release-verify.js",
+    "test:contract-dtos": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-contract-dto-keys.ts",
+    "balance-impact": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/balance-impact-analysis.ts",
     "test:print-csp": "node scripts/test-print-csp-suite.js",
     "verify:live": "node scripts/verify-live.js",
     "db:dev:up": "node scripts/db-dev.js up",
