@@ -1,4 +1,5 @@
 import UnifiedRecordPaymentModal from '../components/common/UnifiedRecordPaymentModal';
+import InvoiceModal from '../components/invoices/InvoiceModal';
 import { UnifiedErrorComponent } from '../components/common/UnifiedErrorComponent';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -154,6 +155,10 @@ export default function LedgerPage() {
     if (searchParams.get('action') === 'payment') {
       setShowPaymentModal(true);
     }
+    const pId = searchParams.get('partyId') || searchParams.get('customerId') || searchParams.get('party');
+    if (pId) {
+      setSelectedPartyId(pId);
+    }
   }, [searchParams]);
   const [currentFY] = useState<string>(() => computeCurrentIndianFY());
   const [selectedFY, setSelectedFY] = useState<string>(() => computeCurrentIndianFY());
@@ -201,6 +206,8 @@ export default function LedgerPage() {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showUnlinkedModal, setShowUnlinkedModal] = useState(false);
   const [unlinkedInvoices, setUnlinkedInvoices] = useState<any[]>([]);
+  const [selectedInvoiceForModal, setSelectedInvoiceForModal] = useState<any | null>(null);
+  const [loadingInvoiceId, setLoadingInvoiceId] = useState<string | null>(null);
   const [loadingUnlinked, setLoadingUnlinked] = useState(false);
   const [linkingInvoiceId, setLinkingInvoiceId] = useState<string | null>(null);
   const [selectedTargetCustomerId, setSelectedTargetCustomerId] = useState<string>('');
@@ -544,13 +551,56 @@ export default function LedgerPage() {
     document.body.removeChild(link);
   };
 
-  const handleVoucherClick = (voucherType: string, voucherNo: string, sourceId?: string) => {
+  const handleVoucherClick = async (voucherType: string, voucherNo: string, sourceId?: string) => {
     const vt = (voucherType || '').toLowerCase();
     if (vt.includes('invoice') || vt === 'sales') {
-      const url = sourceId
-        ? `/invoices?invoiceId=${encodeURIComponent(sourceId)}&search=${encodeURIComponent(voucherNo)}&open=1`
-        : `/invoices?search=${encodeURIComponent(voucherNo)}&open=1`;
-      navigate(url);
+      try {
+        setLoadingInvoiceId(voucherNo || sourceId || 'loading');
+        let invoiceData: any = null;
+
+        // 1. Try fetching by sourceId if available
+        if (sourceId) {
+          try {
+            const res = await invoicesApi.get(sourceId);
+            if (res.data) invoiceData = res.data;
+          } catch {}
+        }
+
+        // 2. Try fetching by voucherNo (backend findOne supports invoiceNumber or search)
+        if (!invoiceData && voucherNo) {
+          try {
+            const res = await invoicesApi.get(voucherNo);
+            if (res.data) invoiceData = res.data;
+          } catch {
+            try {
+              const listRes = await invoicesApi.list({ search: voucherNo });
+              const items = listRes.data?.items || listRes.data || [];
+              invoiceData =
+                items.find((inv: any) => inv.invoiceNumber?.trim().toLowerCase() === voucherNo.trim().toLowerCase()) ||
+                items.find((inv: any) => inv.invoiceNumber?.includes(voucherNo)) ||
+                items[0];
+            } catch {}
+          }
+        }
+
+        if (invoiceData) {
+          setSelectedInvoiceForModal(invoiceData);
+        } else {
+          // Fallback only if invoice document could not be loaded at all
+          const url = sourceId
+            ? `/invoices?invoiceId=${encodeURIComponent(sourceId)}&search=${encodeURIComponent(voucherNo)}&open=1`
+            : `/invoices?search=${encodeURIComponent(voucherNo)}&open=1`;
+          navigate(url);
+        }
+      } catch (err: any) {
+        console.error('Failed to open invoice popup on ledger page:', err);
+        const url = sourceId
+          ? `/invoices?invoiceId=${encodeURIComponent(sourceId)}&search=${encodeURIComponent(voucherNo)}&open=1`
+          : `/invoices?search=${encodeURIComponent(voucherNo)}&open=1`;
+        navigate(url);
+      } finally {
+        setLoadingInvoiceId(null);
+      }
     } else if (vt.includes('bill') || vt === 'purchase') {
       const url = sourceId
         ? `/bills?billId=${encodeURIComponent(sourceId)}&search=${encodeURIComponent(voucherNo)}&open=1`
@@ -1425,14 +1475,19 @@ export default function LedgerPage() {
                                 <td className="py-2.5 px-3 font-mono whitespace-nowrap">
                                   {entry.voucherNo ? (
                                     <button
+                                      type="button"
                                       onClick={() =>
                                         handleVoucherClick(entry.voucherType, entry.voucherNo, (entry as any).sourceId)
                                       }
-                                      className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold inline-flex items-center gap-1"
-                                      title={`Open ${entry.voucherNo}`}
+                                      className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+                                      title={`View ${entry.voucherNo} details`}
                                     >
                                       <span>{entry.voucherNo}</span>
-                                      <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                                      {loadingInvoiceId === entry.voucherNo ? (
+                                        <RefreshCw className="w-2.5 h-2.5 animate-spin text-indigo-500" />
+                                      ) : (
+                                        <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                                      )}
                                     </button>
                                   ) : (
                                     '-'
@@ -1479,14 +1534,19 @@ export default function LedgerPage() {
                               <td className="py-2.5 px-3 font-mono whitespace-nowrap">
                                 {entry.voucherNo ? (
                                   <button
+                                    type="button"
                                     onClick={() =>
                                       handleVoucherClick(entry.voucherType, entry.voucherNo, (entry as any).sourceId)
                                     }
-                                    className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold inline-flex items-center gap-1"
-                                    title={`Open ${entry.voucherNo}`}
+                                    className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+                                    title={`View ${entry.voucherNo} details`}
                                   >
                                     <span>{entry.voucherNo}</span>
-                                    <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                                    {loadingInvoiceId === entry.voucherNo ? (
+                                      <RefreshCw className="w-2.5 h-2.5 animate-spin text-indigo-500" />
+                                    ) : (
+                                      <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                                    )}
                                   </button>
                                 ) : (
                                   '-'
@@ -1517,10 +1577,10 @@ export default function LedgerPage() {
                             Closing Balance:
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap text-emerald-700 dark:text-emerald-400">
-                            ₹{formatIndianCurrency(partyType === 'customer' ? statement.totals.totalDebit : statement.totals.totalCredit)}
+                            ₹{formatIndianCurrency(partyType === 'customer' ? statement.totals?.totalDebit : statement.totals?.totalCredit)}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap text-blue-700 dark:text-blue-400">
-                            ₹{formatIndianCurrency(partyType === 'customer' ? statement.totals.totalCredit : statement.totals.totalDebit)}
+                            ₹{formatIndianCurrency(partyType === 'customer' ? statement.totals?.totalCredit : statement.totals?.totalDebit)}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap font-black text-indigo-900 dark:text-indigo-200">
                             ₹{formatIndianCurrency(statement.closingBalance)} {safeSide(statement.closingSide)}
@@ -1533,10 +1593,10 @@ export default function LedgerPage() {
                             Closing Balance:
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap font-bold text-emerald-700 dark:text-emerald-400">
-                            ₹{formatIndianCurrency(statement.totals.totalDebit)}
+                            ₹{formatIndianCurrency(statement.totals?.totalDebit)}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap font-bold text-blue-700 dark:text-blue-400">
-                            ₹{formatIndianCurrency(statement.totals.totalCredit)}
+                            ₹{formatIndianCurrency(statement.totals?.totalCredit)}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap font-black text-indigo-900 dark:text-indigo-200">
                             ₹{formatIndianCurrency(statement.closingBalance)}
@@ -1831,6 +1891,18 @@ export default function LedgerPage() {
           setSelectedTargetCustomerId={setSelectedTargetCustomerId}
           onLink={handleLinkCustomer}
           linkingLoading={linkingLoading}
+        />
+      )}
+
+      {/* 6. Invoice Details Modal Popup (Opens directly in Ledger view without leaving page) */}
+      {selectedInvoiceForModal && (
+        <InvoiceModal
+          invoice={selectedInvoiceForModal}
+          onClose={() => setSelectedInvoiceForModal(null)}
+          onInvoiceUpdated={() => {
+            loadParties();
+            if (selectedPartyId) loadStatement(selectedPartyId, selectedFY);
+          }}
         />
       )}
     </div>

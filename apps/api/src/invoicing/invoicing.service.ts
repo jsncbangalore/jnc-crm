@@ -1389,7 +1389,13 @@ export class InvoicingService {
   async findOne(id: string, user: ScopedUser) {
     const scope = this.scopingService.getInvoiceScope(user);
     const invoice = await this.prisma.invoice.findFirst({
-      where: { id, ...scope },
+      where: {
+        OR: [
+          { id },
+          { invoiceNumber: id },
+        ],
+        ...scope,
+      },
       include: {
         lines: { include: { sku: true } },
         company: {

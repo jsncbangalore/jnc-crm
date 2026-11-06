@@ -105,7 +105,7 @@ function OrderRowActions({
         </button>
 
         {/* View / Generate Invoice */}
-        {activeInv && hasInvoicesPage ? (
+        {activeInv ? (
           <button
             type="button"
             onClick={(e) => {
@@ -113,9 +113,9 @@ function OrderRowActions({
               setIsOpen(false);
               onViewInvoice?.(activeInv.id, activeInv);
             }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-crm-blue-light hover:bg-crm-blue/10 transition-colors font-medium cursor-pointer"
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors font-medium cursor-pointer"
           >
-            <FileText size={14} className="text-crm-blue-light shrink-0" />
+            <FileText size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
             <span>View Invoice</span>
           </button>
         ) : isEligibleForInvoice && hasInvoicesPage ? (
@@ -283,22 +283,23 @@ export default function OrdersPage() {
       </div>
 
       {/* Table */}
-      <div className="table-wrapper">
-        <table className="crm-table text-xs w-full">
-          <thead>
-            <tr>
-              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Order #</th>
-              <th className="px-2.5 sm:px-3 py-2.5 max-w-[160px]">Customer</th>
-              <th className="px-2.5 sm:px-3 py-2.5 max-w-[160px]">Equipment Items</th>
-              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Taxable & Total</th>
-              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Tax Invoice</th>
-              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Payment</th>
-              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Status</th>
-              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Shipment</th>
-              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Date</th>
-              <th className="px-2.5 sm:px-3 py-2.5 text-right whitespace-nowrap w-12">Actions</th>
-            </tr>
-          </thead>
+      <div className="card border-slate-200 dark:border-[#2A3042] overflow-hidden p-0 shadow-sm bg-white dark:bg-[#181B26]">
+        <div className="overflow-x-auto scrollbar-thin">
+          <table className="crm-table text-xs w-full">
+            <thead>
+              <tr className="border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#141722] text-slate-700 dark:text-slate-400 font-bold uppercase tracking-wider text-[10.5px]">
+                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-28">Order #</th>
+                <th className="px-2.5 py-2.5 text-left min-w-[130px] max-w-[160px]">Customer</th>
+                <th className="px-2.5 py-2.5 text-left min-w-[130px] max-w-[160px]">Equipment Items</th>
+                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-28">Taxable & Total</th>
+                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-28">Tax Invoice</th>
+                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-24">Payment</th>
+                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-24">Status</th>
+                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-28">Shipment</th>
+                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-24">Date</th>
+                <th className="px-2 py-2.5 text-center whitespace-nowrap w-12">Actions</th>
+              </tr>
+            </thead>
           <tbody>
             {orders.map((order, i) => {
               const activeInv = order.invoices && order.invoices.length > 0 ? order.invoices[0] : null;
@@ -460,6 +461,7 @@ export default function OrdersPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Invoice Viewer / Print / Email Modal */}
