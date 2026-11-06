@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, Link } from 'react-router-dom';
 import Navbar from './Navbar';
 import MobileDock from './MobileDock';
@@ -8,13 +8,14 @@ import { useAllowedPages } from '../../hooks/useAllowedPages';
 import { getProductName } from '../../config/brand';
 import { authApi, setAccessToken, setImpersonationAccessToken, getImpersonationAccessToken, setCurrentTabUserId } from '../../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { KeyRound, ShieldAlert, CheckCircle2, Lock } from 'lucide-react';
+import { KeyRound, ShieldAlert, CheckCircle2, Lock, Database } from 'lucide-react';
 import { openCookiePreferencesPanel } from '../../utils/cookieConsent';
 import BrandLogo from '../common/BrandLogo';
 import Footer from '../common/Footer';
+import SessionExpiredBanner from './SessionExpiredBanner';
 
 export default function AppLayout({ children }: { children?: React.ReactNode } = {}) {
-  const { user, updateUser, logout } = useAuth();
+  const { user, updateUser, logout, sessionExpired } = useAuth();
   const { branding } = useBranding();
   const { hasZeroPages } = useAllowedPages();
 
@@ -25,6 +26,34 @@ export default function AppLayout({ children }: { children?: React.ReactNode } =
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  // Schema update check for admins
+  const [schemaPendingCount, setSchemaPendingCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const isAdmin =
+      user?.role === 'admin' ||
+      user?.role === 'tenant_admin' ||
+      user?.role === 'platform_super_admin' ||
+      user?.role === 'platform_admin' ||
+      Boolean((user as any)?.isPlatformAdmin);
+
+    if (!isAdmin) return;
+
+    let mounted = true;
+    authApi.getSchemaStatus()
+      .then((res) => {
+        if (!mounted) return;
+        if (res.data?.ok === false && res.data?.pendingCount > 0) {
+          setSchemaPendingCount(res.data.pendingCount);
+        } else {
+          setSchemaPendingCount(null);
+        }
+      })
+      .catch(() => {});
+
+    return () => { mounted = false; };
+  }, [user]);
 
   const handleForcedResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +98,7 @@ export default function AppLayout({ children }: { children?: React.ReactNode } =
   if (hasZeroPages) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-[#0F1117] text-slate-900 dark:text-slate-100 flex flex-col">
+        {sessionExpired && <SessionExpiredBanner />}
         {children || <Outlet />}
       </div>
     );
@@ -76,6 +106,22 @@ export default function AppLayout({ children }: { children?: React.ReactNode } =
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0F1117] text-slate-900 dark:text-slate-100 overflow-x-hidden pb-16 lg:pb-0">
+      {/* ─── SESSION EXPIRED BANNER ───── */}
+      {sessionExpired && <SessionExpiredBanner />}
+
+      {/* ─── SCHEMA UPDATE PENDING RED BANNER (ADMIN ONLY) ───── */}
+      {schemaPendingCount != null && schemaPendingCount > 0 && (
+        <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between text-xs font-bold shadow-md z-50 sticky top-0">
+          <div className="flex items-center gap-2">
+            <Database size={15} />
+            <span>Database update pending: {schemaPendingCount} migrations</span>
+          </div>
+          <span className="text-[11px] font-normal opacity-90 hidden sm:inline">
+            Action required: Run &quot;npx prisma migrate deploy&quot; to apply pending updates
+          </span>
+        </div>
+      )}
+
       {/* ─── IMPERSONATION BANNER ───── */}
       {isImpersonating && (
         <div className="bg-amber-600 text-white px-4 py-2 flex items-center justify-between text-xs font-medium shadow-md z-50 sticky top-0">

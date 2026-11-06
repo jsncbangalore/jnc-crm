@@ -89,6 +89,10 @@ interface AuthContextType {
   logoutAll: () => Promise<void>;
   updateUser: (updatedFields: Partial<User>) => void;
   isAuthenticated: boolean;
+  /** Flag indicating session has expired (detected 401/403) */
+  sessionExpired: boolean;
+  /** Clears session and redirects to appropriate login page */
+  clearSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -231,6 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [showInactivityModal, setShowInactivityModal] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(60);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const lastActivityRef = useRef<number>(Date.now());
   const lastUserInputRef = useRef<number>(Date.now());
@@ -275,7 +280,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           oldPages.some((p: string) => !newPages.includes(p)) ||
           newPages.some((p: string) => !oldPages.includes(p));
 
-        if (hasDiff || isAccessRevoked) {
+        if (hasDiff) {
           setStaffUser((prev) => {
             if (!prev) return freshUser;
             return {
@@ -286,7 +291,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
 
           // Only show notice when access is genuinely revoked or changed after initial load
-          if (isAccessRevoked || (hasDiff && oldPages.length > 0 && freshUser.role !== 'tenant_admin' && !isPlatformOwner(freshUser))) {
+          if (oldPages.length > 0 && freshUser.role !== 'tenant_admin' && !isPlatformOwner(freshUser)) {
             setAccessChangedNotice(true);
             setTimeout(() => setAccessChangedNotice(false), 4000);
           }
@@ -412,6 +417,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [setStaffUserWithStorage, setPlatformUserWithStorage]);
 
+  // Session-expired: clearSession clears tokens/storage and redirects to index landing page with notice
+  const clearSession = useCallback(async () => {
+    try {
+      // Best-effort POST /auth/logout once (never call legacy /api/logout)
+      try {
+        await (isPlatform ? platformAuthApi.logout() : authApi.logout()).catch(() => {});
+      } catch {}
+
+      if (isPlatform) {
+        setPlatformAccessToken(null);
+        setStoredRefreshToken(null, true);
+        setPlatformUserWithStorage(null);
+      } else {
+        setStaffAccessToken(null);
+        setStoredRefreshToken(null, false);
+        setStaffUserWithStorage(null);
+      }
+      setCurrentTabUserId(null);
+      clearTabSessionUser();
+      broadcastSignOut();
+      setShowInactivityModal(false);
+      setSessionExpired(false);
+      try {
+        sessionStorage.setItem('crm_session_notice', 'Your session ended. Please sign in again');
+      } catch {}
+      const targetUrl = '/?notice=' + encodeURIComponent('Your session ended. Please sign in again');
+      window.history.replaceState(null, '', targetUrl);
+      window.location.href = targetUrl;
+    } catch {
+      // fallback redirect
+      window.location.href = '/?notice=' + encodeURIComponent('Your session ended. Please sign in again');
+    }
+  }, [isPlatform, setStaffUserWithStorage, setPlatformUserWithStorage]);
+
+  // Listen for the custom session-expired event dispatched by the API interceptor
+  useEffect(() => {
+    const handleExpiredEvent = () => {
+      setSessionExpired(true);
+    };
+    window.addEventListener('crm:session-expired', handleExpiredEvent);
+    return () => {
+      window.removeEventListener('crm:session-expired', handleExpiredEvent);
+    };
+  }, []);
+
   // 1. Silent token refresh on initial page load:
   // /platform/* restores only the platform session; everything else restores only staff session.
   useEffect(() => {
@@ -492,7 +542,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             }
           } catch (err: any) {
-            if (isMounted && (err?.response?.status === 401 || err?.response?.status === 403)) {
+            if (isMounted && err?.response?.status === 401) {
               setPlatformAccessToken(null);
               setPlatformUserWithStorage(null);
             }
@@ -519,7 +569,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             }
           } catch (err: any) {
-            if (isMounted && (err?.response?.status === 401 || err?.response?.status === 403)) {
+            if (isMounted && err?.response?.status === 401) {
               setStaffAccessToken(null);
               setStaffUserWithStorage(null);
             }
@@ -545,7 +595,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }
               }
             } catch (err: any) {
-              if (isMounted && (err?.response?.status === 401 || err?.response?.status === 403)) {
+              if (isMounted && err?.response?.status === 401) {
                 setPlatformAccessToken(null);
                 setPlatformUserWithStorage(null);
               }
@@ -1056,6 +1106,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logoutAll,
         updateUser,
         isAuthenticated: !!user,
+        sessionExpired,
+        clearSession,
       }}
     >
       {children}

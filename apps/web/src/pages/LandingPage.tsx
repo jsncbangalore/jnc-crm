@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Menu,
   X,
@@ -846,12 +846,37 @@ function FinalCta() {
 
 /* ---------- Main Landing Page Component ---------- */
 export default function LandingPage() {
+  const [searchParams] = useSearchParams();
+  const noticeParam = searchParams.get('notice');
+  const [notice, setNotice] = useState<string | null>(() => {
+    if (noticeParam) return noticeParam;
+    if (typeof sessionStorage !== 'undefined') {
+      const stored = sessionStorage.getItem('crm_session_notice');
+      if (stored) return stored;
+    }
+    return null;
+  });
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
   return (
     <div className="relative flex min-h-screen flex-col bg-[#F4F6FB] dark:bg-[#0F1117] text-slate-900 dark:text-slate-100 font-sans antialiased transition-colors">
+      {notice && (
+        <div
+          data-testid="session-ended-notice"
+          className="bg-amber-500/15 border-b border-amber-500/30 text-amber-900 dark:text-amber-200 px-4 py-3 text-center text-sm font-semibold flex items-center justify-center gap-3 sticky top-0 z-50 backdrop-blur-md"
+        >
+          <span>{notice}</span>
+          <Link
+            to="/login"
+            className="font-bold underline hover:no-underline text-amber-950 dark:text-amber-100 bg-amber-500/20 px-3 py-1 rounded-md transition"
+          >
+            Sign in
+          </Link>
+        </div>
+      )}
       <Navbar />
       <main className="flex-1">
         <Hero />

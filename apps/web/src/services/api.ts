@@ -550,7 +550,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Helper to terminate session and navigate to login on expired refresh
+// Helper to terminate session and navigate to index page on expired refresh
 export const handleSessionExpired = (isPlatform: boolean = false) => {
   const hadSession = Boolean(
     (isPlatform ? _inMemoryPlatformToken : _inMemoryStaffToken) ||
@@ -559,6 +559,13 @@ export const handleSessionExpired = (isPlatform: boolean = false) => {
     (typeof sessionStorage !== 'undefined' && (sessionStorage.getItem(isPlatform ? 'crm_platform_user' : 'crm_user') || sessionStorage.getItem(isPlatform ? 'crm_tab_platform_user_id' : 'crm_tab_user_id'))) ||
     (typeof document !== 'undefined' && document.cookie.includes(isPlatform ? 'crm_platform_session_active' : 'crm_session_active'))
   );
+
+  // Best-effort POST /auth/logout once (never call legacy /api/logout)
+  try {
+    const logoutUrl = `${getApiBaseUrl()}/${isPlatform ? 'platform-auth' : 'auth'}/logout`;
+    const uid = getCurrentTabUserId();
+    axios.post(logoutUrl, uid ? { expectedUserId: uid } : {}, { withCredentials: true, timeout: 3000 }).catch(() => {});
+  } catch {}
 
   if (isPlatform) {
     setPlatformAccessToken(null);
@@ -573,15 +580,19 @@ export const handleSessionExpired = (isPlatform: boolean = false) => {
       document.cookie = 'crm_session_active=; Path=/; Max-Age=0; SameSite=Lax';
     }
   }
+
+  // Dispatch session-expired event so the banner can show a countdown before redirect
+  if (typeof window !== 'undefined' && hadSession && !isPublicRoute(window.location.pathname)) {
+    try {
+      sessionStorage.setItem('crm_session_expired', 'Your session ended. Please sign in again');
+      sessionStorage.setItem('crm_session_notice', 'Your session ended. Please sign in again');
+    } catch {}
+    window.dispatchEvent(new CustomEvent('crm:session-expired', { detail: { isPlatform } }));
+    return; // Let the banner handle the redirect after countdown
+  }
+
   if (typeof window !== 'undefined' && !isPublicRoute(window.location.pathname)) {
-    if (hadSession) {
-      try {
-        sessionStorage.setItem('crm_session_expired', 'Your session expired, please sign in');
-      } catch {}
-      window.location.href = isPlatform ? '/platform/login?expired=1' : '/login?expired=1';
-    } else {
-      window.location.href = isPlatform ? '/platform/login' : '/login';
-    }
+    window.location.href = '/?notice=' + encodeURIComponent('Your session ended. Please sign in again');
   }
 };
 
@@ -708,8 +719,8 @@ const executeResilientRefresh = async (isPlatform: boolean): Promise<any> => {
         throw err;
       }
 
-      // 2. Definitive auth failure (401 or 403) from refresh endpoint ends session
-      if (status === 401 || status === 403) {
+      // 2. Definitive auth failure (401 ONLY) from refresh endpoint ends session. Never on 403.
+      if (status === 401) {
         setConnectionStatus({ state: 'connected' });
         handleSessionExpired(isPlatform);
         throw err;
@@ -934,14 +945,14 @@ api.interceptors.response.use(
       return Promise.reject(err);
     }
 
-    // Handle 401/403 directly on the refresh endpoints: session is permanently expired/invalidated
-    if ((status === 401 || status === 403) && (url.includes('/auth/refresh') || url.includes('/platform-auth/refresh'))) {
+    // Handle 401 directly on the refresh endpoints: session is permanently expired/invalidated. Never on 403.
+    if (status === 401 && (url.includes('/auth/refresh') || url.includes('/platform-auth/refresh'))) {
       const isPlatform = url.includes('/platform-auth/refresh') || isPlatformPath();
       handleSessionExpired(isPlatform);
       return Promise.reject(err);
     }
     // Requirement 6: After a 403 with pageKey, dispatch event to refresh access and navigate
-    if (err.response?.status === 403 && (err.response?.data?.pageKey || err.response?.data?.message?.includes('access'))) {
+    if (err.response?.status === 403 && err.response?.data?.pageKey) {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('crm:page-access-revoked', {
@@ -996,7 +1007,7 @@ api.interceptors.response.use(
           return api(original);
         })
         .catch((refreshErr) => {
-          if (refreshErr?.response?.status === 401 || refreshErr?.response?.status === 403) {
+          if (refreshErr?.response?.status === 401) {
             processQueue(refreshErr, null);
             handleSessionExpired(isPlatformReq);
             return Promise.reject(refreshErr);
@@ -1124,6 +1135,7 @@ export async function requestWithColdStartRetry<T>(
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
   getHealth: () => api.get('/health'),
+  getSchemaStatus: () => api.get('/health/schema'),
   login: (identifier: string, password: string, companyCode?: string, keepSignedIn?: boolean) =>
     requestWithColdStartRetry(() =>
       api.post('/auth/login', { identifier, password, companyCode, keepSignedIn }, { timeout: 60000 })
@@ -1477,6 +1489,7 @@ export const invoicesApi = {
     signatureImage?: string | null;
     stampImage?: string | null;
   }) => api.post('/invoices/settings/signatory', data),
+  getSeriesAudit: () => api.get('/invoices/series-audit'),
   getPrinters: () =>
     api.get<{
       printers: Array<{ deviceId: string; name: string; paperSizes?: string[] }>;
@@ -1571,6 +1584,14 @@ export const companiesApi = {
   create: (data: any) => api.post('/companies', data),
   update: (id: string, data: any) => api.patch(`/companies/${id}`, data),
   delete: (id: string) => api.delete(`/companies/${id}`),
+  archive: (id: string) => api.post(`/companies/${id}/archive`),
+  unarchive: (id: string) => api.post(`/companies/${id}/unarchive`),
+  registerAndLink: (data: { name: string; gstin?: string; phone?: string; email?: string; address?: string; city?: string; state?: string }) =>
+    api.post('/companies/register-and-link', data),
+  merge: (data: { sourceCompanyId: string; targetCompanyId: string }) =>
+    api.post('/companies/merge', data),
+  getUnifiedCustomers: (params?: { search?: string; includeArchived?: boolean }) =>
+    api.get('/companies/unified-customers', { params }),
 };
 
 // ─── Users & Team Management ──────────────────────────────────────────────────
@@ -1893,4 +1914,12 @@ export const bankAccountsApi = {
   deactivate: (id: string) => api.patch(`/settings/bank-accounts/${id}/deactivate`),
   activate: (id: string) => api.patch(`/settings/bank-accounts/${id}/activate`),
 };
+
+export const systemErrorsApi = {
+  getErrors: (params?: { page?: number; limit?: number; search?: string }) =>
+    api.get('/admin/system-errors', { params }),
+  reportClientError: (data: any) =>
+    api.post('/client-errors', data),
+};
+
 
