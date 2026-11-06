@@ -84,6 +84,10 @@ export default function CustomersPage() {
   // Toast message
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // In-App Archive Confirmation Modal State (replaces native window.confirm)
+  const [customerToArchive, setCustomerToArchive] = useState<UnifiedCustomer | null>(null);
+  const [archiving, setArchiving] = useState(false);
+
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 5000);
@@ -213,20 +217,24 @@ export default function CustomersPage() {
     }
   };
 
-  // Action: Archive Customer
-  const handleArchive = async (cust: UnifiedCustomer) => {
-    const confirmText = cust.isDemo || cust.source === 'test'
-      ? `Archive test record "${cust.name}"? It will be removed from pickers.`
-      : `Archive customer "${cust.name}"? This hides it from pickers while permanently preserving historical documents.`;
+  // Action: Archive Customer (Opens In-App Confirmation Modal)
+  const handleArchive = (cust: UnifiedCustomer) => {
+    setCustomerToArchive(cust);
+  };
 
-    if (!window.confirm(confirmText)) return;
-
+  // Confirm Archive Action (Invoked from In-App Modal)
+  const handleConfirmArchive = async () => {
+    if (!customerToArchive) return;
     try {
-      await companiesApi.archive(cust.id);
-      showToast(`Customer "${cust.name}" archived successfully.`);
+      setArchiving(true);
+      await companiesApi.archive(customerToArchive.id);
+      showToast(`Customer "${customerToArchive.name}" archived successfully.`);
+      setCustomerToArchive(null);
       await loadCustomers();
     } catch (err: any) {
       showToast(err?.response?.data?.message || 'Failed to archive customer.', 'error');
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -797,6 +805,113 @@ export default function CustomersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── IN-APP ARCHIVE CONFIRMATION MODAL ────────────────────────────── */}
+      {customerToArchive && (
+        <div
+          data-testid="archive-customer-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+          onClick={() => !archiving && setCustomerToArchive(null)}
+        >
+          <div
+            className="bg-white dark:bg-[#1a1f2e] border border-slate-200 dark:border-slate-800 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 dark:border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                  <Archive size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    {customerToArchive.isDemo || customerToArchive.source === 'test'
+                      ? 'Archive Test Record'
+                      : 'Archive Customer'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Safe archive with full document history preservation
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !archiving && setCustomerToArchive(null)}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                {customerToArchive.isDemo || customerToArchive.source === 'test'
+                  ? `Archive test record "${customerToArchive.name}"? It will be removed from pickers.`
+                  : `Archive customer "${customerToArchive.name}"? This hides it from pickers while permanently preserving historical documents.`}
+              </p>
+
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#141722] border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                  <span>Customer Name:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{customerToArchive.name}</span>
+                </div>
+                {customerToArchive.gstin && (
+                  <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                    <span>GSTIN:</span>
+                    <span className="font-mono text-slate-700 dark:text-slate-300">{customerToArchive.gstin}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                  <span>Historical Documents:</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">{customerToArchive.documentCount} docs</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                  <span>Current Balance:</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">₹{customerToArchive.balance.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-700/40 text-[11px] text-amber-900 dark:text-amber-300 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <CheckCircle2 size={13} className="text-amber-600 dark:text-amber-400" />
+                  Preserves All Historical Records
+                </p>
+                <p className="text-[10.5px]">
+                  No documents, invoices, orders, or payments are ever deleted. You can restore this customer account at any time from the &quot;Archived&quot; filter tab.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                disabled={archiving}
+                onClick={() => setCustomerToArchive(null)}
+                className="btn bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold py-2 px-3.5 rounded-xl disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={archiving}
+                onClick={handleConfirmArchive}
+                className="btn bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold py-2 px-4 rounded-xl shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {archiving ? (
+                  <>
+                    <RefreshCw size={13} className="animate-spin" />
+                    Archiving...
+                  </>
+                ) : (
+                  <>
+                    <Archive size={13} />
+                    Archive Customer
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
