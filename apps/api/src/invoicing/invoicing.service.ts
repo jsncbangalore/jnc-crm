@@ -340,8 +340,9 @@ export class InvoicingService {
 
     const fieldErrors: Record<string, string> = {};
 
-    if (!dto.customerName || !dto.customerName.trim()) {
-      fieldErrors.customerName = 'Customer or company name is required';
+    const rawCustName = dto.customerName?.trim();
+    if (!rawCustName || rawCustName.toLowerCase() === 'valued client') {
+      fieldErrors.customerName = 'A customer is required. Please choose a customer, create one, or use Walk-in customer.';
     }
 
     let resolvedPhone = dto.customerPhone?.trim();
@@ -1978,6 +1979,164 @@ export class InvoicingService {
         });
       }, 8000);
     }
+  }
+
+  async getInvoiceSeriesAudit(user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { invoicePrefix: true },
+    });
+    const officialPrefix = tenant?.invoicePrefix?.trim().toUpperCase() || 'INV';
+
+    const invoices = await this.prisma.invoice.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        docType: true,
+        invoiceDate: true,
+        totalAmount: true,
+        isVoided: true,
+        voidedAt: true,
+        voidReason: true,
+        createdAt: true,
+      },
+      orderBy: { invoiceDate: 'asc' },
+    });
+
+    const seriesCounters = await this.prisma.documentSeries.findMany({
+      where: { tenantId },
+    });
+
+    const standardSlashRegex = /^([A-Z0-9_\-]+)\/(\d+)\/(\d{2}-\d{2})$/i;
+    const hyphenRegex = /^([A-Z0-9_\-]+)-(\d+)$/i;
+
+    const parsedInvoices = invoices.map((inv) => {
+      const num = inv.invoiceNumber.trim();
+      let prefix = '';
+      let sequenceNum: number | null = null;
+      let fy = '';
+      let isManualFormat = false;
+
+      const slashMatch = num.match(standardSlashRegex);
+      if (slashMatch) {
+        prefix = slashMatch[1].toUpperCase();
+        sequenceNum = parseInt(slashMatch[2], 10);
+        fy = slashMatch[3];
+        if (prefix !== officialPrefix && prefix !== 'INV' && prefix !== 'SEZ') {
+          isManualFormat = true;
+        }
+      } else {
+        const hypMatch = num.match(hyphenRegex);
+        if (hypMatch) {
+          prefix = hypMatch[1].toUpperCase();
+          sequenceNum = parseInt(hypMatch[2], 10);
+          isManualFormat = true;
+        } else {
+          isManualFormat = true;
+          prefix = 'MANUAL';
+        }
+      }
+
+      return {
+        ...inv,
+        parsedPrefix: prefix,
+        sequenceNum,
+        fy,
+        isManualFormat,
+      };
+    });
+
+    const groupsMap = new Map<string, typeof parsedInvoices>();
+    for (const inv of parsedInvoices) {
+      const groupKey = inv.fy ? `${inv.parsedPrefix}/${inv.fy}` : inv.parsedPrefix;
+      if (!groupsMap.has(groupKey)) groupsMap.set(groupKey, []);
+      groupsMap.get(groupKey)!.push(inv);
+    }
+
+    const seriesGroups: Array<{
+      seriesKey: string;
+      prefix: string;
+      financialYear: string;
+      totalDocuments: number;
+      activeCount: number;
+      voidedCount: number;
+      minNumber: number | null;
+      maxNumber: number | null;
+      gaps: Array<{ sequenceNumber: number; reason: string }>;
+      isManualSeries: boolean;
+      documents: Array<{ id: string; invoiceNumber: string; isVoided: boolean; isManualFormat: boolean; date: string }>;
+    }> = [];
+
+    for (const [seriesKey, items] of groupsMap.entries()) {
+      const numbersWithSeq = items.filter((i) => i.sequenceNum !== null);
+      const isManualSeries = items.some((i) => i.isManualFormat);
+      const voidedCount = items.filter((i) => i.isVoided).length;
+      const activeCount = items.length - voidedCount;
+
+      let minNumber: number | null = null;
+      let maxNumber: number | null = null;
+      const gaps: Array<{ sequenceNumber: number; reason: string }> = [];
+
+      if (numbersWithSeq.length > 0) {
+        const seqs = numbersWithSeq.map((i) => i.sequenceNum!);
+        minNumber = Math.min(...seqs);
+        maxNumber = Math.max(...seqs);
+        const presentSet = new Map<number, typeof items[0]>();
+        numbersWithSeq.forEach((i) => presentSet.set(i.sequenceNum!, i));
+
+        for (let n = minNumber; n <= maxNumber; n++) {
+          if (!presentSet.has(n)) {
+            gaps.push({ sequenceNumber: n, reason: 'DELETED_OR_MISSING' });
+          } else {
+            const entry = presentSet.get(n)!;
+            if (entry.isVoided) {
+              gaps.push({ sequenceNumber: n, reason: `VOIDED (${entry.voidReason || 'No reason provided'})` });
+            }
+          }
+        }
+      }
+
+      seriesGroups.push({
+        seriesKey,
+        prefix: items[0]?.parsedPrefix || '',
+        financialYear: items[0]?.fy || '',
+        totalDocuments: items.length,
+        activeCount,
+        voidedCount,
+        minNumber,
+        maxNumber,
+        gaps,
+        isManualSeries,
+        documents: items.map((i) => ({
+          id: i.id,
+          invoiceNumber: i.invoiceNumber,
+          isVoided: i.isVoided,
+          isManualFormat: i.isManualFormat,
+          date: i.invoiceDate.toISOString().slice(0, 10),
+        })),
+      });
+    }
+
+    const manualInvoices = parsedInvoices.filter((i) => i.isManualFormat);
+
+    return {
+      officialPrefix,
+      totalInvoices: invoices.length,
+      manualCount: manualInvoices.length,
+      seriesGroups,
+      manualInvoices: manualInvoices.map((i) => ({
+        id: i.id,
+        invoiceNumber: i.invoiceNumber,
+        date: i.invoiceDate.toISOString().slice(0, 10),
+        totalAmount: i.totalAmount,
+        isVoided: i.isVoided,
+        reason: i.parsedPrefix === 'MANUAL' ? 'Unstructured manual number' : `Manual format override (${i.parsedPrefix})`,
+      })),
+      counters: seriesCounters,
+    };
   }
 }
 

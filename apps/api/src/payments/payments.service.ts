@@ -468,6 +468,30 @@ export class PaymentsService {
         resolvedCustomerId = resolvedCustomerId || targetOrder.customerId;
       }
 
+      // Check synthetic or unregistered customer:
+      // The API must never receive a synthetic party id as a foreign key: return 409 LINKED_RECORD_MISSING with field 'customerId' and the message 'This customer is not registered yet'.
+      if (!resolvedCustomerId || resolvedCustomerId === 'not-linked' || resolvedCustomerId.startsWith('unlinked:')) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'LINKED_RECORD_MISSING',
+          field: 'customerId',
+          message: 'This customer is not registered yet.',
+        });
+      }
+
+      const existingCompany = await tx.company.findFirst({
+        where: { id: resolvedCustomerId, tenantId, deletedAt: null },
+        select: { id: true, name: true },
+      });
+      if (!existingCompany) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'LINKED_RECORD_MISSING',
+          field: 'customerId',
+          message: 'This customer is not registered yet.',
+        });
+      }
+
       // Duplicate Reference Check: Block duplicate reference for same customer and date unless confirmed
       const custRef = (dto.transactionRef || dto.reference)?.trim();
       if (resolvedCustomerId && custRef && !dto.confirmDuplicate) {

@@ -469,6 +469,10 @@ export class OrdersService {
 
   async createOrder(dto: CreateOrderDto, user: ScopedUser) {
     const tenantId = requireTenantId(user);
+    const custName = dto.customerName?.trim();
+    if (!custName || custName.toLowerCase() === 'valued client') {
+      throw new BadRequestException('A customer is required. Please choose a customer, create one, or use Walk-in customer.');
+    }
     // Resolve SKUs (matching dropdown or typed text)
     const resolvedLines: any[] = [];
     for (const line of dto.lines) {

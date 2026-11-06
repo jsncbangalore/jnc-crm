@@ -23,6 +23,7 @@ import {
   brandingApi,
   ledgerApi,
   bankAccountsApi,
+  companiesApi,
   LedgerParty,
   LedgerOpenBill,
 } from '../../services/api';
@@ -212,6 +213,16 @@ export default function UnifiedRecordPaymentModal({
   const [typedConfirmation, setTypedConfirmation] = useState('');
   const [confirmedLargeAmount, setConfirmedLargeAmount] = useState(false);
 
+  // Register Customer In-Place state
+  const [showRegisterCustomerStep, setShowRegisterCustomerStep] = useState(false);
+  const [regCustomerName, setRegCustomerName] = useState('');
+  const [regCustomerGstin, setRegCustomerGstin] = useState('');
+  const [regCustomerPhone, setRegCustomerPhone] = useState('');
+  const [regCustomerEmail, setRegCustomerEmail] = useState('');
+  const [registeringCustomer, setRegisteringCustomer] = useState(false);
+  const [regError, setRegError] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+
   const wasOpenRef = useRef(false);
 
   // Reset on open: when isOpen transitions to true, reset state cleanly and create fresh Idempotency-Key
@@ -228,6 +239,16 @@ export default function UnifiedRecordPaymentModal({
 
       setPartyType(initialPartyType);
       setSelectedPartyId(effectiveDefaultPartyId);
+      if (defaultCustomerName) {
+        setRegCustomerName(defaultCustomerName);
+      }
+      if (!effectiveDefaultPartyId || effectiveDefaultPartyId === 'not-linked' || effectiveDefaultPartyId.startsWith('unlinked:')) {
+        if (defaultCustomerName) {
+          setShowRegisterCustomerStep(true);
+        }
+      } else {
+        setShowRegisterCustomerStep(false);
+      }
       setAmountInput(defaultAmount ? String(defaultAmount) : '');
       setIsAmountFocused(false);
       setPaymentDate(new Date().toISOString().slice(0, 10));
@@ -249,7 +270,7 @@ export default function UnifiedRecordPaymentModal({
       setSubmitting(false);
     }
     wasOpenRef.current = isOpen;
-  }, [isOpen, initialPartyType, effectiveDefaultPartyId, defaultAmount, companyBankDetails]);
+  }, [isOpen, initialPartyType, effectiveDefaultPartyId, defaultCustomerName, defaultAmount, companyBankDetails]);
 
   // Load parties list without auto-selecting first party
   useEffect(() => {
@@ -362,6 +383,72 @@ export default function UnifiedRecordPaymentModal({
   const balanceSide = (selectedParty?.balanceSide || (partyType === 'customer' ? 'dr' : 'cr')).toLowerCase();
   const isAdvanceBalance = partyType === 'customer' ? balanceSide === 'cr' : balanceSide === 'dr';
 
+  useEffect(() => {
+    if (selectedParty) {
+      setRegCustomerName(selectedParty.partyName || '');
+      setRegCustomerGstin(selectedParty.partyGstin || '');
+      setRegCustomerPhone(selectedParty.partyPhone || '');
+      setRegCustomerEmail(selectedParty.partyEmail || '');
+      if (
+        selectedParty.isUnlinked ||
+        selectedParty.partyId?.startsWith('unlinked:') ||
+        selectedParty.partyId === 'not-linked'
+      ) {
+        setShowRegisterCustomerStep(true);
+      } else {
+        setShowRegisterCustomerStep(false);
+      }
+    } else if (defaultCustomerName) {
+      setRegCustomerName(defaultCustomerName);
+      if (!selectedPartyId || selectedPartyId === 'not-linked' || selectedPartyId.startsWith('unlinked:')) {
+        setShowRegisterCustomerStep(true);
+      }
+    }
+  }, [selectedParty, defaultCustomerName, selectedPartyId]);
+
+  const handleRegisterAndLinkCustomer = async () => {
+    if (!regCustomerName.trim()) {
+      setRegError('Customer name is required.');
+      return;
+    }
+    setRegisteringCustomer(true);
+    setRegError(null);
+    try {
+      const res = await companiesApi.registerAndLink({
+        name: regCustomerName.trim(),
+        gstin: regCustomerGstin.trim() || undefined,
+        phone: regCustomerPhone.trim() || undefined,
+        email: regCustomerEmail.trim() || undefined,
+      });
+      const newComp = res.data?.company;
+      if (newComp) {
+        setSelectedPartyId(newComp.id);
+        setPartiesList((prev) => [
+          {
+            partyId: newComp.id,
+            partyType: 'customer',
+            partyName: newComp.name,
+            partyGstin: newComp.gstin || null,
+            partyPhone: regCustomerPhone || null,
+            partyEmail: regCustomerEmail || null,
+            closingBalance: selectedParty?.closingBalance || 0,
+            balanceSide: selectedParty?.balanceSide || 'Dr',
+            outstandingAmount: selectedParty?.outstandingAmount || 0,
+            hasOverdue: selectedParty?.hasOverdue || false,
+          },
+          ...prev.filter((p) => p.partyId !== selectedPartyId),
+        ]);
+        setShowRegisterCustomerStep(false);
+        setSuccessToast('Customer registered and documents linked! You can now proceed with recording receipt.');
+        setTimeout(() => setSuccessToast(null), 6000);
+      }
+    } catch (e: any) {
+      setRegError(normalizeError(e));
+    } finally {
+      setRegisteringCustomer(false);
+    }
+  };
+
   // Load open documents across all financial years and sort strictly by: date, dueDate, documentNumber
   useEffect(() => {
     if (!isOpen || !selectedPartyId) {
@@ -438,6 +525,13 @@ export default function UnifiedRecordPaymentModal({
     setConfirmDuplicate(false);
   }, [reference, paymentDate, selectedPartyId]);
 
+  const deductionOptions = useMemo(() => {
+    return DEDUCTION_TYPE_OPTIONS.filter((opt) => opt.partyType === 'both' || opt.partyType === partyType).map((opt) => ({
+      value: opt.value,
+      label: opt.label,
+    }));
+  }, [partyType]);
+
   if (!isOpen) return null;
 
   // Exact paise arithmetic
@@ -461,13 +555,6 @@ export default function UnifiedRecordPaymentModal({
     totalAllocatedPaise === 0 ||
     (allowAdvance && surplusPaise > 0)
   );
-
-  const deductionOptions = useMemo(() => {
-    return DEDUCTION_TYPE_OPTIONS.filter((opt) => opt.partyType === 'both' || opt.partyType === partyType).map((opt) => ({
-      value: opt.value,
-      label: opt.label,
-    }));
-  }, [partyType]);
 
   const handleAddDeduction = () => {
     const defaultType = partyType === 'customer' ? 'tds' : 'discount_received';
@@ -671,8 +758,13 @@ export default function UnifiedRecordPaymentModal({
   const validateForm = (): boolean => {
     setErr(null);
 
-    if (!selectedPartyId) {
-      setErr(`Please select a ${partyType === 'customer' ? 'customer' : 'supplier'}.`);
+    if (!selectedPartyId || selectedPartyId === 'not-linked' || selectedPartyId.startsWith('unlinked:')) {
+      if (partyType === 'customer') {
+        setShowRegisterCustomerStep(true);
+        setErr('This customer is not registered yet. Please register the customer above to continue.');
+        return false;
+      }
+      setErr('Please select a supplier.');
       return false;
     }
 
@@ -823,7 +915,14 @@ export default function UnifiedRecordPaymentModal({
         setErr('Payment not confirmed. Check the statement before trying again.');
       } else {
         const errMsg = normalizeError(apiErr);
-        if (apiErr?.response?.status === 409 || errMsg.toLowerCase().includes('duplicate')) {
+        if (
+          apiErr?.response?.status === 409 &&
+          (apiErr?.response?.data?.code === 'LINKED_RECORD_MISSING' ||
+            apiErr?.response?.data?.field === 'customerId')
+        ) {
+          setShowRegisterCustomerStep(true);
+          setErr('This customer is not registered yet. Please register the customer above to continue.');
+        } else if (apiErr?.response?.status === 409 || errMsg.toLowerCase().includes('duplicate')) {
           setDuplicateWarning(errMsg);
           setConfirmDuplicate(true);
         } else {
@@ -1087,6 +1186,96 @@ export default function UnifiedRecordPaymentModal({
                 <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900/60 font-mono">
                   {allocations.length} Open Invoices
                 </span>
+              </div>
+            )}
+
+            {/* Step: Register this customer first */}
+            {partyType === 'customer' && showRegisterCustomerStep && (
+              <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-300 dark:border-amber-600/40 space-y-3">
+                <div className="flex items-center gap-2 text-amber-900 dark:text-amber-300 font-bold text-xs">
+                  <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400" />
+                  <span>Register this customer first</span>
+                </div>
+                <p className="text-xs text-amber-800/90 dark:text-amber-300/80">
+                  This party does not have a registered customer account yet. Registering creates the customer and links all invoices and orders of this exact name in one transaction, while keeping everything you typed in this receipt.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Customer Name *
+                    </label>
+                    <input
+                      type="text"
+                      className="input text-xs w-full py-1.5"
+                      value={regCustomerName}
+                      onChange={(e) => setRegCustomerName(e.target.value)}
+                      placeholder="e.g. Acme Corp"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      GSTIN (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      className="input text-xs w-full py-1.5 uppercase font-mono"
+                      value={regCustomerGstin}
+                      onChange={(e) => setRegCustomerGstin(e.target.value.toUpperCase())}
+                      placeholder="e.g. 29ABCDE1234F1Z5"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Phone
+                    </label>
+                    <input
+                      type="text"
+                      className="input text-xs w-full py-1.5"
+                      value={regCustomerPhone}
+                      onChange={(e) => setRegCustomerPhone(e.target.value)}
+                      placeholder="e.g. 9876543210"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      className="input text-xs w-full py-1.5"
+                      value={regCustomerEmail}
+                      onChange={(e) => setRegCustomerEmail(e.target.value)}
+                      placeholder="e.g. accounts@acme.com"
+                    />
+                  </div>
+                </div>
+
+                {regError && (
+                  <p className="text-xs text-red-600 dark:text-red-400 font-semibold">{regError}</p>
+                )}
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    disabled={registeringCustomer || !regCustomerName.trim()}
+                    onClick={handleRegisterAndLinkCustomer}
+                    className="btn bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-1.5 px-3 rounded-lg shadow-sm"
+                  >
+                    {registeringCustomer ? 'Registering & Linking...' : 'Register & Link Customer'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Registration success toast */}
+            {successToast && (
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-600/40 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2 font-medium">
+                <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>{successToast}</span>
               </div>
             )}
 

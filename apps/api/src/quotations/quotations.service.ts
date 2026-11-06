@@ -255,8 +255,9 @@ export class QuotationsService {
 
   async create(dto: CreateQuotationDto, user: ScopedUser) {
     const tenantId = requireTenantId(user);
-    if (!dto.customerName || !dto.customerPhone) {
-      throw new BadRequestException('Customer Name and Phone are required.');
+    const custName = dto.customerName?.trim();
+    if (!custName || custName.toLowerCase() === 'valued client' || !dto.customerPhone) {
+      throw new BadRequestException('A customer is required. Please choose a customer, create one, or use Walk-in customer.');
     }
     if (!dto.lines || dto.lines.length === 0) {
       throw new BadRequestException('At least 1 product line is required for quotation.');
@@ -479,7 +480,10 @@ export class QuotationsService {
       return q.order;
     }
 
-    const customerName = q.customerName || quote.lead?.customerName || quote.contact?.name || 'Valued Client';
+    const customerName = (q.customerName || quote.lead?.customerName || quote.contact?.name || '').trim();
+    if (!customerName || customerName.toLowerCase() === 'valued client') {
+      throw new BadRequestException('A customer is required. Please choose a customer, create one, or use Walk-in customer.');
+    }
     const customerPhone = q.customerPhone || quote.lead?.customerPhone || quote.contact?.phone || '—';
     const customerEmail = q.customerEmail || quote.lead?.customerEmail || quote.contact?.email;
     const customerGstin = q.customerGstin;
