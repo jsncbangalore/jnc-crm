@@ -104,6 +104,7 @@ model Tenant {
   brandingAssets      BrandingAsset[]
   webhookDeliveries   WebhookDelivery[]
   bankAccounts        CompanyBankAccount[]
+  clientErrors        ClientError[]
 
   @@index([status])
 }
@@ -202,6 +203,7 @@ model User {
   loginTickets      LoginTicket[]
   pageAccess        UserPageAccess?
   passwordResetFlows PasswordResetFlow[] @relation("UserPasswordResetFlows")
+  clientErrors      ClientError[]
 
   @@unique([tenantId, email])
   @@unique([tenantId, employeeCode])
@@ -1528,4 +1530,26 @@ model CompanyBankAccount {
 
   @@index([tenantId])
   @@index([tenantId, isActive])
+}
+
+// ==========================================
+// 23. SYSTEM AND CLIENT ERROR LOGS
+// ==========================================
+
+model ClientError {
+  id             String    @id
+  tenantId       String?
+  userId         String?
+  route          String
+  page           String?
+  message        String    @db.Text
+  componentStack String?   @db.Text
+  buildVersion   String?
+  createdAt      DateTime  @default(now())
+
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([createdAt])
 }

@@ -33,6 +33,7 @@ import { PlatformModule } from './platform/platform.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { PaymentsModule } from './payments/payments.module';
 import { HealthController } from './health/health.controller';
+import { ClientErrorsController } from './common/client-errors.controller';
 
 @Module({
   imports: [
@@ -67,7 +68,7 @@ import { HealthController } from './health/health.controller';
     LedgerModule,
     PaymentsModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, ClientErrorsController],
   providers: [
     {
       provide: APP_GUARD,
