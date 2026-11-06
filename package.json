@@ -78,7 +78,8 @@
     "test:idempotency-parallel": "node --env-file=.env.development node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-payment-idempotency-parallel.ts",
     "lint:hooks": "node node_modules/eslint/bin/eslint.js \"apps/web/src/**/*.{ts,tsx}\"",
     "test:modal-hooks": "node scripts/test-hooks-modal-cycles.js",
-    "test:vitest": "node ./node_modules/vitest/vitest.mjs run"
+    "test:vitest": "node ./node_modules/vitest/vitest.mjs run",
+    "test": "node ./node_modules/vitest/vitest.mjs run"
   },
   "devDependencies": {
     "@types/yargs": "^17.0.35",

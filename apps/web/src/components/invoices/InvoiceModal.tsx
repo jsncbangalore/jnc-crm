@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Printer, Mail, Ban, CheckCircle2, AlertTriangle, FileText,
   ShieldCheck, Send, Check, Eye, Layers, Truck, FileSpreadsheet, Download,
-  CreditCard, Edit3, ZoomIn, ZoomOut, Maximize2
+  CreditCard, Edit3, ZoomIn, ZoomOut, Maximize2, ChevronDown
 } from 'lucide-react';
 import { Invoice, SignatorySettings, DocumentType, CompanyInvoiceProfile } from '../../types';
 import { invoicesApi, resolveFileUrl } from '../../services/api';
@@ -87,6 +87,24 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
   const [isPrinting, setIsPrinting] = useState(false);
   const [popupBlockedMsg, setPopupBlockedMsg] = useState<string | null>(null);
   const printableRef = useRef<HTMLDivElement>(null);
+
+  // More Menu Dropdown State
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    if (showMoreMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMoreMenu]);
 
   if (!invoice) return null;
 
@@ -351,88 +369,131 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
               ))}
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Edit Document Button */}
-              {onEditInvoice && !invoice.isVoided && (
-                <button
-                  onClick={() => {
-                    onClose();
-                    onEditInvoice(invoice);
-                  }}
-                  className="btn bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-amber-800 dark:text-amber-400 border border-amber-300 dark:border-amber-500/40 text-xs gap-1.5 py-1.5 font-bold shadow-sm"
-                  title="Edit Line Items, Customer & Financials"
-                >
-                  <Edit3 size={13} /> Edit Document
-                </button>
-              )}
-
-              {/* Signatory Settings Button for Admin/Super Admin */}
-              {canAdmin && (
-                <button
-                  onClick={() => setShowSignatorySettings(true)}
-                  className="btn bg-white dark:bg-[#141722] hover:bg-slate-100 dark:hover:bg-[#202534] border border-slate-300 dark:border-[#2A3042] text-slate-800 dark:text-slate-300 text-xs gap-1.5 py-1.5 shadow-sm font-bold"
-                  title="Configure Authorized Signatory Signature & Stamp"
-                >
-                  <ShieldCheck size={13} className="text-emerald-600 dark:text-crm-teal" /> Signatory & Stamp
-                </button>
-              )}
-
-              <button
-                onClick={handleDownloadPdf}
-                disabled={downloadingPdf}
-                className="btn bg-teal-50 hover:bg-teal-100 dark:bg-crm-teal/20 dark:hover:bg-crm-teal/30 text-teal-800 dark:text-crm-teal border border-teal-300 dark:border-crm-teal/40 text-xs gap-1.5 py-1.5 font-bold shadow-sm"
-                title="Download Official Vector A4 PDF directly"
-              >
-                <Download size={13} /> {downloadingPdf ? 'Generating PDF...' : 'Download PDF'}
-              </button>
-
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap">
+              {/* Print */}
               <button
                 onClick={handlePrint}
                 disabled={isPrinting}
-                className="btn bg-white dark:bg-white/10 hover:bg-slate-100 dark:hover:bg-white/20 text-slate-800 dark:text-white border border-slate-300 dark:border-transparent text-xs gap-1.5 py-1.5 font-bold shadow-sm"
+                className="btn bg-white dark:bg-white/10 hover:bg-slate-100 dark:hover:bg-white/20 text-slate-800 dark:text-white border border-slate-300 dark:border-transparent text-xs gap-1.5 py-1.5 font-bold shadow-sm whitespace-nowrap"
                 title="Print Official Vector PDF"
               >
-                <Printer size={13} className="text-crm-blue" /> {isPrinting ? 'Printing...' : 'Print'}
+                <Printer size={13} className="text-crm-blue" /> Print
               </button>
 
+              {/* Download PDF */}
+              <button
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf}
+                className="btn bg-teal-50 hover:bg-teal-100 dark:bg-crm-teal/20 dark:hover:bg-crm-teal/30 text-teal-800 dark:text-crm-teal border border-teal-300 dark:border-crm-teal/40 text-xs gap-1.5 py-1.5 font-bold shadow-sm whitespace-nowrap"
+                title="Download Official Vector A4 PDF directly"
+              >
+                <Download size={13} /> {downloadingPdf ? 'Generating...' : 'Download PDF'}
+              </button>
+
+              {/* Mark as fully paid */}
               {!invoice.isVoided && invoice.paymentStatus !== 'paid' && ((invoice.balanceDue ?? invoice.totalAmount) > 0.01) && (
                 <button
                   onClick={() => setShowPaymentModal(true)}
-                  className="btn bg-green-600 hover:bg-green-700 text-white text-xs gap-1.5 py-1.5 shadow-sm font-bold"
+                  className="btn bg-green-600 hover:bg-green-700 text-white text-xs gap-1.5 py-1.5 shadow-sm font-bold whitespace-nowrap"
                   title="Open receipt with exact balance pre-filled to mark fully paid"
                 >
                   <CheckCircle2 size={13} /> Mark as fully paid
                 </button>
               )}
 
-              <button
-                onClick={() => setShowPaymentModal(true)}
-                disabled={invoice.isVoided}
-                className="btn bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/40 text-xs gap-1.5 py-1.5 shadow-sm font-bold disabled:opacity-50"
-                title="Record Advance Receipt or Final Balance Settlement (UTR/NEFT)"
-              >
-                <CreditCard size={13} /> Record Payment
-              </button>
-
-              <button
-                onClick={handleOpenEmailModal}
-                disabled={emailing || invoice.isVoided}
-                className="btn bg-crm-blue hover:bg-crm-blue-hover text-white text-xs gap-1.5 py-1.5 shadow-glow-blue font-bold disabled:opacity-50"
-              >
-                <Mail size={13} /> Email PDF
-              </button>
-
-              {canAdmin && !invoice.isVoided && (
+              {/* Record Payment */}
+              {!invoice.isVoided && (
                 <button
-                  onClick={() => setShowVoidPrompt(true)}
-                  className="btn bg-red-50 hover:bg-red-100 dark:bg-crm-coral/20 dark:hover:bg-crm-coral/30 text-red-700 dark:text-crm-coral border border-red-300 dark:border-crm-coral/30 text-xs gap-1.5 py-1.5 font-bold shadow-sm"
-                  title="Void Document (Admin only)"
+                  onClick={() => setShowPaymentModal(true)}
+                  className="btn bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/40 text-xs gap-1.5 py-1.5 shadow-sm font-bold whitespace-nowrap"
+                  title="Record Advance Receipt or Final Balance Settlement (UTR/NEFT)"
                 >
-                  <Ban size={13} /> Void
+                  <CreditCard size={13} /> Record payment
                 </button>
               )}
 
+              {/* More Menu Dropdown */}
+              <div className="relative" ref={moreMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowMoreMenu((prev) => !prev)}
+                  className="btn bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 text-xs gap-1 py-1.5 font-bold shadow-sm whitespace-nowrap"
+                  title="More actions"
+                >
+                  <span>More</span>
+                  <ChevronDown size={13} className={`transition-transform duration-200 ${showMoreMenu ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showMoreMenu && (
+                  <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-[#1A1F2E] border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 py-1 divide-y divide-slate-100 dark:divide-slate-800">
+                    <div className="py-1">
+                      {/* Edit Document */}
+                      {onEditInvoice && !invoice.isVoided && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMoreMenu(false);
+                            onClose();
+                            onEditInvoice(invoice);
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2"
+                        >
+                          <Edit3 size={13} className="text-amber-600 dark:text-amber-400" /> Edit Document
+                        </button>
+                      )}
+
+                      {/* Signatory Settings */}
+                      {canAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMoreMenu(false);
+                            setShowSignatorySettings(true);
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2"
+                        >
+                          <ShieldCheck size={13} className="text-emerald-600 dark:text-crm-teal" /> Signatory &amp; Stamp
+                        </button>
+                      )}
+
+                      {/* Email PDF */}
+                      {!invoice.isVoided && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMoreMenu(false);
+                            handleOpenEmailModal();
+                          }}
+                          disabled={emailing}
+                          className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2 disabled:opacity-50"
+                        >
+                          <Mail size={13} className="text-blue-600 dark:text-blue-400" /> Email PDF
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Void Document */}
+                    {canAdmin && !invoice.isVoided && (
+                      <div className="py-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMoreMenu(false);
+                            setShowVoidPrompt(true);
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2"
+                        >
+                          <Ban size={13} /> Void Document
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Close Button */}
               <button
+                type="button"
                 onClick={onClose}
                 className="w-8 h-8 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white flex items-center justify-center ml-1"
               >

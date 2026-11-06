@@ -81,71 +81,47 @@ import { handlePublicCors, isPublicInquiryRoute } from './common/public-cors';
 import { PrismaService } from './prisma/prisma.service';
 
 
+import { getMigrationStatus } from './common/migration-status.util';
+
 /**
- * Deploy Safety Startup Guard (Production).
+ * Deploy Safety Startup Guard.
  * Compares migration folders in the build against applied migrations in _prisma_migrations table.
- * Refuses to start if migrations are pending to prevent schema mismatch / runtime errors.
+ * In production, logs a clear error and causes /health/ready to return not ready.
+ * Outputs loud warning if SKIP_MIGRATE is set.
  */
 async function verifyMigrationsAppliedOrExit(prisma: PrismaService) {
-  if (process.env.SKIP_MIGRATION_CHECK === 'true') {
-    console.log('[MIGRATION GUARD] SKIP_MIGRATION_CHECK=true detected. Skipping migration guard.');
-    return;
-  }
-  if (process.env.NODE_ENV !== 'production' && process.env.ENFORCE_MIGRATION_CHECK !== 'true') {
-    return;
+  if (process.env.SKIP_MIGRATE === 'true') {
+    console.warn(
+      '\n\x1b[43m\x1b[30m\x1b[1m [CRITICAL WARNING] SKIP_MIGRATE=true IS SET IN ENVIRONMENT! \x1b[0m\n' +
+      '\x1b[33m\x1b[1m' +
+      '  >> Automatic database migrations are disabled at startup.\n' +
+      '  >> If the database schema does not match the application code, runtime queries will fail.\n' +
+      '  >> Ensure migrations are applied manually before processing live traffic!\n' +
+      '*******************************************************************************\x1b[0m\n'
+    );
   }
 
   try {
-    const candidates = [
-      path.resolve(process.cwd(), 'apps/api/prisma/migrations'),
-      path.resolve(process.cwd(), 'prisma/migrations'),
-      path.resolve(__dirname, '../prisma/migrations'),
-      path.resolve(__dirname, '../../prisma/migrations'),
-    ];
+    const status = await getMigrationStatus(prisma);
+    console.log(`[STARTUP MIGRATIONS] Migration count: ${status.applied} applied in database / ${status.total} migration folder(s) present.`);
 
-    const migrationsDir = candidates.find((d) => fs.existsSync(d) && fs.statSync(d).isDirectory());
-    if (!migrationsDir) {
-      console.warn('[MIGRATION GUARD] Warning: migrations directory not found in candidate paths. Skipping check.');
-      return;
+    if (!status.isReady) {
+      const errorMsg =
+        `\n\x1b[41m\x1b[37m\x1b[1m [SCHEMA GUARD REFUSAL] Refusing to start because ${status.pending.length} migration(s) are pending: \x1b[0m\n` +
+        `Pending Migrations:\n  - ${status.pending.join('\n  - ')}\n` +
+        `Applied in DB: ${status.applied} | Total folders: ${status.total}.\n` +
+        'ACTION REQUIRED: Run "npx prisma migrate deploy" or set ALLOW_PENDING_MIGRATIONS=true for a development run.\n';
+
+      if (process.env.ALLOW_PENDING_MIGRATIONS === 'true') {
+        console.warn(`[SCHEMA GUARD BYPASS] ALLOW_PENDING_MIGRATIONS=true is active. Continuing dev run despite ${status.pending.length} pending migration(s): ${status.pending.join(', ')}`);
+      } else {
+        console.error(errorMsg);
+        process.exit(1);
+      }
+    } else {
+      console.log(`[MIGRATION GUARD] OK: All ${status.total} migrations have been applied.`);
     }
-
-    const builtMigrations = fs.readdirSync(migrationsDir).filter((file) => {
-      const fullPath = path.join(migrationsDir, file);
-      return fs.statSync(fullPath).isDirectory() && fs.existsSync(path.join(fullPath, 'migration.sql'));
-    });
-
-    if (builtMigrations.length === 0) {
-      return;
-    }
-
-    const appliedRows: any[] = await (prisma as any).$queryRawUnsafe(
-      'SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL',
-    );
-
-    const appliedSet = new Set((appliedRows || []).map((r: any) => r.migration_name));
-    const pendingMigrations = builtMigrations.filter((m) => !appliedSet.has(m));
-
-    if (pendingMigrations.length > 0) {
-      console.error(
-        `[STARTUP BLOCKED] Migration safety check failed: ${pendingMigrations.length} pending database migration(s) detected.\n` +
-        `Pending migrations: ${pendingMigrations.length} / ${builtMigrations.length} total.\n` +
-        'ACTION REQUIRED: Run database migrations before starting the application.\n' +
-        'CRITICAL: Disable auto-deploy in Render/Hostinger until migrations are applied.\n' +
-        'The server will now shut down to prevent runtime errors and data corruption.',
-      );
-      process.exit(1);
-    }
-
-    console.log(`[MIGRATION GUARD] OK: All ${builtMigrations.length} migrations have been applied.`);
-  } catch (err: any) {
-    if (err?.message?.includes('does not exist') || err?.code === '42P01') {
-      console.error(
-        '[STARTUP BLOCKED] Database migration table "_prisma_migrations" does not exist.\n' +
-        'ACTION REQUIRED: Initialize database migrations before starting the application.\n' +
-        'CRITICAL: Disable auto-deploy in Render/Hostinger until migrations are applied.',
-      );
-      process.exit(1);
-    }
+  } catch (err) {
     console.warn(`[MIGRATION GUARD] Warning during migration check: ${err.message}`);
   }
 }

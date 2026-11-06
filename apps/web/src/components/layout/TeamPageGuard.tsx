@@ -15,7 +15,7 @@ import { PAGE_KEY_TO_ROUTE, ROLE_ONLY_PAGE, resolveTeamNavigation } from '../../
 
 export { PAGE_KEY_TO_ROUTE, ROLE_ONLY_PAGE, resolveTeamNavigation };
 
-export default function TeamPageGuard({ pageKey, children }: { pageKey: string; children: React.ReactNode }) {
+export default function TeamPageGuard({ pageKey, children }: { pageKey: string | string[]; children: React.ReactNode }) {
   const { logout } = useAuth();
   const { isPlatform, hasPage, hasZeroPages, homePageRoute } = useAllowedPages();
   const navigate = useNavigate();
@@ -53,9 +53,12 @@ export default function TeamPageGuard({ pageKey, children }: { pageKey: string; 
   }
 
   // 2. Direct address to a page that is not granted
-  if (!hasPage(pageKey)) {
-    const canonicalKey = pageKey === 'purchase_bills' ? 'bills' : pageKey;
-    const pageLabel = COMPANY_PAGE_REGISTRY[canonicalKey]?.label || COMPANY_PAGE_REGISTRY[pageKey]?.label || pageKey;
+  const keys = Array.isArray(pageKey) ? pageKey : [pageKey];
+  const hasAccess = keys.some((k) => hasPage(k));
+  if (!hasAccess) {
+    const primaryKey = keys[0];
+    const canonicalKey = primaryKey === 'purchase_bills' ? 'bills' : primaryKey;
+    const pageLabel = COMPANY_PAGE_REGISTRY[canonicalKey]?.label || COMPANY_PAGE_REGISTRY[primaryKey]?.label || primaryKey;
     const targetRoute = homePageRoute || '/login';
 
     return (

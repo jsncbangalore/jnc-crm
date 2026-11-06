@@ -26,6 +26,7 @@ import CustomObjectRecordsPage from './pages/CustomObjectRecordsPage';
 import PublicInquiryPage from './pages/PublicInquiryPage';
 import InvoicesPage from './pages/InvoicesPage';
 import LedgerPage from './pages/LedgerPage';
+import CustomersPage from './pages/CustomersPage';
 import BrandingSettingsPage from './pages/BrandingSettingsPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
 import SharedCartPage from './pages/SharedCartPage';
@@ -37,6 +38,7 @@ import PlatformLoginPage from './pages/PlatformLoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import MyAccountPage from './pages/MyAccountPage';
+import SystemErrorsPage from './pages/SystemErrorsPage';
 import CookieConsentPage from './pages/CookieConsentPage';
 import FeaturesPage from './pages/FeaturesPage';
 import SolutionsPage from './pages/SolutionsPage';
@@ -344,6 +346,7 @@ function AppRoutes() {
         <Route path="/orders" element={<TeamPageGuard pageKey="orders"><CrmRouteGuard><OrdersPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/invoices" element={<TeamPageGuard pageKey="invoices"><CrmRouteGuard><InvoicesPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/ledger" element={<TeamPageGuard pageKey="ledger"><CrmRouteGuard><LedgerPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/customers" element={<TeamPageGuard pageKey={['ledger', 'leads']}><CrmRouteGuard><CustomersPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/inventory" element={<TeamPageGuard pageKey="inventory"><CrmRouteGuard><InventoryPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/bills" element={<TeamPageGuard pageKey="bills"><CrmRouteGuard><PurchaseBillsPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/purchase-bills" element={<Navigate to="/bills" replace />} />
@@ -358,6 +361,8 @@ function AppRoutes() {
         <Route path="/objects/:objectApiName" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><CustomObjectRecordsPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/daily-activities" element={<TeamPageGuard pageKey="daily_activities"><CrmRouteGuard><DailyActivitiesPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/account" element={<MyAccountPage />} />
+        <Route path="/system-errors" element={<SystemErrorsPage />} />
+        <Route path="/admin/system-errors" element={<SystemErrorsPage />} />
       </Route>
 
       {/* Fallback route outside of ProtectedRoute to prevent unauthorized bounce to login */}

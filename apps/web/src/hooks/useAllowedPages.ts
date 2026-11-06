@@ -69,6 +69,7 @@ export const PAGE_SUB_ITEMS: Record<string, { label: string; to: string; isActio
   leads: [
     { label: '+ New Lead', to: '/leads?action=create', isAction: true },
     { label: 'All Leads', to: '/leads' },
+    { label: 'Customers Directory', to: '/customers' },
     { label: 'My Assigned Leads', to: '/leads?filter=my' },
     { label: 'Converted Pipeline', to: '/leads?filter=converted' },
   ],
@@ -92,6 +93,7 @@ export const PAGE_SUB_ITEMS: Record<string, { label: string; to: string; isActio
   ledger: [
     { label: 'Customer Statements', to: '/ledger?tab=customers' },
     { label: 'Supplier Statements', to: '/ledger?tab=suppliers' },
+    { label: 'Customers Directory', to: '/customers' },
     { label: '+ Record Payment', to: '/ledger?action=payment', isAction: true },
   ],
   inventory: [

@@ -51,6 +51,12 @@ export class InvoicingController {
     return this.invoicingService.findAll(user, { page, limit, search, status, docType });
   }
 
+  @Get('series-audit')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin')
+  async getSeriesAudit(@CurrentUser() user: ScopedUser) {
+    return this.invoicingService.getInvoiceSeriesAudit(user);
+  }
+
   @Get('generate-number')
   @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async getNextNumber(

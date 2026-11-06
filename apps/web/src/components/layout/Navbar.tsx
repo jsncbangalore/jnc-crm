@@ -74,7 +74,14 @@ export default function Navbar() {
   // Trigger element refs for Portaled Dropdowns
   const profileTriggerRef = useRef<HTMLButtonElement>(null);
   const quickCreateTriggerRef = useRef<HTMLButtonElement>(null);
-  const tabTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const tabTriggerRefs = useRef<Record<string, { current: HTMLButtonElement | null }>>({});
+
+  const getTabTriggerRef = useCallback((key: string) => {
+    if (!tabTriggerRefs.current[key]) {
+      tabTriggerRefs.current[key] = { current: null };
+    }
+    return tabTriggerRefs.current[key];
+  }, []);
 
   // Global search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -743,7 +750,7 @@ export default function Navbar() {
                       <>
                         <button
                           ref={(el) => {
-                            tabTriggerRefs.current[item.to] = el;
+                            getTabTriggerRef(item.to).current = el;
                           }}
                           type="button"
                           aria-haspopup="menu"
@@ -758,13 +765,13 @@ export default function Navbar() {
                           onKeyDown={makeTriggerKeyDown(isDropdownOpen, (val) =>
                             setActiveTabDropdown(val ? item.to : null)
                           )}
-                          className={`px-1.5 h-full flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer ${
+                          className={`px-2 h-full flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer ${
                             isDropdownOpen ? 'bg-black/10 dark:bg-white/15' : ''
                           }`}
                           title={`${item.label} Actions`}
                         >
                           <ChevronDown
-                            size={11}
+                            size={12}
                             className={`transition-transform duration-150 ${
                               isDropdownOpen ? 'rotate-180 text-crm-blue' : ''
                             }`}
@@ -774,7 +781,7 @@ export default function Navbar() {
                         <DropdownPortal
                           isOpen={isDropdownOpen}
                           onClose={() => setActiveTabDropdown(null)}
-                          triggerRef={{ current: tabTriggerRefs.current[item.to] || null }}
+                          triggerRef={getTabTriggerRef(item.to)}
                           preferredPlacement="bottom-start"
                           className="min-w-[220px] p-2"
                         >

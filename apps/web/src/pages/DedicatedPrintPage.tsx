@@ -453,7 +453,7 @@ export default function DedicatedPrintPage() {
               <div className="grid grid-cols-2 gap-4 border border-black p-3 mb-4 bg-gray-50 text-black">
                 <div>
                   <span className="font-bold text-[10px] uppercase text-black">Quotation For:</span>
-                  <p className="font-bold text-xs text-black">{docData.lead?.customerName || docData.contact?.name || 'Valued Client'}</p>
+                  <p className="font-bold text-xs text-black">{docData.customerName || docData.lead?.customerName || docData.contact?.name || 'Walk-in Customer'}</p>
                   <p className="text-[10px] text-black">{docData.lead?.company?.name || docData.lead?.companyName || ''}</p>
                   <p className="text-[10px] text-black">Phone: {docData.lead?.customerPhone || docData.contact?.phone || '—'}</p>
                   <p className="text-[10px] text-black">Email: {docData.lead?.customerEmail || docData.contact?.email || '—'}</p>
