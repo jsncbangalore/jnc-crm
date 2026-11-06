@@ -169,8 +169,13 @@ export default function InventoryPage() {
   const [showAddComponentModal, setShowAddComponentModal] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get('tab') === 'bills') {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'bills') {
       navigate('/bills', { replace: true });
+    } else if (tabParam === 'stock' || tabParam === 'library' || tabParam === 'master_stock') {
+      setActiveTab('master_stock');
+    } else if (tabParam === 'buy_list' || tabParam === 'shortages') {
+      setActiveTab('buy_list');
     }
   }, [searchParams, navigate]);
 

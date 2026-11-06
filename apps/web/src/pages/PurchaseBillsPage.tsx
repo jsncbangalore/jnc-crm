@@ -1,13 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Receipt, Plus, FileText, ShoppingCart } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Receipt } from 'lucide-react';
 import { PurchaseBillsHub } from '../components/inventory/PurchaseBillsHub';
 import { RecordComponentPurchaseModal } from '../components/inventory/RecordComponentPurchaseModal';
 import { inventoryApi } from '../services/api';
 
 export default function PurchaseBillsPage() {
+  const [searchParams] = useSearchParams();
   const [showRecordPurchaseModal, setShowRecordPurchaseModal] = useState(false);
   const [existingProjects, setExistingProjects] = useState<string[]>(['General Inventory']);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (searchParams.get('action') === 'create') {
+      setShowRecordPurchaseModal(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     inventoryApi.getProjectStock().then((res: any) => {
@@ -38,22 +46,13 @@ export default function PurchaseBillsPage() {
             Record vendor bills, inward batches, and GST input credits.
           </p>
         </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setShowRecordPurchaseModal(true)}
-            className="btn-primary text-xs py-2 px-3.5 shadow-glow-blue flex items-center gap-1.5"
-            title="Record vendor purchase"
-          >
-            <ShoppingCart size={14} /> Record Purchase
-          </button>
-        </div>
       </div>
 
       {/* ─── PURCHASE BILLS HUB VIEW ─────────────────────────────────────── */}
       <PurchaseBillsHub
         key={refreshKey}
         existingProjects={existingProjects}
+        initialSearch={searchParams.get('search') || ''}
         onStockUpdated={handleStockUpdated}
         onRecordPurchase={() => setShowRecordPurchaseModal(true)}
       />

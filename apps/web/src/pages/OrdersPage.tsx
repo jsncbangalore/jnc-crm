@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Plus, FileText, Receipt, CheckCircle, RefreshCw, Edit3, CreditCard } from 'lucide-react';
+import { Search, Plus, FileText, Receipt, CheckCircle, RefreshCw, Edit3, CreditCard, MoreVertical } from 'lucide-react';
 import { ordersApi, invoicesApi } from '../services/api';
 import { Order, Invoice } from '../types';
 import { OrderStatusBadge } from '../components/ui/Badge';
@@ -11,18 +12,157 @@ import EditOrderModal from '../components/orders/EditOrderModal';
 import UnifiedRecordPaymentModal from '../components/common/UnifiedRecordPaymentModal';
 import CustomerAccountModal from '../components/common/CustomerAccountModal';
 import RelatedDocumentsPanel from '../components/common/RelatedDocumentsPanel';
+import DropdownPortal from '../components/common/DropdownPortal';
 import { useAllowedPages } from '../hooks/useAllowedPages';
 import { useAuth } from '../contexts/AuthContext';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 
+interface OrderRowActionsProps {
+  order: Order;
+  onPay: (order: Order) => void;
+  onEdit: (order: Order) => void;
+  onViewInvoice?: (id: string, inv: any) => void;
+  onGenerateInvoice?: (orderId: string) => void;
+  isGeneratingInvoice?: boolean;
+  activeInv?: any;
+  hasInvoicesPage: boolean;
+}
+
+function OrderRowActions({
+  order,
+  onPay,
+  onEdit,
+  onViewInvoice,
+  onGenerateInvoice,
+  isGeneratingInvoice,
+  activeInv,
+  hasInvoicesPage,
+}: OrderRowActionsProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const isEligibleForInvoice = order.status !== 'cancelled';
+
+  return (
+    <div className="relative inline-flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen((prev) => !prev);
+        }}
+        className={`w-7 h-7 rounded-lg inline-flex items-center justify-center transition-colors cursor-pointer ${
+          isOpen
+            ? 'bg-crm-blue text-white shadow-xs'
+            : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-white/10'
+        }`}
+        title="Order Actions"
+        aria-label={`Actions for order ${order.orderNumber}`}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+      >
+        <MoreVertical size={16} />
+      </button>
+
+      <DropdownPortal
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        triggerRef={triggerRef}
+        preferredPlacement="bottom-end"
+        className="w-48 py-1.5 bg-white dark:bg-[#1E2230] border border-slate-200 dark:border-[#2A3042] rounded-xl shadow-xl text-xs z-50 text-left"
+      >
+        <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-[#2A3042] flex items-center justify-between">
+          <span className="font-mono text-slate-700 dark:text-slate-300 font-bold truncate max-w-[110px]">{order.orderNumber}</span>
+          <span className="text-slate-400">Actions</span>
+        </div>
+
+        {/* Record Payment */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen(false);
+            onPay(order);
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors font-medium cursor-pointer"
+        >
+          <CreditCard size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span>Pay</span>
+        </button>
+
+        {/* Edit Order */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen(false);
+            onEdit(order);
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors font-medium cursor-pointer"
+        >
+          <Edit3 size={14} className="text-crm-blue shrink-0" />
+          <span>Edit</span>
+        </button>
+
+        {/* View / Generate Invoice */}
+        {activeInv && hasInvoicesPage ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(false);
+              onViewInvoice?.(activeInv.id, activeInv);
+            }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-crm-blue-light hover:bg-crm-blue/10 transition-colors font-medium cursor-pointer"
+          >
+            <FileText size={14} className="text-crm-blue-light shrink-0" />
+            <span>View Invoice</span>
+          </button>
+        ) : isEligibleForInvoice && hasInvoicesPage ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(false);
+              onGenerateInvoice?.(order.id);
+            }}
+            disabled={isGeneratingInvoice}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-crm-amber hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors font-medium cursor-pointer disabled:opacity-50"
+          >
+            <Receipt size={14} className="text-crm-amber shrink-0" />
+            <span>{isGeneratingInvoice ? 'Generating...' : 'Generate Invoice'}</span>
+          </button>
+        ) : null}
+      </DropdownPortal>
+    </div>
+  );
+}
+
 export default function OrdersPage() {
   const { user } = useAuth();
   const { hasPage } = useAllowedPages();
+  const [searchParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const f = searchParams.get('filter');
+    if (f === 'pending') return 'processing';
+    if (f === 'ready') return 'dispatched';
+    return '';
+  });
+
+  useEffect(() => {
+    const f = searchParams.get('filter');
+    if (f === 'pending') setStatusFilter('processing');
+    if (f === 'ready') setStatusFilter('dispatched');
+    if (searchParams.get('action') === 'create') {
+      setShowCreateModal(true);
+    }
+    const q = searchParams.get('search');
+    if (q != null) setSearch(q);
+  }, [searchParams]);
 
   // Customer Account Modal State & Expanded Chain
   const [accountCustomerId, setAccountCustomerId] = useState<string | null>(null);
@@ -86,6 +226,19 @@ export default function OrdersPage() {
     }
   };
 
+  if (error && orders.length === 0) {
+    return (
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 select-none">
+        <ErrorStateCard
+          message={error.message}
+          status={error.status}
+          isNetworkError={error.isNetworkError}
+          onRetry={fetchOrders}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -131,19 +284,19 @@ export default function OrdersPage() {
 
       {/* Table */}
       <div className="table-wrapper">
-        <table className="crm-table text-xs">
+        <table className="crm-table text-xs w-full">
           <thead>
             <tr>
-              <th className="whitespace-nowrap">Order #</th>
-              <th>Customer</th>
-              <th>Equipment Items</th>
-              <th className="whitespace-nowrap">Taxable & Total</th>
-              <th className="whitespace-nowrap">Tax Invoice</th>
-              <th className="whitespace-nowrap">Payment</th>
-              <th className="whitespace-nowrap">Status</th>
-              <th className="whitespace-nowrap">Shipment</th>
-              <th className="whitespace-nowrap">Date</th>
-              <th className="text-right whitespace-nowrap">Actions</th>
+              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Order #</th>
+              <th className="px-2.5 sm:px-3 py-2.5 max-w-[160px]">Customer</th>
+              <th className="px-2.5 sm:px-3 py-2.5 max-w-[160px]">Equipment Items</th>
+              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Taxable & Total</th>
+              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Tax Invoice</th>
+              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Payment</th>
+              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Status</th>
+              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Shipment</th>
+              <th className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">Date</th>
+              <th className="px-2.5 sm:px-3 py-2.5 text-right whitespace-nowrap w-12">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -158,7 +311,7 @@ export default function OrdersPage() {
                     animate={{ opacity: 1 }}
                     transition={{ delay: i * 0.02 }}
                   >
-                    <td className="font-mono text-xs text-crm-amber font-bold whitespace-nowrap">
+                    <td className="px-2.5 sm:px-3 py-2.5 font-mono text-xs text-crm-amber font-bold whitespace-nowrap">
                       <button
                         onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
                         className="hover:underline text-left inline-flex items-center gap-1"
@@ -167,8 +320,8 @@ export default function OrdersPage() {
                         {order.orderNumber}
                       </button>
                     </td>
-                    <td>
-                      <div>
+                    <td className="px-2.5 sm:px-3 py-2.5 max-w-[160px]">
+                      <div className="truncate">
                         <button
                           onClick={() => {
                             const cid = (order as any).customerId || (order as any).lead?.companyId;
@@ -177,33 +330,33 @@ export default function OrdersPage() {
                               setAccountCustomerName(order.customerName);
                             }
                           }}
-                          className={`text-left font-bold text-xs ${
+                          className={`text-left font-bold text-xs truncate max-w-full block ${
                             (order as any).customerId || (order as any).lead?.companyId
                               ? 'text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer'
                               : 'text-slate-950 dark:text-white'
                           }`}
-                          title="Click to view customer account"
+                          title={order.customerName}
                         >
                           {order.customerName}
                         </button>
-                        <div className="text-[11px] text-slate-500 font-mono">{order.customerPhone}</div>
+                        <div className="text-[11px] text-slate-500 font-mono truncate">{order.customerPhone}</div>
                       </div>
                     </td>
-                  <td className="text-slate-300">
+                  <td className="px-2.5 sm:px-3 py-2.5 max-w-[160px] text-slate-300">
                     <div className="font-medium text-slate-800 dark:text-slate-200">{order.lines?.length ?? 0} {order.lines?.length === 1 ? 'System' : 'Systems'}</div>
                     {order.lines?.[0]?.sku?.name && (
-                      <span className="block text-[10px] text-slate-500 truncate max-w-[140px]" title={order.lines[0].sku.name}>
+                      <span className="block text-[10px] text-slate-500 truncate max-w-[150px]" title={order.lines[0].sku.name}>
                         {order.lines[0].sku.name}
                       </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap">
+                  <td className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">
                     <div className="font-bold text-crm-amber tabular-nums">
                       ₹{order.totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                     </div>
                     <div className="text-[10px] text-slate-500">Incl. 18% GST</div>
                   </td>
-                  <td className="whitespace-nowrap">
+                  <td className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">
                     {activeInv ? (
                       <button
                         onClick={() => handleViewInvoice(activeInv.id, activeInv)}
@@ -216,7 +369,7 @@ export default function OrdersPage() {
                       <span className="text-[11px] text-slate-500 italic whitespace-nowrap">Not generated</span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap">
+                  <td className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">
                     {order.paymentStatus === 'paid' ? (
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
                         Paid Full
@@ -236,10 +389,10 @@ export default function OrdersPage() {
                       </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap">
+                  <td className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">
                     <OrderStatusBadge status={order.status} />
                   </td>
-                  <td className="text-slate-400 text-xs whitespace-nowrap">
+                  <td className="px-2.5 sm:px-3 py-2.5 text-slate-400 text-xs whitespace-nowrap">
                     {order.shipments && order.shipments.length > 0 ? (
                       <span className="text-crm-teal font-mono text-[10px]">
                         {order.shipments[0].trackingNumber}
@@ -248,47 +401,20 @@ export default function OrdersPage() {
                       <span className="text-slate-600">—</span>
                     )}
                   </td>
-                  <td className="text-slate-500 text-[11px] whitespace-nowrap">
+                  <td className="px-2.5 sm:px-3 py-2.5 text-slate-500 text-[11px] whitespace-nowrap">
                     {format(new Date(order.confirmedAt), 'dd MMM yyyy')}
                   </td>
-                  <td className="text-right whitespace-nowrap">
-                    <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                      {/* Record Payment Button */}
-                      <button
-                        onClick={() => setSelectedOrderForPayment(order)}
-                        className="btn-ghost text-[11px] py-1 px-2 text-emerald-400 hover:text-white border border-emerald-500/30 hover:bg-emerald-500/15 gap-1 whitespace-nowrap"
-                        title="Record Advance Receipt or Final Balance Settlement"
-                      >
-                        <CreditCard size={12} /> Pay
-                      </button>
-
-                      {/* Edit Order Button */}
-                      <button
-                        onClick={() => setEditingOrder(order)}
-                        className="btn-ghost text-[11px] py-1 px-2 text-slate-300 hover:text-white border border-slate-200 dark:border-[#2A3042] gap-1 whitespace-nowrap"
-                        title="Edit Order Details & Items"
-                      >
-                        <Edit3 size={12} className="text-crm-blue" /> Edit
-                      </button>
-
-                      {activeInv && hasPage('invoices') ? (
-                        <button
-                          onClick={() => handleViewInvoice(activeInv.id, activeInv)}
-                          className="btn-ghost text-[11px] py-1 px-2 text-crm-blue-light hover:text-white border border-slate-200 dark:border-[#2A3042] whitespace-nowrap"
-                        >
-                          <FileText size={12} /> View Invoice
-                        </button>
-                      ) : isEligibleForInvoice && hasPage('invoices') ? (
-                        <button
-                          onClick={() => handleGenerateInvoice(order.id)}
-                          disabled={generatingOrderId === order.id}
-                          className="btn bg-crm-amber/20 hover:bg-crm-amber/30 text-crm-amber border border-crm-amber/30 text-[11px] py-1 px-2.5 gap-1 shadow-glow-amber disabled:opacity-50 whitespace-nowrap"
-                        >
-                          <Receipt size={12} />
-                          {generatingOrderId === order.id ? 'Generating...' : 'Generate Invoice'}
-                        </button>
-                      ) : null}
-                    </div>
+                  <td className="px-2.5 sm:px-3 py-2.5 text-right whitespace-nowrap w-12">
+                    <OrderRowActions
+                      order={order}
+                      onPay={(o) => setSelectedOrderForPayment(o)}
+                      onEdit={(o) => setEditingOrder(o)}
+                      onViewInvoice={handleViewInvoice}
+                      onGenerateInvoice={handleGenerateInvoice}
+                      isGeneratingInvoice={generatingOrderId === order.id}
+                      activeInv={activeInv}
+                      hasInvoicesPage={hasPage('invoices')}
+                    />
                   </td>
                 </motion.tr>
 

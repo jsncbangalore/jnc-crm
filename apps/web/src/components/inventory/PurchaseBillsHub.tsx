@@ -27,11 +27,13 @@ import {
 } from 'lucide-react';
 import { inventoryApi, fetchPrivateFileBlobUrl } from '../../services/api';
 import { DigitalSoftCopyModal } from './DigitalSoftCopyModal';
+import { ErrorStateCard } from '../common/ErrorStateCard';
 
 interface PurchaseBillsHubProps {
   existingProjects?: string[];
   onStockUpdated: () => void;
   onRecordPurchase?: () => void;
+  initialSearch?: string;
 }
 
 export const formatImageUrl = (url?: string) => {
@@ -45,10 +47,17 @@ export const formatImageUrl = (url?: string) => {
 export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
   onStockUpdated,
   onRecordPurchase,
+  initialSearch,
 }) => {
   const [bills, setBills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch || '');
+
+  useEffect(() => {
+    if (initialSearch != null) {
+      setSearch(initialSearch);
+    }
+  }, [initialSearch]);
 
   // KPI display toggle (persisted if consented)
   const [showBillsKpis, setShowBillsKpis] = useState<boolean>(() => {
@@ -82,11 +91,13 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
   const [deleteConfirmBill, setDeleteConfirmBill] = useState<{ id: string; invoiceNumber: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
 
   // Fetch Bills
   const fetchBills = async () => {
     try {
       setLoading(true);
+      setError(null);
       const res = await inventoryApi.getPurchaseBills();
       const list = Array.isArray(res.data)
         ? res.data
@@ -96,6 +107,12 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
       setBills(list);
     } catch (err: any) {
       console.error('Failed to load purchase bills:', err);
+      const isNetwork = !err.response || err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK';
+      setError({
+        status: err.response?.status,
+        message: err.response?.data?.message || err.message || 'Failed to load purchase bills.',
+        isNetworkError: isNetwork,
+      });
     } finally {
       setLoading(false);
     }
@@ -132,6 +149,19 @@ export const PurchaseBillsHub: React.FC<PurchaseBillsHubProps> = ({
         : 0),
     0
   );
+
+  if (error && bills.length === 0) {
+    return (
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto select-none">
+        <ErrorStateCard
+          message={error.message}
+          status={error.status}
+          isNetworkError={error.isNetworkError}
+          onRetry={fetchBills}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

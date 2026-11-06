@@ -1,6 +1,7 @@
 import UnifiedRecordPaymentModal from '../components/common/UnifiedRecordPaymentModal';
+import { UnifiedErrorComponent } from '../components/common/UnifiedErrorComponent';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BookOpen,
   Search,
@@ -140,8 +141,20 @@ export default function LedgerPage() {
     user?.role === 'platform_super_admin' ||
     user?.role === 'platform_admin';
 
-  // State
   const [partyType, setPartyType] = useState<'customer' | 'supplier'>('customer');
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'suppliers' || tabParam === 'supplier') {
+      setPartyType('supplier');
+    } else if (tabParam === 'customers' || tabParam === 'customer') {
+      setPartyType('customer');
+    }
+    if (searchParams.get('action') === 'payment') {
+      setShowPaymentModal(true);
+    }
+  }, [searchParams]);
   const [currentFY] = useState<string>(() => computeCurrentIndianFY());
   const [selectedFY, setSelectedFY] = useState<string>(() => computeCurrentIndianFY());
   const [parties, setParties] = useState<LedgerParty[]>([]);
@@ -171,8 +184,9 @@ export default function LedgerPage() {
   // Loading & error
   const [loadingParties, setLoadingParties] = useState(false);
   const [loadingStatement, setLoadingStatement] = useState(false);
-  const [partiesError, setPartiesError] = useState<string | null>(null);
-  const [statementError, setStatementError] = useState<string | null>(null);
+  const [partiesLoadedSuccess, setPartiesLoadedSuccess] = useState(false);
+  const [partiesError, setPartiesError] = useState<any | null>(null);
+  const [statementError, setStatementError] = useState<any | null>(null);
 
   // Dropdown states for Download and More
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
@@ -258,6 +272,7 @@ export default function LedgerPage() {
       // Sort by outstanding balance descending
       list.sort((a, b) => (b.closingBalance || 0) - (a.closingBalance || 0));
       setParties(list);
+      setPartiesLoadedSuccess(true);
 
       // Select party with largest balance first
       if (list.length > 0) {
@@ -274,9 +289,8 @@ export default function LedgerPage() {
       }
     } catch (err: any) {
       console.error('Failed to load ledger parties', err);
-      setPartiesError(
-        err?.response?.data?.message || 'Failed to load ledger parties. Please try again.'
-      );
+      setPartiesLoadedSuccess(false);
+      setPartiesError(err);
     } finally {
       setLoadingParties(false);
     }
@@ -530,12 +544,18 @@ export default function LedgerPage() {
     document.body.removeChild(link);
   };
 
-  const handleVoucherClick = (voucherType: string, voucherNo: string) => {
+  const handleVoucherClick = (voucherType: string, voucherNo: string, sourceId?: string) => {
     const vt = (voucherType || '').toLowerCase();
     if (vt.includes('invoice') || vt === 'sales') {
-      navigate(`/invoices?search=${encodeURIComponent(voucherNo)}`);
+      const url = sourceId
+        ? `/invoices?invoiceId=${encodeURIComponent(sourceId)}&search=${encodeURIComponent(voucherNo)}&open=1`
+        : `/invoices?search=${encodeURIComponent(voucherNo)}&open=1`;
+      navigate(url);
     } else if (vt.includes('bill') || vt === 'purchase') {
-      navigate(`/bills?search=${encodeURIComponent(voucherNo)}`);
+      const url = sourceId
+        ? `/bills?billId=${encodeURIComponent(sourceId)}&search=${encodeURIComponent(voucherNo)}&open=1`
+        : `/bills?search=${encodeURIComponent(voucherNo)}&open=1`;
+      navigate(url);
     }
   };
 
@@ -808,7 +828,7 @@ export default function LedgerPage() {
       </div>
 
       {/* ─── REAL TENANT FIRST-RUN CHECKLIST (When tenant is real and empty) ── */}
-      {parties.length === 0 && !loadingParties && (
+      {parties.length === 0 && !loadingParties && !partiesError && partiesLoadedSuccess && (
         <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs space-y-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
@@ -933,15 +953,13 @@ export default function LedgerPage() {
             {loadingParties ? (
               <div className="p-8 text-center text-xs text-slate-400">Loading parties...</div>
             ) : partiesError ? (
-              <div className="p-6 text-center space-y-2">
-                <AlertCircle className="w-6 h-6 text-rose-500 mx-auto" />
-                <p className="text-xs text-rose-600 dark:text-rose-400">{partiesError}</p>
-                <button
-                  onClick={loadParties}
-                  className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-200"
-                >
-                  Retry
-                </button>
+              <div className="p-3">
+                <UnifiedErrorComponent
+                  error={partiesError}
+                  page="Ledger"
+                  onRetry={loadParties}
+                  compact={true}
+                />
               </div>
             ) : filteredParties.length === 0 ? (
               <div className="p-8 text-center space-y-3">
@@ -1408,7 +1426,7 @@ export default function LedgerPage() {
                                   {entry.voucherNo ? (
                                     <button
                                       onClick={() =>
-                                        handleVoucherClick(entry.voucherType, entry.voucherNo)
+                                        handleVoucherClick(entry.voucherType, entry.voucherNo, (entry as any).sourceId)
                                       }
                                       className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold inline-flex items-center gap-1"
                                       title={`Open ${entry.voucherNo}`}
@@ -1462,7 +1480,7 @@ export default function LedgerPage() {
                                 {entry.voucherNo ? (
                                   <button
                                     onClick={() =>
-                                      handleVoucherClick(entry.voucherType, entry.voucherNo)
+                                      handleVoucherClick(entry.voucherType, entry.voucherNo, (entry as any).sourceId)
                                     }
                                     className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold inline-flex items-center gap-1"
                                     title={`Open ${entry.voucherNo}`}

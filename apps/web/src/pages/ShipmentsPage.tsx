@@ -6,6 +6,7 @@
  * ----------------------------------------------------- */
 
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Truck, Search, Plus, RefreshCw, X, CheckCircle2, Clock, ExternalLink,
@@ -20,12 +21,18 @@ import { safeUpper } from '../utils/safeFormat';
 
 export default function ShipmentsPage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [shipments, setShipments] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const f = searchParams.get('filter');
+    if (f === 'transit') return 'in_transit';
+    if (f === 'delivered') return 'delivered';
+    return 'all';
+  });
 
   // Create Shipment Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -78,6 +85,17 @@ export default function ShipmentsPage() {
     }
     setShowCreateModal(true);
   };
+
+  useEffect(() => {
+    const f = searchParams.get('filter');
+    if (f === 'transit') setStatusFilter('in_transit');
+    if (f === 'delivered') setStatusFilter('delivered');
+    if (searchParams.get('action') === 'create') {
+      handleOpenCreateModal();
+    }
+    const q = searchParams.get('search');
+    if (q != null) setSearch(q);
+  }, [searchParams]);
 
   const handleOpenEditModal = (s: any) => {
     setEditingShipment(s);

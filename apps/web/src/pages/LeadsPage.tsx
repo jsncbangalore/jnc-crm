@@ -180,7 +180,13 @@ export default function LeadsPage() {
       setLeadToEdit(null);
       setShowAddModal(true);
     }
-  }, [searchParams]);
+    const filter = searchParams.get('filter');
+    if (filter === 'my' && user?.id) {
+      setEmployeeFilter(user.id);
+    } else if (filter === 'converted') {
+      setActiveTab('client-directory');
+    }
+  }, [searchParams, user]);
 
   const [newLead, setNewLead] = useState({
     customerName: '',
@@ -462,6 +468,19 @@ export default function LeadsPage() {
       setImporting(false);
     }
   };
+
+  if (error && leads.length === 0) {
+    return (
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 select-none">
+        <ErrorStateCard
+          message={error.message}
+          status={error.status}
+          isNetworkError={error.isNetworkError}
+          onRetry={fetchLeads}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

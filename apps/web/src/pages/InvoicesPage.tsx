@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Plus, FileText, Printer, Mail, Ban, RefreshCw, ShieldCheck,
@@ -195,13 +196,54 @@ function InvoiceRowActions({
 export default function InvoicesPage() {
   const { user } = useAuth();
   const canAdmin = user?.role === 'tenant_admin' || user?.role === 'admin';
+  const [searchParams] = useSearchParams();
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
-  const [search, setSearch] = useState('');
-  const [docTypeFilter, setDocTypeFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('invoiceNumber') || '');
+  const [docTypeFilter, setDocTypeFilter] = useState<string>(() => {
+    if (searchParams.get('filter') === 'lut') return 'sez_invoice';
+    return 'all';
+  });
+  const [statusFilter, setStatusFilter] = useState<string>(() => {
+    if (searchParams.get('filter') === 'unpaid') return 'unpaid';
+    return 'all';
+  });
+  const hasAutoOpenedRef = useRef(false);
+
+  useEffect(() => {
+    const q = searchParams.get('search') || searchParams.get('invoiceNumber');
+    if (q != null) setSearch(q);
+    const filter = searchParams.get('filter');
+    if (filter === 'unpaid') setStatusFilter('unpaid');
+    if (filter === 'lut') setDocTypeFilter('sez_invoice');
+    if (searchParams.get('action') === 'create') {
+      setShowCreateModal(true);
+    }
+
+    // Direct invoice opening from ledger or URL link
+    const invoiceId = searchParams.get('invoiceId');
+    if (invoiceId) {
+      invoicesApi.get(invoiceId).then((res) => {
+        if (res?.data) {
+          setSelectedInvoice(res.data);
+        }
+      }).catch(() => {});
+    } else if (searchParams.get('open') === '1' && q) {
+      invoicesApi.list({ search: q.trim(), limit: 5 }).then((res) => {
+        const items = res?.data?.items || [];
+        const match = items.find((i: any) =>
+          (i.invoiceNumber || '').toLowerCase().includes(q.toLowerCase().trim())
+        ) || items[0];
+        if (match) {
+          invoicesApi.get(match.id).then((full) => {
+            setSelectedInvoice(full.data || match);
+          }).catch(() => setSelectedInvoice(match));
+        }
+      }).catch(() => {});
+    }
+  }, [searchParams]);
 
   // Customer Account Modal State
   const [accountCustomerId, setAccountCustomerId] = useState<string | null>(null);
@@ -281,8 +323,27 @@ export default function InvoicesPage() {
         status: statusFilter !== 'all' ? statusFilter : undefined,
         limit: 100,
       });
-      setInvoices(data.items || []);
+      const items = data.items || [];
+      setInvoices(items);
       setError(null);
+
+      // Auto-open requested invoice if open=1 or invoiceId matches
+      if (!hasAutoOpenedRef.current && items.length > 0) {
+        const shouldOpen = searchParams.get('open') === '1' || Boolean(searchParams.get('invoiceId'));
+        if (shouldOpen) {
+          hasAutoOpenedRef.current = true;
+          const targetId = searchParams.get('invoiceId');
+          const targetSearch = (searchParams.get('search') || searchParams.get('invoiceNumber') || '').toLowerCase().trim();
+          const match = targetId
+            ? items.find((i: any) => i.id === targetId)
+            : targetSearch
+            ? items.find((i: any) => (i.invoiceNumber || '').toLowerCase().includes(targetSearch)) || items[0]
+            : items[0];
+          if (match) {
+            handleOpenDoc(match);
+          }
+        }
+      }
     } catch (err: any) {
       console.error('Failed to load invoices', err);
       setError(parseApiError(err));
@@ -411,6 +472,19 @@ export default function InvoicesPage() {
       alert('Failed to generate PDF.');
     }
   };
+
+  if (error && invoices.length === 0) {
+    return (
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 select-none">
+        <ErrorStateCard
+          message={error.message}
+          status={error.status}
+          isNetworkError={error.isNetworkError}
+          onRetry={fetchInvoices}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

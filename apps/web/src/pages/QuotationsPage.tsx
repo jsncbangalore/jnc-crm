@@ -48,7 +48,9 @@ export default function QuotationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(() => {
+    return searchParams.get('filter') === 'pending' ? 'draft' : 'all';
+  });
 
   // Customer Account Modal State
   const [accountCustomerId, setAccountCustomerId] = useState<string | null>(null);
@@ -184,6 +186,9 @@ export default function QuotationsPage() {
       setShowCreateModal(true);
     } else if (searchParams.get('action') === 'create') {
       setShowCreateModal(true);
+    }
+    if (searchParams.get('filter') === 'pending') {
+      setStatusFilter('draft');
     }
   }, [searchParams]);
 
@@ -341,7 +346,7 @@ export default function QuotationsPage() {
         <div style="display: flex; justify-content: space-between; margin-bottom: 16px; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
           <div>
             <strong>Quotation For:</strong>
-            <div style="font-size: 13px; font-weight: bold; margin-top: 2px;">${q.lead?.customerName || q.contact?.name || 'Valued Client'}</div>
+            <div style="font-size: 13px; font-weight: bold; margin-top: 2px;">${q.customerName || q.lead?.customerName || q.contact?.name || 'Walk-in Customer'}</div>
             <div>${q.lead?.company?.name || q.lead?.companyName || ''}</div>
             <div>Phone: ${q.lead?.customerPhone || q.contact?.phone || '—'}</div>
             <div>Email: ${q.lead?.customerEmail || q.contact?.email || '—'}</div>
@@ -407,6 +412,19 @@ export default function QuotationsPage() {
       paperSize: 'A4',
     });
   };
+
+  if (error && quotations.length === 0) {
+    return (
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 select-none">
+        <ErrorStateCard
+          message={error.message}
+          status={error.status}
+          isNetworkError={error.isNetworkError}
+          onRetry={fetchQuotations}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -569,7 +587,7 @@ export default function QuotationsPage() {
                         }`}
                         title={q.customerId ? 'Click to view unified customer account' : undefined}
                       >
-                        {q.customerName || q.lead?.customerName || q.contact?.name || 'Valued Client'}
+                        {q.customerName || q.lead?.customerName || q.contact?.name || 'Walk-in Customer'}
                       </button>
                       <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
                         {q.companyName || q.lead?.company?.name || q.lead?.companyName || '—'}
