@@ -3,6 +3,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type DocumentSeriesType =
+  | 'lead'
   | 'quotation'
   | 'order'
   | 'tax_invoice'
@@ -14,6 +15,7 @@ export type DocumentSeriesType =
   | 'payment';
 
 export const DEFAULT_SERIES_PREFIXES: Record<string, string> = {
+  lead: 'LD',
   quotation: 'QTN',
   order: 'ORD',
   tax_invoice: 'INV',

@@ -16,6 +16,7 @@ import DropdownPortal from '../components/common/DropdownPortal';
 import { useAllowedPages } from '../hooks/useAllowedPages';
 import { useAuth } from '../contexts/AuthContext';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
+import DataTable, { ColumnDef } from '../components/common/DataTable';
 
 interface OrderRowActionsProps {
   order: Order;
@@ -240,7 +241,7 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 w-full max-w-full min-w-0 overflow-x-hidden">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -283,186 +284,303 @@ export default function OrdersPage() {
       </div>
 
       {/* Table */}
-      <div className="card border-slate-200 dark:border-[#2A3042] overflow-hidden p-0 shadow-sm bg-white dark:bg-[#181B26]">
-        <div className="overflow-x-auto scrollbar-thin">
-          <table className="crm-table text-xs w-full">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#141722] text-slate-700 dark:text-slate-400 font-bold uppercase tracking-wider text-[10.5px]">
-                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-28">Order #</th>
-                <th className="px-2.5 py-2.5 text-left min-w-[130px] max-w-[160px]">Customer</th>
-                <th className="px-2.5 py-2.5 text-left min-w-[130px] max-w-[160px]">Equipment Items</th>
-                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-28">Taxable & Total</th>
-                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-28">Tax Invoice</th>
-                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-24">Payment</th>
-                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-24">Status</th>
-                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-28">Shipment</th>
-                <th className="px-2.5 py-2.5 whitespace-nowrap text-left w-24">Date</th>
-                <th className="px-2 py-2.5 text-center whitespace-nowrap w-12">Actions</th>
-              </tr>
-            </thead>
-          <tbody>
-            {orders.map((order, i) => {
-              const activeInv = order.invoices && order.invoices.length > 0 ? order.invoices[0] : null;
-              const isEligibleForInvoice = order.status !== 'cancelled';
-
+      {(() => {
+        const orderColumns: ColumnDef<Order>[] = [
+          {
+            id: 'orderNumber',
+            header: 'Order #',
+            width: '10%',
+            minWidth: '85px',
+            priority: 'p1',
+            disableHiding: true,
+            isSticky: 'left',
+            sortable: true,
+            sortAccessor: (o) => o.orderNumber,
+            cell: (order) => (
+              <button
+                onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                className="font-mono text-xs text-crm-amber font-bold whitespace-nowrap hover:underline text-left inline-flex items-center gap-1"
+                title="Click to view related document chain"
+              >
+                {order.orderNumber}
+              </button>
+            ),
+          },
+          {
+            id: 'customer',
+            header: 'Customer',
+            width: '15%',
+            minWidth: '105px',
+            priority: 'p1',
+            sortable: true,
+            sortAccessor: (o) => o.customerName,
+            cell: (order) => {
+              const cid = (order as any).customerId || (order as any).lead?.companyId;
               return (
-                <React.Fragment key={order.id}>
-                  <motion.tr
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: i * 0.02 }}
+                <div className="truncate">
+                  <button
+                    onClick={() => {
+                      if (cid) {
+                        setAccountCustomerId(cid);
+                        setAccountCustomerName(order.customerName);
+                      }
+                    }}
+                    className={`text-left font-bold text-xs truncate max-w-full block ${
+                      cid ? 'text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer' : 'text-slate-950 dark:text-white'
+                    }`}
+                    title={order.customerName}
                   >
-                    <td className="px-2.5 sm:px-3 py-2.5 font-mono text-xs text-crm-amber font-bold whitespace-nowrap">
-                      <button
-                        onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
-                        className="hover:underline text-left inline-flex items-center gap-1"
-                        title="Click to view related document chain"
-                      >
-                        {order.orderNumber}
-                      </button>
-                    </td>
-                    <td className="px-2.5 sm:px-3 py-2.5 max-w-[160px]">
-                      <div className="truncate">
-                        <button
-                          onClick={() => {
-                            const cid = (order as any).customerId || (order as any).lead?.companyId;
-                            if (cid) {
-                              setAccountCustomerId(cid);
-                              setAccountCustomerName(order.customerName);
-                            }
-                          }}
-                          className={`text-left font-bold text-xs truncate max-w-full block ${
-                            (order as any).customerId || (order as any).lead?.companyId
-                              ? 'text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer'
-                              : 'text-slate-950 dark:text-white'
-                          }`}
-                          title={order.customerName}
-                        >
-                          {order.customerName}
-                        </button>
-                        <div className="text-[11px] text-slate-500 font-mono truncate">{order.customerPhone}</div>
-                      </div>
-                    </td>
-                  <td className="px-2.5 sm:px-3 py-2.5 max-w-[160px] text-slate-300">
-                    <div className="font-medium text-slate-800 dark:text-slate-200">{order.lines?.length ?? 0} {order.lines?.length === 1 ? 'System' : 'Systems'}</div>
-                    {order.lines?.[0]?.sku?.name && (
-                      <span className="block text-[10px] text-slate-500 truncate max-w-[150px]" title={order.lines[0].sku.name}>
-                        {order.lines[0].sku.name}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">
-                    <div className="font-bold text-crm-amber tabular-nums">
-                      ₹{order.totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                    </div>
-                    <div className="text-[10px] text-slate-500">Incl. 18% GST</div>
-                  </td>
-                  <td className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">
-                    {activeInv ? (
-                      <button
-                        onClick={() => handleViewInvoice(activeInv.id, activeInv)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-crm-teal/15 text-crm-teal hover:bg-crm-teal/25 border border-crm-teal/30 font-mono text-[10.5px] font-bold transition-colors cursor-pointer whitespace-nowrap"
-                        title="Click to view Tax Invoice"
-                      >
-                        <Receipt size={11} /> {activeInv.invoiceNumber}
-                      </button>
-                    ) : (
-                      <span className="text-[11px] text-slate-500 italic whitespace-nowrap">Not generated</span>
-                    )}
-                  </td>
-                  <td className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">
-                    {order.paymentStatus === 'paid' ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
-                        Paid Full
-                      </span>
-                    ) : (order.paidAmount && order.paidAmount > 0) ? (
-                      <div className="flex flex-col items-start gap-1 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-amber-500/15 text-crm-amber border border-amber-500/30 whitespace-nowrap">
-                          Adv: ₹{order.paidAmount.toLocaleString('en-IN')}
-                        </span>
-                        <div className="text-[9.5px] text-slate-400 font-mono whitespace-nowrap">
-                          Bal: ₹{(order.balanceAmount !== undefined && order.balanceAmount !== null ? order.balanceAmount : order.totalAmount - order.paidAmount).toLocaleString('en-IN')}
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-slate-500/15 text-slate-400 border border-slate-500/30 whitespace-nowrap">
-                        Pending Adv
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-2.5 sm:px-3 py-2.5 whitespace-nowrap">
-                    <OrderStatusBadge status={order.status} />
-                  </td>
-                  <td className="px-2.5 sm:px-3 py-2.5 text-slate-400 text-xs whitespace-nowrap">
-                    {order.shipments && order.shipments.length > 0 ? (
-                      <span className="text-crm-teal font-mono text-[10px]">
-                        {order.shipments[0].trackingNumber}
-                      </span>
-                    ) : (
-                      <span className="text-slate-600">—</span>
-                    )}
-                  </td>
-                  <td className="px-2.5 sm:px-3 py-2.5 text-slate-500 text-[11px] whitespace-nowrap">
-                    {format(new Date(order.confirmedAt), 'dd MMM yyyy')}
-                  </td>
-                  <td className="px-2.5 sm:px-3 py-2.5 text-right whitespace-nowrap w-12">
-                    <OrderRowActions
-                      order={order}
-                      onPay={(o) => setSelectedOrderForPayment(o)}
-                      onEdit={(o) => setEditingOrder(o)}
-                      onViewInvoice={handleViewInvoice}
-                      onGenerateInvoice={handleGenerateInvoice}
-                      isGeneratingInvoice={generatingOrderId === order.id}
-                      activeInv={activeInv}
-                      hasInvoicesPage={hasPage('invoices')}
-                    />
-                  </td>
-                </motion.tr>
-
-                {/* Related Documents Row */}
-                {expandedOrderId === order.id && (
-                  <tr className="bg-slate-50/50 dark:bg-slate-900/40">
-                    <td colSpan={10} className="p-4">
-                      <RelatedDocumentsPanel type="order" id={order.id} />
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            );
-          })}
-            {loading && !error && (
-              <tr>
-                <td colSpan={10} className="text-center py-12 text-slate-500">
-                  <div className="flex items-center justify-center gap-2">
-                    <RefreshCw size={14} className="animate-spin text-crm-blue" />
-                    <span>Loading orders...</span>
+                    {order.customerName}
+                  </button>
+                  <div className="text-[11px] text-slate-500 font-mono truncate" title={order.customerPhone}>
+                    {order.customerPhone}
                   </div>
-                </td>
-              </tr>
-            )}
-            {error && orders.length === 0 && (
-              <tr>
-                <td colSpan={10} className="p-6">
-                  <ErrorStateCard
-                    message={error.message}
-                    status={error.status}
-                    isNetworkError={error.isNetworkError}
-                    onRetry={fetchOrders}
+                </div>
+              );
+            },
+          },
+          {
+            id: 'equipmentItems',
+            header: 'Equipment Items',
+            width: '12%',
+            minWidth: '85px',
+            priority: 'p2',
+            cell: (order) => (
+              <div>
+                <div className="font-medium text-slate-800 dark:text-slate-200 text-xs">
+                  {order.lines?.length ?? 0} {order.lines?.length === 1 ? 'System' : 'Systems'}
+                </div>
+                {order.lines?.[0]?.sku?.name && (
+                  <span className="block text-[10px] text-slate-500 truncate" title={order.lines[0].sku.name}>
+                    {order.lines[0].sku.name}
+                  </span>
+                )}
+              </div>
+            ),
+          },
+          {
+            id: 'totalAmount',
+            header: 'Taxable & Total',
+            width: '12%',
+            minWidth: '85px',
+            priority: 'p1',
+            isMoney: true,
+            sortable: true,
+            sortAccessor: (o) => o.totalAmount,
+            cell: (order) => (
+              <div className="text-right">
+                <div className="font-bold text-crm-amber tabular-nums text-xs font-mono">
+                  ₹{order.totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                </div>
+                <div className="text-[10px] text-slate-500 whitespace-nowrap">Incl. 18% GST</div>
+              </div>
+            ),
+          },
+          {
+            id: 'taxInvoice',
+            header: 'Tax Invoice',
+            width: '11%',
+            minWidth: '80px',
+            priority: 'p2',
+            cell: (order) => {
+              const activeInv = order.invoices && order.invoices.length > 0 ? order.invoices[0] : null;
+              return activeInv ? (
+                <button
+                  onClick={() => handleViewInvoice(activeInv.id, activeInv)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-crm-teal/15 text-crm-teal hover:bg-crm-teal/25 border border-crm-teal/30 font-mono text-[10.5px] font-bold transition-colors cursor-pointer whitespace-nowrap"
+                  title="Click to view Tax Invoice"
+                >
+                  <Receipt size={11} /> {activeInv.invoiceNumber}
+                </button>
+              ) : (
+                <span className="text-[11px] text-slate-500 italic whitespace-nowrap">Not generated</span>
+              );
+            },
+          },
+          {
+            id: 'payment',
+            header: 'Payment',
+            width: '11%',
+            minWidth: '80px',
+            priority: 'p1',
+            cell: (order) => {
+              if (order.paymentStatus === 'paid') {
+                return (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
+                    Paid Full
+                  </span>
+                );
+              }
+              if (order.paidAmount && order.paidAmount > 0) {
+                const bal = order.balanceAmount !== undefined && order.balanceAmount !== null ? order.balanceAmount : order.totalAmount - order.paidAmount;
+                return (
+                  <div className="flex flex-col items-start gap-0.5 whitespace-nowrap">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-crm-amber border border-amber-500/30 whitespace-nowrap">
+                      Adv: ₹{order.paidAmount.toLocaleString('en-IN')}
+                    </span>
+                    <div className="text-[9.5px] text-slate-400 font-mono whitespace-nowrap">
+                      Bal: ₹{bal.toLocaleString('en-IN')}
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-slate-500/15 text-slate-400 border border-slate-500/30 whitespace-nowrap">
+                  Pending Adv
+                </span>
+              );
+            },
+          },
+          {
+            id: 'status',
+            header: 'Status',
+            width: '9%',
+            minWidth: '70px',
+            priority: 'p1',
+            cell: (order) => <OrderStatusBadge status={order.status} />,
+          },
+          {
+            id: 'shipment',
+            header: 'Shipment',
+            width: '8%',
+            minWidth: '65px',
+            priority: 'p3',
+            cell: (order) => (
+              order.shipments && order.shipments.length > 0 ? (
+                <span className="text-crm-teal font-mono text-[10px] truncate block" title={order.shipments[0].trackingNumber}>
+                  {order.shipments[0].trackingNumber}
+                </span>
+              ) : (
+                <span className="text-slate-600">—</span>
+              )
+            ),
+          },
+          {
+            id: 'confirmedAt',
+            header: 'Date',
+            width: '8%',
+            minWidth: '65px',
+            priority: 'p2',
+            sortable: true,
+            sortAccessor: (o) => new Date(o.confirmedAt).getTime(),
+            cell: (order) => (
+              <span className="text-slate-500 text-[11px] whitespace-nowrap">
+                {format(new Date(order.confirmedAt), 'dd MMM yyyy')}
+              </span>
+            ),
+          },
+          {
+            id: 'actions',
+            header: 'Actions',
+            width: '8%',
+            minWidth: '60px',
+            priority: 'p1',
+            disableHiding: true,
+            isSticky: 'right',
+            align: 'center',
+            cell: (order) => {
+              const activeInv = order.invoices && order.invoices.length > 0 ? order.invoices[0] : null;
+              return (
+                <OrderRowActions
+                  order={order}
+                  onPay={(o) => setSelectedOrderForPayment(o)}
+                  onEdit={(o) => setEditingOrder(o)}
+                  onViewInvoice={handleViewInvoice}
+                  onGenerateInvoice={handleGenerateInvoice}
+                  isGeneratingInvoice={generatingOrderId === order.id}
+                  activeInv={activeInv}
+                  hasInvoicesPage={hasPage('invoices')}
+                />
+              );
+            },
+          },
+        ];
+
+        const renderOrderCard = (order: Order) => {
+          const activeInv = order.invoices && order.invoices.length > 0 ? order.invoices[0] : null;
+          return (
+            <div key={order.id} className="p-3.5 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-crm-amber">{order.orderNumber}</span>
+                  <OrderStatusBadge status={order.status} />
+                </div>
+                <span className="text-[11px] text-slate-400 font-medium">
+                  {format(new Date(order.confirmedAt), 'dd MMM yyyy')}
+                </span>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs">{order.customerName}</h4>
+                <p className="text-[11px] text-slate-500 font-mono">{order.customerPhone}</p>
+              </div>
+
+              <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-white/5">
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Total Amount</span>
+                  <span className="font-mono font-bold text-xs text-crm-amber">
+                    ₹{order.totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {activeInv && (
+                    <button
+                      onClick={() => handleViewInvoice(activeInv.id, activeInv)}
+                      className="px-2 py-1 rounded bg-crm-teal/15 text-crm-teal text-[10px] font-mono font-bold"
+                    >
+                      {activeInv.invoiceNumber}
+                    </button>
+                  )}
+                  <OrderRowActions
+                    order={order}
+                    onPay={(o) => setSelectedOrderForPayment(o)}
+                    onEdit={(o) => setEditingOrder(o)}
+                    onViewInvoice={handleViewInvoice}
+                    onGenerateInvoice={handleGenerateInvoice}
+                    isGeneratingInvoice={generatingOrderId === order.id}
+                    activeInv={activeInv}
+                    hasInvoicesPage={hasPage('invoices')}
                   />
-                </td>
-              </tr>
-            )}
-            {!loading && !error && orders.length === 0 && (
-              <tr>
-                <td colSpan={10} className="text-center text-slate-500 py-12">
-                  No orders found. Confirm an order to generate GST invoices.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        </div>
-      </div>
+                </div>
+              </div>
+
+              {expandedOrderId === order.id && (
+                <div className="pt-2 border-t border-slate-100 dark:border-white/5">
+                  <RelatedDocumentsPanel type="order" id={order.id} />
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        return (
+          <DataTable
+            pageKey="orders"
+            userId={user?.id}
+            data={orders}
+            columns={orderColumns}
+            loading={loading}
+            error={error}
+            onRetry={fetchOrders}
+            emptyTitle="No orders found"
+            emptySubtitle="No orders found matching the filter criteria. Confirm an order to generate GST invoices."
+            emptyAction={
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="btn-primary text-xs gap-1.5"
+              >
+                <Plus size={14} /> New Order
+              </button>
+            }
+            cardRenderer={renderOrderCard}
+            renderDetailRow={(order) =>
+              expandedOrderId === order.id ? (
+                <RelatedDocumentsPanel type="order" id={order.id} />
+              ) : null
+            }
+          />
+        );
+      })()}
 
       {/* Invoice Viewer / Print / Email Modal */}
       {activeInvoice && (

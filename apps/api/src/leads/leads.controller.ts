@@ -56,6 +56,26 @@ export class LeadsController {
     });
   }
 
+  @Get('pipeline-board')
+  async getPipelineBoard(
+    @CurrentUser() user: ScopedUser,
+    @Query('source') source?: string,
+    @Query('urgency') urgency?: string,
+    @Query('assignedToId') assignedToId?: string,
+    @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.leadsService.getPipelineBoard(user, {
+      source,
+      urgency,
+      assignedToId,
+      search,
+      startDate,
+      endDate,
+    });
+  }
+
   @Get('template-csv')
   downloadTemplate(@Res() res: Response) {
     const csvContent = `company_name,contact_name,phone,email,product_interest,city,estimated_value,assigned_to,source\n`;

@@ -1244,3 +1244,64 @@ export function formatDeductionType(type: string): string {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 21. DOCUMENT AMOUNT LIMITS & STATUTORY CEILINGS
+// Default 10 Crore ceiling, 1 Crore warning confirmation threshold
+// ─────────────────────────────────────────────────────────────────────────────
+export const DEFAULT_MAX_DOCUMENT_AMOUNT = 100_000_000; // 10 Crore (₹10,00,00,000)
+export const DEFAULT_WARNING_DOCUMENT_AMOUNT = 10_000_000; // 1 Crore (₹1,00,00,000)
+export const DEFAULT_MAX_LINE_AMOUNT = 100_000_000; // 10 Crore per line
+
+export interface AmountLimitValidationResult {
+  valid: boolean;
+  needsConfirmation: boolean;
+  error?: string;
+  warning?: string;
+}
+
+export function validateDocumentAmountLimits(params: {
+  totalAmount: number;
+  lines?: Array<{ lineTotal?: number; quantity?: number; unitPrice?: number; description?: string }>;
+  maxDocumentAmount?: number;
+  warningDocumentAmount?: number;
+  maxLineAmount?: number;
+  confirmedHighAmount?: boolean;
+}): AmountLimitValidationResult {
+  const maxDoc = params.maxDocumentAmount || DEFAULT_MAX_DOCUMENT_AMOUNT;
+  const warnDoc = params.warningDocumentAmount || DEFAULT_WARNING_DOCUMENT_AMOUNT;
+  const maxLine = params.maxLineAmount || DEFAULT_MAX_LINE_AMOUNT;
+
+  if (params.lines && params.lines.length > 0) {
+    for (let i = 0; i < params.lines.length; i++) {
+      const l = params.lines[i];
+      const lineAmt = l.lineTotal !== undefined ? l.lineTotal : (Number(l.quantity || 1) * Number(l.unitPrice || 0));
+      if (lineAmt > maxLine) {
+        return {
+          valid: false,
+          needsConfirmation: false,
+          error: `Line ${i + 1} (${l.description || 'Item'}) amount of ₹${Math.round(lineAmt).toLocaleString('en-IN')} exceeds the maximum allowed limit of ₹${maxLine.toLocaleString('en-IN')} (10 Crore).`,
+        };
+      }
+    }
+  }
+
+  if (params.totalAmount > maxDoc) {
+    return {
+      valid: false,
+      needsConfirmation: false,
+      error: `Document total of ₹${Math.round(params.totalAmount).toLocaleString('en-IN')} exceeds the maximum allowed limit of ₹${maxDoc.toLocaleString('en-IN')} (10 Crore). Please adjust quantities or unit prices.`,
+    };
+  }
+
+  if (params.totalAmount > warnDoc && !params.confirmedHighAmount) {
+    return {
+      valid: true,
+      needsConfirmation: true,
+      warning: `Document total of ₹${Math.round(params.totalAmount).toLocaleString('en-IN')} exceeds the high amount threshold of ₹${warnDoc.toLocaleString('en-IN')} (1 Crore). Please confirm to proceed.`,
+    };
+  }
+
+  return { valid: true, needsConfirmation: false };
+}
+
+

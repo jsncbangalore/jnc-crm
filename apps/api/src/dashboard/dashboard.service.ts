@@ -975,7 +975,8 @@ export class DashboardService {
     }
 
     for (const q of allQuotesInPeriod) {
-      const st = (q.status || 'draft').toLowerCase();
+      const rawSt = (q.status || 'draft').toLowerCase();
+      const st = rawSt === 'accepted' ? 'approved' : rawSt;
       if (!statusCounts[st]) statusCounts[st] = { count: 0, totalValue: 0 };
       statusCounts[st].count += 1;
       statusCounts[st].totalValue += Number(q.totalAmount) || 0;

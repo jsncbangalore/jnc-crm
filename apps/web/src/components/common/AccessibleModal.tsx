@@ -11,6 +11,48 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, AlertTriangle } from 'lucide-react';
 
+// Reference-counted modal scroll lock manager
+let modalScrollLockCount = 0;
+let previousBodyOverflow = '';
+let previousHtmlOverflow = '';
+let previousBodyPaddingRight = '';
+
+export function lockModalScroll() {
+  if (typeof document === 'undefined') return;
+  if (modalScrollLockCount === 0) {
+    previousBodyOverflow = document.body.style.overflow;
+    previousHtmlOverflow = document.documentElement.style.overflow;
+    previousBodyPaddingRight = document.body.style.paddingRight;
+
+    // Compensate for scrollbar width so background page does not jump
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    if (scrollbarWidth > 0) {
+      const currentPadding = parseFloat(window.getComputedStyle(document.body).paddingRight) || 0;
+      document.body.style.paddingRight = `${currentPadding + scrollbarWidth}px`;
+    }
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+  }
+  modalScrollLockCount++;
+}
+
+export function unlockModalScroll() {
+  if (typeof document === 'undefined') return;
+  if (modalScrollLockCount > 0) {
+    modalScrollLockCount--;
+  }
+  if (modalScrollLockCount === 0) {
+    document.body.style.overflow = previousBodyOverflow;
+    document.documentElement.style.overflow = previousHtmlOverflow;
+    document.body.style.paddingRight = previousBodyPaddingRight;
+  }
+}
+
+export function getModalScrollLockCount() {
+  return modalScrollLockCount;
+}
+
 export interface AccessibleModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -50,6 +92,15 @@ export const AccessibleModal: React.FC<AccessibleModalProps> = ({
       }
     }
   }, [isOpen, triggerRef]);
+
+  // Lock background page scroll using reference counter so nested or stacked modals do not unlock early
+  useEffect(() => {
+    if (!isOpen) return;
+    lockModalScroll();
+    return () => {
+      unlockModalScroll();
+    };
+  }, [isOpen]);
 
   // Request close: checks if dirty
   const handleRequestClose = useCallback(() => {
@@ -130,9 +181,10 @@ export const AccessibleModal: React.FC<AccessibleModalProps> = ({
     >
       <motion.div
         ref={modalRef}
-        initial={{ opacity: 0, scale: 0.95, y: 15 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 15 }}
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.98 }}
+        transition={{ duration: 0.15 }}
         className={`bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full ${maxWidth} shadow-xl overflow-hidden my-auto flex flex-col max-h-[92vh] relative text-left`}
       >
         {/* Header */}

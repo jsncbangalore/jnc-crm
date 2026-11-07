@@ -271,7 +271,7 @@ export default function DashboardPage() {
   const followUpsDueList = kpis?.followUpsDue || [];
 
   return (
-    <div className="max-w-[1440px] mx-auto space-y-6 text-slate-900 dark:text-slate-100" data-testid="dashboard-container">
+    <div className="max-w-[1440px] mx-auto w-full min-w-0 overflow-x-hidden space-y-6 text-slate-900 dark:text-slate-100" data-testid="dashboard-container">
       {/* ── 1. PAGE HEADER ─────────────────────────────────────────────────── */}
       <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
         <div>
@@ -361,7 +361,7 @@ export default function DashboardPage() {
           to={hasPage('leads') ? '/analytics/leads' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 dark:hover:border-blue-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-leads"
-          title="Open Leads Intelligence & Acquisition Analytics"
+          title="Open Total Leads report"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
@@ -389,7 +389,7 @@ export default function DashboardPage() {
           to={hasPage('quotations') ? '/analytics/quotes' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-purple-500/50 dark:hover:border-purple-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-quotes"
-          title="Open Active Quotes & Revenue Pipeline Analytics"
+          title="Open Active Quotes report"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
@@ -417,7 +417,7 @@ export default function DashboardPage() {
           to={hasPage('orders') ? '/analytics/orders' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-amber-500/50 dark:hover:border-amber-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-orders"
-          title="Open Orders Fulfillment & Operations Analytics"
+          title="Open Active Orders report"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
@@ -445,7 +445,7 @@ export default function DashboardPage() {
           to={hasPage('invoices') ? '/analytics/receivables' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 dark:hover:border-emerald-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-receivable"
-          title="Open Accounts Receivable (AR) & Aging Analytics"
+          title="Open Accounts Receivable report"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
@@ -473,7 +473,7 @@ export default function DashboardPage() {
           to={hasPage('invoices') ? '/analytics/overdue' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-rose-500/50 dark:hover:border-rose-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-overdue"
-          title="Open Overdue Invoices & Collection Risk Analytics"
+          title="Open Overdue Invoices report"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">
@@ -501,7 +501,7 @@ export default function DashboardPage() {
           to={hasPage('daily_activities') ? '/analytics/activity' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-activity"
-          title="Open Activity & Sales Productivity Analytics"
+          title="Open Activity & Follow-ups report"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">

@@ -226,14 +226,21 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
     }
   };
 
-  const handleVoid = async () => {
+  const hasAllocations = Boolean(
+    invoice.paymentStatus === 'paid' ||
+    invoice.paymentStatus === 'partial' ||
+    (invoice.advanceAdjusted && invoice.advanceAdjusted > 0) ||
+    ((invoice.balanceDue ?? invoice.totalAmount) < invoice.totalAmount - 0.01)
+  );
+
+  const handleVoid = async (reversePayments = false) => {
     if (!voidReason.trim()) {
       alert('Please provide a reason for voiding this document.');
       return;
     }
     setVoiding(true);
     try {
-      await invoicesApi.voidInvoice(invoice.id, voidReason);
+      await invoicesApi.voidInvoice(invoice.id, voidReason, reversePayments);
       setShowVoidPrompt(false);
       if (onInvoiceUpdated) onInvoiceUpdated();
       onClose();
@@ -516,22 +523,34 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 <AlertTriangle size={15} /> Confirm Voiding Document {invoice.invoiceNumber}
               </div>
               <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">
-                Voiding marks the document permanently inactive without deleting it or reusing its sequence number.
+                {hasAllocations
+                  ? 'This document has active payments allocated. Voiding requires reversing the payments first or selecting "Reverse payments and void".'
+                  : 'Voiding marks the document permanently inactive without deleting it or reusing its sequence number.'}
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   className="input text-xs flex-1"
                   placeholder="Enter reason for voiding (e.g. Order cancelled / Re-issued)"
                   value={voidReason}
                   onChange={(e) => setVoidReason(e.target.value)}
                 />
-                <button
-                  onClick={handleVoid}
-                  disabled={voiding}
-                  className="btn bg-red-600 hover:bg-red-700 text-white text-xs px-4 font-bold"
-                >
-                  {voiding ? 'Voiding...' : 'Confirm Void'}
-                </button>
+                {hasAllocations ? (
+                  <button
+                    onClick={() => handleVoid(true)}
+                    disabled={voiding}
+                    className="btn bg-rose-600 hover:bg-rose-700 text-white text-xs px-3.5 font-bold shadow-sm whitespace-nowrap"
+                  >
+                    {voiding ? 'Reversing & Voiding...' : 'Reverse payments and void'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleVoid(false)}
+                    disabled={voiding}
+                    className="btn bg-red-600 hover:bg-red-700 text-white text-xs px-4 font-bold whitespace-nowrap"
+                  >
+                    {voiding ? 'Voiding...' : 'Confirm Void'}
+                  </button>
+                )}
                 <button
                   onClick={() => setShowVoidPrompt(false)}
                   className="btn-ghost text-xs text-slate-600 dark:text-slate-400 font-bold"
@@ -789,17 +808,19 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
       />
 
       {/* ─── RECORD PAYMENT / UTR RECEIPT MODAL ──────────────────────────────── */}
-      <UnifiedRecordPaymentModal
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        defaultInvoiceId={invoice.id}
-        defaultCustomerId={(invoice as any).customerId || invoice.companyId}
-        defaultCustomerName={invoice.customerName}
-        defaultAmount={invoice.balanceDue ?? invoice.totalAmount}
-        onSuccess={() => {
-          if (onInvoiceUpdated) onInvoiceUpdated();
-        }}
-      />
+      {showPaymentModal && (
+        <UnifiedRecordPaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          defaultInvoiceId={invoice.id}
+          defaultCustomerId={(invoice as any).customerId || invoice.companyId}
+          defaultCustomerName={invoice.customerName}
+          defaultAmount={invoice.balanceDue ?? invoice.totalAmount}
+          onSuccess={() => {
+            if (onInvoiceUpdated) onInvoiceUpdated();
+          }}
+        />
+      )}
     </>
   );
 }

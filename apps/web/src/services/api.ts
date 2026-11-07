@@ -1321,6 +1321,7 @@ export const notificationsApi = {
 
 // ─── Leads ───────────────────────────────────────────────────────────────────
 export const leadsApi = {
+  getPipelineBoard: (params?: Record<string, any>) => api.get('/leads/pipeline-board', { params }),
   list: (params?: Record<string, any>) => api.get('/leads', { params }),
   get: (id: string) => api.get(`/leads/${id}`),
   create: (data: any) => api.post('/leads', data),
@@ -1461,7 +1462,8 @@ export const invoicesApi = {
   update: (id: string, data: any) => api.patch(`/invoices/${id}`, data),
   generateFromOrder: (orderId: string, data?: any) =>
     api.post(`/invoices/order/${orderId}/generate`, data),
-  voidInvoice: (id: string, reason: string) => api.patch(`/invoices/${id}/void`, { reason }),
+  voidInvoice: (id: string, reason: string, reversePayments = false) =>
+    api.patch(`/invoices/${id}/void`, { reason, reversePayments }),
   linkCustomer: (id: string, customerId?: string) =>
     api.patch(`/invoices/${id}/link-customer`, { customerId }),
   recordPayment: (id: string, data: any) => api.post(`/invoices/${id}/payments`, data),

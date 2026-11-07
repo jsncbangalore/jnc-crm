@@ -28,6 +28,7 @@ import {
   ValidateNested,
   ArrayMinSize,
   ArrayMaxSize,
+  IsBoolean,
 } from 'class-validator';
 import {
   SanitizeText,
@@ -40,7 +41,7 @@ import {
   IsValidUnitRate,
   IsValidGstRate,
 } from '../common/validation.transformers';
-import { roundCurrency } from '../common/shared-validation';
+import { roundCurrency, validateDocumentAmountLimits } from '../common/shared-validation';
 import { DocumentSeriesService } from '../common/document-series.service';
 import { calculateDocumentTotals } from '../common/pricing.calculator';
 
@@ -173,6 +174,14 @@ export class CreateQuotationDto {
   @ValidateNested({ each: true })
   @Type(() => QuotationLineItemDto)
   lines: QuotationLineItemDto[];
+
+  @IsOptional()
+  @IsBoolean()
+  confirmedHighAmount?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  confirmHighAmount?: boolean;
 }
 
 export class UpdateQuotationStatusDto {
@@ -294,6 +303,18 @@ export class QuotationsService {
     const customerState = dto.customerState || 'Karnataka';
     const totals = calculateDocumentTotals(resolvedLines, customerState);
 
+    const amountLimitCheck = validateDocumentAmountLimits({
+      totalAmount: totals.totalAmount,
+      lines: totals.lines,
+      confirmedHighAmount: Boolean((dto as any).confirmedHighAmount || (dto as any).confirmHighAmount),
+    });
+    if (!amountLimitCheck.valid) {
+      throw new BadRequestException(amountLimitCheck.error);
+    }
+    if (amountLimitCheck.needsConfirmation) {
+      throw new BadRequestException(`${amountLimitCheck.warning} (Provide confirmedHighAmount: true to proceed).`);
+    }
+
     const validUntil = dto.validUntil ? new Date(dto.validUntil) : new Date(Date.now() + 30 * 86_400_000); // 30 days validity
 
     const quotation = await this.prisma.quotation.create({
@@ -373,7 +394,14 @@ export class QuotationsService {
     const scope = this.scopingService.getQuotationScope(user);
     const where: any = { ...scope, deletedAt: null };
 
-    if (query.status) where.status = query.status;
+    if (query.status) {
+      const qStatus = query.status.toLowerCase().trim();
+      if (qStatus === 'approved' || qStatus === 'accepted') {
+        where.status = { in: ['approved', 'accepted'] };
+      } else {
+        where.status = qStatus;
+      }
+    }
     if (query.search) {
       const searchOR = [
         { quoteNumber: { contains: query.search } },
@@ -408,7 +436,14 @@ export class QuotationsService {
       this.prisma.quotation.count({ where }),
     ]);
 
-    return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
+    const mappedItems = items.map((item) => {
+      if (item.status === 'accepted') {
+        return { ...item, status: 'approved' };
+      }
+      return item;
+    });
+
+    return { items: mappedItems, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string, user: ScopedUser) {
@@ -426,6 +461,9 @@ export class QuotationsService {
     });
 
     if (!quotation) throw new NotFoundException('Quotation not found');
+    if (quotation.status === 'accepted') {
+      (quotation as any).status = 'approved';
+    }
     return quotation;
   }
 
@@ -433,14 +471,22 @@ export class QuotationsService {
     const tenantId = requireTenantId(user);
     const quote = await this.findOne(id, user);
 
-    const validStatuses = ['draft', 'sent', 'accepted', 'converted', 'rejected', 'expired'];
-    if (!validStatuses.includes(status)) {
+    const validStatuses = ['draft', 'sent', 'accepted', 'approved', 'converted', 'rejected', 'expired'];
+    const normalizedStatus = (status || '').toLowerCase().trim();
+    if (!validStatuses.includes(normalizedStatus)) {
       throw new BadRequestException(`Invalid status: ${status}. Must be one of ${validStatuses.join(', ')}`);
+    }
+
+    // Keep canonical value: always store 'approved'
+    const canonicalStatus = normalizedStatus === 'accepted' ? 'approved' : normalizedStatus;
+
+    if ((canonicalStatus === 'sent' || canonicalStatus === 'approved') && (!quote.lines || quote.lines.length === 0)) {
+      throw new BadRequestException('Quotation has zero item lines and cannot be sent or approved.');
     }
 
     const res = await this.prisma.quotation.updateMany({
       where: { id, tenantId },
-      data: { status },
+      data: { status: canonicalStatus },
     });
     if (res.count === 0) throw new NotFoundException('Quotation not found');
     const updated = await this.findOne(id, user);
@@ -450,9 +496,9 @@ export class QuotationsService {
         entityType: 'Quotation',
         entityId: id,
         fromStatus: quote.status,
-        toStatus: status,
+        toStatus: canonicalStatus,
         changedById: user.id,
-        note: `Status updated to ${status}`,
+        note: `Status updated to ${canonicalStatus}`,
       },
     });
 
@@ -463,7 +509,7 @@ export class QuotationsService {
       entityName: 'Quotation',
       entityId: id,
       beforeState: { status: quote.status },
-      afterState: { status },
+      afterState: { status: canonicalStatus },
     });
 
     return updated;

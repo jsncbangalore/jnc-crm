@@ -9,11 +9,12 @@ import { Module } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { LeadsController } from './leads.controller';
 import { AuthModule } from '../auth/auth.module';
+import { DocumentSeriesService } from '../common/document-series.service';
 
 @Module({
   imports: [AuthModule],
   controllers: [LeadsController],
-  providers: [LeadsService],
-  exports: [LeadsService],
+  providers: [LeadsService, DocumentSeriesService],
+  exports: [LeadsService, DocumentSeriesService],
 })
 export class LeadsModule {}

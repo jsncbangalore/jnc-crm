@@ -74,7 +74,7 @@ export class HealthController {
   @Get('schema')
   async getSchemaStatus(@Req() req: Request) {
     const user = (req as any).user;
-    if (!user || (!['admin', 'super_admin', 'platform_super_admin'].includes(user.role) && !user.isPlatformAdmin)) {
+    if (!user || (!['admin', 'tenant_admin', 'super_admin', 'platform_super_admin'].includes(user.role) && !user.isPlatformAdmin)) {
       throw new ForbiddenException('Admin access required to view schema migration status');
     }
 

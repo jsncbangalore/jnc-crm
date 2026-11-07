@@ -21,6 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import { canStore } from '../utils/cookieConsent';
 import { openDedicatedPrintTab } from '../utils/printHelper';
+import DataTable, { ColumnDef } from '../components/common/DataTable';
 
 interface InvoiceRowActionsProps {
   inv: Invoice;
@@ -389,6 +390,19 @@ export default function InvoicesPage() {
   }, 0);
   const totalAmount = issuedInvoices.reduce((acc, inv) => acc + (inv.totalAmount || 0), 0);
 
+  const formatCompactInr = (amount: number): string => {
+    if (amount >= 10_000_000) {
+      return `${(amount / 10_000_000).toFixed(2).replace(/\.00$/, '')} Cr`;
+    }
+    if (amount >= 100_000) {
+      return `${(amount / 100_000).toFixed(2).replace(/\.00$/, '')} L`;
+    }
+    if (amount >= 1_000) {
+      return `${(amount / 1_000).toFixed(1).replace(/\.0$/, '')} K`;
+    }
+    return amount.toLocaleString('en-IN');
+  };
+
   const getDocBadge = (type?: DocumentType, isSez?: boolean) => {
     if (type === 'delivery_challan') {
       return (
@@ -487,7 +501,7 @@ export default function InvoicesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-full min-w-0 overflow-x-hidden">
       {/* ─── HEADER & ACTIONS ────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -544,85 +558,97 @@ export default function InvoicesPage() {
 
       {/* ─── OVERVIEW METRICS CARDS (COMPACT & REMOVABLE) ─────────────── */}
       {showKpis && (
-        <div className="relative group">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <div className="relative group max-w-full min-w-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 max-w-full min-w-0">
             {/* Card 1: Issued Invoices */}
-            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2 whitespace-nowrap min-w-0">
+              <div className="flex items-center gap-2 min-w-0 shrink-0">
                 <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-transparent">
                   <FileText size={13} />
                 </div>
-                <div className="truncate">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block truncate">
+                <div className="shrink-0">
+                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block whitespace-nowrap">
                     Issued Invoices
                   </span>
-                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block whitespace-nowrap">
                     Tax & SEZ Invoices
                   </span>
                 </div>
               </div>
-              <div className="text-base sm:text-lg font-black text-slate-950 dark:text-white font-mono tabular-nums shrink-0 ml-1">
+              <div
+                className="text-base sm:text-lg font-black text-slate-950 dark:text-white font-mono tabular-nums shrink-0 ml-1 whitespace-nowrap"
+                title={`${totalIssuedDocs} issued document(s)`}
+              >
                 {totalIssuedDocs}
               </div>
             </div>
 
             {/* Card 2: Taxable Subtotal */}
-            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2 whitespace-nowrap min-w-0">
+              <div className="flex items-center gap-2 min-w-0 shrink-0">
                 <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-transparent">
                   <Layers size={13} />
                 </div>
-                <div className="truncate">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block truncate">
+                <div className="shrink-0">
+                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block whitespace-nowrap">
                     Taxable Subtotal
                   </span>
-                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block whitespace-nowrap">
                     Base Goods & Services
                   </span>
                 </div>
               </div>
-              <div className="text-base sm:text-lg font-black text-blue-700 dark:text-crm-blue-light font-mono tabular-nums shrink-0 ml-1">
-                ₹{totalTaxable.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              <div
+                className="text-base sm:text-lg font-black text-blue-700 dark:text-crm-blue-light font-mono tabular-nums shrink-0 ml-1 whitespace-nowrap"
+                title={`₹${totalTaxable.toLocaleString('en-IN')}`}
+              >
+                ₹{formatCompactInr(totalTaxable)}
               </div>
             </div>
 
             {/* Card 3: GST Managed */}
-            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2 whitespace-nowrap min-w-0">
+              <div className="flex items-center gap-2 min-w-0 shrink-0">
                 <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-crm-amber flex items-center justify-center shrink-0 border border-amber-200/60 dark:border-transparent">
                   <ShieldCheck size={13} />
                 </div>
-                <div className="truncate">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block truncate">
+                <div className="shrink-0">
+                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block whitespace-nowrap">
                     GST Managed
                   </span>
-                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block whitespace-nowrap">
                     CGST + SGST & IGST
                   </span>
                 </div>
               </div>
-              <div className="text-base sm:text-lg font-black text-amber-700 dark:text-crm-amber font-mono tabular-nums shrink-0 ml-1">
-                ₹{totalGst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              <div
+                className="text-base sm:text-lg font-black text-amber-700 dark:text-crm-amber font-mono tabular-nums shrink-0 ml-1 whitespace-nowrap"
+                title={`₹${totalGst.toLocaleString('en-IN')}`}
+              >
+                ₹{formatCompactInr(totalGst)}
               </div>
             </div>
 
             {/* Card 4: Grand Total Billed */}
-            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
+            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2 whitespace-nowrap min-w-0">
+              <div className="flex items-center gap-2 min-w-0 shrink-0">
                 <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200/60 dark:border-transparent">
                   <DollarSign size={13} />
                 </div>
-                <div className="truncate">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block truncate">
+                <div className="shrink-0">
+                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block whitespace-nowrap">
                     Total Billed
                   </span>
-                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block truncate">
+                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block whitespace-nowrap">
                     Matches Ledger
                   </span>
                 </div>
               </div>
-              <div className="text-base sm:text-lg font-black text-emerald-700 dark:text-emerald-400 font-mono tabular-nums shrink-0 ml-1">
-                ₹{totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              <div
+                className="text-base sm:text-lg font-black text-emerald-700 dark:text-emerald-400 font-mono tabular-nums shrink-0 ml-1 whitespace-nowrap"
+                title={`₹${totalAmount.toLocaleString('en-IN')}`}
+              >
+                ₹{formatCompactInr(totalAmount)}
               </div>
             </div>
           </div>
@@ -639,9 +665,9 @@ export default function InvoicesPage() {
       )}
 
       {/* ─── FILTERS & SEARCH BAR ────────────────────────────────────── */}
-      <div className="p-3 sm:p-4 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] flex flex-col md:flex-row items-center justify-between gap-3 shadow-sm">
+      <div className="p-3 sm:p-4 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-sm max-w-full min-w-0">
         {/* Document Type Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 scrollbar-none">
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full max-w-full min-w-0 pb-1 md:pb-0 scrollbar-none">
           {[
             { id: 'all', label: 'All Documents' },
             { id: 'tax_invoice', label: 'Tax Invoices' },
@@ -693,312 +719,387 @@ export default function InvoicesPage() {
 
 
 
-      {/* ─── DESKTOP TABLE VIEW (≥ 1024px) ───────────────────────────── */}
-      <div className="hidden lg:block card border-slate-200 dark:border-[#2A3042] overflow-hidden p-0 shadow-sm bg-white dark:bg-[#141722]">
-        <div
-          ref={tableContainerRef}
-          className="overflow-x-auto max-h-[720px] scrollbar-thin scrollbar-thumb-crm-blue/70 hover:scrollbar-thumb-crm-blue scrollbar-track-slate-100 dark:scrollbar-track-[#181B26] scroll-smooth"
-        >
-          <table className={`crm-table w-full ${density === 'compact' ? 'text-[11px]' : 'text-xs'}`}>
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-[#2A3042] bg-slate-100 dark:bg-[#141722] text-slate-800 dark:text-slate-400 font-bold uppercase tracking-wider sticky top-0 z-20 text-[10.5px]">
-                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Document Type</th>
-                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Doc Number</th>
-                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Customer & State</th>
-                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Buyer Order / PO</th>
-                <th className={`text-left whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Dated</th>
-                <th className={`text-right whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Taxable (₹)</th>
-                <th className={`text-right whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>GST / Tax</th>
-                <th className={`text-right whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Total Amount</th>
-                <th className={`text-center whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-3 px-3'}`}>Status</th>
-                <th className={`text-center whitespace-nowrap w-12 ${density === 'compact' ? 'py-2 px-2' : 'py-3 px-2'}`}>Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-[#2A3042]/50">
-              {loading && !error ? (
-                <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-500 font-medium">
-                    <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-crm-blue" />
-                    Loading documents...
-                  </td>
-                </tr>
-              ) : error && invoices.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="p-6">
-                    <ErrorStateCard
-                      message={error.message}
-                      status={error.status}
-                      isNetworkError={error.isNetworkError}
-                      onRetry={fetchInvoices}
-                    />
-                  </td>
-                </tr>
-              ) : invoices.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-600 dark:text-slate-400 space-y-2">
-                    <FileText size={28} className="mx-auto text-slate-400 dark:text-slate-600 mb-1" />
-                    <p className="font-bold text-sm text-slate-800 dark:text-slate-300">No documents found</p>
-                    <p className="text-xs text-slate-500">
-                      Create your first Tax Invoice, SEZ Invoice or Delivery Challan using the button above.
-                    </p>
-                  </td>
-                </tr>
-              ) : (
-                invoices.map((inv) => {
-                  const isDC = inv.docType === 'delivery_challan';
-                  const isSez = inv.docType === 'sez_invoice' || inv.isSez;
-                  const effectiveTotal = isDC ? inv.subtotal : inv.totalAmount;
-                  const storedGst = (inv.igstAmount || 0) + (inv.cgstAmount || 0) + (inv.sgstAmount || 0);
-                  const gstVal = isDC ? 0 : (isSez ? (inv.igstAmount || 0) : (storedGst > 0 ? storedGst : Math.max(0, (inv.totalAmount || 0) - (inv.subtotal || 0))));
-                  const isUnlinked = !(inv as any).customerId && !inv.companyId;
+      {/* ─── SHARED DATATABLE ──────────────────────────────────────────────── */}
+      {(() => {
+        const invoiceColumns: ColumnDef<Invoice>[] = [
+          {
+            id: 'docNumber',
+            header: 'Doc # & Type',
+            width: '18%',
+            minWidth: '150px',
+            priority: 'p1',
+            disableHiding: true,
+            isSticky: 'left',
+            sortable: true,
+            sortAccessor: (inv) => inv.invoiceNumber,
+            cell: (inv) => (
+              <div className="flex flex-col gap-1 items-start">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono font-bold text-xs text-slate-900 dark:text-white whitespace-nowrap">
+                    {inv.invoiceNumber}
+                  </span>
+                  {inv.isVoided && (
+                    <span className="px-1.5 py-0.2 rounded text-[9.5px] bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-crm-coral font-bold uppercase">
+                      VOID
+                    </span>
+                  )}
+                </div>
+                <div>{getDocBadge(inv.docType, inv.isSez)}</div>
+              </div>
+            ),
+          },
+          {
+            id: 'customer',
+            header: 'Customer',
+            width: '26%',
+            minWidth: '180px',
+            priority: 'p1',
+            sortable: true,
+            sortAccessor: (inv) => inv.customerName || '',
+            cell: (inv) => {
+              const cid = (inv as any).customerId || inv.companyId;
+              const isUnlinked = !cid;
 
-                  return (
-                    <tr
-                      key={inv.id}
-                      className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors group cursor-pointer"
-                      onClick={() => handleOpenDoc(inv)}
-                    >
-                      <td className={`whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
-                        {getDocBadge(inv.docType, inv.isSez)}
-                      </td>
-                      <td className={`font-mono font-bold text-slate-950 dark:text-white whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
-                        {inv.invoiceNumber}
-                        {inv.isVoided && (
-                          <span className="ml-1.5 px-1.5 py-0.2 rounded text-[9.5px] bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-crm-coral font-bold uppercase">
-                            VOID
-                          </span>
-                        )}
-                      </td>
-                      <td className={`min-w-[140px] max-w-[210px] ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const cid = (inv as any).customerId || inv.companyId;
-                            if (cid) {
-                              setAccountCustomerId(cid);
-                              setAccountCustomerName(inv.customerName);
-                            }
-                          }}
-                          className={`font-bold text-left truncate block max-w-full ${
-                            (inv as any).customerId || inv.companyId
-                              ? 'text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer'
-                              : 'text-slate-950 dark:text-white'
-                          }`}
-                          title={inv.customerName}
-                        >
-                          {inv.customerName}
-                        </button>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[10.5px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                            {inv.customerState || 'Karnataka'}
-                          </span>
-                          {isUnlinked && (
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30 uppercase shrink-0">
-                              Unlinked
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className={`font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
-                        {inv.buyerOrderNo || inv.order?.orderNumber || '-'}
-                      </td>
-                      <td className={`text-slate-700 dark:text-slate-300 whitespace-nowrap font-medium ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
-                        {format(new Date(inv.invoiceDate), 'dd MMM yyyy')}
-                      </td>
-                      <td className={`text-right font-mono text-slate-800 dark:text-slate-300 font-medium whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
-                        ₹{inv.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 0 })}
-                      </td>
-                      <td className={`text-right font-mono whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
-                        {isDC ? (
-                          <span className="text-slate-400">-</span>
-                        ) : isSez && gstVal === 0 ? (
-                          <span className="text-purple-600 dark:text-purple-400 text-[10.5px] font-bold">LUT (0%)</span>
-                        ) : (
-                          <span className="text-amber-700 dark:text-crm-amber font-bold">₹{gstVal.toLocaleString('en-IN', { minimumFractionDigits: 0 })}</span>
-                        )}
-                      </td>
-                      <td className={`text-right font-mono font-bold text-emerald-700 dark:text-emerald-400 text-sm whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
-                        {isDC ? '-' : `₹${effectiveTotal.toLocaleString('en-IN', { minimumFractionDigits: 0 })}`}
-                      </td>
-                      <td className={`text-center whitespace-nowrap ${density === 'compact' ? 'py-2 px-2.5' : 'py-2.5 px-3'}`}>
-                        {inv.paymentStatus === 'paid' ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold uppercase whitespace-nowrap bg-emerald-50 text-emerald-700 dark:bg-green-500/15 dark:text-green-400 border border-emerald-300 dark:border-green-500/30">
-                            Paid
-                          </span>
-                        ) : (inv.paymentStatus === 'partial' || (inv as any).paymentStatus === 'partially_paid') ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold uppercase whitespace-nowrap bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30" title={`Balance Due: ₹${Number(inv.balanceDue ?? 0).toLocaleString('en-IN')}`}>
-                            Partly paid <span className="font-mono text-[9.5px] lowercase">(₹{Number(inv.balanceDue ?? 0).toLocaleString('en-IN')})</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold uppercase whitespace-nowrap bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-400 border border-slate-300 dark:border-slate-500/30">
-                            Unpaid
-                          </span>
-                        )}
-                      </td>
-                      <td className={`text-center whitespace-nowrap w-12 ${density === 'compact' ? 'py-2 px-2' : 'py-2.5 px-2'}`} onClick={(e) => e.stopPropagation()}>
-                        <InvoiceRowActions
-                          inv={inv}
-                          density={density}
-                          onOpenDoc={handleOpenDoc}
-                          onEditDoc={(invoice) => {
-                            setEditingInvoice(invoice);
-                            setShowCreateModal(true);
-                          }}
-                          onDownloadPdf={handleDirectDownloadPdf}
-                          onPrintDoc={openDedicatedPrintTab}
-                          onLinkInvoice={handleLinkInvoice}
-                          onMarkAsPaid={handleMarkAsPaid}
-                          isUnlinked={isUnlinked}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              return (
+                <div className="flex flex-col min-w-0">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (cid) {
+                        setAccountCustomerId(cid);
+                        setAccountCustomerName(inv.customerName);
+                      }
+                    }}
+                    className={`font-bold text-xs text-left truncate block max-w-full ${
+                      cid
+                        ? 'text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer'
+                        : 'text-slate-900 dark:text-white'
+                    }`}
+                    title={inv.customerName}
+                  >
+                    {inv.customerName}
+                  </button>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
+                    <span className="truncate">{inv.customerState || 'Karnataka'}</span>
+                    <span>•</span>
+                    <span className="font-mono truncate" title={inv.buyerOrderNo ? `PO: ${inv.buyerOrderNo}` : undefined}>
+                      PO: {inv.buyerOrderNo || '—'}
+                    </span>
+                    {isUnlinked && (
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30 uppercase shrink-0">
+                        Unlinked
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            },
+          },
+          {
+            id: 'dated',
+            header: 'Dated',
+            width: '12%',
+            minWidth: '100px',
+            priority: 'p1',
+            sortable: true,
+            sortAccessor: (inv) => new Date(inv.invoiceDate).getTime(),
+            cell: (inv) => (
+              <span className="font-mono text-xs text-slate-700 dark:text-slate-300 font-medium whitespace-nowrap">
+                {format(new Date(inv.invoiceDate), 'dd MMM yyyy')}
+              </span>
+            ),
+          },
+          {
+            id: 'total',
+            header: 'Total',
+            width: '18%',
+            minWidth: '140px',
+            priority: 'p1',
+            align: 'right',
+            isMoney: true,
+            sortable: true,
+            sortAccessor: (inv) => Number(inv.totalAmount || 0),
+            cell: (inv) => {
+              const isDC = inv.docType === 'delivery_challan';
+              const isSez = inv.docType === 'sez_invoice' || inv.isSez;
+              const effectiveTotal = isDC ? inv.subtotal : inv.totalAmount;
+              const storedGst = (inv.igstAmount || 0) + (inv.cgstAmount || 0) + (inv.sgstAmount || 0);
+              const gstVal = isDC ? 0 : (isSez ? (inv.igstAmount || 0) : (storedGst > 0 ? storedGst : Math.max(0, (inv.totalAmount || 0) - (inv.subtotal || 0))));
 
-      {/* ─── MOBILE CARDS VIEW (< 1024px) ────────────────────────────── */}
-      <div className="lg:hidden space-y-3">
-        {loading && !error ? (
-          <div className="card p-8 text-center text-slate-500 text-xs">
-            <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-crm-blue" />
-            Loading documents...
-          </div>
-        ) : error && invoices.length === 0 ? (
-          <ErrorStateCard
-            message={error.message}
-            status={error.status}
-            isNetworkError={error.isNetworkError}
-            onRetry={fetchInvoices}
-          />
-        ) : invoices.length === 0 ? (
-          <div className="card p-8 text-center text-slate-600 dark:text-slate-400 text-xs space-y-2">
-            <FileText size={24} className="mx-auto text-slate-400 dark:text-slate-600" />
-            <p className="font-bold text-sm text-slate-800 dark:text-slate-300">No documents found</p>
-            <p className="text-slate-500">Tap "+ Create Document" to generate one.</p>
-          </div>
-        ) : (
-          invoices.map((inv) => {
-            const isDC = inv.docType === 'delivery_challan';
-            const isSez = inv.docType === 'sez_invoice' || inv.isSez;
-            const effectiveTotal = isDC || isSez ? inv.subtotal : inv.totalAmount;
-
-            return (
-              <div
-                key={inv.id}
-                onClick={() => handleOpenDoc(inv)}
-                className={`card space-y-3 border-slate-200 dark:border-[#2A3042] active:scale-[0.99] transition-transform cursor-pointer ${
-                  density === 'compact' ? 'p-3' : 'p-4'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  {getDocBadge(inv.docType, inv.isSez)}
-                  <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400 font-bold">
-                    {format(new Date(inv.invoiceDate), 'dd-MM-yyyy')}
+              return (
+                <div className="flex flex-col items-end">
+                  <span className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
+                    {isDC ? '-' : `₹${Number(effectiveTotal || 0).toLocaleString('en-IN')}`}
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                    Taxable: ₹{Number(inv.subtotal || 0).toLocaleString('en-IN')} | GST: {isDC ? '—' : `₹${Number(gstVal || 0).toLocaleString('en-IN')}`}
                   </span>
                 </div>
+              );
+            },
+          },
+          {
+            id: 'status',
+            header: 'Status',
+            width: '12%',
+            minWidth: '100px',
+            priority: 'p1',
+            cell: (inv) => {
+              if (inv.isVoided) {
+                return (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase whitespace-nowrap bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-crm-coral border border-red-300 dark:border-red-500/30">
+                    Void
+                  </span>
+                );
+              }
+              if (inv.paymentStatus === 'paid') {
+                return (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase whitespace-nowrap bg-emerald-50 text-emerald-700 dark:bg-green-500/15 dark:text-green-400 border border-emerald-300 dark:border-green-500/30">
+                    Paid
+                  </span>
+                );
+              }
+              if (inv.paymentStatus === 'partial' || (inv as any).paymentStatus === 'partially_paid') {
+                return (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase whitespace-nowrap bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30"
+                    title={`Balance Due: ₹${Number(inv.balanceDue ?? 0).toLocaleString('en-IN')}`}
+                  >
+                    Partly paid <span className="font-mono text-[9.5px] lowercase">(₹{Number(inv.balanceDue ?? 0).toLocaleString('en-IN')})</span>
+                  </span>
+                );
+              }
+              return (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase whitespace-nowrap bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-400 border border-slate-300 dark:border-slate-500/30">
+                  Unpaid
+                </span>
+              );
+            },
+          },
+          // Optional Chooser Column: Buyer Order / PO
+          {
+            id: 'buyerOrder',
+            header: 'Buyer Order / PO',
+            width: '12%',
+            minWidth: '100px',
+            priority: 'p2',
+            defaultVisible: false,
+            cell: (inv) => (
+              <span className="font-mono text-xs text-slate-700 dark:text-slate-300 truncate">
+                {inv.buyerOrderNo || inv.order?.orderNumber || '—'}
+              </span>
+            ),
+          },
+          // Optional Chooser Column: Taxable Amount
+          {
+            id: 'taxable',
+            header: 'Taxable (₹)',
+            width: '12%',
+            minWidth: '100px',
+            priority: 'p2',
+            defaultVisible: false,
+            align: 'right',
+            isMoney: true,
+            sortable: true,
+            sortAccessor: (inv) => Number(inv.subtotal || 0),
+            cell: (inv) => (
+              <span className="font-mono text-xs text-slate-800 dark:text-slate-300 whitespace-nowrap">
+                ₹{Number(inv.subtotal || 0).toLocaleString('en-IN')}
+              </span>
+            ),
+          },
+          // Optional Chooser Column: GST Amount
+          {
+            id: 'gst',
+            header: 'GST (₹)',
+            width: '12%',
+            minWidth: '100px',
+            priority: 'p2',
+            defaultVisible: false,
+            align: 'right',
+            isMoney: true,
+            cell: (inv) => {
+              const isDC = inv.docType === 'delivery_challan';
+              const isSez = inv.docType === 'sez_invoice' || inv.isSez;
+              const storedGst = (inv.igstAmount || 0) + (inv.cgstAmount || 0) + (inv.sgstAmount || 0);
+              const gstVal = isDC ? 0 : (isSez ? (inv.igstAmount || 0) : (storedGst > 0 ? storedGst : Math.max(0, (inv.totalAmount || 0) - (inv.subtotal || 0))));
 
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-950 dark:text-white font-mono">{inv.invoiceNumber}</h3>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const cid = (inv as any).customerId || inv.companyId;
-                        if (cid) {
-                          setAccountCustomerId(cid);
-                          setAccountCustomerName(inv.customerName);
-                        }
-                      }}
-                      className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline text-left block"
-                      title={inv.customerName}
-                    >
-                      {inv.customerName}
-                    </button>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-400">{inv.customerState || 'Karnataka'}</p>
-                  </div>
-                  {!isDC && (
-                    <div className="text-right">
-                      <span className="text-base font-bold font-mono text-emerald-700 dark:text-emerald-400 block">
-                        ₹{effectiveTotal.toLocaleString('en-IN')}
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-medium">Incl. Taxes</span>
-                    </div>
-                  )}
+              if (isDC) return <span className="text-slate-400">—</span>;
+              if (isSez && gstVal === 0) return <span className="text-purple-600 dark:text-purple-400 text-[10.5px] font-bold">LUT (0%)</span>;
+              return (
+                <span className="font-mono text-xs text-amber-700 dark:text-crm-amber whitespace-nowrap">
+                  ₹{Number(gstVal || 0).toLocaleString('en-IN')}
+                </span>
+              );
+            },
+          },
+          // Optional Chooser Column: Created By
+          {
+            id: 'createdBy',
+            header: 'Created by',
+            width: '12%',
+            minWidth: '110px',
+            priority: 'p3',
+            defaultVisible: false,
+            cell: (inv) => (
+              <span className="text-xs text-slate-700 dark:text-slate-300 truncate" title={inv.createdBy?.name || 'System'}>
+                {inv.createdBy?.name || 'System'}
+              </span>
+            ),
+          },
+          {
+            id: 'actions',
+            header: 'Actions',
+            width: '10%',
+            minWidth: '105px',
+            priority: 'p1',
+            align: 'right',
+            disableHiding: true,
+            isSticky: 'right',
+            cell: (inv) => {
+              const isUnlinked = !(inv as any).customerId && !inv.companyId;
+
+              return (
+                <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => openDedicatedPrintTab(inv.docType || 'tax_invoice', inv.id)}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                    title="Print Document"
+                  >
+                    <Printer size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDoc(inv)}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                    title="View Document"
+                  >
+                    <Eye size={13} />
+                  </button>
+                  <InvoiceRowActions
+                    inv={inv}
+                    density={density}
+                    onOpenDoc={handleOpenDoc}
+                    onEditDoc={(invoice) => {
+                      setEditingInvoice(invoice);
+                      setShowCreateModal(true);
+                    }}
+                    onDownloadPdf={handleDirectDownloadPdf}
+                    onPrintDoc={openDedicatedPrintTab}
+                    onLinkInvoice={handleLinkInvoice}
+                    onMarkAsPaid={handleMarkAsPaid}
+                    isUnlinked={isUnlinked}
+                  />
                 </div>
+              );
+            },
+          },
+        ];
 
-                {inv.buyerOrderNo && (
-                  <div className="text-[11px] text-slate-700 dark:text-slate-400 bg-slate-100 dark:bg-[#141722] p-2 rounded border border-slate-200 dark:border-[#2A3042]">
-                    Buyer PO: <strong className="text-slate-950 dark:text-white font-mono">{inv.buyerOrderNo}</strong>
+        const renderInvoiceCard = (inv: Invoice) => {
+          const isDC = inv.docType === 'delivery_challan';
+          const isSez = inv.docType === 'sez_invoice' || inv.isSez;
+          const effectiveTotal = isDC || isSez ? inv.subtotal : inv.totalAmount;
+
+          return (
+            <div
+              onClick={() => handleOpenDoc(inv)}
+              className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#181B26] p-4 shadow-sm space-y-3 cursor-pointer"
+            >
+              <div className="flex items-center justify-between gap-2">
+                {getDocBadge(inv.docType, inv.isSez)}
+                <span className="text-[11px] font-mono text-slate-500 font-bold">
+                  {format(new Date(inv.invoiceDate), 'dd MMM yyyy')}
+                </span>
+              </div>
+
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white font-mono">{inv.invoiceNumber}</h3>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const cid = (inv as any).customerId || inv.companyId;
+                      if (cid) {
+                        setAccountCustomerId(cid);
+                        setAccountCustomerName(inv.customerName);
+                      }
+                    }}
+                    className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline text-left block"
+                    title={inv.customerName}
+                  >
+                    {inv.customerName}
+                  </button>
+                  <p className="text-[11px] text-slate-500">{inv.customerState || 'Karnataka'}</p>
+                </div>
+                {!isDC && (
+                  <div className="text-right">
+                    <span className="text-base font-bold font-mono text-emerald-700 dark:text-emerald-400 block">
+                      ₹{Number(effectiveTotal || 0).toLocaleString('en-IN')}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-medium">Incl. Taxes</span>
                   </div>
                 )}
+              </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-[#2A3042] text-xs flex-wrap gap-2">
-                  {inv.paymentStatus === 'paid' ? (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 dark:bg-green-500/15 dark:text-green-400">
-                      Paid
-                    </span>
-                  ) : (inv.paymentStatus === 'partial' || (inv as any).paymentStatus === 'partially_paid') ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
-                      Partly paid <span className="font-mono text-[9px] lowercase">(₹{Number(inv.balanceDue ?? 0).toLocaleString('en-IN')})</span>
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-400">
-                      Unpaid
-                    </span>
-                  )}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                {inv.isVoided ? (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-crm-coral">
+                    Void
+                  </span>
+                ) : inv.paymentStatus === 'paid' ? (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 dark:bg-green-500/15 dark:text-green-400">
+                    Paid
+                  </span>
+                ) : (inv.paymentStatus === 'partial' || (inv as any).paymentStatus === 'partially_paid') ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                    Partly paid <span className="font-mono text-[9px] lowercase">(₹{Number(inv.balanceDue ?? 0).toLocaleString('en-IN')})</span>
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-400">
+                    Unpaid
+                  </span>
+                )}
 
-                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                    {/* Edit Mobile Button */}
-                    {!inv.isVoided && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingInvoice(inv);
-                          setShowCreateModal(true);
-                        }}
-                        className="btn bg-amber-100 dark:bg-amber-500/20 text-amber-900 dark:text-crm-amber border border-amber-300 dark:border-amber-500/30 text-xs py-1 px-2.5 font-bold flex items-center gap-1"
-                        title="Edit Invoice"
-                      >
-                        <Edit3 size={12} /> Edit
-                      </button>
-                    )}
-                    {!inv.isVoided && inv.paymentStatus !== 'paid' && ((inv.balanceDue ?? inv.totalAmount) > 0.01) && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMarkAsPaid(inv);
-                        }}
-                        className="btn bg-green-600 hover:bg-green-700 text-white text-xs py-1 px-2.5 font-bold flex items-center gap-1 shadow-xs"
-                        title="Mark as fully paid"
-                      >
-                        <CheckCircle2 size={12} /> Pay
-                      </button>
-                    )}
-                    <button
-                      onClick={(e) => handleDirectDownloadPdf(inv, e)}
-                      className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 hover:bg-emerald-100 dark:hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-400"
-                      title="Download PDF"
-                    >
-                      <Download size={13} />
-                    </button>
-                    <button
-                      onClick={() => handleOpenDoc(inv)}
-                      className="btn-primary text-xs py-1 px-3 shadow-glow-blue flex items-center gap-1"
-                    >
-                      <Eye size={12} /> View
-                    </button>
-                  </div>
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => openDedicatedPrintTab(inv.docType || 'tax_invoice', inv.id)}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                    title="Print"
+                  >
+                    <Printer size={13} />
+                  </button>
+                  <button
+                    onClick={() => handleOpenDoc(inv)}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                    title="View"
+                  >
+                    <Eye size={13} />
+                  </button>
                 </div>
               </div>
-            );
-          })
-        )}
-      </div>
+            </div>
+          );
+        };
+
+        return (
+          <DataTable
+            pageKey="invoices"
+            data={invoices}
+            columns={invoiceColumns}
+            loading={loading}
+            error={error}
+            onRetry={fetchInvoices}
+            userId={user?.id}
+            emptyTitle="No documents found"
+            emptySubtitle="No invoices match your current search or status filter."
+            onRowClick={handleOpenDoc}
+            cardRenderer={renderInvoiceCard}
+          />
+        );
+      })()}
 
       {/* ─── DOCUMENT PREVIEW & EMAIL MODAL ──────────────────────────── */}
       {selectedInvoice && (
@@ -1071,18 +1172,20 @@ export default function InvoicesPage() {
       )}
 
       {/* Unified Record Payment Modal for Full Payment Shortcut */}
-      <UnifiedRecordPaymentModal
-        isOpen={paymentModalState.isOpen}
-        onClose={() => setPaymentModalState({ isOpen: false })}
-        defaultInvoiceId={paymentModalState.invoiceId}
-        defaultCustomerId={paymentModalState.customerId}
-        defaultCustomerName={paymentModalState.customerName}
-        defaultAmount={paymentModalState.amount}
-        onSuccess={(msg) => {
-          fetchInvoices();
-          setSuccessToast(msg || 'Payment recorded. Invoice balance is now ₹0.00.');
-        }}
-      />
+      {paymentModalState.isOpen && (
+        <UnifiedRecordPaymentModal
+          isOpen={paymentModalState.isOpen}
+          onClose={() => setPaymentModalState({ isOpen: false })}
+          defaultInvoiceId={paymentModalState.invoiceId}
+          defaultCustomerId={paymentModalState.customerId}
+          defaultCustomerName={paymentModalState.customerName}
+          defaultAmount={paymentModalState.amount}
+          onSuccess={(msg) => {
+            fetchInvoices();
+            setSuccessToast(msg || 'Payment recorded. Invoice balance is now ₹0.00.');
+          }}
+        />
+      )}
     </div>
   );
 }

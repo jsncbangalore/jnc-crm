@@ -15,6 +15,7 @@ export type Role =
   | 'admin'
   | 'sub_admin'
   | 'employee'
+  | 'sales'
   | 'store_manager'
   | 'project_manager'
   | 'developer_lead'
@@ -115,7 +116,7 @@ export interface Lead {
   quantity?: number;
   unit?: string;
   estimatedValue?: number;
-  urgency?: 'urgent' | 'standard' | 'planning';
+  urgency?: 'urgent' | 'high' | 'standard' | 'planning' | string;
   queryMessage?: string;
   isDuplicate: boolean;
   companyId?: string;
@@ -123,9 +124,15 @@ export interface Lead {
   companyName?: string;
   assignedToId?: string;
   assignedTo?: Partial<User>;
+  ownerDisplayName?: string | null;
+  lostReason?: string | null;
+  nextFollowUpAt?: string | Date | null;
+  lastActivityAt?: string | Date | null;
   capturedAt: string;
   createdAt: string;
+  updatedAt?: string;
   activities?: LeadActivity[];
+  quotations?: any[];
 }
 
 export interface Quotation {

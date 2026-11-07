@@ -17,6 +17,7 @@ import { sanitizeHtml, stripAllHtml } from '../common/html-sanitize.util';
 import { getEffectivePagesForUser } from '../auth/effective-page-access';
 import { isPlatformOwner } from '../auth/roles';
 import { normalizeToE164, comparePhoneNumbers } from '../common/shared-validation';
+import { DocumentSeriesService } from '../common/document-series.service';
 
 @Injectable()
 export class LeadsService {
@@ -28,6 +29,7 @@ export class LeadsService {
     private scopingService: ScopingService,
     private notificationsService: NotificationsService,
     private auditService: AuditService,
+    private documentSeriesService: DocumentSeriesService,
   ) {}
 
   private normalizePhone(phone?: string): string {
@@ -185,10 +187,28 @@ export class LeadsService {
       companyId = company.id;
     }
 
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { code: true } });
-    const prefix = tenant?.code ? `${tenant.code}-LD` : 'LD';
-    const count = await this.prisma.lead.count({ where: { tenantId } });
-    const leadNumber = `${prefix}-${String(count + 1).padStart(5, '0')}`;
+    let leadNumber: string;
+    try {
+      const nextDoc = await this.documentSeriesService.getNextDocumentNumber(tenantId, 'lead');
+      leadNumber = nextDoc.formattedNumber;
+    } catch (err: any) {
+      this.logger.warn(`DocumentSeries allocation fallback: ${err.message}`);
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { code: true } });
+      const prefix = tenant?.code ? `${tenant.code}-LD` : 'LD';
+      const count = await this.prisma.lead.count({ where: { tenantId } });
+      leadNumber = `${prefix}-${String(count + 1).padStart(5, '0')}`;
+    }
+
+    let ownerDisplayName = 'Unassigned';
+    if (assignedToId) {
+      const assignedUser = await this.prisma.user.findUnique({
+        where: { id: assignedToId },
+        select: { name: true, employeeCode: true, email: true },
+      });
+      if (assignedUser) {
+        ownerDisplayName = assignedUser.name || assignedUser.employeeCode || assignedUser.email?.split('@')[0] || 'Assigned';
+      }
+    }
 
     const lead = await this.prisma.lead.create({
       data: {
@@ -212,6 +232,10 @@ export class LeadsService {
         isDuplicate: false,
         companyId,
         assignedToId,
+        ownerDisplayName,
+        lastActivityAt: new Date(),
+        nextFollowUpAt: (dto as any).nextFollowUpAt ? new Date((dto as any).nextFollowUpAt) : null,
+        lostReason: (dto as any).lostReason || null,
         createdById: actor?.id && actor.id !== 'system-webhook' ? actor.id : null,
       },
 
@@ -506,6 +530,21 @@ export class LeadsService {
       }
     }
 
+    let ownerDisplayNameToSet: string | undefined = undefined;
+    if (dto.assignedToId !== undefined) {
+      if (dto.assignedToId) {
+        const assignedUser = await this.prisma.user.findUnique({
+          where: { id: dto.assignedToId },
+          select: { name: true, employeeCode: true, email: true },
+        });
+        ownerDisplayNameToSet = assignedUser ? (assignedUser.name || assignedUser.employeeCode || assignedUser.email?.split('@')[0]) : 'Assigned';
+      } else {
+        ownerDisplayNameToSet = 'Unassigned';
+      }
+    } else if (dto.ownerDisplayName !== undefined) {
+      ownerDisplayNameToSet = dto.ownerDisplayName;
+    }
+
     const updated = await this.prisma.lead.update({
       where: { id },
       data: {
@@ -523,7 +562,11 @@ export class LeadsService {
         ...(dto.queryMessage !== undefined ? { queryMessage: dto.queryMessage || null } : {}),
         ...(dto.urgency !== undefined ? { urgency: dto.urgency || null } : {}),
         ...(dto.assignedToId !== undefined ? { assignedToId: dto.assignedToId || null } : {}),
+        ...(ownerDisplayNameToSet !== undefined ? { ownerDisplayName: ownerDisplayNameToSet } : {}),
+        ...(dto.nextFollowUpAt !== undefined ? { nextFollowUpAt: dto.nextFollowUpAt ? new Date(dto.nextFollowUpAt) : null } : {}),
+        ...(dto.lostReason !== undefined ? { lostReason: dto.lostReason || null } : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
+        lastActivityAt: new Date(),
       },
       include: {
         assignedTo: { select: { id: true, name: true, employeeCode: true } },
@@ -554,6 +597,7 @@ export class LeadsService {
       data: {
         status: dto.status,
         lostReason: dto.status === 'lost' ? dto.lostReason : null,
+        lastActivityAt: new Date(),
       },
     });
     if (updateRes.count === 0) {
@@ -824,5 +868,173 @@ export class LeadsService {
     });
 
     return share;
+  }
+
+  async getPipelineBoard(
+    user: ScopedUser,
+    query: {
+      source?: string;
+      urgency?: string;
+      assignedToId?: string;
+      search?: string;
+      startDate?: string;
+      endDate?: string;
+    } = {},
+  ) {
+    const scopeWhere = this.scopingService.getLeadScope(user);
+    const tenantId = requireTenantId(user);
+    const baseWhere: any = {
+      ...scopeWhere,
+      deletedAt: null,
+    };
+
+    if (query.source && query.source !== 'all') {
+      baseWhere.source = query.source;
+    }
+    if (query.urgency && query.urgency !== 'all') {
+      baseWhere.urgency = query.urgency;
+    }
+    if (query.assignedToId && query.assignedToId !== 'all') {
+      baseWhere.assignedToId = query.assignedToId;
+    }
+    if (query.startDate && query.endDate) {
+      baseWhere.createdAt = {
+        gte: new Date(query.startDate),
+        lte: new Date(query.endDate),
+      };
+    }
+    if (query.search) {
+      const rawSearch = query.search.trim();
+      const searchOR: any[] = [
+        { leadNumber: { contains: rawSearch, mode: 'insensitive' } },
+        { customerName: { contains: rawSearch, mode: 'insensitive' } },
+        { customerPhone: { contains: rawSearch, mode: 'insensitive' } },
+        { customerEmail: { contains: rawSearch, mode: 'insensitive' } },
+        { city: { contains: rawSearch, mode: 'insensitive' } },
+        { productCategory: { contains: rawSearch, mode: 'insensitive' } },
+        { productName: { contains: rawSearch, mode: 'insensitive' } },
+      ];
+      const digits = rawSearch.replace(/\D/g, '');
+      if (digits.length >= 7) {
+        searchOR.push({ customerPhone: { contains: digits.slice(-10) } });
+      }
+      if (scopeWhere.OR) {
+        baseWhere.AND = [{ OR: scopeWhere.OR }, { OR: searchOR }];
+        delete baseWhere.OR;
+      } else {
+        baseWhere.OR = searchOR;
+      }
+    }
+
+    const STAGES = ['new', 'contacted', 'qualified', 'quoted', 'won', 'lost'] as const;
+
+    const allFilteredLeads = await this.prisma.lead.findMany({
+      where: baseWhere,
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+      include: {
+        assignedTo: {
+          select: { id: true, name: true, employeeCode: true, email: true },
+        },
+        company: { select: { id: true, name: true, city: true } },
+        contact: { select: { id: true, name: true, phone: true, email: true } },
+        quotations: {
+          select: { id: true, quoteNumber: true, totalAmount: true, status: true },
+          take: 5,
+        },
+        activities: {
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        },
+      },
+    });
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    const stagesData: Record<string, {
+      id: string;
+      label: string;
+      count: number;
+      totalValue: number;
+      cards: any[];
+      hasMore: boolean;
+      totalCards: number;
+    }> = {
+      new: { id: 'new', label: 'New Inquiries', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+      contacted: { id: 'contacted', label: 'Contacted', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+      qualified: { id: 'qualified', label: 'Qualified Requirement', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+      quoted: { id: 'quoted', label: 'Quoted / Proposal Sent', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+      won: { id: 'won', label: 'Won / Closed', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+      lost: { id: 'lost', label: 'Lost / Closed', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+    };
+
+    let newTodayCount = 0;
+    let urgentCount = 0;
+    let followUpsDueToday = 0;
+
+    for (const lead of allFilteredLeads) {
+      const st = (lead.status && stagesData[lead.status]) ? lead.status : 'new';
+      const val = Number(lead.estimatedValue || 0);
+
+      stagesData[st].count += 1;
+      stagesData[st].totalValue += val;
+
+      if (stagesData[st].cards.length < 30) {
+        stagesData[st].cards.push(lead);
+      }
+
+      if (lead.createdAt && new Date(lead.createdAt) >= startOfToday) {
+        newTodayCount++;
+      }
+      if (lead.urgency === 'urgent' || lead.urgency === 'high') {
+        urgentCount++;
+      }
+      if (lead.nextFollowUpAt && new Date(lead.nextFollowUpAt) <= endOfToday) {
+        followUpsDueToday++;
+      }
+    }
+
+    for (const st of STAGES) {
+      stagesData[st].totalCards = stagesData[st].count;
+      stagesData[st].hasMore = stagesData[st].count > 30;
+    }
+
+    const totalLeads = allFilteredLeads.length;
+    const totalPipelineValue = STAGES.reduce((sum, s) => sum + stagesData[s].totalValue, 0);
+    const wonCount = stagesData.won.count;
+    const closedCount = stagesData.won.count + stagesData.lost.count;
+    const winRate = closedCount > 0 ? Math.round((wonCount / closedCount) * 100) : (totalLeads > 0 ? Math.round((wonCount / totalLeads) * 100) : 0);
+
+    const distinctSources = await this.prisma.lead.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { source: true },
+      distinct: ['source'],
+    });
+    const sourcesSet = new Set<string>(['manual', 'web', 'whatsapp', 'indiamart', 'facebook_lead_ads', 'instagram_lead_ads']);
+    for (const s of distinctSources) {
+      if (s.source) sourcesSet.add(s.source);
+    }
+
+    const employees = await this.prisma.user.findMany({
+      where: { tenantId, isActive: true, deletedAt: null },
+      select: { id: true, name: true, employeeCode: true, email: true, role: true },
+      orderBy: { name: 'asc' },
+    });
+
+    return {
+      summary: {
+        totalLeads,
+        newToday: newTodayCount,
+        urgentCount,
+        pipelineValue: totalPipelineValue,
+        winRate,
+        followUpsDueToday,
+      },
+      stages: stagesData,
+      sources: Array.from(sourcesSet),
+      salesReps: employees,
+      serverTime: new Date().toISOString(),
+    };
   }
 }

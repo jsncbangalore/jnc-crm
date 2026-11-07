@@ -149,13 +149,13 @@ export default function AppLayout({ children }: { children?: React.ReactNode } =
 
       <Navbar />
       <main className="flex-1 overflow-y-auto overflow-x-hidden w-full">
-        <div className="p-3 sm:p-5 lg:p-6 max-w-[1700px] mx-auto w-full">
+        <div className="p-3 sm:p-5 lg:p-6 max-w-[1700px] mx-auto w-full min-w-0 overflow-x-hidden">
           {children || <Outlet />}
         </div>
       </main>
 
-      {/* ─── GLOBAL SHARED FOOTER ────────────────────────────────────────── */}
-      <Footer mobileDockOffset={true} />
+      {/* ─── GLOBAL SHARED FOOTER (Signed-in: clean copyright only, no cookie links) ── */}
+      <Footer mobileDockOffset={true} showCookieLinks={false} />
 
       {/* ─── NATIVE SMARTPHONE BOTTOM NAVIGATION DOCK ─────────────────────── */}
       <MobileDock />

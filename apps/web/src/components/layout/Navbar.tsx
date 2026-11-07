@@ -16,7 +16,7 @@ import {
   Building2, FileText, Bell, ChevronDown, ShieldCheck,
   Receipt, Sun, Moon, ClipboardList, Search, Plus,
   Sparkles, UserPlus, Sliders, User, Mail, Database, Zap, Layers, BookOpen,
-  ArrowRight,
+  ArrowRight, BarChart3, Cookie,
 } from 'lucide-react';
 import CreateLeadModal from '../leads/CreateLeadModal';
 import CreateQuotationModal from '../quotations/CreateQuotationModal';
@@ -24,6 +24,7 @@ import DropdownPortal from '../common/DropdownPortal';
 import { useAllowedPages, PAGE_SUB_ITEMS } from '../../hooks/useAllowedPages';
 import { LAYERS } from '../../constants/layers';
 import BrandLogo from '../common/BrandLogo';
+import { openCookiePreferencesPanel } from '../../utils/cookieConsent';
 
 interface TabDefinition {
   key: string;
@@ -680,6 +681,21 @@ export default function Navbar() {
                 <User size={13} className="text-crm-blue shrink-0" />
                 <span>My Account (Personal Profile)</span>
               </NavLink>
+
+              {/* Privacy and cookies */}
+              <button
+                role="menuitem"
+                type="button"
+                onClick={() => {
+                  setProfileOpen(false);
+                  openCookiePreferencesPanel();
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors mb-1 text-left cursor-pointer"
+                data-testid="avatar-menu-privacy-cookies"
+              >
+                <Cookie size={13} className="text-amber-500 shrink-0" />
+                <span>Privacy and cookies</span>
+              </button>
 
               {/* Logout Session */}
               <button

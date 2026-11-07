@@ -23,6 +23,7 @@ import { validateLutStatus } from './lut-validator';
 import { sanitizeHtml } from '../common/html-sanitize.util';
 import { decryptAtRest } from '../common/encryption.util';
 import { getCompanyProfileCompleteness, getUnifiedCompanyProfile, updateUnifiedCompanyProfile } from '../common/company-profile.util';
+import { validateDocumentAmountLimits } from '../common/shared-validation';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -362,10 +363,12 @@ export class InvoicingService {
     }
 
     const rawItems = (dto.lines && dto.lines.length > 0 ? dto.lines : (dto as any).items) || [];
+    const isTaxInvoice = docType === 'tax_invoice' || docType === 'sez_invoice';
+
     if (!rawItems || rawItems.length === 0) {
       fieldErrors.lines = 'At least one line item is required';
     } else {
-      rawItems.forEach((line, idx) => {
+      rawItems.forEach((line: any, idx: number) => {
         if (!line.description || !line.description.trim()) {
           fieldErrors[`lines[${idx}].description`] = `Line ${idx + 1}: Description is required`;
         }
@@ -374,6 +377,19 @@ export class InvoicingService {
         }
         if (line.unitPrice === undefined || line.unitPrice === null || Number(line.unitPrice) < 0) {
           fieldErrors[`lines[${idx}].unitPrice`] = `Line ${idx + 1}: Unit price must be 0 or positive`;
+        }
+
+        const effectiveTaxRate = line.taxRate !== undefined && line.taxRate !== null ? Number(line.taxRate) : 18.0;
+        const isExplicitlyExempt = Boolean(
+          line.isExempt ||
+          line.isNilRated ||
+          line.taxExemption === 'exempt' ||
+          line.taxExemption === 'nil_rated' ||
+          (line.taxExemptReason && String(line.taxExemptReason).trim().length > 0)
+        );
+
+        if (isTaxInvoice && effectiveTaxRate === 0 && !isExplicitlyExempt) {
+          fieldErrors[`lines[${idx}].taxRate`] = `Line ${idx + 1} (${line.description || 'Item'}): Tax Invoices require a valid GST rate. A 0% GST rate is permitted only through an explicit 'Exempt or nil rated' selection.`;
         }
       });
     }
@@ -468,10 +484,22 @@ export class InvoicingService {
       let totalSgst = 0;
       let totalIgst = 0;
 
-      const lineItemsData = rawItems.map((line) => {
+      const lineItemsData = rawItems.map((line: any) => {
         const lineTaxable = Number((line.quantity * line.unitPrice).toFixed(2));
         const taxRate = docType === 'delivery_challan' ? 0 : (line.taxRate ?? 18.0);
         const taxCalc = calculateGst(lineTaxable, customerState, taxRate, isSez);
+
+        const isExplicitlyExempt = Boolean(
+          line.isExempt ||
+          line.isNilRated ||
+          line.taxExemption === 'exempt' ||
+          line.taxExemption === 'nil_rated' ||
+          (line.taxExemptReason && String(line.taxExemptReason).trim().length > 0)
+        );
+        let description = line.description;
+        if (taxRate === 0 && isExplicitlyExempt && !description.toLowerCase().includes('exempt') && !description.toLowerCase().includes('nil rated')) {
+          description = `${description} (Exempt / Nil rated)`;
+        }
 
         subtotal += lineTaxable;
         totalCgst += taxCalc.cgstAmount;
@@ -481,7 +509,7 @@ export class InvoicingService {
         return {
           skuId: (line.skuId && validSkuIds.has(line.skuId)) ? line.skuId : undefined,
           hsnCode: line.hsnCode || (docType === 'delivery_challan' ? '-' : '85312000'),
-          description: line.description,
+          description,
           unit: line.unit || "No's",
           quantity: Math.max(1, Math.round(Number(line.quantity) || 1)),
           unitPrice: Number(line.unitPrice) || 0,
@@ -499,6 +527,19 @@ export class InvoicingService {
       const totalAmount = docType === 'delivery_challan'
         ? subtotal
         : (isSez ? subtotal : Number((subtotal + totalCgst + totalSgst + totalIgst).toFixed(2)));
+
+      // Validate Document Amount Limits (Item 8)
+      const amountLimitCheck = validateDocumentAmountLimits({
+        totalAmount,
+        lines: lineItemsData,
+        confirmedHighAmount: Boolean((dto as any).confirmedHighAmount || (dto as any).confirmHighAmount),
+      });
+      if (!amountLimitCheck.valid) {
+        throw new BadRequestException(amountLimitCheck.error);
+      }
+      if (amountLimitCheck.needsConfirmation) {
+        throw new BadRequestException(`${amountLimitCheck.warning} (Provide confirmedHighAmount: true to proceed).`);
+      }
 
       if (docType === 'credit_note' && referencedInvoice) {
         // Check date >= invoice date
@@ -1559,13 +1600,20 @@ export class InvoicingService {
   /**
    * Void an invoice (Admin & Super Admin only)
    */
-  async voidInvoice(id: string, reason: string, user: ScopedUser) {
+  async voidInvoice(id: string, reason: string, user: ScopedUser, reversePayments = false) {
     if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
       throw new ForbiddenException('Only Administrators can void invoices.');
     }
 
     const tenantId = requireTenantId(user);
-    const invoice = await this.prisma.invoice.findFirst({ where: { id, tenantId } });
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id, tenantId },
+      include: {
+        allocations: {
+          include: { paymentRecord: true },
+        },
+      },
+    });
     if (!invoice) {
       throw new NotFoundException('Invoice not found');
     }
@@ -1574,21 +1622,55 @@ export class InvoicingService {
       throw new BadRequestException('Invoice is already voided');
     }
 
+    // Check active allocations against this invoice
+    const activeAllocations = (invoice.allocations || []).filter((a) => {
+      const amt = Number(a.amount || 0);
+      if (amt <= 0) return false;
+      const pr = a.paymentRecord;
+      if (!pr) return false;
+      if (pr.reversalOfId) return false; // already a reversal
+      return true;
+    });
+
+    const totalActiveAllocated = activeAllocations.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+
+    if (totalActiveAllocated > 0.01 && !reversePayments) {
+      throw new BadRequestException(
+        `Reverse the payments first. This invoice has active payment allocations totaling ₹${totalActiveAllocated.toLocaleString('en-IN')}. Reverse the payments first, or choose "Reverse payments and void".`
+      );
+    }
+
     return this.prisma.$transaction(async (tx) => {
+      // If reversePayments requested and there are active allocations, reverse each payment atomically
+      if (reversePayments && activeAllocations.length > 0) {
+        const paymentIds = Array.from(new Set(activeAllocations.map((a) => a.paymentRecordId || a.paymentRecord?.id).filter(Boolean))) as string[];
+        for (const pid of paymentIds) {
+          try {
+            await this.paymentsService.reverse(pid, `Voiding invoice ${invoice.invoiceNumber}: ${reason || 'Reversal on invoice void'}`, user);
+          } catch (revErr: any) {
+            this.logger.warn(`Payment auto-reversal note for ${pid}: ${revErr.message}`);
+          }
+        }
+      }
+
       await tx.invoice.updateMany({
         where: { id, tenantId },
         data: {
           isVoided: true,
           voidedAt: new Date(),
           voidReason: reason || 'Voided by Administrator',
+          paymentStatus: 'void',
+          balanceDue: 0,
         },
       });
+
       const updated = await tx.invoice.findFirst({
         where: { id, tenantId },
         include: {
           lines: { include: { sku: true } },
           order: true,
           payments: true,
+          allocations: true,
           createdBy: { select: { id: true, name: true, employeeCode: true } },
         },
       });
@@ -1600,8 +1682,8 @@ export class InvoicingService {
         action: 'STATUS_CHANGE',
         entityName: 'Invoice',
         entityId: invoice.id,
-        beforeState: { isVoided: false },
-        afterState: { isVoided: true, voidReason: reason },
+        beforeState: { isVoided: false, paymentStatus: invoice.paymentStatus },
+        afterState: { isVoided: true, voidReason: reason, paymentStatus: 'void' },
       }, tx);
 
       // Post void reversal to ledger within tx if applicable

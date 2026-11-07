@@ -266,7 +266,7 @@ function Navbar() {
 
       <aside
         className={`fixed inset-y-0 right-0 z-50 flex w-72 flex-col bg-white dark:bg-[#181B26] border-l border-slate-200 dark:border-[#2A3042] p-5 shadow-2xl transition-transform duration-200 md:hidden ${
-          open ? 'translate-x-0' : 'translate-x-full'
+          open ? 'translate-x-0' : 'translate-x-full invisible pointer-events-none'
         }`}
       >
         <div className="flex items-center justify-between">

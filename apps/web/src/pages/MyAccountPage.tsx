@@ -40,6 +40,8 @@ import {
   X,
   ArrowLeft,
   ArrowRight,
+  Cookie,
+  Sliders,
 } from 'lucide-react';
 import { drawQrToCanvas } from '../utils/qr';
 import { openCookiePreferencesPanel } from '../utils/cookieConsent';
@@ -90,7 +92,7 @@ export default function MyAccountPage() {
   const { user, logout, updateUser } = useAuth();
   const { branding } = useBranding();
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'devices' | 'activity'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'devices' | 'activity' | 'privacy'>('profile');
 
   // Company Organization Profile state
   const [companyProfile, setCompanyProfile] = useState<any>(null);
@@ -877,6 +879,19 @@ export default function MyAccountPage() {
         >
           <Activity size={16} />
           <span>Sign-In Activity</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('privacy')}
+          className={`flex items-center gap-2 py-3 px-4 border-b-2 text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'privacy'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+          data-testid="account-tab-privacy-cookies"
+        >
+          <Cookie size={16} />
+          <span>Privacy and cookies</span>
         </button>
       </div>
 
@@ -1768,6 +1783,78 @@ export default function MyAccountPage() {
               </div>
             </div>
           )}
+        </motion.div>
+      )}
+
+      {/* ────────────────── TAB 5: PRIVACY & COOKIES ────────────────── */}
+      {activeTab === 'privacy' && (
+        <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+          <div className="card p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111A2E] rounded-2xl shadow-sm space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Cookie size={18} className="text-amber-500" />
+                  <span>Privacy and Cookies Management</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                  Manage your browser cookie preferences, tracking choices, and data privacy settings across your CRM session.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => openCookiePreferencesPanel()}
+                className="btn-primary text-xs py-2 px-3.5 shadow-sm flex items-center gap-1.5 shrink-0"
+                data-testid="account-manage-cookies-btn"
+              >
+                <Sliders size={14} />
+                <span>Manage Cookie Preferences</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white mb-1.5">
+                  <ShieldCheck size={16} className="text-emerald-500" />
+                  <span>Strictly Necessary</span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Required for multi-factor authentication, secure session tokens, CSRF protection, and workspace tenant isolation. Always enabled.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white mb-1.5">
+                  <Activity size={16} className="text-blue-500" />
+                  <span>Performance & Analytics</span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Helps us monitor frontend bundle loading, memory efficiency, and response times without collecting any personal identities.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white mb-1.5">
+                  <Laptop size={16} className="text-purple-500" />
+                  <span>Functional & Preferences</span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Remembers your table density, theme settings, column widths, and navigation state across browser restarts.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+              <span>Need more information regarding our data practices?</span>
+              <button
+                type="button"
+                onClick={() => navigate('/cookies')}
+                className="text-blue-600 dark:text-blue-400 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <span>View Full Cookie Policy</span>
+                <ArrowRight size={13} />
+              </button>
+            </div>
+          </div>
         </motion.div>
       )}
 

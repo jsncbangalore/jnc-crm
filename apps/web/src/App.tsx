@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAllowedPages } from './hooks/useAllowedPages';
 import AppLayout from './components/layout/AppLayout';
+import StandaloneLayout from './components/layout/StandaloneLayout';
 import TeamPageGuard from './components/layout/TeamPageGuard';
 import ForcePasswordResetPage from './pages/ForcePasswordResetPage';
 import { isPlatformOwner, getRoleRedirectPath } from './utils/roles';
@@ -336,6 +337,22 @@ function AppRoutes() {
         }
       />
 
+      {/* Standalone KPI Analytics Layout (No Navbar, No Global Search, Standalone Header) */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <StandaloneLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/analytics/leads" element={<TeamPageGuard pageKey={['dashboard', 'leads']}><CrmRouteGuard><LeadsAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics/quotes" element={<TeamPageGuard pageKey={['dashboard', 'quotations']}><CrmRouteGuard><QuotesAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics/orders" element={<TeamPageGuard pageKey={['dashboard', 'orders']}><CrmRouteGuard><OrdersAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics/receivables" element={<TeamPageGuard pageKey={['dashboard', 'invoices']}><CrmRouteGuard><ReceivablesAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics/overdue" element={<TeamPageGuard pageKey={['dashboard', 'invoices']}><CrmRouteGuard><OverdueAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics/activity" element={<TeamPageGuard pageKey={['dashboard', 'daily_activities']}><CrmRouteGuard><ActivityAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+      </Route>
+
       {/* Authenticated Workspace Layout */}
       <Route
         element={
@@ -345,12 +362,7 @@ function AppRoutes() {
         }
       >
         <Route path="/dashboard" element={<TeamPageGuard pageKey="dashboard"><CrmRouteGuard><DashboardPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="/analytics/leads" element={<TeamPageGuard pageKey={['dashboard', 'leads']}><CrmRouteGuard><LeadsAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="/analytics/quotes" element={<TeamPageGuard pageKey={['dashboard', 'quotations']}><CrmRouteGuard><QuotesAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="/analytics/orders" element={<TeamPageGuard pageKey={['dashboard', 'orders']}><CrmRouteGuard><OrdersAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="/analytics/receivables" element={<TeamPageGuard pageKey={['dashboard', 'invoices']}><CrmRouteGuard><ReceivablesAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="/analytics/overdue" element={<TeamPageGuard pageKey={['dashboard', 'invoices']}><CrmRouteGuard><OverdueAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="/analytics/activity" element={<TeamPageGuard pageKey={['dashboard', 'daily_activities']}><CrmRouteGuard><ActivityAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics" element={<Navigate to="/dashboard" replace />} />
         <Route path="/leads" element={<TeamPageGuard pageKey="leads"><CrmRouteGuard><LeadsPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/lead-flow" element={<Navigate to="/start-setup" replace />} />
         <Route path="/lead-setup" element={<Navigate to="/start-setup" replace />} />

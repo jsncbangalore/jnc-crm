@@ -226,7 +226,7 @@ export class InvoicingController {
     @Body() body: VoidInvoiceDto,
     @CurrentUser() user: ScopedUser,
   ) {
-    return this.invoicingService.voidInvoice(id, body?.reason || '', user);
+    return this.invoicingService.voidInvoice(id, body?.reason || '', user, Boolean(body?.reversePayments));
   }
 
   @Post(':id/payments')

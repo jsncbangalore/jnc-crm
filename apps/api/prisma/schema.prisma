@@ -451,6 +451,9 @@ model Lead {
   isDuplicate     Boolean     @default(false)
   createdById     String?
   lostReason      String?
+  nextFollowUpAt  DateTime?
+  lastActivityAt  DateTime?
+  ownerDisplayName String?
   
   capturedAt      DateTime    @default(now())
   createdAt       DateTime    @default(now())

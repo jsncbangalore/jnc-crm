@@ -263,6 +263,18 @@ export class UpdateLeadDto {
 
   @IsOptional()
   @IsString()
+  ownerDisplayName?: string;
+
+  @IsOptional()
+  @IsString()
+  nextFollowUpAt?: string;
+
+  @IsOptional()
+  @IsString()
+  lostReason?: string;
+
+  @IsOptional()
+  @IsString()
   status?: string;
 }
 

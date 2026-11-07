@@ -13,6 +13,7 @@ export const QUOTATION_STATUSES = [
   { value: 'draft', label: 'Draft', color: 'bg-slate-100 text-slate-800 dark:bg-slate-700/40 dark:text-slate-300 border-slate-300 dark:border-slate-600/40' },
   { value: 'sent', label: 'Sent', color: 'bg-blue-100 text-blue-800 dark:bg-crm-blue/20 dark:text-crm-blue-light border-blue-300 dark:border-crm-blue/30' },
   { value: 'approved', label: 'Approved', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400 border-emerald-300 dark:border-emerald-500/30' },
+  { value: 'converted', label: 'Converted', color: 'bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-400 border-purple-300 dark:border-purple-500/30' },
   { value: 'rejected', label: 'Rejected', color: 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-400 border-rose-300 dark:border-rose-500/30' },
   { value: 'expired', label: 'Expired', color: 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 border-amber-300 dark:border-amber-500/30' },
 ];
@@ -28,6 +29,7 @@ import CreateQuotationModal from '../components/quotations/CreateQuotationModal'
 import CustomerAccountModal from '../components/common/CustomerAccountModal';
 import RelatedDocumentsPanel from '../components/common/RelatedDocumentsPanel';
 import { useAllowedPages } from '../hooks/useAllowedPages';
+import DataTable, { ColumnDef } from '../components/common/DataTable';
 
 interface QuotationLineItem {
   skuId: string;
@@ -506,188 +508,350 @@ export default function QuotationsPage() {
         </div>
       </div>
 
-      {/* ─── QUOTATIONS TABLE ──────────────────────────────────────────────── */}
-      <div className="table-wrapper">
-        <table className="crm-table">
-          <thead>
-            <tr>
-              <th>Quote #</th>
-              <th>Date</th>
-              <th>Client / Company</th>
-              <th>Contact Details</th>
-              <th>Items & Specs</th>
-              <th>Subtotal</th>
-              <th>Total (Inc. GST)</th>
-              <th>Status</th>
-              <th>Created By</th>
-              <th className="text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && !error && (
-              <tr>
-                <td colSpan={10} className="text-center py-12 text-slate-700 dark:text-slate-400 text-xs font-medium">
-                  <div className="flex items-center justify-center gap-2">
-                    <RefreshCw size={14} className="animate-spin text-crm-amber" />
-                    <span>Loading quotations...</span>
-                  </div>
-                </td>
-              </tr>
-            )}
-            {error && quotations.length === 0 && (
-              <tr>
-                <td colSpan={10} className="p-6">
-                  <ErrorStateCard
-                    message={error.message}
-                    status={error.status}
-                    isNetworkError={error.isNetworkError}
-                    onRetry={fetchQuotations}
-                  />
-                </td>
-              </tr>
-            )}
-            {!loading && !error && quotations.length === 0 && (
-              <tr>
-                <td colSpan={10} className="text-center py-12 text-slate-700 dark:text-slate-400 text-xs">
-                  <p className="font-bold text-slate-950 dark:text-slate-300">No quotations found matching your current filter.</p>
-                  <p className="text-[11px] text-slate-500 mt-1">Click "+ New Quotation" or generate one directly from any Lead in the Leads page.</p>
-                </td>
-              </tr>
-            )}
-            {quotations.map((q) => (
-              <React.Fragment key={q.id}>
-                <tr className="hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
-                  <td className="font-mono text-xs font-bold text-amber-600 dark:text-crm-amber">
-                    <button
-                      onClick={() => setExpandedQuoteId(expandedQuoteId === q.id ? null : q.id)}
-                      className="hover:underline text-left inline-flex items-center gap-1"
-                      title="Click to view related chain"
-                    >
-                      <ChevronRight className={`w-3 h-3 transition-transform ${expandedQuoteId === q.id ? 'rotate-90' : ''}`} />
-                      {q.quoteNumber}
-                    </button>
-                  </td>
-                  <td className="text-slate-700 dark:text-slate-400 text-xs font-mono font-bold whitespace-nowrap">
-                    {format(new Date(q.createdAt), 'dd MMM yyyy')}
-                  </td>
-                  <td>
-                    <div>
-                      <button
-                        onClick={() => {
-                          const cid = q.customerId || q.lead?.companyId || q.lead?.company?.id;
-                          if (cid) {
-                            setAccountCustomerId(cid);
-                            setAccountCustomerName(q.lead?.customerName || q.customerName || q.companyName || 'Customer Account');
-                          }
-                        }}
-                        className={`text-left font-bold text-xs ${
-                          q.customerId || q.lead?.companyId
-                            ? 'text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer'
-                            : 'text-slate-950 dark:text-white'
-                        }`}
-                        title={q.customerId ? 'Click to view unified customer account' : undefined}
-                      >
-                        {q.customerName || q.lead?.customerName || q.contact?.name || 'Walk-in Customer'}
-                      </button>
-                      <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
-                        {q.companyName || q.lead?.company?.name || q.lead?.companyName || '—'}
-                      </p>
-                    </div>
-                  </td>
-                <td>
-                  <div className="space-y-0.5 text-xs">
-                    <p className="text-teal-700 dark:text-crm-teal font-mono font-bold">{q.lead?.customerPhone || q.contact?.phone || '—'}</p>
-                    {(q.lead?.customerEmail || q.contact?.email) && (
-                      <p className="text-slate-600 dark:text-slate-400 text-[11px] font-medium truncate max-w-[140px]">{q.lead?.customerEmail || q.contact?.email}</p>
+      {/* ─── SHARED DATATABLE ──────────────────────────────────────────────── */}
+      {(() => {
+        const quotationColumns: ColumnDef<any>[] = [
+          {
+            id: 'quote',
+            header: 'Quote # & Date',
+            width: '18%',
+            minWidth: '150px',
+            priority: 'p1',
+            disableHiding: true,
+            isSticky: 'left',
+            sortable: true,
+            sortAccessor: (q) => q.quoteNumber,
+            cell: (q) => (
+              <div className="flex flex-col">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedQuoteId(expandedQuoteId === q.id ? null : q.id);
+                  }}
+                  className="font-mono text-xs font-bold text-amber-600 dark:text-crm-amber hover:underline text-left inline-flex items-center gap-1 whitespace-nowrap"
+                  title={`Quotation #${q.quoteNumber}`}
+                >
+                  <ChevronRight className={`w-3 h-3 transition-transform ${expandedQuoteId === q.id ? 'rotate-90' : ''}`} />
+                  <span className="whitespace-nowrap">{q.quoteNumber}</span>
+                </button>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono pl-4 whitespace-nowrap">
+                  {format(new Date(q.createdAt), 'dd MMM yyyy')}
+                </span>
+              </div>
+            ),
+          },
+          {
+            id: 'client',
+            header: 'Client',
+            width: '26%',
+            minWidth: '180px',
+            priority: 'p1',
+            sortable: true,
+            sortAccessor: (q) => q.customerName || q.lead?.customerName || '',
+            cell: (q) => {
+              const clientName = q.customerName || q.lead?.customerName || q.contact?.name || 'Walk-in Customer';
+              const clientEmail = q.customerEmail || q.lead?.customerEmail || q.contact?.email;
+              const clientPhone = q.customerPhone || q.lead?.customerPhone || q.contact?.phone || '—';
+              const cid = q.customerId || q.lead?.companyId || q.lead?.company?.id;
+
+              return (
+                <div className="flex flex-col min-w-0">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (cid) {
+                        setAccountCustomerId(cid);
+                        setAccountCustomerName(clientName);
+                      }
+                    }}
+                    className={`text-left font-bold text-xs truncate ${
+                      cid ? 'text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer' : 'text-slate-900 dark:text-white'
+                    }`}
+                    title={clientName}
+                  >
+                    {clientName}
+                  </button>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                    <span className="font-mono shrink-0">{clientPhone}</span>
+                    {clientEmail && (
+                      <>
+                        <span>•</span>
+                        <span className="truncate max-w-[140px]" title={clientEmail}>
+                          {clientEmail}
+                        </span>
+                      </>
                     )}
                   </div>
-                </td>
-                <td>
-                  <span className="text-xs text-slate-800 dark:text-slate-300 font-bold">
-                    {q.lines?.length || 0} {q.lines?.length === 1 ? 'Item' : 'Items'}
+                </div>
+              );
+            },
+          },
+          {
+            id: 'items',
+            header: 'Items',
+            width: '12%',
+            minWidth: '100px',
+            priority: 'p2',
+            sortable: true,
+            sortAccessor: (q) => q.lines?.length || 0,
+            cell: (q) => {
+              const count = q.lines?.length || 0;
+              if (count === 0) {
+                return (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-300 dark:border-amber-700">
+                    No item lines
                   </span>
-                </td>
-                <td className="text-slate-950 dark:text-slate-300 font-mono font-bold text-xs">
-                  ₹{(q.subtotal || 0).toLocaleString('en-IN')}
-                </td>
-                <td className="text-amber-700 dark:text-crm-amber font-mono font-black text-xs whitespace-nowrap">
-                  ₹{(q.totalAmount || 0).toLocaleString('en-IN')}
-                </td>
-                <td className="whitespace-nowrap">
-                  {(() => {
-                    const currentStatus = (q.status || 'draft').toLowerCase();
-                    const statusObj = QUOTATION_STATUSES.find((s) => s.value === currentStatus) || QUOTATION_STATUSES[0];
-                    const isUpdating = updatingStatusId === q.id;
+                );
+              }
+              return (
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  {count} {count === 1 ? 'item' : 'items'}
+                </span>
+              );
+            },
+          },
+          {
+            id: 'total',
+            header: 'Total',
+            width: '18%',
+            minWidth: '130px',
+            priority: 'p1',
+            align: 'right',
+            isMoney: true,
+            sortable: true,
+            sortAccessor: (q) => Number(q.totalAmount || 0),
+            cell: (q) => (
+              <div className="flex flex-col items-end">
+                <span className="text-xs font-mono font-bold text-amber-700 dark:text-crm-amber whitespace-nowrap">
+                  ₹{Number(q.totalAmount || 0).toLocaleString('en-IN')}
+                </span>
+                <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                  Sub: ₹{Number(q.subtotal || 0).toLocaleString('en-IN')}
+                </span>
+              </div>
+            ),
+          },
+          {
+            id: 'status',
+            header: 'Status',
+            width: '12%',
+            minWidth: '95px',
+            priority: 'p1',
+            cell: (q) => {
+              const currentStatus = (q.status || 'draft').toLowerCase();
+              const normalizedStatus = currentStatus === 'accepted' ? 'approved' : currentStatus;
+              const isConverted = normalizedStatus === 'converted' || Boolean(q.order);
 
-                    return (
-                      <div className="relative inline-flex items-center">
-                        <select
-                          value={currentStatus}
-                          disabled={isUpdating}
-                          onChange={(e) => handleStatusChange(q.id, e.target.value)}
-                          className={`appearance-none cursor-pointer pl-2.5 pr-6 py-1 rounded-full text-[11px] font-bold border transition-all outline-none focus:ring-2 focus:ring-crm-blue/30 disabled:opacity-60 shadow-sm ${statusObj.color}`}
-                          title="Click to edit and choose quotation status"
-                        >
-                          {QUOTATION_STATUSES.map((st) => (
-                            <option
-                              key={st.value}
-                              value={st.value}
-                              className="bg-white dark:bg-[#181B26] text-slate-900 dark:text-white font-semibold py-1"
-                            >
-                              {st.label}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="absolute right-2 pointer-events-none flex items-center">
-                          {isUpdating ? (
-                            <RefreshCw size={10} className="animate-spin text-current opacity-80" />
-                          ) : (
-                            <ChevronDown size={11} className="opacity-70" />
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </td>
-                <td className="text-xs text-slate-800 dark:text-slate-400 font-bold">
-                  {q.createdBy?.name || '—'}
-                </td>
-                <td className="text-right">
-                  <div className="flex items-center justify-end gap-1.5">
-                    <button
-                      onClick={() => handlePrintQuote(q)}
-                      className="btn-ghost text-xs px-2.5 py-1 border border-slate-300 dark:border-white/10 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white font-bold"
-                      title="Print Quotation PDF"
-                    >
-                      <Printer size={13} /> Print
-                    </button>
+              if (isConverted) {
+                return (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-sm bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-400 border-purple-300 dark:border-purple-500/30 whitespace-nowrap">
+                    Converted
+                  </span>
+                );
+              }
 
-                    {!q.order && hasPage('orders') && (
-                      <button
-                        onClick={() => handleConvertToOrder(q.id)}
-                        className="btn bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-2.5 py-1 gap-1"
-                        title="Convert to Confirmed Order"
+              const statusObj = QUOTATION_STATUSES.find((s) => s.value === normalizedStatus) || QUOTATION_STATUSES[0];
+              const isUpdating = updatingStatusId === q.id;
+
+              return (
+                <div className="relative inline-flex items-center" onClick={(e) => e.stopPropagation()}>
+                  <select
+                    value={normalizedStatus}
+                    disabled={isUpdating}
+                    onChange={(e) => handleStatusChange(q.id, e.target.value)}
+                    className={`appearance-none cursor-pointer pl-2.5 pr-6 py-0.5 rounded-full text-[11px] font-bold border transition-all outline-none focus:ring-2 focus:ring-crm-blue/30 disabled:opacity-60 shadow-sm ${statusObj.color}`}
+                    title="Click to change quotation status"
+                  >
+                    {QUOTATION_STATUSES.filter((st) => st.value !== 'converted').map((st) => (
+                      <option
+                        key={st.value}
+                        value={st.value}
+                        className="bg-white dark:bg-[#181B26] text-slate-900 dark:text-white font-semibold py-1"
                       >
-                        <ShoppingCart size={13} /> Order
-                      </button>
+                        {st.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute right-2 pointer-events-none flex items-center">
+                    {isUpdating ? (
+                      <RefreshCw size={10} className="animate-spin text-current opacity-80" />
+                    ) : (
+                      <ChevronDown size={10} className="opacity-70" />
                     )}
                   </div>
-                </td>
-              </tr>
+                </div>
+              );
+            },
+          },
+          {
+            id: 'createdBy',
+            header: 'Created By',
+            width: '12%',
+            minWidth: '110px',
+            priority: 'p2',
+            cell: (q) => {
+              const creatorName = q.createdBy?.name || 'System';
+              const initial = (creatorName || 'S')[0].toUpperCase();
+              return (
+                <div className="flex items-center gap-1.5 min-w-0" title={creatorName}>
+                  <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[10px] flex items-center justify-center shrink-0">
+                    {initial}
+                  </div>
+                  <span className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate">
+                    {creatorName}
+                  </span>
+                </div>
+              );
+            },
+          },
+          {
+            id: 'actions',
+            header: 'Actions',
+            width: '10%',
+            minWidth: '95px',
+            priority: 'p1',
+            align: 'right',
+            disableHiding: true,
+            isSticky: 'right',
+            cell: (q) => {
+              const isApproved = (q.status || '').toLowerCase() === 'approved';
+              return (
+                <div className="flex items-center justify-end gap-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePrintQuote(q);
+                    }}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                    title="Print Quotation PDF"
+                  >
+                    <Printer size={13} />
+                  </button>
 
-              {/* Related Documents Row */}
-              {expandedQuoteId === q.id && (
-                <tr className="bg-slate-50/50 dark:bg-slate-900/40">
-                  <td colSpan={10} className="p-4">
-                    <RelatedDocumentsPanel type="quotation" id={q.id} />
-                  </td>
-                </tr>
-              )}
-            </React.Fragment>
-          ))}
-          </tbody>
-        </table>
-      </div>
+                  {isApproved && !q.order && hasPage('orders') && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleConvertToOrder(q.id);
+                      }}
+                      className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                      title="Convert to Confirmed Order"
+                    >
+                      <ShoppingCart size={13} />
+                    </button>
+                  )}
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedQuoteId(expandedQuoteId === q.id ? null : q.id);
+                    }}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                    title="Related documents"
+                  >
+                    <ChevronRight size={13} className={expandedQuoteId === q.id ? 'rotate-90' : ''} />
+                  </button>
+                </div>
+              );
+            },
+          },
+        ];
+
+        const renderQuotationCard = (q: any) => {
+          const isApproved = (q.status || '').toLowerCase() === 'approved';
+          return (
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#181B26] p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="font-mono text-xs font-bold text-amber-600 dark:text-crm-amber">
+                    {q.quoteNumber}
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    {format(new Date(q.createdAt), 'dd MMM yyyy')}
+                  </span>
+                </div>
+                <span className="text-xs font-mono font-bold text-amber-700 dark:text-crm-amber">
+                  ₹{Number(q.totalAmount || 0).toLocaleString('en-IN')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
+                <span className="font-medium text-slate-900 dark:text-white truncate">
+                  {q.customerName || q.lead?.customerName || 'Walk-in Customer'}
+                </span>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  {q.lines?.length || 0} {q.lines?.length === 1 ? 'item' : 'items'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                {(() => {
+                  const currentStatus = (q.status || 'draft').toLowerCase();
+                  const normalizedStatus = currentStatus === 'accepted' ? 'approved' : currentStatus;
+                  const isConverted = normalizedStatus === 'converted' || Boolean(q.order);
+                  const statusObj = QUOTATION_STATUSES.find((s) => s.value === (isConverted ? 'converted' : normalizedStatus)) || QUOTATION_STATUSES[0];
+                  return (
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border shadow-xs ${statusObj.color}`}>
+                      {statusObj.label}
+                    </span>
+                  );
+                })()}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => handlePrintQuote(q)}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                    title="Print"
+                  >
+                    <Printer size={13} />
+                  </button>
+                  {isApproved && !q.order && (
+                    <button
+                      onClick={() => handleConvertToOrder(q.id)}
+                      className="p-1.5 rounded-lg bg-emerald-600 text-white"
+                      title="Convert to Order"
+                    >
+                      <ShoppingCart size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <>
+            <DataTable
+              pageKey="quotations"
+              data={quotations}
+              columns={quotationColumns}
+              loading={loading}
+              error={error}
+              onRetry={fetchQuotations}
+              userId={user?.id}
+              emptyTitle="No quotations found"
+              emptySubtitle="No quotations match your current search or status filter."
+              cardRenderer={renderQuotationCard}
+            />
+
+            {/* Related Documents Drawer/Panel */}
+            {expandedQuoteId && (
+              <div className="mt-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#181B26] shadow-sm">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-3">
+                  <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                    Related Documents for {quotations.find((q) => q.id === expandedQuoteId)?.quoteNumber}
+                  </span>
+                  <button
+                    onClick={() => setExpandedQuoteId(null)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs flex items-center gap-1 font-semibold"
+                  >
+                    <X size={13} /> Close
+                  </button>
+                </div>
+                <RelatedDocumentsPanel type="quotation" id={expandedQuoteId} />
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* ─── MODAL: Create Quotation (Shared component) ───────────────────── */}
       <CreateQuotationModal

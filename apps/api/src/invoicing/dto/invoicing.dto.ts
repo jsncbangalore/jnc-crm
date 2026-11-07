@@ -76,6 +76,22 @@ export class InvoiceLineItemDto {
   @IsNumber()
   @IsValidGstRate()
   taxRate?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isExempt?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isNilRated?: boolean;
+
+  @IsOptional()
+  @IsString()
+  taxExemption?: string;
+
+  @IsOptional()
+  @IsString()
+  taxExemptReason?: string;
 }
 
 export class RecordPaymentNowDto {
@@ -259,6 +275,14 @@ export class CreateDirectInvoiceDto {
   @IsBoolean()
   @IsOptional()
   applyAdvance?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  confirmedHighAmount?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  confirmHighAmount?: boolean;
 }
 
 export class UpdateInvoiceDto {
@@ -498,6 +522,9 @@ export class VoidInvoiceDto {
   @IsString()
   @IsOptional()
   reason?: string;
+
+  @IsOptional()
+  reversePayments?: boolean;
 }
 
 export class RecordInvoicePaymentDto {
