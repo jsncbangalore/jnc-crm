@@ -1304,6 +1304,12 @@ export const dashboardApi = {
   getKpis: (range?: string) => api.get('/dashboard/kpis', { params: range ? { range } : undefined }),
   completeActivity: (id: string) => api.patch('/dashboard/activities/' + id + '/complete'),
   getConversion: () => api.get('/dashboard/conversion'),
+  getLeadsAnalytics: (range?: string) => api.get('/dashboard/analytics/leads', { params: range ? { range } : undefined }),
+  getQuotesAnalytics: (range?: string) => api.get('/dashboard/analytics/quotes', { params: range ? { range } : undefined }),
+  getOrdersAnalytics: (range?: string) => api.get('/dashboard/analytics/orders', { params: range ? { range } : undefined }),
+  getReceivablesAnalytics: () => api.get('/dashboard/analytics/receivables'),
+  getOverdueAnalytics: () => api.get('/dashboard/analytics/overdue'),
+  getActivityAnalytics: (range?: string) => api.get('/dashboard/analytics/activity', { params: range ? { range } : undefined }),
 };
 
 // ─── Notifications & Email Log ───────────────────────────────────────────────

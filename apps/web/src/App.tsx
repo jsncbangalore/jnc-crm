@@ -31,6 +31,12 @@ import BrandingSettingsPage from './pages/BrandingSettingsPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
 import SharedCartPage from './pages/SharedCartPage';
 import DailyActivitiesPage from './pages/DailyActivitiesPage';
+import LeadsAnalyticsPage from './pages/analytics/LeadsAnalyticsPage';
+import QuotesAnalyticsPage from './pages/analytics/QuotesAnalyticsPage';
+import OrdersAnalyticsPage from './pages/analytics/OrdersAnalyticsPage';
+import ReceivablesAnalyticsPage from './pages/analytics/ReceivablesAnalyticsPage';
+import OverdueAnalyticsPage from './pages/analytics/OverdueAnalyticsPage';
+import ActivityAnalyticsPage from './pages/analytics/ActivityAnalyticsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import PlatformCompaniesPage from './pages/PlatformCompaniesPage';
 import PlatformAdminsPage from './pages/PlatformAdminsPage';
@@ -339,6 +345,12 @@ function AppRoutes() {
         }
       >
         <Route path="/dashboard" element={<TeamPageGuard pageKey="dashboard"><CrmRouteGuard><DashboardPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics/leads" element={<TeamPageGuard pageKey={['dashboard', 'leads']}><CrmRouteGuard><LeadsAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics/quotes" element={<TeamPageGuard pageKey={['dashboard', 'quotations']}><CrmRouteGuard><QuotesAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics/orders" element={<TeamPageGuard pageKey={['dashboard', 'orders']}><CrmRouteGuard><OrdersAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics/receivables" element={<TeamPageGuard pageKey={['dashboard', 'invoices']}><CrmRouteGuard><ReceivablesAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics/overdue" element={<TeamPageGuard pageKey={['dashboard', 'invoices']}><CrmRouteGuard><OverdueAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
+        <Route path="/analytics/activity" element={<TeamPageGuard pageKey={['dashboard', 'daily_activities']}><CrmRouteGuard><ActivityAnalyticsPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/leads" element={<TeamPageGuard pageKey="leads"><CrmRouteGuard><LeadsPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/lead-flow" element={<Navigate to="/start-setup" replace />} />
         <Route path="/lead-setup" element={<Navigate to="/start-setup" replace />} />

@@ -29,6 +29,42 @@ export class DashboardController {
     return this.dashboardService.getLeadConversionStats(user);
   }
 
+  @Get('analytics/leads')
+  @PageAccess('dashboard', 'leads')
+  getLeadsAnalytics(@CurrentUser() user: ScopedUser, @Query('range') range?: string) {
+    return this.dashboardService.getLeadsAnalytics(user, range);
+  }
+
+  @Get('analytics/quotes')
+  @PageAccess('dashboard', 'quotations')
+  getQuotesAnalytics(@CurrentUser() user: ScopedUser, @Query('range') range?: string) {
+    return this.dashboardService.getQuotesAnalytics(user, range);
+  }
+
+  @Get('analytics/orders')
+  @PageAccess('dashboard', 'orders')
+  getOrdersAnalytics(@CurrentUser() user: ScopedUser, @Query('range') range?: string) {
+    return this.dashboardService.getOrdersAnalytics(user, range);
+  }
+
+  @Get('analytics/receivables')
+  @PageAccess('dashboard', 'invoices')
+  getReceivablesAnalytics(@CurrentUser() user: ScopedUser) {
+    return this.dashboardService.getReceivablesAnalytics(user);
+  }
+
+  @Get('analytics/overdue')
+  @PageAccess('dashboard', 'invoices')
+  getOverdueAnalytics(@CurrentUser() user: ScopedUser) {
+    return this.dashboardService.getOverdueAnalytics(user);
+  }
+
+  @Get('analytics/activity')
+  @PageAccess('dashboard', 'daily_activities')
+  getActivityAnalytics(@CurrentUser() user: ScopedUser, @Query('range') range?: string) {
+    return this.dashboardService.getActivityAnalytics(user, range);
+  }
+
   @Patch('activities/:id/complete')
   completeActivity(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.dashboardService.completeActivity(id, user);

@@ -354,19 +354,20 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* ── 2. SUMMARY CARDS ROW (6 Core Operational KPIs) ───────────────────── */}
+      {/* ── 2. SUMMARY CARDS ROW (6 Core Operational KPIs & Dedicated Analytics) ───────────── */}
       <section aria-label="Executive Summary Cards" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
         {/* 1. Leads Card */}
         <Link
-          to={hasPage('leads') ? '/leads' : '/dashboard'}
+          to={hasPage('leads') ? '/analytics/leads' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 dark:hover:border-blue-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-leads"
+          title="Open Leads Intelligence & Acquisition Analytics"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
               Total Leads
             </span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Users size={14} />
             </div>
           </div>
@@ -374,23 +375,27 @@ export default function DashboardPage() {
             <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-slate-900 dark:text-white">
               {kpisData?.leads?.count ?? 0}
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {leadsChartData?.dailyAverage ? `${leadsChartData.dailyAverage}/day avg` : 'Active pipeline'}
-            </p>
+            <div className="flex items-center justify-between mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                {leadsChartData?.dailyAverage ? `${leadsChartData.dailyAverage}/day avg` : 'Active pipeline'}
+              </p>
+              <ArrowUpRight size={13} className="text-blue-600 dark:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
           </div>
         </Link>
 
         {/* 2. Quotations Card */}
         <Link
-          to={hasPage('quotations') ? '/quotations' : '/dashboard'}
+          to={hasPage('quotations') ? '/analytics/quotes' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-purple-500/50 dark:hover:border-purple-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-quotes"
+          title="Open Active Quotes & Revenue Pipeline Analytics"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
               Active Quotes
             </span>
-            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <FileText size={14} />
             </div>
           </div>
@@ -398,23 +403,27 @@ export default function DashboardPage() {
             <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-slate-900 dark:text-white">
               {kpisData?.quotations?.openCount ?? 0}
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {formatIndianRupeesFull(kpisData?.quotations?.openValue || 0)}
-            </p>
+            <div className="flex items-center justify-between mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                {formatIndianRupeesFull(kpisData?.quotations?.openValue || 0)}
+              </p>
+              <ArrowUpRight size={13} className="text-purple-600 dark:text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
           </div>
         </Link>
 
         {/* 3. Orders Card */}
         <Link
-          to={hasPage('orders') ? '/orders' : '/dashboard'}
+          to={hasPage('orders') ? '/analytics/orders' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-amber-500/50 dark:hover:border-amber-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-orders"
+          title="Open Orders Fulfillment & Operations Analytics"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
               Orders Active
             </span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <ShoppingCart size={14} />
             </div>
           </div>
@@ -422,23 +431,27 @@ export default function DashboardPage() {
             <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-slate-900 dark:text-white">
               {kpisData?.orders?.inProgressCount ?? 0}
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              In progress & confirmed
-            </p>
+            <div className="flex items-center justify-between mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                In progress & confirmed
+              </p>
+              <ArrowUpRight size={13} className="text-amber-600 dark:text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
           </div>
         </Link>
 
         {/* 4. Receivable Card */}
         <Link
-          to={hasPage('invoices') ? '/invoices' : '/dashboard'}
+          to={hasPage('invoices') ? '/analytics/receivables' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 dark:hover:border-emerald-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-receivable"
+          title="Open Accounts Receivable (AR) & Aging Analytics"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
               Receivable
             </span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Receipt size={14} />
             </div>
           </div>
@@ -446,23 +459,27 @@ export default function DashboardPage() {
             <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-emerald-600 dark:text-emerald-400 truncate">
               {formatIndianAbbreviated(kpisData?.invoices?.unpaidAmount || 0)}
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {formatIndianRupeesFull(kpisData?.invoices?.unpaidAmount || 0)}
-            </p>
+            <div className="flex items-center justify-between mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                {formatIndianRupeesFull(kpisData?.invoices?.unpaidAmount || 0)}
+              </p>
+              <ArrowUpRight size={13} className="text-emerald-600 dark:text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
           </div>
         </Link>
 
         {/* 5. Overdue Invoices Card */}
         <Link
-          to={hasPage('invoices') ? '/invoices' : '/dashboard'}
+          to={hasPage('invoices') ? '/analytics/overdue' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-rose-500/50 dark:hover:border-rose-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-overdue"
+          title="Open Overdue Invoices & Collection Risk Analytics"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">
               Overdue
             </span>
-            <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <AlertCircle size={14} />
             </div>
           </div>
@@ -470,23 +487,27 @@ export default function DashboardPage() {
             <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-rose-600 dark:text-rose-400">
               {kpisData?.invoices?.overdueCount ?? 0}
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {(kpisData?.invoices?.overdueCount || 0) > 0 ? 'Requires follow-up' : 'All invoices on time'}
-            </p>
+            <div className="flex items-center justify-between mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                {(kpisData?.invoices?.overdueCount || 0) > 0 ? 'Requires follow-up' : 'All invoices on time'}
+              </p>
+              <ArrowUpRight size={13} className="text-rose-600 dark:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
           </div>
         </Link>
 
         {/* 6. Recent Activity / Follow-ups Card */}
         <Link
-          to={hasPage('daily_activities') ? '/daily-activities' : (hasPage('leads') ? '/leads' : '/dashboard')}
+          to={hasPage('daily_activities') ? '/analytics/activity' : '/dashboard'}
           className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between"
           data-testid="summary-card-activity"
+          title="Open Activity & Sales Productivity Analytics"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
               Activity
             </span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform">
               <Clock size={14} />
             </div>
           </div>
@@ -494,9 +515,12 @@ export default function DashboardPage() {
             <div className="text-xl sm:text-2xl font-bold font-mono tabular-nums text-slate-900 dark:text-white">
               {followUpsDueList.length}
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {recentOrdersList.length} recent orders
-            </p>
+            <div className="flex items-center justify-between mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                {recentOrdersList.length} recent orders
+              </p>
+              <ArrowUpRight size={13} className="text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
           </div>
         </Link>
       </section>
