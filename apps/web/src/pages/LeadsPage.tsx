@@ -210,14 +210,85 @@ export default function LeadsPage() {
     setApiError(null);
 
     try {
-      const res = await leadsApi.getPipelineBoard({
-        source: sourceFilter,
-        urgency: urgencyFilter,
-        assignedToId: assignedToId,
-        search: search.trim() || undefined,
-      });
+      let data: any;
+      try {
+        const res = await leadsApi.getPipelineBoard({
+          source: sourceFilter,
+          urgency: urgencyFilter,
+          assignedToId: assignedToId,
+          search: search.trim() || undefined,
+        });
+        data = res.data;
+      } catch (boardErr: any) {
+        // If 404 (e.g. older backend has not yet deployed /leads/pipeline-board and treats it as :id = 'pipeline-board'),
+        // gracefully fall back to the standard leads list and assemble the pipeline board on the client.
+        if (boardErr?.response?.status === 404) {
+          const [listRes, usersRes] = await Promise.all([
+            leadsApi.list({
+              limit: 500,
+              source: sourceFilter !== 'all' ? sourceFilter : undefined,
+              urgency: urgencyFilter !== 'all' ? urgencyFilter : undefined,
+              assignedToId: assignedToId !== 'all' ? assignedToId : undefined,
+              search: search.trim() || undefined,
+            }),
+            usersApi.list().catch(() => ({ data: [] })),
+          ]);
 
-      setBoardData(res.data);
+          const items: Lead[] = listRes.data?.items || (Array.isArray(listRes.data) ? listRes.data : []);
+          const now = new Date();
+          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+          const stages: Record<string, any> = {
+            new: { id: 'new', label: 'New Inquiries', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+            contacted: { id: 'contacted', label: 'Contacted', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+            qualified: { id: 'qualified', label: 'Qualified Requirement', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+            quoted: { id: 'quoted', label: 'Quoted / Proposal Sent', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+            won: { id: 'won', label: 'Won / Closed', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+            lost: { id: 'lost', label: 'Lost / Closed', count: 0, totalValue: 0, cards: [], hasMore: false, totalCards: 0 },
+          };
+
+          let newToday = 0;
+          let urgentCount = 0;
+          let followUpsDueToday = 0;
+
+          for (const lead of items) {
+            const st = (lead.status && stages[lead.status]) ? lead.status : 'new';
+            const val = Number(lead.estimatedValue || 0);
+            stages[st].count += 1;
+            stages[st].totalValue += val;
+            stages[st].cards.push(lead);
+
+            if (lead.createdAt && new Date(lead.createdAt) >= startOfToday) newToday++;
+            if (lead.urgency === 'urgent' || lead.urgency === 'high') urgentCount++;
+            if (lead.nextFollowUpAt && new Date(lead.nextFollowUpAt) <= endOfToday) followUpsDueToday++;
+          }
+
+          for (const s of Object.keys(stages)) {
+            stages[s].totalCards = stages[s].count;
+          }
+
+          const totalLeads = items.length;
+          const pipelineValue = Object.values(stages).reduce((acc: number, s: any) => acc + s.totalValue, 0);
+          const wonCount = stages.won.count;
+          const closedCount = stages.won.count + stages.lost.count;
+          const winRate = closedCount > 0 ? Math.round((wonCount / closedCount) * 100) : 0;
+
+          const rawUsers = Array.isArray(usersRes.data) ? usersRes.data : usersRes.data?.items || [];
+          const salesReps = rawUsers.filter((u: any) => ['sales', 'employee', 'tenant_admin', 'admin'].includes(u.role));
+
+          data = {
+            summary: { totalLeads, newToday, urgentCount, pipelineValue, winRate, followUpsDueToday },
+            stages,
+            sources: ['manual', 'web', 'whatsapp', 'indiamart', 'facebook_lead_ads', 'instagram_lead_ads'],
+            salesReps,
+          };
+        } else {
+          throw boardErr;
+        }
+      }
+
+      setBoardData(data);
       setUpdatedTime(format(new Date(), 'HH:mm'));
 
       // If deep link has ?lead=<id>, open that lead once on initialization
@@ -225,7 +296,7 @@ export default function LeadsPage() {
         hasInitializedDeepLead.current = true;
         const deepLeadId = searchParams.get('lead');
         if (deepLeadId) {
-          for (const st of Object.values(res.data.stages as Record<string, any>)) {
+          for (const st of Object.values(data.stages as Record<string, any>)) {
             const found = (st.cards as Lead[]).find((c) => c.id === deepLeadId);
             if (found) {
               setSelectedLead(found);
