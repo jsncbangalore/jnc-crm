@@ -90,7 +90,9 @@ export function getAllowedCorsOrigins(): string[] {
     .map((u) => u.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 
-  const baseList = process.env.NODE_ENV === 'production' ? [] : DEV_DEFAULT_ORIGINS;
+  const baseList = process.env.NODE_ENV === 'production'
+    ? ['https://admin.jsnc.co.in', 'https://jsnc.co.in', 'https://www.jsnc.co.in']
+    : DEV_DEFAULT_ORIGINS;
   return Array.from(new Set([...baseList, ...envOrigins]));
 }
 

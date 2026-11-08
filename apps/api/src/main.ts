@@ -159,6 +159,10 @@ async function bootstrap() {
   const trustProxyHops = parseTrustProxy(process.env.TRUST_PROXY, isProd);
   expressApp.set('trust proxy', trustProxyHops);
 
+  // Root health endpoints for Cloudflare / Render health checks (ensures HEAD / and GET / return 200 OK)
+  expressApp.get('/', (_req: any, res: any) => res.status(200).json({ status: 'ok', service: 'crm-api' }));
+  expressApp.head('/', (_req: any, res: any) => res.status(200).end());
+
   // 3. HTTP Security via Helmet: HSTS, strict CSP, noSniff, frameguard deny, strict-origin-when-cross-origin
   app.use(
     helmet({

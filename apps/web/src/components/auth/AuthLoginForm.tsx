@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { useAuth, CompanyChoice } from '../../contexts/AuthContext';
 import { getRoleRedirectPath } from '../../utils/roles';
-import { authApi, platformAuthApi, subscribeColdStart, getApiErrorMessage } from '../../services/api';
+import { authApi, platformAuthApi, subscribeColdStart, getApiErrorMessage, getApiBaseUrl } from '../../services/api';
 import { checkApiCompatibility } from '../../utils/versionCheck';
 import TwoFactorChallenge from '../common/TwoFactorChallenge';
 
@@ -92,7 +92,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       // Poll health endpoint every 2.5 seconds
       pollInterval = setInterval(async () => {
         try {
-          const res = await fetch('/api/v1/health', { signal: AbortSignal.timeout(2000) });
+          const res = await fetch(`${getApiBaseUrl()}/health`, { signal: AbortSignal.timeout(3000) });
           if (res.ok) {
             setIsWakingUp(false);
           }
