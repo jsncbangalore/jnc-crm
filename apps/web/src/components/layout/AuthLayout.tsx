@@ -12,7 +12,7 @@ import { useBranding } from '../../contexts/BrandingContext';
 import { Sun, Moon } from 'lucide-react';
 import BrandLogo from '../common/BrandLogo';
 import Footer from '../common/Footer';
-import { BRAND, getBrandHeadline, getBrandFeatures } from '../../config/brand';
+import { BRAND, PRODUCT_NAME, getBrandHeadline, getBrandFeatures } from '../../config/brand';
 
 interface AuthLayoutProps {
   children: React.ReactNode;
@@ -49,7 +49,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
 
         {/* Top: Brand Logo & Product Name */}
         <div className="relative z-10 flex items-center gap-3">
-          <Link to="/" aria-label="JNC CRM home" className="inline-block">
+          <Link to="/" aria-label={`${PRODUCT_NAME} home`} className="inline-block">
             <BrandLogo size={36} reversed={true} showText={true} productOnly={true} />
           </Link>
         </div>
@@ -107,7 +107,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
 
         {/* Mobile Header (Hidden on lg+) */}
         <div className="w-full flex justify-center pt-6 pb-4 sm:pt-4 sm:pb-3 lg:hidden shrink-0">
-          <Link to="/" aria-label="JNC CRM home">
+          <Link to="/" aria-label={`${PRODUCT_NAME} home`}>
             <BrandLogo size={32} reversed={false} showText={true} productOnly={true} />
           </Link>
         </div>

@@ -15,6 +15,7 @@ import {
   COOKIE_OPEN_PANEL_EVENT,
 } from '../../utils/cookieConsent';
 import { useBranding } from '../../contexts/BrandingContext';
+import { PRODUCT_NAME } from '../../config/brand';
 
 export default function CookieConsentBanner() {
   const [isVisible, setIsVisible] = useState(false);
@@ -122,7 +123,7 @@ export default function CookieConsentBanner() {
     setIsCustomizing(false);
   };
 
-  const productName = 'JNC CRM';
+  const productName = PRODUCT_NAME;
 
   return (
     <AnimatePresence>

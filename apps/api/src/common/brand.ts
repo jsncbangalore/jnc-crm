@@ -6,9 +6,10 @@
  * ----------------------------------------------------- */
 
 export const BRAND = {
-  name: 'JNC CRM',
+  name: 'Syntra CRM',
+  companyName: 'JNC Network Communication',
   get copyright() {
-    return `© ${new Date().getFullYear()} JNC CRM. All rights reserved.`;
+    return `© ${new Date().getFullYear()} JNC Network Communication. Syntra CRM. All rights reserved.`;
   },
 } as const;
 

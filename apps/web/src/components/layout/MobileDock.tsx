@@ -14,6 +14,7 @@ import { useBranding } from '../../contexts/BrandingContext';
 import { useAllowedPages } from '../../hooks/useAllowedPages';
 import { Menu, X, LogOut, Sun, Moon } from 'lucide-react';
 import BrandLogo from '../common/BrandLogo';
+import { PRODUCT_NAME } from '../../config/brand';
 
 export default function MobileDock() {
   const {
@@ -104,7 +105,7 @@ export default function MobileDock() {
                   <BrandLogo size={32} variant="icon" />
                   <div>
                     <h3 className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
-                      JNC CRM
+                      {PRODUCT_NAME}
                     </h3>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400">All Operations & Modules</p>
                   </div>

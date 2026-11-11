@@ -17,6 +17,7 @@ import WebsiteLeadsTab from '../components/flow-studio/WebsiteLeadsTab';
 import UnifiedInboxTab from '../components/flow-studio/UnifiedInboxTab';
 import FlowAnalyticsTab from '../components/flow-studio/FlowAnalyticsTab';
 import BrandLogo from '../components/common/BrandLogo';
+import { PRODUCT_NAME } from '../config/brand';
 import Footer from '../components/common/Footer';
 
 export type StudioTab = 'builder' | 'indiamart' | 'meta' | 'website' | 'inbox' | 'analytics';
@@ -137,7 +138,7 @@ export default function StartSetupPage() {
               <div className="leading-tight overflow-hidden pl-1 border-l border-slate-200 dark:border-white/10">
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-black text-slate-900 dark:text-white tracking-tight">
-                    JNC CRM
+                    {PRODUCT_NAME}
                   </span>
                 </div>
                 <span className="text-[10px] font-bold text-crm-teal">

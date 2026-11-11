@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useBranding } from '../contexts/BrandingContext';
+import { PRODUCT_NAME } from '../config/brand';
 import { authApi, brandingApi } from '../services/api';
 import {
   User,
@@ -947,7 +948,7 @@ export default function MyAccountPage() {
                   <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Company Organization</span>
                   <p className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5 mt-0.5">
                     <Building2 size={13} className="text-crm-teal shrink-0" />
-                    <span className="truncate">{branding?.companyDisplayName || companyProfile?.name || user?.tenant?.name || 'JNC CRM'}</span>
+                    <span className="truncate">{branding?.companyDisplayName || companyProfile?.name || user?.tenant?.name || PRODUCT_NAME}</span>
                   </p>
                 </div>
                 {(companyProfile?.gstin || (user?.tenant as any)?.gstin) && (
@@ -1205,7 +1206,7 @@ export default function MyAccountPage() {
                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
                     <span className="text-slate-500 dark:text-slate-400">Company Display Name</span>
                     <p className="font-bold text-slate-900 dark:text-white mt-0.5">
-                      {branding?.companyDisplayName || companyProfile?.name || user?.tenant?.name || 'JNC CRM'}
+                      {branding?.companyDisplayName || companyProfile?.name || user?.tenant?.name || PRODUCT_NAME}
                     </p>
                   </div>
 

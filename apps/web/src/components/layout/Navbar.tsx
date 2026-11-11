@@ -24,6 +24,7 @@ import DropdownPortal from '../common/DropdownPortal';
 import { useAllowedPages, PAGE_SUB_ITEMS } from '../../hooks/useAllowedPages';
 import { LAYERS } from '../../constants/layers';
 import BrandLogo from '../common/BrandLogo';
+import { PRODUCT_NAME } from '../../config/brand';
 import { openCookiePreferencesPanel } from '../../utils/cookieConsent';
 
 interface TabDefinition {
@@ -287,7 +288,7 @@ export default function Navbar() {
                 className="text-xs font-bold text-slate-900 dark:text-white tracking-tight leading-none"
                 data-testid="portal-company-name"
               >
-                JNC CRM
+                {PRODUCT_NAME}
               </span>
             </div>
           </NavLink>
@@ -564,7 +565,7 @@ export default function Navbar() {
                 <div>
                   <span>Workspace: </span>
                   <strong className="text-slate-900 dark:text-white">
-                    {isPlatformOwner ? 'Platform Administration' : 'JNC CRM'}
+                    {isPlatformOwner ? 'Platform Administration' : PRODUCT_NAME}
                   </strong>
                 </div>
               </div>

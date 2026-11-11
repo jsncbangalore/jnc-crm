@@ -10,6 +10,7 @@ import {
 import { isPlatformOwner } from '../../utils/roles';
 import { useAllowedPages } from '../../hooks/useAllowedPages';
 import BrandLogo from '../common/BrandLogo';
+import { PRODUCT_NAME } from '../../config/brand';
 
 const colorForPath: Record<string, string> = {
   '/':                  'text-crm-blue',
@@ -49,7 +50,7 @@ export default function Sidebar() {
           <BrandLogo size={32} variant="icon" />
           <div className="overflow-hidden">
             <div className="text-sm font-black text-slate-950 dark:text-white leading-tight">
-              JNC CRM
+              {PRODUCT_NAME}
             </div>
             {isPlatform && (
               <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider block">

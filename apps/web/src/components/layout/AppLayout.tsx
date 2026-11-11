@@ -5,7 +5,7 @@ import MobileDock from './MobileDock';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBranding } from '../../contexts/BrandingContext';
 import { useAllowedPages } from '../../hooks/useAllowedPages';
-import { getProductName } from '../../config/brand';
+import { getProductName, PRODUCT_NAME } from '../../config/brand';
 import { authApi, setAccessToken, setImpersonationAccessToken, getImpersonationAccessToken, setCurrentTabUserId } from '../../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { KeyRound, ShieldAlert, CheckCircle2, Lock, Database } from 'lucide-react';
@@ -142,7 +142,7 @@ export default function AppLayout({ children }: { children?: React.ReactNode } =
         <div className="flex items-center gap-2">
           <BrandLogo size={28} variant="icon" />
           <span className="text-xs font-bold text-slate-900 dark:text-white tracking-tight">
-            JNC CRM
+            {PRODUCT_NAME}
           </span>
         </div>
       </div>

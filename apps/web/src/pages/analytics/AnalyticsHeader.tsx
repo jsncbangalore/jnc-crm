@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { RefreshCw, ExternalLink } from 'lucide-react';
+import { PRODUCT_NAME } from '../../config/brand';
 
 interface AnalyticsHeaderProps {
   title: string;
@@ -30,7 +31,7 @@ export default function AnalyticsHeader({
 }: AnalyticsHeaderProps) {
   React.useEffect(() => {
     if (title) {
-      document.title = `${title} | JNC CRM`;
+      document.title = `${title} | ${PRODUCT_NAME}`;
     }
   }, [title]);
 

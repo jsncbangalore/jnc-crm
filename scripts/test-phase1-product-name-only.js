@@ -34,7 +34,8 @@ const TEST_ADMIN_EMAIL = 'admin@zzclienttest.com';
 const TEST_PASSWORD = 'DevPassword@123';
 
 const CURRENT_YEAR = new Date().getFullYear();
-const EXPECTED_FOOTER_TEXT = `© ${CURRENT_YEAR} JNC CRM. All rights reserved.`;
+const EXPECTED_FOOTER_TEXT = `© ${CURRENT_YEAR} JNC Network Communication. Syntra CRM. All rights reserved.`;
+const EXPECTED_PRODUCT_NAME = 'Syntra CRM';
 
 // Custom SVG Document Logo for ZZ Client Test Ltd (distinct green/purple emblem)
 const TEST_DOCUMENT_LOGO = 'data:image/svg+xml;base64,' + Buffer.from(
@@ -233,8 +234,8 @@ async function runPhase1Verification() {
           const title = await page.title();
           assert.strictEqual(
             title,
-            'JNC CRM',
-            `[PAGE TITLE] Expected "JNC CRM" on ${route.path}, but got "${title}"`
+            EXPECTED_PRODUCT_NAME,
+            `[PAGE TITLE] Expected "${EXPECTED_PRODUCT_NAME}" on ${route.path}, but got "${title}"`
           );
 
           // ASSERTION B: Top-left chrome text must be "JNC CRM"
@@ -243,8 +244,8 @@ async function runPhase1Verification() {
             const portalNameText = (await portalNameEl.first().textContent())?.trim();
             assert.strictEqual(
               portalNameText,
-              'JNC CRM',
-              `[TOP-LEFT BRAND] Expected "JNC CRM" on ${route.path}, but got "${portalNameText}"`
+              EXPECTED_PRODUCT_NAME,
+              `[TOP-LEFT BRAND] Expected "${EXPECTED_PRODUCT_NAME}" on ${route.path}, but got "${portalNameText}"`
             );
           }
 
@@ -339,7 +340,7 @@ async function runPhase1Verification() {
 
       // Title must be JNC CRM
       const title = await publicPage.title();
-      assert.strictEqual(title, 'JNC CRM', `[PUBLIC TITLE] Expected "JNC CRM" on ${pRoute}, got "${title}"`);
+      assert.strictEqual(title, EXPECTED_PRODUCT_NAME, `[PUBLIC TITLE] Expected "${EXPECTED_PRODUCT_NAME}" on ${pRoute}, got "${title}"`);
 
       // Footer check
       const footerEl = publicPage.locator('[data-testid="global-footer"]');

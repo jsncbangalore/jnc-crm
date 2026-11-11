@@ -52,7 +52,7 @@ for (const entry of webZip.getEntries()) {
 }
 
 // Add Deployment README
-const deployReadme = `# JNC CRM - Production Deployment Package
+const deployReadme = `# Syntra CRM - Production Deployment Package
 
 ## Contents:
 - \`frontend/\`: Compiled production static web assets ready for Hostinger, Apache, Nginx, or Vercel/Netlify. Contains \`.htaccess\` with strict security headers (no \`wasm-unsafe-eval\`).

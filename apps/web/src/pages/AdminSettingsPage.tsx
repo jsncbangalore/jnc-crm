@@ -9,6 +9,7 @@ import BrandingSettingsPage from './BrandingSettingsPage';
 import MailAccountsPage from './MailAccountsPage';
 import AuditLogsPage from './AuditLogsPage';
 import BrandLogo from '../components/common/BrandLogo';
+import { PRODUCT_NAME } from '../config/brand';
 import Footer from '../components/common/Footer';
 
 interface AdminSettingsPageProps {
@@ -71,7 +72,7 @@ export default function AdminSettingsPage({ initialTab = 'users' }: AdminSetting
             <BrandLogo size={32} />
             <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-[#2A3042]">
               <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white tracking-tight" data-testid="portal-company-name">
-                JNC CRM
+                {PRODUCT_NAME}
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-crm-blue/15 text-crm-blue border border-crm-blue/30">
                 Administration

@@ -13,7 +13,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ command, mode }) => {
   const isDev = command === 'serve';
   const env = loadEnv(mode, process.cwd(), '');
-  const productName = env.VITE_PRODUCT_NAME || 'JNC CRM';
+  const productName = env.VITE_PRODUCT_NAME || 'Syntra CRM';
   const apiBaseUrl = env.VITE_API_BASE_URL || '';
   process.env.VITE_PRODUCT_NAME = productName;
 

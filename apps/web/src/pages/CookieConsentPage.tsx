@@ -26,6 +26,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { useBranding } from '../contexts/BrandingContext';
+import { PRODUCT_NAME } from '../config/brand';
 import Footer from '../components/common/Footer';
 import {
   getConsent,
@@ -166,7 +167,7 @@ export default function CookieConsentPage() {
   const privacyContact =
     branding.privacyEmail ||
     branding.supportEmail ||
-    'JNC CRM Administrator';
+    `${PRODUCT_NAME} Administrator`;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0B1220] text-slate-800 dark:text-slate-100 transition-colors flex flex-col justify-between">
@@ -185,7 +186,7 @@ export default function CookieConsentPage() {
           </button>
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-slate-900 dark:text-white">
-              JNC CRM
+              {PRODUCT_NAME}
             </span>
           </div>
         </div>
