@@ -30,9 +30,10 @@ export const BRAND_ASSETS = {
   logoLight: logoLightAsset,
   logoDark: logoDarkAsset,
   logoIcon: logoIconAsset,
-  faviconSvg: '/favicon.svg',
-  faviconPng: '/favicon.png',
-  favicon32: '/favicon-32x32.png',
+  faviconSvg: '/favicon.svg?v=syntra',
+  faviconPng: '/favicon.png?v=syntra',
+  favicon32: '/favicon-32x32.png?v=syntra',
+  faviconIco: '/favicon.ico?v=syntra',
 } as const;
 
 export const getProductName = (_branding?: { companyDisplayName?: string } | null): string => {

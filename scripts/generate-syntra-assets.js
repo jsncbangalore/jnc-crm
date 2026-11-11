@@ -87,7 +87,8 @@ async function processAssets() {
   const icon192 = await sharp(croppedIconBuffer).resize(192, 192).png().toBuffer();
   fs.writeFileSync('apps/web/public/logo-icon.png', icon192);
   fs.writeFileSync('apps/web/src/assets/logo-icon.png', icon192);
-  console.log('Saved logo-icon.png in public and src/assets');
+  fs.writeFileSync('apps/api/assets/logo-icon.png', icon192);
+  console.log('Saved logo-icon.png in public, src/assets, and api/assets');
 
   // Save favicon.png (64x64) and favicon-32x32.png (32x32)
   const fav64 = await sharp(croppedIconBuffer).resize(64, 64).png().toBuffer();
@@ -100,14 +101,52 @@ async function processAssets() {
   const favB64 = fav64.toString('base64');
   const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">\n  <image width="64" height="64" href="data:image/png;base64,${favB64}" />\n</svg>\n`;
   fs.writeFileSync('apps/web/public/favicon.svg', svgContent);
+  fs.writeFileSync('apps/api/assets/favicon.svg', svgContent);
+  fs.writeFileSync('apps/api/assets/logo-icon.svg', svgContent);
   console.log('Saved favicon.svg');
+
+  // Save favicon.ico (16, 32, 48)
+  const png16 = await sharp(croppedIconBuffer).resize(16, 16).png().toBuffer();
+  const png32 = fav32;
+  const png48 = await sharp(croppedIconBuffer).resize(48, 48).png().toBuffer();
+  const images = [
+    { width: 16, height: 16, buffer: png16 },
+    { width: 32, height: 32, buffer: png32 },
+    { width: 48, height: 48, buffer: png48 }
+  ];
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0);
+  header.writeUInt16LE(1, 2);
+  header.writeUInt16LE(images.length, 4);
+  let offset = 6 + (images.length * 16);
+  const dirEntries = [];
+  for (const img of images) {
+    const entry = Buffer.alloc(16);
+    entry.writeUInt8(img.width, 0);
+    entry.writeUInt8(img.height, 1);
+    entry.writeUInt8(0, 2);
+    entry.writeUInt8(0, 3);
+    entry.writeUInt16LE(1, 4);
+    entry.writeUInt16LE(32, 6);
+    entry.writeUInt32LE(img.buffer.length, 8);
+    entry.writeUInt32LE(offset, 12);
+    offset += img.buffer.length;
+    dirEntries.push(entry);
+  }
+  const icoBuffer = Buffer.concat([header, ...dirEntries, ...images.map(img => img.buffer)]);
+  fs.writeFileSync('apps/web/public/favicon.ico', icoBuffer);
+  console.log('Saved favicon.ico in public');
 
   // 2. Process Logo Light (Syntra CRM)
   console.log('Reading logo source:', logoSrc);
   const logoBuffer = await sharp(logoSrc).png().toBuffer();
   fs.writeFileSync('apps/web/public/logo.png', logoBuffer);
   fs.writeFileSync('apps/web/src/assets/logo.png', logoBuffer);
-  console.log('Saved logo.png in public and src/assets');
+  fs.writeFileSync('apps/api/assets/logo.png', logoBuffer);
+  fs.writeFileSync('apps/api/assets/logo.jpg', logoBuffer);
+  fs.writeFileSync('apps/api/assets/jnc-logo.jpg', logoBuffer);
+  fs.writeFileSync('apps/web/src/assets/jnc-logo.jpg', logoBuffer);
+  console.log('Saved logo.png in public, src/assets, and api/assets');
 
   // 3. Process Logo Dark (white text for dark backgrounds)
   const logoRaw = await sharp(logoSrc).raw().toBuffer({ resolveWithObject: true });
