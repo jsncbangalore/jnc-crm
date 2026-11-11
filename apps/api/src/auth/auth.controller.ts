@@ -708,30 +708,33 @@ export class AuthController {
 
   // ─── 2-Step Verification (2FA) Endpoints ────────────────────────────────────
 
-  private async resolveUserIdFromRequest(req: Request): Promise<string> {
-    if ((req as any).user?.id) {
-      return (req as any).user.id;
+  private async resolveCompanySetupContext(req: Request, dto?: any) {
+    let currentUser = (req as any).user;
+    if (!currentUser) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7).trim();
+        currentUser = await this.authService.validateAccessToken(token).catch(() => null);
+      }
     }
-    const authHeader = req.headers.authorization;
-    const setupHeader = req.headers['x-setup-token'] as string | undefined;
-    const token = setupHeader || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null);
-    return this.authService.resolveUserIdFromAuthOrSetupToken((req as any).user, token || undefined);
+    const setupToken = (req.headers['x-setup-token'] as string) || dto?.setupToken;
+    return this.authService.resolveSetupContext(currentUser, setupToken, 'company');
   }
 
   /** 2FA Status: returns whether 2FA is enabled, method, remaining backup codes, grace period */
   @Get('2fa/status')
   @Public()
   async getTwoFactorStatus(@Req() req: Request) {
-    const userId = await this.resolveUserIdFromRequest(req);
-    return this.authService.getTwoFactorStatus(userId);
+    const authContext = await this.resolveCompanySetupContext(req);
+    return this.authService.getTwoFactorStatus(authContext.userId);
   }
 
   /** 2FA Setup: generates TOTP secret and otpauth URI (never logged) */
   @Post('2fa/setup')
   @Public()
   async setupTwoFactor(@Body() dto: SetupTwoFactorDto, @Req() req: Request) {
-    const userId = await this.resolveUserIdFromRequest(req);
-    return this.authService.setupTwoFactor(userId, dto?.currentPassword || dto?.password);
+    const authContext = await this.resolveCompanySetupContext(req, dto);
+    return this.authService.setupTwoFactor(authContext.userId, dto?.currentPassword || dto?.password, authContext.isSetupToken);
   }
 
   /** 2FA Enable: verifies code, enables TOTP, and issues 10 backup codes once */
@@ -743,14 +746,29 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const userId = await this.resolveUserIdFromRequest(req);
+    const authContext = await this.resolveCompanySetupContext(req, dto);
     const ip = req.ip || req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'] as string | undefined;
-    const result: any = await this.authService.enableTwoFactor(userId, dto.code, ip, userAgent);
+    const result: any = await this.authService.enableTwoFactor(
+      authContext.userId,
+      dto.code,
+      ip,
+      userAgent,
+      authContext.jti,
+      dto.trustDevice,
+    );
 
     if (result && result.refreshToken) {
       res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(AUTH_COOKIE_PATH, true, req));
       res.cookie(SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(true, req));
+    }
+    if (result && result.trustedDeviceCookie) {
+      res.cookie(
+        result.trustedDeviceCookie.name,
+        result.trustedDeviceCookie.value,
+        result.trustedDeviceCookie.options,
+      );
+      delete result.trustedDeviceCookie;
     }
     return result;
   }

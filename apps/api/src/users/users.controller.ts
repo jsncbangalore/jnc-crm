@@ -193,6 +193,18 @@ export class UsersController {
     return this.usersService.resetTwoFactor(id, user, ip);
   }
 
+  @Post(':id/extend-2fa-grace')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin')
+  async extendTwoFactorGrace(
+    @CurrentUser() user: ScopedUser,
+    @Param('id') id: string,
+    @Body() body: { days?: number },
+    @Req() req: Request,
+  ) {
+    const ip = req.ip || req.socket?.remoteAddress;
+    return this.usersService.extendGracePeriod(id, body?.days || 7, user, ip);
+  }
+
   @Post(':id/unlock')
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async unlockUser(@CurrentUser() user: ScopedUser, @Param('id') id: string) {

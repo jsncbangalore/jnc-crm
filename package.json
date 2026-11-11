@@ -43,6 +43,7 @@
     "backend:push": "node scripts/push-backend.js",
     "admin:set-password": "npm --workspace=apps/api run admin:set-password",
     "admin:reset-2fa": "npm --workspace=apps/api run admin:reset-2fa",
+    "admin:extend-2fa-grace": "npm --workspace=apps/api run admin:extend-2fa-grace --",
     "admin:set-phone": "npm --workspace=apps/api run admin:set-phone",
     "test:auth-security": "npm --workspace=apps/api run test:auth-security",
     "test:page-registry": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-page-registry.ts",

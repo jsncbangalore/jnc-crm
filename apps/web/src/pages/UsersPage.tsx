@@ -1055,6 +1055,41 @@ export default function UsersPage() {
     });
   };
 
+  // Handle Extend 2-Step Grace Period
+  const handleExtendUserGracePeriod = (targetUser: User) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Extend 2-Step Grace Period',
+      message: `Extend 2-step verification grace period for ${targetUser.name} (${targetUser.email}) by 7 days? They will be permitted to sign in without 2-step verification during this period.`,
+      confirmText: 'Extend grace period',
+      variant: 'primary',
+      iconType: 'key',
+      onConfirm: async () => {
+        setActionLoadingId(targetUser.id);
+        setConfirmDialog(null);
+        try {
+          await usersApi.extendTwoFactorGrace(targetUser.id, 7);
+          await fetchUsers();
+          setAlertDialog({
+            isOpen: true,
+            title: 'Grace Period Extended',
+            message: `Grace period for ${targetUser.name} has been extended by 7 days.`,
+            variant: 'success',
+          });
+        } catch (err: any) {
+          setAlertDialog({
+            isOpen: true,
+            title: 'Action Failed',
+            message: 'Failed to extend grace period: ' + (err?.response?.data?.message || err.message),
+            variant: 'error',
+          });
+        } finally {
+          setActionLoadingId(null);
+        }
+      },
+    });
+  };
+
   // Handle Sign Out User Everywhere (Revoke All Sessions)
   const handleRevokeUserSessions = (targetUser: User) => {
     setConfirmDialog({
@@ -1887,6 +1922,19 @@ export default function UsersPage() {
                               title="Reset 2-Step Verification (remove authenticator & backup codes)"
                             >
                               <ShieldAlert size={14} className={actionLoadingId === u.id ? 'animate-spin' : ''} />
+                            </button>
+                          )}
+
+                          {/* Extend 2-Step Grace Period Action */}
+                          {!isCurrentUser && (isPlatform || currentUser?.role === 'tenant_admin') && (
+                            <button
+                              onClick={() => handleExtendUserGracePeriod(u)}
+                              disabled={actionLoadingId === u.id || !canActOnUser}
+                              className="p-1.5 rounded hover:bg-amber-500/10 dark:hover:bg-amber-500/20 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              title="Extend grace period"
+                              aria-label="Extend grace period"
+                            >
+                              <Clock size={14} className={actionLoadingId === u.id ? 'animate-spin' : ''} />
                             </button>
                           )}
 

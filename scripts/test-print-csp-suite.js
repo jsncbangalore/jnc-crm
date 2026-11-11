@@ -197,6 +197,12 @@ async function runScenario(browser, scenario) {
     localStorage.setItem('crm_tab_user_id', user.id);
     localStorage.setItem('crm_activity_timestamp', String(Date.now()));
     localStorage.setItem('crm_theme', theme);
+    localStorage.setItem('crm_cookie_consent', JSON.stringify({
+      choice: 'all',
+      preferences: true,
+      policyVersion: '2026.10.1',
+      savedAt: new Date().toISOString(),
+    }));
     sessionStorage.setItem('crm_portal', 'staff');
     sessionStorage.setItem('crm_tab_user_id', user.id);
   }, { user: fakeUser, theme: scenario.theme });
@@ -224,7 +230,7 @@ async function runScenario(browser, scenario) {
 
   // Open the Invoice Modal
   console.log('  1. Opening Invoice Viewer modal...');
-  const viewDocBtn = page.locator('button[title="View Official Document"]:visible, h3:has-text("INV-2026-9999"):visible').first();
+  const viewDocBtn = page.locator('button[title="View"]:visible, button[title="View Document"]:visible, button[title="View Official Document"]:visible, button:has-text("INV-2026-9999"):visible, span:has-text("INV-2026-9999"):visible').first();
   await viewDocBtn.waitFor({ state: 'visible', timeout: 8000 });
   await viewDocBtn.click();
 

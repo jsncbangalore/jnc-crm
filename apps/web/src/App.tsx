@@ -99,6 +99,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function DirectSetupRedirect() {
+  const { setupPass } = useAuth();
+  if (!setupPass?.setupToken) {
+    try {
+      sessionStorage.setItem('crm_setup_ended_msg', 'Your setup session ended. Please sign in again.');
+    } catch {}
+    return <Navigate to="/login" replace />;
+  }
+  return <LoginPage />;
+}
+
 function PlatformOwnerGuard({ children }: { children: React.ReactNode }) {
   const { user, staffUser } = useAuth();
   const currentUser = user || staffUser;
@@ -234,6 +245,8 @@ function AppRoutes() {
       <Route path="/cart-share" element={<SharedCartPage />} />
       <Route path="/cart" element={<SharedCartPage />} />
       <Route path="/platform/login" element={<PlatformLoginPage />} />
+      <Route path="/setup-2fa" element={<DirectSetupRedirect />} />
+      <Route path="/2fa/setup" element={<DirectSetupRedirect />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<Navigate to="/forgot-password" replace />} />
 

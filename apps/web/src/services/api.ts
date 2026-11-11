@@ -1236,9 +1236,18 @@ export const authApi = {
   sendTwoFactorEmail: (data: { loginTicket: string }) =>
     api.post('/auth/login/send-2fa-email', data),
   getTwoFactorStatus: () => api.get('/auth/2fa/status'),
-  setupTwoFactor: (data?: { currentPassword?: string }) =>
-    api.post('/auth/2fa/setup', data || {}),
-  enableTwoFactor: (data: { code: string }) => api.post('/auth/2fa/enable', data),
+  setupTwoFactor: (data?: { currentPassword?: string; setupToken?: string }) => {
+    const token = data?.setupToken;
+    return api.post('/auth/2fa/setup', data || {}, {
+      headers: token ? { 'x-setup-token': token } : undefined,
+    });
+  },
+  enableTwoFactor: (data: { code: string; setupToken?: string; trustDevice?: boolean }) => {
+    const token = data?.setupToken;
+    return api.post('/auth/2fa/enable', data, {
+      headers: token ? { 'x-setup-token': token } : undefined,
+    });
+  },
   regenerateBackupCodes: (data: { currentPass: string; code: string }) =>
     api.post('/auth/2fa/backup-codes/regenerate', data),
   disableTwoFactor: (data: { currentPass: string; code: string }) =>
@@ -1258,6 +1267,19 @@ export const platformAuthApi = {
     api.post('/platform-auth/verify-2fa', data),
   sendTwoFactorEmail: (data: { loginTicket: string }) =>
     api.post('/platform-auth/send-2fa-email', data),
+  getTwoFactorStatus: () => api.get('/platform-auth/2fa/status'),
+  setupTwoFactor: (data?: { currentPassword?: string; setupToken?: string }) => {
+    const token = data?.setupToken;
+    return api.post('/platform-auth/2fa/setup', data || {}, {
+      headers: token ? { 'x-setup-token': token } : undefined,
+    });
+  },
+  enableTwoFactor: (data: { code: string; setupToken?: string; trustDevice?: boolean }) => {
+    const token = data?.setupToken;
+    return api.post('/platform-auth/2fa/enable', data, {
+      headers: token ? { 'x-setup-token': token } : undefined,
+    });
+  },
   me: () => api.get('/platform-auth/me'),
   checkCurrentSession: async () => {
     return axios.get(`${getApiBaseUrl()}/platform-auth/session-probe`, {
@@ -1612,6 +1634,8 @@ export const usersApi = {
   sendResetCode: (id: string) => api.post(`/users/${id}/send-reset-code`),
   revokeSessions: (id: string) => api.post(`/users/${id}/revoke-sessions`),
   resetTwoFactor: (id: string) => api.post(`/users/${id}/reset-2fa`),
+  extendTwoFactorGrace: (id: string, days?: number) =>
+    api.post(`/users/${id}/extend-2fa-grace`, { days: days || 7 }),
   unlock: (id: string) => api.post(`/users/${id}/unlock`),
   forceResetAllPasswords: () => api.post('/users/force-reset-all'),
   toggleActive: (id: string, isActive: boolean) =>

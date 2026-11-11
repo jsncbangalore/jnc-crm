@@ -36,6 +36,7 @@
     "inspect:mail-tls": "node scripts/prisma-safe.js inspect-mail-tls",
     "admin:set-password": "node scripts/prisma-safe.js admin:set-password",
     "admin:reset-2fa": "node scripts/prisma-safe.js admin:reset-2fa",
+    "admin:extend-2fa-grace": "node scripts/prisma-safe.js admin:extend-2fa-grace",
     "admin:set-phone": "node scripts/prisma-safe.js admin:set-phone",
     "bundle:api": "node ../../scripts/bundle-api.js"
   },

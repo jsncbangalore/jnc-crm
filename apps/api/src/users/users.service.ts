@@ -1398,6 +1398,53 @@ export class UsersService {
     };
   }
 
+  async extendGracePeriod(targetUserId: string, days: number, actor: ScopedUser, clientIp?: string) {
+    const targetUser = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      include: { tenant: true },
+    });
+    if (!targetUser) throw new NotFoundException('Target user not found');
+
+    const isPlatform = isPlatformOwner(actor);
+    if (!isPlatform && actor.tenantId !== targetUser.tenantId) {
+      throw new ForbiddenException('Cannot modify users in another company.');
+    }
+
+    if (actor.role !== 'tenant_admin' && !isPlatform && actor.role !== 'admin') {
+      throw new ForbiddenException('Insufficient permissions to extend grace period.');
+    }
+
+    const extendDays = Math.max(1, Math.min(30, days || 7));
+    const newFirstLogin = new Date(Date.now() - (7 - extendDays) * 24 * 60 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: { firstLoginAfter2FaReleaseAt: newFirstLogin },
+    });
+
+    await this.auditService.log({
+      tenantId: targetUser.tenantId,
+      actorId: actor.id,
+      actorName: actor.employeeCode || actor.id,
+      action: '2FA_GRACE_PERIOD_EXTENDED',
+      entityName: 'User',
+      entityId: targetUserId,
+      afterState: {
+        targetUserId,
+        targetEmail: targetUser.email,
+        extendedDays: extendDays,
+        newFirstLogin: newFirstLogin.toISOString(),
+        resetBy: actor.employeeCode || actor.id,
+        ipAddress: clientIp,
+      },
+    });
+
+    return {
+      success: true,
+      message: `2-Step grace period for ${targetUser.name || targetUser.email} has been extended by ${extendDays} day(s).`,
+    };
+  }
+
   /**
    * Retrieves the current page access configuration for a user.
    */

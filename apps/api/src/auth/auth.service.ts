@@ -4416,7 +4416,7 @@ export class AuthService {
       tenantId: result.tenantId ?? (result.tenant ? result.tenant.id : null),
     };
 
-    let gracePeriodInfo: { twoFactorGracePeriod?: { active: boolean; daysRemaining: number } } = {};
+    let gracePeriodInfo: { twoFactorGracePeriod?: { active: boolean; daysRemaining: number; banner?: string | null } } = {};
 
     if (!bypass2Fa) {
       // 1. Fetch fresh user state including twoFactor and tenant configuration
@@ -4451,32 +4451,50 @@ export class AuthService {
         if (isEnforced) {
           const grace = await this.evaluateGracePeriod(freshUser || resolvedUser);
           if (grace.isGraceExpired) {
-            // Grace period expired: user can ONLY reach the setup screen
-            const setupToken = this.jwtService.sign(
-              {
-                sub: resolvedUser.id,
-                role: resolvedUser.role,
-                tenantId: resolvedUser.tenantId,
-                purpose: 'two_factor_setup',
-              },
-              {
-                secret: process.env.JWT_SECRET,
-                expiresIn: '15m',
-                issuer: process.env.JWT_ISSUER || 'crm-api',
-                audience: process.env.JWT_AUDIENCE || 'crm-client',
-              },
-            );
-            return {
-              requiresTwoFactorSetup: true,
-              setupToken,
-              user: formatAuthUser(freshUser || resolvedUser),
-              message: '2-Step verification is required. Please set up two-factor authentication to continue.',
-            };
+            const isSetupAvailable = await this.isTwoFactorSetupAvailable();
+            if (!isSetupAvailable) {
+              this.logger.warn(`[AUTH] 2FA setup path unavailable - bypassing forced lockout for user ${resolvedUser.id}`);
+            } else {
+              // Grace period expired: user can ONLY reach the setup screen
+              const jti = crypto.randomUUID();
+              const setupPortal = portal === 'platform' ? 'platform' : 'company';
+              const setupToken = this.jwtService.sign(
+                {
+                  sub: resolvedUser.id,
+                  role: resolvedUser.role,
+                  tenantId: resolvedUser.tenantId || null,
+                  portal: setupPortal,
+                  purpose: '2fa_setup',
+                  jti,
+                },
+                {
+                  secret: process.env.JWT_SECRET,
+                  expiresIn: '10m',
+                  issuer: process.env.JWT_ISSUER || 'crm-api',
+                  audience: process.env.JWT_AUDIENCE || 'crm-client',
+                },
+              );
+              return {
+                requiresTwoFactorSetup: true,
+                setupToken,
+                user: formatAuthUser(freshUser || resolvedUser),
+                message: '2-Step verification is required. Please set up two-factor authentication to continue.',
+              };
+            }
           } else if (grace.isGraceActive) {
+            const days = grace.daysRemaining;
+            let banner: string | null = null;
+            if (days <= 3) {
+              banner = `2-step verification will be required in ${days} day${days > 1 ? 's' : ''}. Please set up your authenticator now to avoid disruption.`;
+              if (days === 3 || days === 1) {
+                void this.sendGracePeriodReminderEmail(freshUser || resolvedUser, days);
+              }
+            }
             gracePeriodInfo = {
               twoFactorGracePeriod: {
                 active: true,
-                daysRemaining: grace.daysRemaining,
+                daysRemaining: days,
+                banner,
               },
             };
           }
@@ -5275,7 +5293,7 @@ export class AuthService {
     };
   }
 
-  async setupTwoFactor(userId: string, currentPassword?: string) {
+  async setupTwoFactor(userId: string, currentPassword?: string, isSetupToken: boolean = false) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, email: true, employeeCode: true, name: true, passwordHash: true, tenantId: true },
@@ -5297,7 +5315,7 @@ export class AuthService {
       new Date(existing2Fa.pendingExpiresAt) > now
     ) {
       // Repeated request in that time returns the SAME secret instead of a new one
-      if (currentPassword) {
+      if (currentPassword && !isSetupToken) {
         const passOk = await bcrypt.compare(currentPassword, user.passwordHash);
         if (!passOk) {
           throw new UnauthorizedException('Current password does not match.');
@@ -5317,13 +5335,15 @@ export class AuthService {
       }
     }
 
-    // Starting fresh setup requires current password
-    if (!currentPassword) {
-      throw new BadRequestException('Current password is required to set up 2-step verification.');
-    }
-    const passOk = await bcrypt.compare(currentPassword, user.passwordHash);
-    if (!passOk) {
-      throw new UnauthorizedException('Current password does not match.');
+    // Starting fresh setup requires current password (unless authenticated via valid setupToken)
+    if (!isSetupToken) {
+      if (!currentPassword) {
+        throw new BadRequestException('Current password is required to set up 2-step verification.');
+      }
+      const passOk = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!passOk) {
+        throw new UnauthorizedException('Current password does not match.');
+      }
     }
 
     const secret = generateTotpSecret();
@@ -5364,7 +5384,14 @@ export class AuthService {
     };
   }
 
-  async enableTwoFactor(userId: string, code: any, clientIp?: string, userAgent?: string) {
+  async enableTwoFactor(
+    userId: string,
+    code: any,
+    clientIp?: string,
+    userAgent?: string,
+    setupTokenJti?: string,
+    trustDevice?: boolean,
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { twoFactor: true, tenant: true },
@@ -5379,19 +5406,19 @@ export class AuthService {
     // Limit wrong attempts: 5 per 10 minutes
     if (twoFa.setupLockedUntil && new Date(twoFa.setupLockedUntil) > now) {
       const waitMin = Math.ceil((new Date(twoFa.setupLockedUntil).getTime() - now.getTime()) / 60000);
-      throw new BadRequestException(`Too many wrong attempts. Please wait ${waitMin} minute(s) and try again.`);
+      throw new BadRequestException(`Too many failed attempts. Please wait ${waitMin} minute(s) before trying again.`);
     }
 
     // Check 10-minute setup expiry
     if (twoFa.pendingExpiresAt && new Date(twoFa.pendingExpiresAt) <= now) {
-      throw new BadRequestException('Setup took too long. Start again.');
+      throw new BadRequestException('The setup session expired. Please sign in again.');
     }
 
     const rawCode = typeof code === 'string' ? code : (code as any)?.code || '';
     const cleanCode = rawCode.trim().replace(/\s+/g, '');
     const secretEncToUse = twoFa.pendingSecretEnc || twoFa.secretEnc;
     if (!secretEncToUse) {
-      throw new BadRequestException('Setup took too long. Start again.');
+      throw new BadRequestException('The setup session expired. Please sign in again.');
     }
 
     const plainSecret = decryptAtRest(secretEncToUse);
@@ -5423,7 +5450,19 @@ export class AuthService {
         },
       }).catch(() => {});
 
-      throw new BadRequestException("The code is wrong or has expired. Check your phone's time and try again");
+      if (isLocked) {
+        throw new BadRequestException('Too many failed attempts. Please wait 10 minutes before trying again.');
+      }
+      throw new BadRequestException('The code is not correct. Check the time on your phone.');
+    }
+
+    // Mark single use for setupToken
+    if (setupTokenJti) {
+      await this.prisma.usedSelectionToken.upsert({
+        where: { jti: setupTokenJti },
+        create: { jti: setupTokenJti },
+        update: {},
+      });
     }
 
     const backupCodes = generateBackupCodes(10);
@@ -5461,6 +5500,35 @@ export class AuthService {
 
     void this.sendSecurityNotification(user.id, '2fa_enabled', { time: new Date() });
 
+    // Handle trusted device if requested
+    let trustedDeviceCookie: { name: string; value: string; options: any } | null = null;
+    if (trustDevice) {
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const deviceLabel = parseDeviceLabel(userAgent);
+      const isAdmin = user.role === 'platform_super_admin' || user.role === 'tenant_admin';
+      const maxAgeMs = isAdmin ? TRUSTED_DEVICE_ADMIN_MAX_AGE_MS : TRUSTED_DEVICE_MAX_AGE_MS;
+      const expiresAt = new Date(Date.now() + maxAgeMs);
+
+      await this.prisma.trustedDevice.create({
+        data: {
+          userId: user.id,
+          tokenHash,
+          label: deviceLabel,
+          userAgent: userAgent ? userAgent.substring(0, 500) : null,
+          ip: maskIp(clientIp || '127.0.0.1'),
+          expiresAt,
+          lastUsedAt: now,
+        },
+      });
+
+      trustedDeviceCookie = {
+        name: TRUSTED_DEVICE_COOKIE_NAME,
+        value: rawToken,
+        options: getTrustedDeviceCookieOptions(isAdmin),
+      };
+    }
+
     const tokens = this.generateTokens(user, undefined, false);
 
     return {
@@ -5468,6 +5536,7 @@ export class AuthService {
       backupCodes,
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
+      trustedDeviceCookie,
       user: formatAuthUser(user),
       message: '2-Step verification has been successfully enabled.',
     };
@@ -5607,6 +5676,14 @@ export class AuthService {
     await this.prisma.userTwoFactor.delete({
       where: { userId },
     });
+
+    // Reset grace period so user receives full grace period again if re-enforced
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        firstLoginAfter2FaReleaseAt: null,
+      },
+    }).catch(() => {});
 
     // Revoke all trusted devices for user
     await this.prisma.trustedDevice.deleteMany({
@@ -5802,31 +5879,180 @@ export class AuthService {
     };
   }
 
-  // Helper for 2FA setup and status user resolution
-  async resolveUserIdFromAuthOrSetupToken(actor: any, setupToken?: string): Promise<string> {
-    if (actor?.id) return actor.id;
-    if (!setupToken) {
-      throw new UnauthorizedException('Authentication or setup token required.');
-    }
+  async isTwoFactorSetupAvailable(): Promise<boolean> {
     try {
-      const payload: any = this.jwtService.verify(setupToken, { secret: process.env.JWT_SECRET });
-      if (payload.purpose === 'two_factor_setup' && payload.sub) {
-        return payload.sub;
-      }
-      const targetId = payload.sub || payload.userId || payload.id;
-      if (targetId) {
-        const user = await this.prisma.user.findUnique({
-          where: { id: targetId },
-          select: { id: true, isActive: true },
+      if (!process.env.JWT_SECRET) return false;
+      const testSecret = 'TESTSECRET123456';
+      const enc = encryptAtRest(testSecret);
+      const dec = decryptAtRest(enc);
+      if (dec !== testSecret) return false;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async sendGracePeriodReminderEmail(user: any, daysRemaining: number): Promise<void> {
+    try {
+      if (!user || !user.email) return;
+      const appName = getProductName();
+      const subject = `Important: 2-Step Verification required in ${daysRemaining} day${daysRemaining > 1 ? 's' : ''}`;
+
+      const oneDayAgo = new Date(Date.now() - 20 * 60 * 60 * 1000);
+      const existing = await this.prisma.emailOutbox.findFirst({
+        where: {
+          to: user.email.toLowerCase(),
+          subject: { contains: '2-Step Verification required' },
+          createdAt: { gte: oneDayAgo },
+        },
+      });
+      if (existing) return;
+
+      const text = `Hello ${user.name || ''},\n\nYour account requires 2-step verification. You have ${daysRemaining} day${daysRemaining > 1 ? 's' : ''} remaining in your grace period.\n\nPlease set up your authenticator app soon to avoid disruption.\n\nThank you,\n${appName} Team`;
+      const html = `<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
+        <h2 style="color: #0f172a; margin-top: 0;">2-Step Verification Required</h2>
+        <p style="color: #475569;">Your role or organization policy requires 2-step verification. You have <strong>${daysRemaining} day${daysRemaining > 1 ? 's' : ''}</strong> remaining before enforcement.</p>
+        <p style="color: #64748b; font-size: 13px;">Please sign in and set up your authenticator app to ensure uninterrupted access.</p>
+      </div>`;
+
+      await this.prisma.emailOutbox.create({
+        data: {
+          tenantId: user.tenantId || null,
+          to: user.email.toLowerCase(),
+          subject,
+          text,
+          html,
+          status: 'pending',
+          attempts: 0,
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`[AUTH] Failed to queue grace period reminder email: ${err.message}`);
+    }
+  }
+
+  // Helper for 2FA setup and status user resolution
+  async resolveSetupContext(
+    actor: any,
+    setupToken?: string,
+    expectedPortal?: 'company' | 'platform',
+  ): Promise<{ userId: string; isSetupToken: boolean; jti?: string; payload?: any }> {
+    if (actor?.id) {
+      if (expectedPortal === 'platform' && actor.role !== 'platform_super_admin') {
+        throw new UnauthorizedException({
+          statusCode: 401,
+          code: 'SETUP_TOKEN_INVALID',
+          message: 'This setup link is not valid for this portal. Please sign in again.',
         });
-        if (user && user.isActive) {
-          return user.id;
+      }
+      if (expectedPortal === 'company' && actor.role === 'platform_super_admin') {
+        throw new UnauthorizedException({
+          statusCode: 401,
+          code: 'SETUP_TOKEN_INVALID',
+          message: 'This setup link is not valid for this portal. Please sign in again.',
+        });
+      }
+      return { userId: actor.id, isSetupToken: false };
+    }
+
+    if (!setupToken || typeof setupToken !== 'string' || setupToken.trim().length === 0) {
+      throw new UnauthorizedException({
+        statusCode: 401,
+        code: 'SETUP_TOKEN_MISSING',
+        message: 'Your setup session ended. Please sign in again.',
+      });
+    }
+
+    try {
+      const payload: any = this.jwtService.verify(setupToken.trim(), {
+        secret: process.env.JWT_SECRET,
+        issuer: process.env.JWT_ISSUER || 'crm-api',
+        audience: process.env.JWT_AUDIENCE || 'crm-client',
+      });
+
+      if (payload.purpose !== '2fa_setup' && payload.purpose !== 'two_factor_setup') {
+        throw new UnauthorizedException({
+          statusCode: 401,
+          code: 'SETUP_TOKEN_INVALID',
+          message: 'This setup link is not valid. Please sign in again.',
+        });
+      }
+
+      if (expectedPortal && payload.portal && payload.portal !== expectedPortal) {
+        throw new UnauthorizedException({
+          statusCode: 401,
+          code: 'SETUP_TOKEN_INVALID',
+          message: 'This setup link is not valid for this portal. Please sign in again.',
+        });
+      }
+
+      const targetId = payload.sub || payload.userId || payload.id;
+      if (!targetId) {
+        throw new UnauthorizedException({
+          statusCode: 401,
+          code: 'SETUP_TOKEN_INVALID',
+          message: 'This setup link is not valid. Please sign in again.',
+        });
+      }
+
+      if (payload.jti) {
+        const consumed = await this.prisma.usedSelectionToken.findUnique({
+          where: { jti: payload.jti },
+        });
+        if (consumed) {
+          throw new UnauthorizedException({
+            statusCode: 401,
+            code: 'SETUP_TOKEN_INVALID',
+            message: 'This setup session has already been used. Please sign in again.',
+          });
         }
       }
-      throw new UnauthorizedException('Invalid setup token.');
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: targetId },
+        select: { id: true, role: true, tenantId: true, isActive: true },
+      });
+      if (!user || !user.isActive) {
+        throw new UnauthorizedException({
+          statusCode: 401,
+          code: 'SETUP_TOKEN_INVALID',
+          message: 'This setup link is not valid. Please sign in again.',
+        });
+      }
+
+      if (payload.tenantId && user.tenantId && payload.tenantId !== user.tenantId) {
+        throw new UnauthorizedException({
+          statusCode: 401,
+          code: 'SETUP_TOKEN_INVALID',
+          message: 'This setup link is not valid. Please sign in again.',
+        });
+      }
+
+      return {
+        userId: user.id,
+        isSetupToken: true,
+        jti: payload.jti,
+        payload,
+      };
     } catch (err: any) {
       if (err instanceof UnauthorizedException) throw err;
-      throw new UnauthorizedException('Invalid or expired setup token.');
+      if (err.name === 'TokenExpiredError') {
+        throw new UnauthorizedException({
+          statusCode: 401,
+          code: 'SETUP_TOKEN_EXPIRED',
+          message: 'The setup session expired. Please sign in again.',
+        });
+      }
+      throw new UnauthorizedException({
+        statusCode: 401,
+        code: 'SETUP_TOKEN_INVALID',
+        message: 'This setup link is not valid. Please sign in again.',
+      });
     }
+  }
+
+  async resolveUserIdFromAuthOrSetupToken(actor: any, setupToken?: string): Promise<string> {
+    const res = await this.resolveSetupContext(actor, setupToken);
+    return res.userId;
   }
 }

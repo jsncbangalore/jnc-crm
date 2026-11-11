@@ -124,6 +124,8 @@ function verifyCorsPreflight(baseUrl) {
     'X-Client-Version',
     'X-IndiaMart-Token',
     'Range',
+    'X-Setup-Token',
+    'x-setup-token',
   ];
 
   console.log(` [PREFLIGHT] Testing CORS OPTIONS preflight to: ${preflightUrl}`);
@@ -180,6 +182,97 @@ function verifyCorsPreflight(baseUrl) {
     req.on('error', reject);
     req.end();
   });
+}
+
+// 5. Verify Setup Endpoints Contract with invalid setup token & preflight
+function verifySetupEndpoints(baseUrl) {
+  const endpoints = ['/auth/2fa/setup', '/platform-auth/2fa/setup'];
+  console.log(' [VERIFY] Testing 2-step setup endpoints with invalid setup token...');
+
+  return Promise.all(
+    endpoints.map((ep) => {
+      const urlStr = `${baseUrl}${ep}`;
+      const parsed = new URL(urlStr);
+      const client = parsed.protocol === 'https:' ? https : http;
+
+      // Check 1: OPTIONS preflight with setup header
+      const preflightPromise = new Promise((resolve, reject) => {
+        const req = client.request(
+          urlStr,
+          {
+            method: 'OPTIONS',
+            headers: {
+              'Origin': 'http://localhost:5173',
+              'Access-Control-Request-Method': 'POST',
+              'Access-Control-Request-Headers': 'Content-Type, X-Setup-Token, x-setup-token',
+            },
+            timeout: 10000,
+          },
+          (res) => {
+            const allowHeadersRaw = (res.headers['access-control-allow-headers'] || '').toLowerCase();
+            const allowed = allowHeadersRaw.split(',').map((h) => h.trim());
+            if (res.statusCode < 200 || res.statusCode >= 300) {
+              return reject(new Error(`OPTIONS preflight to ${ep} returned HTTP ${res.statusCode}`));
+            }
+            if (!allowed.includes('x-setup-token')) {
+              return reject(new Error(`OPTIONS preflight to ${ep} did not allow x-setup-token header`));
+            }
+            console.log(` [PREFLIGHT OK] ${ep} allowed OPTIONS preflight with setup header (HTTP ${res.statusCode})`);
+            resolve();
+          }
+        );
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error(`OPTIONS preflight to ${ep} timed out`));
+        });
+        req.on('error', reject);
+        req.end();
+      });
+
+      // Check 2: POST with invalid setup token expecting 401 (not 404 or 500)
+      const postPromise = new Promise((resolve, reject) => {
+        const payload = JSON.stringify({});
+        const req = client.request(
+          urlStr,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(payload),
+              'X-Setup-Token': 'invalid-sample-setup-token-12345',
+              'Accept': 'application/json',
+            },
+            timeout: 10000,
+          },
+          (res) => {
+            let body = '';
+            res.on('data', (c) => (body += c));
+            res.on('end', () => {
+              if (res.statusCode === 401) {
+                console.log(` [SETUP OK] ${ep} properly rejected invalid setup token with HTTP 401.`);
+                resolve();
+              } else {
+                reject(
+                  new Error(
+                    `Endpoint ${ep} returned HTTP ${res.statusCode} (expected 401, not 404 or 500): ${body.substring(0, 150)}`
+                  )
+                );
+              }
+            });
+          }
+        );
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error(`POST to ${ep} timed out`));
+        });
+        req.on('error', reject);
+        req.write(payload);
+        req.end();
+      });
+
+      return Promise.all([preflightPromise, postPromise]);
+    })
+  );
 }
 
 async function run() {
@@ -268,6 +361,9 @@ async function run() {
 
     // Verify CORS Preflight contract
     await verifyCorsPreflight(baseUrl);
+
+    // Verify 2-Step Setup Endpoints Contract
+    await verifySetupEndpoints(baseUrl);
 
     console.log(' -> System is compatible for website release deployment.');
     console.log('='.repeat(65));

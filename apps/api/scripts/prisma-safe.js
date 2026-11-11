@@ -210,6 +210,7 @@ const knownActions = {
   'inspect-mail-tls': { type: 'ts-node', file: 'scripts/inspect-mail-tls.ts' },
   'admin:set-password': { type: 'ts-node', file: 'scripts/admin-set-password.ts' },
   'admin:reset-2fa': { type: 'ts-node', file: 'scripts/admin-reset-2fa.ts' },
+  'admin:extend-2fa-grace': { type: 'ts-node', file: 'scripts/admin-extend-2fa-grace.ts' },
   'admin:set-phone': { type: 'ts-node', file: 'scripts/admin-set-phone.ts' },
 };
 

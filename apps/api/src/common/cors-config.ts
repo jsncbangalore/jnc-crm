@@ -50,6 +50,8 @@ export const CORS_ALLOWED_HEADERS = [
   'x-client-version',
   'X-IndiaMart-Token',
   'x-indiamart-token',
+  'X-Setup-Token',
+  'x-setup-token',
   'Range',
   'range',
   'Origin',

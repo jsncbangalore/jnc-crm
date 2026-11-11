@@ -18,7 +18,14 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService, formatAuthUser } from './auth.service';
-import { PlatformLoginDto, RefreshTokenDto, VerifyTwoFactorDto, SendTwoFactorEmailDto } from './dto/login.dto';
+import {
+  PlatformLoginDto,
+  RefreshTokenDto,
+  VerifyTwoFactorDto,
+  SendTwoFactorEmailDto,
+  SetupTwoFactorDto,
+  EnableTwoFactorDto,
+} from './dto/login.dto';
 import { Response, Request } from 'express';
 import { isAllowedOrigin } from '../common/cors-config';
 import { CurrentUser } from './current-user.decorator';
@@ -130,6 +137,72 @@ export class PlatformAuthController {
     const ip = req.ip || req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'] as string | undefined;
     return this.authService.sendTwoFactorEmail(dto.loginTicket, ip, userAgent);
+  }
+
+  private async resolvePlatformSetupContext(req: Request, dto?: any) {
+    let currentUser = (req as any).user;
+    if (!currentUser) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7).trim();
+        currentUser = await this.authService.validateAccessToken(token).catch(() => null);
+      }
+    }
+    const setupToken = (req.headers['x-setup-token'] as string) || dto?.setupToken;
+    return this.authService.resolveSetupContext(currentUser, setupToken, 'platform');
+  }
+
+  /** Platform 2FA Status */
+  @Get('2fa/status')
+  @Public()
+  async getTwoFactorStatus(@Req() req: Request) {
+    const authContext = await this.resolvePlatformSetupContext(req);
+    return this.authService.getTwoFactorStatus(authContext.userId);
+  }
+
+  /** Platform 2FA Setup: generates TOTP secret and otpauth URI */
+  @HttpCode(HttpStatus.OK)
+  @Post('2fa/setup')
+  @Public()
+  async setupTwoFactor(@Body() dto: SetupTwoFactorDto, @Req() req: Request) {
+    const authContext = await this.resolvePlatformSetupContext(req, dto);
+    return this.authService.setupTwoFactor(authContext.userId, dto?.currentPassword || dto?.password, authContext.isSetupToken);
+  }
+
+  /** Platform 2FA Enable: verifies code, enables TOTP, and issues 10 backup codes once */
+  @HttpCode(HttpStatus.OK)
+  @Post('2fa/enable')
+  @Public()
+  async enableTwoFactor(
+    @Body() dto: EnableTwoFactorDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const authContext = await this.resolvePlatformSetupContext(req, dto);
+    const ip = req.ip || req.socket?.remoteAddress;
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    const result: any = await this.authService.enableTwoFactor(
+      authContext.userId,
+      dto.code,
+      ip,
+      userAgent,
+      authContext.jti,
+      dto.trustDevice,
+    );
+
+    if (result && result.refreshToken) {
+      res.cookie(PLATFORM_REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(PLATFORM_AUTH_COOKIE_PATH, false, req));
+      res.cookie(PLATFORM_SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(false, req));
+    }
+    if (result && result.trustedDeviceCookie) {
+      res.cookie(
+        result.trustedDeviceCookie.name,
+        result.trustedDeviceCookie.value,
+        result.trustedDeviceCookie.options,
+      );
+      delete result.trustedDeviceCookie;
+    }
+    return result;
   }
 
   /** Platform refresh token rotation with CSRF protection */

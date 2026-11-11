@@ -299,6 +299,14 @@ export class EnableTwoFactorDto {
   @IsString()
   @MaxLength(20, { message: 'code must not exceed 20 characters' })
   code: string;
+
+  @IsOptional()
+  @IsString()
+  setupToken?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  trustDevice?: boolean;
 }
 
 export class RegenerateBackupCodesDto {
@@ -401,6 +409,10 @@ export class SetupTwoFactorDto {
   @IsOptional()
   @IsString()
   currentPassword?: string;
+
+  @IsOptional()
+  @IsString()
+  setupToken?: string;
 }
 
 export class RequestPhoneVerificationDto {

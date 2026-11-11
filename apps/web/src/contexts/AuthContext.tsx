@@ -48,6 +48,14 @@ export interface SelectionPending {
   selectionToken: string;
 }
 
+export interface SetupPass {
+  setupToken: string;
+  portal: 'company' | 'platform';
+  user?: any;
+  issuedAt: number;
+  expiresAt: number;
+}
+
 export type LoginResult =
   | (User & { redirectPath?: string })
   | { requiresCompanySelection: true; companies: CompanyChoice[]; selectionToken: string }
@@ -63,6 +71,10 @@ interface AuthContextType {
   user: User | null;
   staffUser: User | null;
   platformUser: User | null;
+  setupPass: SetupPass | null;
+  setSetupPass: (pass: SetupPass | null) => void;
+  clearSetupPass: () => void;
+  completeForcedSetup: (authResult: { accessToken?: string; refreshToken?: string; user?: any }, portalType: 'company' | 'platform') => void;
   isLoading: boolean;
   /** Returns user on success, company selection, or 2FA challenge */
   login: (
@@ -236,6 +248,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showInactivityModal, setShowInactivityModal] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(60);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [setupPass, setSetupPass] = useState<SetupPass | null>(null);
+  const clearSetupPass = useCallback(() => setSetupPass(null), []);
 
   const lastActivityRef = useRef<number>(Date.now());
   const lastUserInputRef = useRef<number>(Date.now());
@@ -909,6 +923,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (data.requiresTwoFactorSetup) {
+      setSetupPass({
+        setupToken: data.setupToken as string,
+        portal: 'company',
+        user: data.user,
+        issuedAt: Date.now(),
+        expiresAt: Date.now() + 10 * 60 * 1000,
+      });
       return {
         requiresTwoFactorSetup: true as const,
         setupToken: data.setupToken as string,
@@ -953,6 +974,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (data.requiresTwoFactorSetup) {
+      setSetupPass({
+        setupToken: data.setupToken as string,
+        portal: 'platform',
+        user: data.user,
+        issuedAt: Date.now(),
+        expiresAt: Date.now() + 10 * 60 * 1000,
+      });
       return {
         requiresTwoFactorSetup: true as const,
         setupToken: data.setupToken as string,
@@ -994,6 +1022,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (data.requiresTwoFactorSetup) {
+      setSetupPass({
+        setupToken: data.setupToken as string,
+        portal: 'company',
+        user: data.user,
+        issuedAt: Date.now(),
+        expiresAt: Date.now() + 10 * 60 * 1000,
+      });
       return {
         requiresTwoFactorSetup: true as const,
         setupToken: data.setupToken as string,
@@ -1088,6 +1123,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const completeForcedSetup = useCallback(
+    (authResult: { accessToken?: string; refreshToken?: string; user?: any }, portalType: 'company' | 'platform') => {
+      clearSetupPass();
+      lastActivityRef.current = Date.now();
+      if (authResult.accessToken) {
+        if (portalType === 'platform') {
+          try {
+            sessionStorage.setItem('crm_portal', 'platform');
+          } catch {}
+          setPlatformAccessToken(authResult.accessToken);
+          setStaffAccessToken(authResult.accessToken);
+          if (authResult.refreshToken) {
+            setStoredRefreshToken(authResult.refreshToken, true);
+          }
+          if (authResult.user) {
+            setPlatformUserWithStorage(authResult.user);
+            setStaffUserWithStorage(authResult.user);
+            setCurrentTabUserId(authResult.user.id);
+            broadcastSignIn(authResult.user.id, 'platform');
+          }
+        } else {
+          try {
+            sessionStorage.setItem('crm_portal', 'staff');
+          } catch {}
+          setStaffAccessToken(authResult.accessToken);
+          if (authResult.refreshToken) {
+            setStoredRefreshToken(authResult.refreshToken, false);
+          }
+          if (authResult.user) {
+            setStaffUserWithStorage(authResult.user);
+            setCurrentTabUserId(authResult.user.id);
+            broadcastSignIn(authResult.user.id, 'staff');
+            if (authResult.user.role === 'platform_super_admin') {
+              setPlatformAccessToken(authResult.accessToken);
+              setPlatformUserWithStorage(authResult.user);
+            }
+          }
+        }
+      }
+    },
+    [clearSetupPass]
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -1108,6 +1186,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!user,
         sessionExpired,
         clearSession,
+        setupPass,
+        setSetupPass,
+        clearSetupPass,
+        completeForcedSetup,
       }}
     >
       {children}

@@ -24,6 +24,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
+    if (payload.purpose === '2fa_setup' || payload.purpose === 'two_factor_setup') {
+      throw new UnauthorizedException('Setup token cannot be used as an access token.');
+    }
+
     const user = await this.prisma.user.findFirst({
       where: { id: payload.sub, deletedAt: null },
       select: {

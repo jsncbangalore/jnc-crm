@@ -37,7 +37,7 @@ type Step = 'login' | 'select-company' | 'two-factor' | 'two-factor-setup';
 
 export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
   const isPlatform = portal === 'platform';
-  const { login, platformLogin, selectCompany, logout } = useAuth();
+  const { login, platformLogin, selectCompany, logout, setupPass } = useAuth();
   const navigate = useNavigate();
 
 
@@ -155,6 +155,32 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
     } catch {}
   }, []);
 
+  // Check for interrupted forced setup on reload or direct visit
+  useEffect(() => {
+    try {
+      const pendingSetup = sessionStorage.getItem('crm_pending_forced_setup');
+      if (pendingSetup) {
+        sessionStorage.removeItem('crm_pending_forced_setup');
+        if (!setupPass?.setupToken) {
+          setError('Your setup session ended. Please sign in again.');
+        }
+      }
+      const setupEndedMsg = sessionStorage.getItem('crm_setup_ended_msg');
+      if (setupEndedMsg) {
+        sessionStorage.removeItem('crm_setup_ended_msg');
+        setError(setupEndedMsg);
+      }
+    } catch {}
+  }, [setupPass]);
+
+  // Guard against being in two-factor-setup step without an in-memory pass
+  useEffect(() => {
+    if (step === 'two-factor-setup' && !setupPass?.setupToken && !setupToken) {
+      setStep('login');
+      setError('Your setup session ended. Please sign in again.');
+    }
+  }, [step, setupPass, setupToken]);
+
   // Check API compatibility at form startup
   useEffect(() => {
     let isMounted = true;
@@ -237,6 +263,9 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       }
 
       if ('requiresTwoFactorSetup' in result && result.requiresTwoFactorSetup) {
+        try {
+          sessionStorage.setItem('crm_pending_forced_setup', '1');
+        } catch {}
         setSetupToken(result.setupToken);
         setStep('two-factor-setup');
         return;
@@ -284,6 +313,9 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       }
 
       if ('requiresTwoFactorSetup' in result && result.requiresTwoFactorSetup) {
+        try {
+          sessionStorage.setItem('crm_pending_forced_setup', '1');
+        } catch {}
         setSetupToken(result.setupToken);
         setStep('two-factor-setup');
         return;
@@ -405,6 +437,9 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
         setupToken={setupToken}
         onSuccess={(destination) => navigate(destination)}
         onBack={() => {
+          try {
+            sessionStorage.removeItem('crm_pending_forced_setup');
+          } catch {}
           setStep('login');
           setError('');
         }}
