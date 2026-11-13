@@ -8,7 +8,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptAtRest } from '../common/encryption.util';
-import { BRAND_CONFIG } from '../common/brand';
+import { BRAND_CONFIG, PRODUCT_NAME } from '../common/brand';
 import * as nodemailer from 'nodemailer';
 import * as dns from 'dns';
 import { isPrivateOrBlockedIp, isInternalHostname } from '../common/ssrf.util';
@@ -335,7 +335,7 @@ export class NotificationsService {
         return {
           transporter,
           fromEmail: primaryFrom,
-          senderName: process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM',
+          senderName: PRODUCT_NAME,
           isCustomTenantAccount: false,
         };
       } catch (err: any) {
@@ -346,7 +346,7 @@ export class NotificationsService {
     return {
       transporter: null,
       fromEmail: primaryFrom,
-      senderName: process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM',
+      senderName: PRODUCT_NAME,
       isCustomTenantAccount: false,
     };
   }
@@ -412,7 +412,7 @@ export class NotificationsService {
 
     const configuredFrom = process.env.RESEND_FROM;
     let fromFormatted = configuredFrom
-      ? (configuredFrom.includes('<') ? configuredFrom : `"${senderName || process.env.PRODUCT_NAME || 'CRM'}" <${configuredFrom}>`)
+      ? (configuredFrom.includes('<') ? configuredFrom : `"${senderName || PRODUCT_NAME}" <${configuredFrom}>`)
       : (senderName ? `"${senderName}" <${fromEmail}>` : fromEmail);
 
     const payload = {
@@ -465,15 +465,15 @@ export class NotificationsService {
         });
         if (tenant) {
           return {
-            companyDisplayName: tenant.name || (process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM'),
+            companyDisplayName: tenant.name || PRODUCT_NAME,
             companyPhone: tenant.phone || '',
-            companyLogoUrl: tenant.logoUrl || process.env.PRODUCT_LOGO_URL || '',
+            companyLogoUrl: tenant.logoUrl || '',
           };
         }
       } catch {}
     }
 
-    const defaultName = process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM';
+    const defaultName = PRODUCT_NAME;
     const defaultLogo = process.env.PRODUCT_LOGO_URL || '';
 
     return {
@@ -545,7 +545,7 @@ export class NotificationsService {
       : (process.env.EMAIL_FROM || process.env.SMTP_USER || '');
     const senderName = tenantTransporterInfo.isCustomTenantAccount
       ? (tenantTransporterInfo.senderName || branding.companyDisplayName)
-      : (process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM');
+      : PRODUCT_NAME;
     const mailProvider = this.getMailProvider();
 
     let status: MailDeliveryStatus = 'failed';
@@ -773,7 +773,7 @@ export class NotificationsService {
    */
   async sendTestMail(targetEmail: string, requestId?: string): Promise<MailTestResult> {
     const provider = this.getMailProvider();
-    const prodName = process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM';
+    const prodName = PRODUCT_NAME;
     const testSubject = `[${prodName}] Mail Provider Test (${provider.toUpperCase()})`;
     const testHtml = `
       <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">

@@ -11,7 +11,7 @@ import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 import { encryptAtRest, decryptAtRest } from '../common/encryption.util';
 import { getCompanyProfileCompleteness, getUnifiedCompanyProfile } from '../common/company-profile.util';
-import { BRAND_CONFIG } from '../common/brand';
+import { BRAND_CONFIG, PRODUCT_NAME } from '../common/brand';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dns from 'dns';
@@ -1163,7 +1163,7 @@ export class SettingsService {
         }
 
         if (recipientEmail) {
-          const prodName = process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM';
+          const prodName = PRODUCT_NAME;
           await transporter.sendMail({
             from: `"${prodName} Mail Test" <${email || smtpUser}>`,
             to: recipientEmail,

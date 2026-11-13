@@ -31,7 +31,7 @@ import {
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { decodeCartFromUrl, SharedCartItem } from '../utils/cartShare';
-import { BRAND_CONFIG } from '../config/brand';
+import { BRAND, BRAND_CONFIG } from '../config/brand';
 import { executeDirectPrint } from '../utils/directPrint';
 
 export default function SharedCartPage() {
@@ -609,7 +609,7 @@ export default function SharedCartPage() {
 
       {/* ─── SIMPLE CLEAN FOOTER ─────────────────────────────────────────── */}
       <footer className="border-t border-slate-200 dark:border-[#22283A] py-4 text-center text-xs text-slate-400 print:hidden">
-        &copy; {new Date().getFullYear()} {BRAND_CONFIG.displayName} &bull; Material Procurement & Supply Chain
+        {BRAND.copyright}
       </footer>
     </div>
   );

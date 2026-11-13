@@ -1,0 +1,19 @@
+{
+  "COMPANY_LEGAL_NAME": "JNC Network Communication",
+  "COMPANY_SHORT_NAME": "JNC",
+  "PRODUCT_NAME": "Syntra CRM",
+  "COPYRIGHT_FORMAT": "© <year> JNC Network Communication. Syntra CRM. All rights reserved.",
+  "changeNote": "BRAND CHANGE APPROVED",
+  "hashes": {
+    "apps/web/src/assets/logo.png": "c0b7e58f2db34f88356bbb77e613636c86bdd9cf1142eeac8f5b60eba4fe2c80",
+    "apps/web/src/assets/logo-dark.png": "0fc5ac986b27645b3dcaa180e02c3139b7e82344c7fed1480317634ae833a409",
+    "apps/web/src/assets/logo-icon.png": "b95e50e9a807197febfa699db6e60c6e3a2615568ee34b89defafada0ebebf9f",
+    "apps/web/public/logo.png": "c0b7e58f2db34f88356bbb77e613636c86bdd9cf1142eeac8f5b60eba4fe2c80",
+    "apps/web/public/logo-dark.png": "0fc5ac986b27645b3dcaa180e02c3139b7e82344c7fed1480317634ae833a409",
+    "apps/web/public/logo-icon.png": "b95e50e9a807197febfa699db6e60c6e3a2615568ee34b89defafada0ebebf9f",
+    "apps/web/public/favicon.ico": "2d64f27ab886d28c1a2faa3c348cc5b4d545db913646357b274abb1c4133ff70",
+    "apps/web/public/favicon.png": "6c0b37b2aaa66a209ac4e8380eff707cfb50c0a821142eeca6a43b6e48e65e12",
+    "apps/web/public/favicon.svg": "5f2c286ef498bd4d362b35fd5b4962cfd629730914bf3580df5bfd19d9b6445c",
+    "apps/web/public/favicon-32x32.png": "b0ef6f5e2153a8c2fa59ec7a1b62394b8960aa27bde6fc89ce13b5e153c288e3"
+  }
+}

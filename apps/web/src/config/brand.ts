@@ -8,44 +8,48 @@
 import logoLightAsset from '../assets/logo.png';
 import logoDarkAsset from '../assets/logo-dark.png';
 import logoIconAsset from '../assets/logo-icon.png';
-
 export interface BrandFooterLink {
   label: string;
   href: string;
   isExternal?: boolean;
 }
 
+export const COMPANY_LEGAL_NAME = 'JNC Network Communication' as const;
+export const COMPANY_SHORT_NAME = 'JNC' as const;
+export const PRODUCT_NAME = 'Syntra CRM' as const;
+export const COMPANY_NAME = COMPANY_LEGAL_NAME;
+
 export const BRAND = {
-  name: 'Syntra CRM',
-  companyName: 'JNC Network Communication',
+  name: PRODUCT_NAME,
+  companyName: COMPANY_LEGAL_NAME,
+  shortName: COMPANY_SHORT_NAME,
   get copyright() {
     return `© ${new Date().getFullYear()} JNC Network Communication. Syntra CRM. All rights reserved.`;
   },
 } as const;
 
-export const PRODUCT_NAME = BRAND.name;
-export const COMPANY_NAME = BRAND.companyName;
+export const COPYRIGHT_TEXT = BRAND.copyright;
 
 export const BRAND_ASSETS = {
   logoLight: logoLightAsset,
   logoDark: logoDarkAsset,
   logoIcon: logoIconAsset,
-  faviconSvg: '/favicon.svg?v=syntra',
-  faviconPng: '/favicon.png?v=syntra',
-  favicon32: '/favicon-32x32.png?v=syntra',
-  faviconIco: '/favicon.ico?v=syntra',
+  faviconSvg: '/favicon.svg?v=jnc',
+  faviconPng: '/favicon.png?v=jnc',
+  favicon32: '/favicon-32x32.png?v=jnc',
+  faviconIco: '/favicon.ico?v=jnc',
 } as const;
 
 export const getProductName = (_branding?: { companyDisplayName?: string } | null): string => {
-  return BRAND.name;
+  return PRODUCT_NAME;
 };
 
 export const getProductLogoUrl = (): string => {
-  return (import.meta.env.VITE_PRODUCT_LOGO_URL as string) || BRAND_ASSETS.logoLight;
+  return BRAND_ASSETS.logoLight;
 };
 
 export const getBrandHeadline = (): string => {
-  return (import.meta.env.VITE_BRAND_HEADLINE as string) || 'Run your sales, orders and billing in one place.';
+  return 'Run your sales, orders and billing in one place.';
 };
 
 export const getBrandFeatures = (): string[] => {
@@ -77,13 +81,13 @@ export const getBrandLegalLinks = (): BrandFooterLink[] => {
 
 export const BRAND_CONFIG = {
   get displayName() {
-    return getProductName();
+    return PRODUCT_NAME;
   },
   get legalNameDefault() {
-    return COMPANY_NAME;
+    return COMPANY_LEGAL_NAME;
   },
   get logoUrl() {
-    return getProductLogoUrl();
+    return BRAND_ASSETS.logoLight;
   },
   phone: '',
   email: '',

@@ -1,10 +1,16 @@
 {
-  "productName": "Apex Enterprise CRM",
-  "companyName": "Apex Systems Technologies Ltd.",
+  "_TODO_NOTICE": "TODO: Replace the placeholder contact details below with your real domain, email addresses, phone number, and physical address",
+  "productName": "Syntra CRM",
+  "companyName": "JNC Network Communication",
+  "_TODO_domain": "TODO: Provide real production domain (e.g. https://yourdomain.com)",
   "domain": "https://example.com",
+  "_TODO_contactEmail": "TODO: Provide real contact email",
   "contactEmail": "contact@example.com",
+  "_TODO_supportEmail": "TODO: Provide real support email",
   "supportEmail": "support@example.com",
+  "_TODO_contactPhone": "TODO: Provide real contact phone number",
   "contactPhone": "+1-800-555-0199",
+  "_TODO_address": "TODO: Provide real registered business address",
   "address": {
     "streetAddress": "100 Enterprise Way, Suite 400",
     "addressLocality": "Metropolis",
@@ -13,6 +19,6 @@
     "addressCountry": "US"
   },
   "social": {
-    "twitterHandle": "@ApexSystemsCRM"
+    "twitterHandle": "@SyntraCRM"
   }
 }

@@ -11,7 +11,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
-import { BRAND_CONFIG } from '../common/brand';
+import { BRAND_CONFIG, PRODUCT_NAME } from '../common/brand';
 
 export const ALLOWED_STEP_TYPES = [
   'send_email',
@@ -577,7 +577,7 @@ export class AutomationService implements OnModuleInit {
           break;
         }
 
-        const prodName = process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM';
+        const prodName = PRODUCT_NAME;
         await this.notificationsService.sendEmail({
           tenantId,
           to: recipientEmail,
@@ -926,7 +926,7 @@ export class AutomationService implements OnModuleInit {
       )
       .join('');
 
-    const prodName = process.env.PRODUCT_NAME || BRAND_CONFIG.displayName || 'CRM';
+    const prodName = PRODUCT_NAME;
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
         <div style="background: #FF5A5F; color: white; padding: 20px;">

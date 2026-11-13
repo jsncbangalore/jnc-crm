@@ -32,9 +32,9 @@ describe('Multi-Tenant & White-Label Automated Verification', () => {
       delete process.env.PRODUCT_NAME;
       delete process.env.PRODUCT_LOGO_URL;
 
-      expect(BRAND_CONFIG.displayName).toBe('CRM');
-      expect(BRAND_CONFIG.legalNameDefault).toBe('CRM');
-      expect(BRAND_CONFIG.logoUrl).toBe('');
+      expect(BRAND_CONFIG.displayName).toBe('Syntra CRM');
+      expect(BRAND_CONFIG.legalNameDefault).toBe('JNC Network Communication');
+      expect(BRAND_CONFIG.logoUrl).toBe('/logo.png');
       expect(containsBannedBranding(BRAND_CONFIG.displayName)).toBe(false);
     });
 
@@ -48,7 +48,7 @@ describe('Multi-Tenant & White-Label Automated Verification', () => {
       const notificationsService = new NotificationsService(mockPrisma);
       const branding = await notificationsService.getBranding(undefined);
 
-      expect(branding.companyDisplayName).toBe('CRM');
+      expect(branding.companyDisplayName).toBe('Syntra CRM');
       expect(branding.companyPhone).toBe('');
       expect(branding.companyLogoUrl).toBe('');
       expect(containsBannedBranding(JSON.stringify(branding))).toBe(false);

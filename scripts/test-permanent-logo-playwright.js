@@ -69,14 +69,13 @@ async function performLogin(page) {
 
 async function assertPermanentProductLogo(page, screenName) {
   // Wait for the logo element to be attached to DOM
-  await page.waitForSelector('[data-testid="brand-logo-img"], header img[alt="Syntra CRM"], nav img[alt="Syntra CRM"], img[alt="Syntra CRM"], img[alt="JNC CRM"]', { state: 'attached', timeout: 12000 });
+  await page.waitForSelector('[data-testid="brand-logo-img"], header img[alt="JNC CRM"], nav img[alt="JNC CRM"], img[alt="JNC CRM"]', { state: 'attached', timeout: 12000 });
 
   // Find brand logo elements by data-testid or header logo img
   const logoLocators = [
     page.locator('[data-testid="brand-logo-img"]'),
-    page.locator('header img[alt="Syntra CRM"]'),
-    page.locator('nav img[alt="Syntra CRM"]'),
-    page.locator('img[alt="Syntra CRM"]'),
+    page.locator('header img[alt="JNC CRM"]'),
+    page.locator('nav img[alt="JNC CRM"]'),
     page.locator('img[alt="JNC CRM"]'),
   ];
 
@@ -91,7 +90,7 @@ async function assertPermanentProductLogo(page, screenName) {
           const src = await img.getAttribute('src');
           const alt = await img.getAttribute('alt');
 
-          assert(alt === 'Syntra CRM' || alt === 'JNC CRM', `[FAIL] ${screenName}: Logo alt must be "Syntra CRM", got "${alt}"`);
+          assert(alt === 'JNC CRM', `[FAIL] ${screenName}: Logo alt must be "JNC CRM", got "${alt}"`);
           assert(
             src && (src.includes('logo') || src.includes('data:image')),
             `[FAIL] ${screenName}: Logo src must be a JNC CRM asset, got "${src}"`

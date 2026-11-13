@@ -137,7 +137,7 @@ async function processAssets() {
   fs.writeFileSync('apps/web/public/favicon.ico', icoBuffer);
   console.log('Saved favicon.ico in public');
 
-  // 2. Process Logo Light (Syntra CRM)
+  // 2. Process Logo Light (JNC CRM)
   console.log('Reading logo source:', logoSrc);
   const logoBuffer = await sharp(logoSrc).png().toBuffer();
   fs.writeFileSync('apps/web/public/logo.png', logoBuffer);

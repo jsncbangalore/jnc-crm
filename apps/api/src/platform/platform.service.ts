@@ -20,6 +20,7 @@ import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { ResetTenantAdminPasswordDto } from './dto/platform-admin.dto';
 import { validatePasswordPolicy } from '../common/password-policy';
+import { PRODUCT_NAME, BRAND } from '../common/brand';
 
 export interface CreateTenantDto {
   code: string;            // e.g. "VERTEX", "ACME"
@@ -245,7 +246,7 @@ export class PlatformService {
       reason: null,
       provider: this.notificationsService.getMailProvider(),
     };
-    const prodName = process.env.PRODUCT_NAME || 'CRM';
+    const prodName = PRODUCT_NAME;
     const baseFrontendUrl = (process.env.FRONTEND_URL || dto?.appUrl || process.env.APP_URL || '').replace(/\/$/, '');
     const loginUrl = `${baseFrontendUrl}/login?company=${encodeURIComponent(result.tenant.code)}&identifier=${encodeURIComponent(result.adminUser.email)}`;
 
@@ -321,7 +322,7 @@ export class PlatformService {
     </div>
     <div class="footer">
       <p style="margin: 0 0 4px;">For security, please change your temporary password upon your first sign in.</p>
-      <p style="margin: 0;">${prodName} Multi-Tenant Cloud Platform</p>
+      <p style="margin: 0;">${BRAND.copyright}</p>
     </div>
   </div>
 </body>
@@ -747,7 +748,7 @@ export class PlatformService {
       reason: null,
       provider: this.notificationsService.getMailProvider(),
     };
-    const prodName = process.env.PRODUCT_NAME || 'CRM';
+    const prodName = PRODUCT_NAME;
     const baseFrontendUrl = (process.env.FRONTEND_URL || dto?.appUrl || process.env.APP_URL || '').replace(/\/$/, '');
     const loginUrl = `${baseFrontendUrl}/login?company=${encodeURIComponent(tenant.code)}&identifier=${encodeURIComponent(adminUser.email)}`;
 
@@ -819,7 +820,7 @@ export class PlatformService {
     </div>
     <div class="footer">
       <p style="margin: 0 0 4px;">For security, please change your password after logging in.</p>
-      <p style="margin: 0;">${prodName} Multi-Tenant Cloud Platform</p>
+      <p style="margin: 0;">${BRAND.copyright}</p>
     </div>
   </div>
 </body>
@@ -991,7 +992,7 @@ export class PlatformService {
       reason: null,
       provider: this.notificationsService.getMailProvider(),
     };
-    const prodName = process.env.PRODUCT_NAME || 'CRM';
+    const prodName = PRODUCT_NAME;
     const frontendUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
     const loginUrl = `${frontendUrl}/platform/login`;
 
@@ -1176,7 +1177,7 @@ export class PlatformService {
       reason: null,
       provider: this.notificationsService.getMailProvider(),
     };
-    const prodName = process.env.PRODUCT_NAME || 'CRM';
+    const prodName = PRODUCT_NAME;
     const frontendUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
     const loginUrl = `${frontendUrl}/platform/login`;
 

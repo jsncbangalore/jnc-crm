@@ -34,8 +34,8 @@ const TEST_ADMIN_EMAIL = 'admin@zzclienttest.com';
 const TEST_PASSWORD = 'DevPassword@123';
 
 const CURRENT_YEAR = new Date().getFullYear();
-const EXPECTED_FOOTER_TEXT = `© ${CURRENT_YEAR} JNC Network Communication. Syntra CRM. All rights reserved.`;
-const EXPECTED_PRODUCT_NAME = 'Syntra CRM';
+const EXPECTED_FOOTER_TEXT = `© ${CURRENT_YEAR} JNC Network Communication. All rights reserved.`;
+const EXPECTED_PRODUCT_NAME = 'JNC CRM';
 
 // Custom SVG Document Logo for ZZ Client Test Ltd (distinct green/purple emblem)
 const TEST_DOCUMENT_LOGO = 'data:image/svg+xml;base64,' + Buffer.from(

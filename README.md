@@ -227,4 +227,4 @@ Define how receiving servers handle messages that fail SPF or DKIM checks:
 
 ---
 
-© 2026 **JNC Network & Communication**. All Rights Reserved.
+© 2026 JNC Network Communication. All rights reserved.
