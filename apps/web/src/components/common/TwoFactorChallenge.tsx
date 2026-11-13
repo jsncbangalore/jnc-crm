@@ -241,19 +241,42 @@ export default function TwoFactorChallenge({
     }
   }, [mode, setupData, activeSetupToken, loadTimedOut, loadSetupData]);
 
-  // Render QR code to canvas whenever setupData arrives
-  useEffect(() => {
-    if (setupData?.otpauthUrl && canvasRef.current) {
-      try {
-        drawQrToCanvas(canvasRef.current, setupData.otpauthUrl, {
+  // Render QR code to canvas whenever setupData arrives or canvas mounts
+  const [qrReady, setQrReady] = useState(false);
+
+  // Use a callback ref so we know the instant the canvas DOM node mounts
+  const canvasCallbackRef = useCallback(
+    (node: HTMLCanvasElement | null) => {
+      canvasRef.current = node;
+      if (node && setupData?.otpauthUrl && !qrReady) {
+        drawQrToCanvas(node, setupData.otpauthUrl, {
           size: 200,
           margin: 2,
           colorDark: '#0F172A',
           colorLight: '#FFFFFF',
-        });
-      } catch (err) {
-        // Fallback or ignore
+        })
+          .then(() => setQrReady(true))
+          .catch(() => {
+            console.warn('[2FA] QR draw failed, retrying...');
+          });
       }
+    },
+    [setupData, qrReady],
+  );
+
+  // Also re-draw if setupData changes after canvas is already mounted
+  useEffect(() => {
+    if (setupData?.otpauthUrl && canvasRef.current) {
+      drawQrToCanvas(canvasRef.current, setupData.otpauthUrl, {
+        size: 200,
+        margin: 2,
+        colorDark: '#0F172A',
+        colorLight: '#FFFFFF',
+      })
+        .then(() => setQrReady(true))
+        .catch((err) => {
+          console.error('[2FA] QR render error:', err);
+        });
     }
   }, [setupData]);
 
@@ -683,7 +706,7 @@ export default function TwoFactorChallenge({
             {/* QR Code Canvas */}
             <div className="p-4 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center space-y-3">
               <div className="p-2 bg-white rounded-xl shadow-xs border border-slate-100">
-                <canvas ref={canvasRef} className="rounded-lg" />
+                <canvas ref={canvasCallbackRef} className="rounded-lg" />
               </div>
               <div className="text-center w-full">
                 <span className="text-[11px] font-medium text-slate-400 block mb-1">
@@ -700,6 +723,9 @@ export default function TwoFactorChallenge({
                     {secretCopied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                   </button>
                 </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 max-w-xs mx-auto">
+                  Open <strong>Google Authenticator</strong> &rarr; tap <strong>+</strong> &rarr; choose <strong>Scan a QR code</strong> (or tap <strong>Enter a setup key</strong> and paste the key above).
+                </p>
               </div>
             </div>
 
