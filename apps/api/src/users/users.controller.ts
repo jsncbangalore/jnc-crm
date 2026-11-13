@@ -198,11 +198,18 @@ export class UsersController {
   async extendTwoFactorGrace(
     @CurrentUser() user: ScopedUser,
     @Param('id') id: string,
-    @Body() body: { days?: number },
+    @Body() body: { days?: number; adminPassword?: string; adminTotp?: string },
     @Req() req: Request,
   ) {
     const ip = req.ip || req.socket?.remoteAddress;
-    return this.usersService.extendGracePeriod(id, body?.days || 7, user, ip);
+    return this.usersService.extendGracePeriod(
+      id,
+      body?.days || 7,
+      user,
+      ip,
+      body?.adminPassword,
+      body?.adminTotp,
+    );
   }
 
   @Post(':id/unlock')

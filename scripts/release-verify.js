@@ -25,6 +25,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { spawnSync, execSync } = require('child_process');
 
 // 1. Determine Required Version from web constants
 function getRequiredApiVersion() {
@@ -364,6 +365,32 @@ async function run() {
 
     // Verify 2-Step Setup Endpoints Contract
     await verifySetupEndpoints(baseUrl);
+
+    // 6. Pre-deploy 2FA status check
+    console.log(' [VERIFY] Running pre-deploy 2-step verification enrollment check...');
+    const statusProc = spawnSync('npm', ['run', 'admin:2fa-status', '--', '--check-predeploy'], {
+      cwd: path.resolve(__dirname, '..'),
+      encoding: 'utf8',
+      shell: true,
+    });
+    if (statusProc.stdout) {
+      const match = statusProc.stdout.match(/USERS FORCED AT NEXT LOGIN:\s*(\d+)/i);
+      const forcedCount = match ? match[1] : '0';
+      console.log(` [2FA PRE-DEPLOY] ${forcedCount} user(s) will be forced to complete 2-step setup at next login.`);
+    }
+
+    // 7. Execute full unified test runner (Layers A through K)
+    console.log(' [VERIFY] Executing comprehensive test suite (npm run test:all)...');
+    const testProc = spawnSync('npm', ['run', 'test:all'], {
+      cwd: path.resolve(__dirname, '..'),
+      encoding: 'utf8',
+      shell: true,
+      stdio: 'inherit',
+    });
+    if (testProc.status !== 0) {
+      console.error(' [FAIL] npm run test:all reported test failures.');
+      process.exit(1);
+    }
 
     console.log(' -> System is compatible for website release deployment.');
     console.log('='.repeat(65));

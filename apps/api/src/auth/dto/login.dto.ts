@@ -427,4 +427,20 @@ export class VerifyExistingPhoneDto {
   code: string;
 }
 
+export class SendSetupEmailCodeDto {
+  @IsOptional()
+  @IsString()
+  setupToken?: string;
+}
+
+export class VerifySetupEmailCodeDto {
+  @IsNotEmpty({ message: 'code is required' })
+  @IsString()
+  code: string;
+
+  @IsOptional()
+  @IsString()
+  setupToken?: string;
+}
+
 

@@ -34,6 +34,9 @@ const IGNORE_DIRS = new Set([
   'coverage',
   '.turbo',
   '.next',
+  'test-results',
+  'logs',
+  'evidence',
 ]);
 
 // Ignore file extensions
@@ -63,8 +66,8 @@ function shouldCopyFile(srcPath, relPath) {
   if (IGNORE_EXTENSIONS.has(ext)) return false;
 
   const fileName = path.basename(srcPath);
-  // Ignore specific sensitive local files or large loose binary dumps
-  if (fileName === '.env' || fileName === 'DumpStack.log') return false;
+  // Ignore specific sensitive local environment files with live credentials
+  if (fileName === '.env' || fileName === '.env.development' || fileName === '.env.test' || fileName === 'DumpStack.log') return false;
 
   // In scripts folder, ignore loose screenshot PNGs (keep only code files)
   if (relPath.startsWith('scripts' + path.sep) && ext === '.png') return false;
@@ -103,7 +106,7 @@ function copyRecursive(src, dest, relBase = '') {
   }
 }
 
-// Explicit components to copy
+// Explicit components to copy (all frontend and backend code, configs, and scripts)
 const ITEMS_TO_COPY = [
   'apps',
   'packages',
@@ -114,11 +117,21 @@ const ITEMS_TO_COPY = [
   'package.json',
   'package-lock.json',
   'tsconfig.json',
+  'brand.lock.json',
+  'vitest.config.mjs',
   'README.md',
   '.gitignore',
   '.env.development.example',
   '.env.example',
   'docker-compose.dev.yml',
+  'render.yaml',
+  'start-all.bat',
+  'start-api.bat',
+  'start-web.bat',
+  'DEPLOYMENT_GUIDE.md',
+  'POSTGRES_MIGRATION_GUIDE.md',
+  'SECURITY.md',
+  'ROLES_AND_PERMISSIONS_NOTES.md',
 ];
 
 console.log('1. Copying clean code files directly into ' + DEST_DIR + '...');
@@ -128,17 +141,19 @@ for (const item of ITEMS_TO_COPY) {
   const dest = path.join(DEST_DIR, item);
 
   if (!fs.existsSync(src)) {
-    console.log(`  [SKIP] ${item} does not exist.`);
+    console.log(`  [SKIP] ${item} does not exist in root.`);
     continue;
   }
 
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
-    if (!fs.existsSync(dest)) {
-      fs.mkdirSync(dest, { recursive: true });
+    // Wipe target directory first to prevent stale leftover files
+    if (fs.existsSync(dest)) {
+      fs.rmSync(dest, { recursive: true, force: true });
     }
+    fs.mkdirSync(dest, { recursive: true });
     copyRecursive(src, dest, item);
-    console.log(`  [OK] Copied directory: ${item}`);
+    console.log(`  [OK] Cleanly copied directory: ${item}`);
   } else {
     fs.copyFileSync(src, dest);
     fileCount++;
@@ -149,7 +164,7 @@ for (const item of ITEMS_TO_COPY) {
 
 console.log(`\nDirect copy completed: ${fileCount} files (${(totalBytes / (1024 * 1024)).toFixed(2)} MB).\n`);
 
-// 2. Create a clean standalone ZIP file named jsnc-crm-all-code-files.zip
+// 2. Create clean standalone ZIP files in DEST_DIR
 console.log('2. Creating named ZIP file: jsnc-crm-all-code-files.zip in ' + DEST_DIR + '...');
 const zip = new AdmZip();
 const zipPath = path.join(DEST_DIR, 'jsnc-crm-all-code-files.zip');
@@ -171,7 +186,41 @@ const zipSize = fs.statSync(zipPath).size;
 console.log(`  [OK] Successfully created: ${zipPath}`);
 console.log(`  [OK] Archive Size: ${(zipSize / (1024 * 1024)).toFixed(2)} MB`);
 
+// Also provide jnc-crm-all-code.zip for convenience
+const altZipPath = path.join(DEST_DIR, 'jnc-crm-all-code.zip');
+fs.copyFileSync(zipPath, altZipPath);
+console.log(`  [OK] Also copied to: ${altZipPath}`);
+
+// 3. Verify ZIP contents to confirm zero build files (dist, node_modules) are present
+console.log('\n3. Verifying archive integrity...');
+const verifyZip = new AdmZip(zipPath);
+const entries = verifyZip.getEntries();
+let hasBuildFiles = false;
+let frontendCount = 0;
+let backendCount = 0;
+
+for (const entry of entries) {
+  const name = entry.entryName;
+  if (name.includes('node_modules/') || name.includes('/dist/') || name.startsWith('dist/')) {
+    hasBuildFiles = true;
+    console.error(`  [WARN] Unexpected build file inside ZIP: ${name}`);
+  }
+  if (name.startsWith('apps/web/')) frontendCount++;
+  if (name.startsWith('apps/api/')) backendCount++;
+}
+
+console.log(`  Total files in archive: ${entries.length}`);
+console.log(`  Frontend files (apps/web): ${frontendCount}`);
+console.log(`  Backend files (apps/api): ${backendCount}`);
+console.log(`  Build files present (node_modules, dist): ${hasBuildFiles ? 'YES (ERROR)' : 'NO (CLEAN)'}`);
+
+if (hasBuildFiles) {
+  console.error('\n[ERROR] Build files found in archive!');
+  process.exit(1);
+}
+
 console.log('\n================================================================');
 console.log('EXPORT FINISHED SUCCESSFULLY!');
 console.log(`Location: ${DEST_DIR}`);
+console.log(`ZIP:      ${zipPath}`);
 console.log('================================================================');

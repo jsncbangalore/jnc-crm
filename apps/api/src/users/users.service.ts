@@ -26,6 +26,8 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+import { decryptAtRest } from '../common/encryption.util';
+import { verifyTotpToken } from '../common/totp.util';
 
 export { CreateUserDto, UpdateUserDto };
 
@@ -1398,7 +1400,49 @@ export class UsersService {
     };
   }
 
-  async extendGracePeriod(targetUserId: string, days: number, actor: ScopedUser, clientIp?: string) {
+  async extendGracePeriod(
+    targetUserId: string,
+    days: number,
+    actor: ScopedUser,
+    clientIp?: string,
+    adminPassword?: string,
+    adminTotp?: string,
+  ) {
+    const actorUser = await this.prisma.user.findUnique({
+      where: { id: actor.id },
+      include: { twoFactor: true },
+    });
+    if (!actorUser) throw new ForbiddenException('Acting admin not found.');
+
+    let credentialVerified = false;
+
+    // 1. Check TOTP code if provided
+    if (adminTotp && actorUser.twoFactor?.secretEnc) {
+      const plainSecret = decryptAtRest(actorUser.twoFactor.secretEnc);
+      if (plainSecret) {
+        const totpRes = verifyTotpToken(adminTotp, plainSecret, actorUser.twoFactor.lastUsedStep ?? undefined);
+        if (totpRes.valid) {
+          credentialVerified = true;
+        }
+      }
+    }
+
+    // 2. Check password if provided and not yet verified
+    if (!credentialVerified && adminPassword && actorUser.passwordHash) {
+      const passMatch = await bcrypt.compare(adminPassword, actorUser.passwordHash);
+      if (passMatch) {
+        credentialVerified = true;
+      }
+    }
+
+    if (!credentialVerified) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'ADMIN_CREDENTIAL_REQUIRED',
+        message: 'Admin password or 2-step verification code required to extend grace period.',
+      });
+    }
+
     const targetUser = await this.prisma.user.findUnique({
       where: { id: targetUserId },
       include: { tenant: true },
@@ -1416,6 +1460,7 @@ export class UsersService {
 
     const extendDays = Math.max(1, Math.min(30, days || 7));
     const newFirstLogin = new Date(Date.now() - (7 - extendDays) * 24 * 60 * 60 * 1000);
+    const newEndDate = new Date(newFirstLogin.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     await this.prisma.user.update({
       where: { id: targetUserId },
@@ -1423,18 +1468,20 @@ export class UsersService {
     });
 
     await this.auditService.log({
-      tenantId: targetUser.tenantId,
+      tenantId: targetUser.tenantId || 'platform',
       actorId: actor.id,
       actorName: actor.employeeCode || actor.id,
       action: '2FA_GRACE_PERIOD_EXTENDED',
       entityName: 'User',
       entityId: targetUserId,
       afterState: {
+        whoExtended: actor.employeeCode || actor.id,
+        actorId: actor.id,
+        forWhom: targetUser.email,
         targetUserId,
-        targetEmail: targetUser.email,
         extendedDays: extendDays,
+        newEndDate: newEndDate.toISOString(),
         newFirstLogin: newFirstLogin.toISOString(),
-        resetBy: actor.employeeCode || actor.id,
         ipAddress: clientIp,
       },
     });
@@ -1442,6 +1489,7 @@ export class UsersService {
     return {
       success: true,
       message: `2-Step grace period for ${targetUser.name || targetUser.email} has been extended by ${extendDays} day(s).`,
+      newEndDate: newEndDate.toISOString(),
     };
   }
 

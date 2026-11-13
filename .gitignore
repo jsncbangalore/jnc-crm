@@ -48,3 +48,5 @@ logs/
 # Development/Inspection scripts (do not commit)
 scripts/set-dev-password.js
 scripts/inspect-db.js
+
+test-results/

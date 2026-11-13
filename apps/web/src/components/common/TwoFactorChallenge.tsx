@@ -65,6 +65,35 @@ export function mapTwoFactorError(rawError: any): string {
     return 'This setup link is not valid. Please sign in again.';
   }
   if (
+    code === 'EMAIL_CODE_INVALID' ||
+    message.includes('code is not correct. Check your email') ||
+    message.includes('The code is not correct. Check your email')
+  ) {
+    return 'The code is not correct. Check your email.';
+  }
+  if (
+    code === 'EMAIL_CODE_EXPIRED' ||
+    message.includes('verification code has expired')
+  ) {
+    return 'The verification code has expired. Please request a new one.';
+  }
+  if (
+    code === 'EMAIL_CODE_MAX_ATTEMPTS' ||
+    message.includes('Too many incorrect attempts')
+  ) {
+    return 'Too many incorrect attempts. Please request a new verification code.';
+  }
+  if (
+    code === 'EMAIL_VERIFICATION_REQUIRED' ||
+    message.includes('EMAIL_VERIFICATION_REQUIRED') ||
+    message.includes('Email verification required')
+  ) {
+    return 'Email verification is required before setting up an authenticator.';
+  }
+  if (code === 'EMAIL_COOLDOWN_ACTIVE' || message.includes('cooldown')) {
+    return 'Please wait before requesting another verification code.';
+  }
+  if (
     code === 'INVALID_CODE' ||
     message.includes('The code is not correct') ||
     message.includes('code is not correct') ||
@@ -100,6 +129,7 @@ export default function TwoFactorChallenge({
     verifyTwoFactor,
     verifyPlatformTwoFactor,
     setupPass,
+    setSetupPass,
     clearSetupPass,
     completeForcedSetup,
   } = useAuth();
@@ -120,7 +150,17 @@ export default function TwoFactorChallenge({
     message: '',
   });
 
-  // Forced setup state
+  // Forced setup state: Step 1 (email verification) -> Step 2 (authenticator QR) -> Completion (backup codes)
+  const [setupStep, setSetupStep] = useState<'email_verification' | 'authenticator_qr'>(
+    setupPass?.emailVerified ? 'authenticator_qr' : 'email_verification'
+  );
+  const [emailOtpDigits, setEmailOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [emailMasked, setEmailMasked] = useState<string>('');
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailResendCooldown, setEmailResendCooldown] = useState(0);
+  const [verifiedSetupToken, setVerifiedSetupToken] = useState<string | null>(null);
+
   const [setupData, setSetupData] = useState<{ secret: string; otpauthUrl: string } | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
   const [loadTimedOut, setLoadTimedOut] = useState(false);
@@ -132,11 +172,12 @@ export default function TwoFactorChallenge({
   const [backupCopied, setBackupCopied] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const emailInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const setupInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Active pass from prop or AuthContext
-  const activeSetupToken = propSetupToken || setupPass?.setupToken;
+  // Active pass from verified token, prop, or AuthContext
+  const activeSetupToken = verifiedSetupToken || propSetupToken || setupPass?.setupToken;
 
   // Pass validity countdown timer
   const [remainingMs, setRemainingMs] = useState<number>(() => {
@@ -181,14 +222,65 @@ export default function TwoFactorChallenge({
   useEffect(() => {
     if (mode === 'code') {
       inputRefs.current[0]?.focus();
-    } else if (mode === 'setup' && setupData) {
-      setupInputRefs.current[0]?.focus();
+    } else if (mode === 'setup') {
+      if (setupStep === 'email_verification') {
+        emailInputRefs.current[0]?.focus();
+      } else if (setupStep === 'authenticator_qr' && setupData) {
+        setupInputRefs.current[0]?.focus();
+      }
     }
-  }, [mode, setupData]);
+  }, [mode, setupStep, setupData]);
 
-  // Load setup data if in forced setup
-  const loadSetupData = useCallback(() => {
+  // Email resend cooldown countdown
+  useEffect(() => {
+    if (emailResendCooldown <= 0) return;
+    const interval = setInterval(() => {
+      setEmailResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [emailResendCooldown]);
+
+  // Send setup email code
+  const handleSendSetupEmailCode = useCallback(async () => {
     const currentToken = activeSetupToken;
+    if (!currentToken) {
+      setError('Your setup session ended. Please sign in again.');
+      return;
+    }
+    setEmailSending(true);
+    setError('');
+    try {
+      const apiCall = portal === 'platform' ? platformAuthApi.sendSetupEmailCode : authApi.sendSetupEmailCode;
+      const res = await apiCall(currentToken);
+      setEmailSent(true);
+      if (res.data?.emailMasked) {
+        setEmailMasked(res.data.emailMasked);
+      }
+      setEmailResendCooldown(res.data?.resendAfterSeconds || 60);
+    } catch (err: any) {
+      setError(mapTwoFactorError(err));
+    } finally {
+      setEmailSending(false);
+    }
+  }, [activeSetupToken, portal]);
+
+  // Automatically trigger email code send when entering forced setup email verification step
+  useEffect(() => {
+    if (
+      mode === 'setup' &&
+      setupStep === 'email_verification' &&
+      activeSetupToken &&
+      !emailSent &&
+      !emailSending &&
+      remainingMs > 0
+    ) {
+      handleSendSetupEmailCode();
+    }
+  }, [mode, setupStep, activeSetupToken, emailSent, emailSending, remainingMs, handleSendSetupEmailCode]);
+
+  // Load setup data if in forced setup (only after email verification is complete)
+  const loadSetupData = useCallback((explicitToken?: string) => {
+    const currentToken = explicitToken || activeSetupToken;
     if (!currentToken) {
       setError('Your setup session ended. Please sign in again.');
       return;
@@ -232,14 +324,14 @@ export default function TwoFactorChallenge({
   }, [activeSetupToken, portal]);
 
   useEffect(() => {
-    if (mode === 'setup' && !setupData && !loadTimedOut) {
+    if (mode === 'setup' && setupStep === 'authenticator_qr' && !setupData && !loadTimedOut) {
       if (!activeSetupToken) {
         setError('Your setup session ended. Please sign in again.');
         return;
       }
       loadSetupData();
     }
-  }, [mode, setupData, activeSetupToken, loadTimedOut, loadSetupData]);
+  }, [mode, setupStep, setupData, activeSetupToken, loadTimedOut, loadSetupData]);
 
   // Render QR code to canvas whenever setupData arrives or canvas mounts
   const [qrReady, setQrReady] = useState(false);
@@ -351,6 +443,91 @@ export default function TwoFactorChallenge({
       } else {
         handleSubmitCode(pasted);
       }
+    }
+  };
+
+  // ── Input box change handling for Setup Email Code ───────────────────────────
+  const handleEmailDigitChange = (index: number, val: string) => {
+    const clean = val.replace(/\D/g, '');
+    const targetDigits = [...emailOtpDigits];
+
+    if (!clean) {
+      targetDigits[index] = '';
+      setEmailOtpDigits(targetDigits);
+      return;
+    }
+
+    targetDigits[index] = clean.slice(-1);
+    setEmailOtpDigits(targetDigits);
+
+    if (index < 5) {
+      emailInputRefs.current[index + 1]?.focus();
+    } else {
+      const full = targetDigits.join('');
+      if (full.length === 6) {
+        handleVerifyEmailCode(full);
+      }
+    }
+  };
+
+  const handleEmailKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !emailOtpDigits[index] && index > 0) {
+      emailInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleEmailPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+
+    const targetDigits = [...emailOtpDigits];
+    for (let i = 0; i < pasted.length; i++) {
+      targetDigits[i] = pasted[i];
+    }
+    setEmailOtpDigits(targetDigits);
+
+    const focusIdx = Math.min(pasted.length, 5);
+    emailInputRefs.current[focusIdx]?.focus();
+
+    if (pasted.length === 6) {
+      handleVerifyEmailCode(pasted);
+    }
+  };
+
+  // ── Verify Setup Email Code (Step 1) ─────────────────────────────────────────
+  const handleVerifyEmailCode = async (providedCode?: string) => {
+    const code = (providedCode || emailOtpDigits.join('')).trim();
+    if (code.length !== 6) {
+      setError('Please enter all 6 digits of the verification code.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const apiCall = portal === 'platform' ? platformAuthApi.verifySetupEmailCode : authApi.verifySetupEmailCode;
+      const res = await apiCall({ code, setupToken: activeSetupToken });
+      if (res.data?.setupToken) {
+        const verifiedToken = res.data.setupToken;
+        setVerifiedSetupToken(verifiedToken);
+        if (setupPass) {
+          setSetupPass({
+            ...setupPass,
+            setupToken: verifiedToken,
+            emailVerified: true,
+          });
+        }
+        setSetupStep('authenticator_qr');
+        loadSetupData(verifiedToken);
+      }
+    } catch (err: any) {
+      setError(mapTwoFactorError(err));
+      setEmailOtpDigits(['', '', '', '', '', '']);
+      emailInputRefs.current[0]?.focus();
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -500,7 +677,7 @@ export default function TwoFactorChallenge({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `crm-backup-codes-${Date.now()}.txt`;
+    a.download = 'jnc-backup-codes.txt';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -630,155 +807,246 @@ export default function TwoFactorChallenge({
           )}
         </div>
 
-        <div>
-          <h2 className="text-[22px] sm:text-[24px] font-bold text-slate-900 dark:text-white leading-tight">
-            Set up 2-step verification
-          </h2>
-          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
-            Your role or company policy requires 2-step verification. Scan the QR code with an authenticator app (e.g. Google Authenticator, Microsoft Authenticator, 1Password).
-          </p>
-        </div>
+        {setupStep === 'email_verification' ? (
+          <>
+            <div>
+              <h2 className="text-[22px] sm:text-[24px] font-bold text-slate-900 dark:text-white leading-tight">
+                Step 1: Verify your email
+              </h2>
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
+                A 6-digit verification code has been sent to your registered email address
+                {emailMasked ? ` (${emailMasked})` : ''}. Enter the code below to continue setup.
+              </p>
+            </div>
 
-        {error && (
-          <div className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[13px] font-medium flex items-start gap-2">
-            <AlertCircle size={16} className="shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <span>{error}</span>
-              {isTokenTerminated && (
-                <div className="mt-2">
+            {/* Error message */}
+            {error && (
+              <div className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[13px] font-medium flex items-start gap-2">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <span>{error}</span>
+                  {isTokenTerminated && (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={handleSignOutAgain}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#B91C1C] text-white text-xs font-semibold hover:bg-red-800 transition shadow-xs cursor-pointer"
+                      >
+                        <span>Sign in again</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!isTokenTerminated && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 text-center">
+                    Enter the 6-digit code sent to your email:
+                  </label>
+                  <div className="grid grid-cols-6 gap-1.5 sm:gap-2 w-full">
+                    {emailOtpDigits.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        ref={(el) => (emailInputRefs.current[idx] = el)}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handleEmailDigitChange(idx, e.target.value)}
+                        onKeyDown={(e) => handleEmailKeyDown(idx, e)}
+                        onPaste={handleEmailPaste}
+                        disabled={loading || remainingMs <= 0}
+                        className="w-full h-11 sm:h-13 text-center text-xl font-bold bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={loading || emailOtpDigits.join('').length !== 6 || remainingMs <= 0}
+                  onClick={() => handleVerifyEmailCode()}
+                  className="w-full h-11 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 text-white text-[15px] font-semibold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {loading ? <RefreshCw size={16} className="animate-spin" /> : <ShieldCheck size={18} />}
+                  <span>Verify Email & Continue</span>
+                </button>
+
+                <div className="text-center pt-1">
+                  <button
+                    type="button"
+                    disabled={emailResendCooldown > 0 || emailSending || remainingMs <= 0}
+                    onClick={() => handleSendSetupEmailCode()}
+                    className="text-xs font-semibold text-[#2563EB] hover:underline disabled:opacity-50 disabled:no-underline cursor-pointer"
+                  >
+                    {emailResendCooldown > 0
+                      ? `Resend code in ${emailResendCooldown}s`
+                      : emailSending
+                      ? 'Sending code...'
+                      : "Didn't receive the email? Resend code"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          /* Step 2: Authenticator QR & Secret */
+          <>
+            <div>
+              <h2 className="text-[22px] sm:text-[24px] font-bold text-slate-900 dark:text-white leading-tight">
+                Step 2: Set up authenticator app
+              </h2>
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
+                Your role or company policy requires 2-step verification. Scan the QR code with an authenticator app (e.g. Google Authenticator, Microsoft Authenticator, 1Password).
+              </p>
+            </div>
+
+            {error && (
+              <div className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[13px] font-medium flex items-start gap-2">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <span>{error}</span>
+                  {isTokenTerminated && (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={handleSignOutAgain}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#B91C1C] text-white text-xs font-semibold hover:bg-red-800 transition shadow-xs cursor-pointer"
+                      >
+                        <span>Sign in again</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {loadTimedOut ? (
+              <div className="space-y-3 text-center p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+                  <AlertCircle size={20} />
+                </div>
+                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                  We couldn't generate your setup key in time. Please check your network connection.
+                </p>
+                <div className="flex items-center gap-2 justify-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => loadSetupData()}
+                    className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw size={13} />
+                    <span>Try again</span>
+                  </button>
                   <button
                     type="button"
                     onClick={handleSignOutAgain}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#B91C1C] text-white text-xs font-semibold hover:bg-red-800 transition shadow-xs cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold cursor-pointer"
                   >
                     <span>Sign in again</span>
                   </button>
                 </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {loadTimedOut ? (
-          <div className="space-y-3 text-center p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-            <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
-              <AlertCircle size={20} />
-            </div>
-            <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
-              We couldn't generate your setup key in time. Please check your network connection.
-            </p>
-            <div className="flex items-center gap-2 justify-center pt-1">
-              <button
-                type="button"
-                onClick={loadSetupData}
-                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <RefreshCw size={13} />
-                <span>Try again</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSignOutAgain}
-                className="px-3.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold cursor-pointer"
-              >
-                <span>Sign in again</span>
-              </button>
-            </div>
-          </div>
-        ) : setupLoading && !setupData ? (
-          /* QR Skeleton Loader */
-          <div
-            data-testid="qr-skeleton"
-            className="p-4 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center space-y-3"
-          >
-            <div className="w-[200px] h-[200px] bg-slate-100 dark:bg-slate-800/80 rounded-xl animate-pulse flex items-center justify-center border border-slate-200/80 dark:border-slate-700/60">
-              <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700/70 flex items-center justify-center text-blue-500">
-                <RefreshCw size={22} className="animate-spin" />
               </div>
-            </div>
-            <div className="text-center w-full flex flex-col items-center space-y-1.5 pt-1">
-              <div className="w-44 h-3 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
-              <div className="w-56 h-7 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse" />
-            </div>
-          </div>
-        ) : !isTokenTerminated && setupData ? (
-          <>
-            {/* QR Code Canvas */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center space-y-3">
-              <div className="p-2 bg-white rounded-xl shadow-xs border border-slate-100">
-                <canvas ref={canvasCallbackRef} className="rounded-lg" />
-              </div>
-              <div className="text-center w-full">
-                <span className="text-[11px] font-medium text-slate-400 block mb-1">
-                  Or enter this setup key manually into your authenticator:
-                </span>
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs font-bold text-slate-900 dark:text-slate-100 select-all">
-                  <span>{setupData.secret}</span>
-                  <button
-                    type="button"
-                    onClick={handleCopySecret}
-                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                    title="Copy Key"
-                  >
-                    {secretCopied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                  </button>
+            ) : setupLoading && !setupData ? (
+              /* QR Skeleton Loader */
+              <div
+                data-testid="qr-skeleton"
+                className="p-4 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center space-y-3"
+              >
+                <div className="w-[200px] h-[200px] bg-slate-100 dark:bg-slate-800/80 rounded-xl animate-pulse flex items-center justify-center border border-slate-200/80 dark:border-slate-700/60">
+                  <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700/70 flex items-center justify-center text-blue-500">
+                    <RefreshCw size={22} className="animate-spin" />
+                  </div>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 max-w-xs mx-auto">
-                  Open <strong>Google Authenticator</strong> &rarr; tap <strong>+</strong> &rarr; choose <strong>Scan a QR code</strong> (or tap <strong>Enter a setup key</strong> and paste the key above).
-                </p>
+                <div className="text-center w-full flex flex-col items-center space-y-1.5 pt-1">
+                  <div className="w-44 h-3 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+                  <div className="w-56 h-7 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse" />
+                </div>
               </div>
-            </div>
+            ) : !isTokenTerminated && setupData ? (
+              <>
+                {/* QR Code Canvas */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center space-y-3">
+                  <div className="p-2 bg-white rounded-xl shadow-xs border border-slate-100">
+                    <canvas ref={canvasCallbackRef} className="rounded-lg" />
+                  </div>
+                  <div className="text-center w-full">
+                    <span className="text-[11px] font-medium text-slate-400 block mb-1">
+                      Or enter this setup key manually into your authenticator:
+                    </span>
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs font-bold text-slate-900 dark:text-slate-100 select-all">
+                      <span>{setupData.secret}</span>
+                      <button
+                        type="button"
+                        onClick={handleCopySecret}
+                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                        title="Copy Key"
+                      >
+                        {secretCopied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 max-w-xs mx-auto">
+                      Open <strong>Google Authenticator</strong> &rarr; tap <strong>+</strong> &rarr; choose <strong>Scan a QR code</strong> (or tap <strong>Enter a setup key</strong> and paste the key above).
+                    </p>
+                  </div>
+                </div>
 
-            {/* 6 Digit Confirmation */}
-            <div className="space-y-2">
-              <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 text-center">
-                Enter the 6-digit verification code from your authenticator:
-              </label>
-              <div className="grid grid-cols-6 gap-1.5 sm:gap-2 w-full">
-                {setupCodeDigits.map((digit, idx) => (
-                  <input
-                    key={idx}
-                    ref={(el) => (setupInputRefs.current[idx] = el)}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleDigitChange(idx, e.target.value, true)}
-                    onKeyDown={(e) => handleKeyDown(idx, e, true)}
-                    onPaste={(e) => handlePaste(e, true)}
-                    disabled={setupLoading || remainingMs <= 0}
-                    className="w-full h-11 sm:h-13 text-center text-xl font-bold bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
-                  />
-                ))}
-              </div>
-            </div>
+                {/* 6 Digit Confirmation */}
+                <div className="space-y-2">
+                  <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 text-center">
+                    Enter the 6-digit verification code from your authenticator:
+                  </label>
+                  <div className="grid grid-cols-6 gap-1.5 sm:gap-2 w-full">
+                    {setupCodeDigits.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        ref={(el) => (setupInputRefs.current[idx] = el)}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handleDigitChange(idx, e.target.value, true)}
+                        onKeyDown={(e) => handleKeyDown(idx, e, true)}
+                        onPaste={(e) => handlePaste(e, true)}
+                        disabled={setupLoading || remainingMs <= 0}
+                        className="w-full h-11 sm:h-13 text-center text-xl font-bold bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
+                      />
+                    ))}
+                  </div>
+                </div>
 
-            <div className="pt-1">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={trustDevice}
-                  onChange={(e) => setTrustDevice(e.target.checked)}
-                  className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-                />
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Trust this device for 30 days
-                </span>
-              </label>
-            </div>
+                <div className="pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={trustDevice}
+                      onChange={(e) => setTrustDevice(e.target.checked)}
+                      className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                      Trust this device for 30 days
+                    </span>
+                  </label>
+                </div>
 
-            <button
-              type="button"
-              disabled={setupLoading || setupCodeDigits.join('').length !== 6 || remainingMs <= 0}
-              onClick={() => handleConfirmSetup()}
-              className="w-full h-11 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 text-white text-[15px] font-semibold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {setupLoading ? <RefreshCw size={16} className="animate-spin" /> : <ShieldCheck size={18} />}
-              <span>Verify & Complete Enrollment</span>
-            </button>
+                <button
+                  type="button"
+                  disabled={setupLoading || setupCodeDigits.join('').length !== 6 || remainingMs <= 0}
+                  onClick={() => handleConfirmSetup()}
+                  className="w-full h-11 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 text-white text-[15px] font-semibold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {setupLoading ? <RefreshCw size={16} className="animate-spin" /> : <ShieldCheck size={18} />}
+                  <span>Verify & Complete Enrollment</span>
+                </button>
+              </>
+            ) : null}
           </>
-        ) : null}
+        )}
       </div>
     );
   }

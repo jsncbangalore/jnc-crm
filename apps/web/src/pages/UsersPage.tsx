@@ -393,6 +393,25 @@ export default function UsersPage() {
     variant?: 'error' | 'success';
   } | null>(null);
 
+  // Extend Grace Period Modal State (requires acting admin password or TOTP)
+  const [extendGraceModal, setExtendGraceModal] = useState<{
+    isOpen: boolean;
+    targetUser: User | null;
+    days: number;
+    adminPassword: string;
+    adminTotp: string;
+    loading: boolean;
+    error: string;
+  }>({
+    isOpen: false,
+    targetUser: null,
+    days: 7,
+    adminPassword: '',
+    adminTotp: '',
+    loading: false,
+    error: '',
+  });
+
   // Bulk Import State
   const [showImportModal, setShowImportModal] = useState(false);
   const [importCsvText, setImportCsvText] = useState('');
@@ -1055,39 +1074,63 @@ export default function UsersPage() {
     });
   };
 
-  // Handle Extend 2-Step Grace Period
-  const handleExtendUserGracePeriod = (targetUser: User) => {
-    setConfirmDialog({
+  // Handle Extend 2-Step Grace Period Modal (Requires Admin Password or TOTP)
+  const handleOpenExtendGraceModal = (targetUser: User) => {
+    setExtendGraceModal({
       isOpen: true,
-      title: 'Extend 2-Step Grace Period',
-      message: `Extend 2-step verification grace period for ${targetUser.name} (${targetUser.email}) by 7 days? They will be permitted to sign in without 2-step verification during this period.`,
-      confirmText: 'Extend grace period',
-      variant: 'primary',
-      iconType: 'key',
-      onConfirm: async () => {
-        setActionLoadingId(targetUser.id);
-        setConfirmDialog(null);
-        try {
-          await usersApi.extendTwoFactorGrace(targetUser.id, 7);
-          await fetchUsers();
-          setAlertDialog({
-            isOpen: true,
-            title: 'Grace Period Extended',
-            message: `Grace period for ${targetUser.name} has been extended by 7 days.`,
-            variant: 'success',
-          });
-        } catch (err: any) {
-          setAlertDialog({
-            isOpen: true,
-            title: 'Action Failed',
-            message: 'Failed to extend grace period: ' + (err?.response?.data?.message || err.message),
-            variant: 'error',
-          });
-        } finally {
-          setActionLoadingId(null);
-        }
-      },
+      targetUser,
+      days: 7,
+      adminPassword: '',
+      adminTotp: '',
+      loading: false,
+      error: '',
     });
+  };
+
+  const handleSubmitExtendGrace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extendGraceModal.targetUser) return;
+    if (!extendGraceModal.adminPassword.trim() && !extendGraceModal.adminTotp.trim()) {
+      setExtendGraceModal((prev) => ({
+        ...prev,
+        error: 'Admin authorization required. Enter your admin password or 2-step verification code.',
+      }));
+      return;
+    }
+
+    setExtendGraceModal((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      await usersApi.extendTwoFactorGrace(
+        extendGraceModal.targetUser.id,
+        extendGraceModal.days,
+        extendGraceModal.adminPassword.trim() || undefined,
+        extendGraceModal.adminTotp.trim() || undefined
+      );
+      await fetchUsers();
+      const userName = extendGraceModal.targetUser.name;
+      const days = extendGraceModal.days;
+      setExtendGraceModal({
+        isOpen: false,
+        targetUser: null,
+        days: 7,
+        adminPassword: '',
+        adminTotp: '',
+        loading: false,
+        error: '',
+      });
+      setAlertDialog({
+        isOpen: true,
+        title: 'Grace Period Extended',
+        message: `Grace period for ${userName} has been extended by ${days} days.`,
+        variant: 'success',
+      });
+    } catch (err: any) {
+      setExtendGraceModal((prev) => ({
+        ...prev,
+        loading: false,
+        error: err?.response?.data?.message || err.message || 'Failed to extend grace period.',
+      }));
+    }
   };
 
   // Handle Sign Out User Everywhere (Revoke All Sessions)
@@ -1928,7 +1971,7 @@ export default function UsersPage() {
                           {/* Extend 2-Step Grace Period Action */}
                           {!isCurrentUser && (isPlatform || currentUser?.role === 'tenant_admin') && (
                             <button
-                              onClick={() => handleExtendUserGracePeriod(u)}
+                              onClick={() => handleOpenExtendGraceModal(u)}
                               disabled={actionLoadingId === u.id || !canActOnUser}
                               className="p-1.5 rounded hover:bg-amber-500/10 dark:hover:bg-amber-500/20 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               title="Extend grace period"
@@ -2506,6 +2549,147 @@ export default function UsersPage() {
                   Dismiss
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── MODAL: Extend 2-Step Grace Period (Requires Admin Password or TOTP) ─ */}
+      <AnimatePresence>
+        {extendGraceModal.isOpen && extendGraceModal.targetUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex items-start gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 dark:border-amber-500/30 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <Clock size={20} />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Extend 2-Step Grace Period
+                  </h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    Extend the enrollment grace period for{' '}
+                    <strong className="text-slate-900 dark:text-slate-200">
+                      {extendGraceModal.targetUser.name}
+                    </strong>{' '}
+                    ({extendGraceModal.targetUser.email}).
+                  </p>
+                </div>
+              </div>
+
+              {extendGraceModal.error && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium flex items-center gap-2">
+                  <AlertTriangle size={15} className="shrink-0" />
+                  <span>{extendGraceModal.error}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSubmitExtendGrace} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Extend by (days):
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={90}
+                    value={extendGraceModal.days}
+                    onChange={(e) =>
+                      setExtendGraceModal((prev) => ({
+                        ...prev,
+                        days: Math.max(1, parseInt(e.target.value) || 1),
+                      }))
+                    }
+                    className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-[#131620] border border-slate-200 dark:border-[#2A3042] text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                    required
+                  />
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#131620] border border-slate-200 dark:border-[#2A3042] space-y-2.5">
+                  <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                    <Shield size={13} className="text-blue-500" />
+                    <span>Admin Authorization Required</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+                    Enter your admin password or your 6-digit authenticator code to authorize this grace period extension.
+                  </p>
+
+                  <div className="space-y-2 pt-1">
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                        Your Admin Password:
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="Admin password"
+                        value={extendGraceModal.adminPassword}
+                        onChange={(e) =>
+                          setExtendGraceModal((prev) => ({ ...prev, adminPassword: e.target.value }))
+                        }
+                        className="w-full h-9 px-3 rounded-lg bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">OR</span>
+                      <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+                        Your 6-Digit Authenticator Code (TOTP):
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        placeholder="e.g. 123456"
+                        value={extendGraceModal.adminTotp}
+                        onChange={(e) =>
+                          setExtendGraceModal((prev) => ({
+                            ...prev,
+                            adminTotp: e.target.value.replace(/\D/g, '').slice(0, 6),
+                          }))
+                        }
+                        className="w-full h-9 px-3 rounded-lg bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-[#2A3042]">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExtendGraceModal({
+                        isOpen: false,
+                        targetUser: null,
+                        days: 7,
+                        adminPassword: '',
+                        adminTotp: '',
+                        loading: false,
+                        error: '',
+                      })
+                    }
+                    className="btn-ghost text-xs px-4 py-2"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={extendGraceModal.loading}
+                    className="btn btn-primary text-xs px-4 py-2 font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {extendGraceModal.loading && <RefreshCw size={13} className="animate-spin" />}
+                    <span>Extend grace period</span>
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

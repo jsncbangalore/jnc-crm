@@ -2301,7 +2301,7 @@ export default function MyAccountPage() {
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = `backup-codes-${Date.now()}.txt`;
+                        a.download = 'jnc-backup-codes.txt';
                         a.click();
                         URL.revokeObjectURL(url);
                       }}
@@ -2603,7 +2603,7 @@ export default function MyAccountPage() {
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = `backup-codes-${Date.now()}.txt`;
+                        a.download = 'jnc-backup-codes.txt';
                         a.click();
                         URL.revokeObjectURL(url);
                       }}

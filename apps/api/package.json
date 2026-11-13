@@ -37,6 +37,7 @@
     "admin:set-password": "node scripts/prisma-safe.js admin:set-password",
     "admin:reset-2fa": "node scripts/prisma-safe.js admin:reset-2fa",
     "admin:extend-2fa-grace": "node scripts/prisma-safe.js admin:extend-2fa-grace",
+    "admin:2fa-status": "node scripts/prisma-safe.js admin:2fa-status",
     "admin:set-phone": "node scripts/prisma-safe.js admin:set-phone",
     "bundle:api": "node ../../scripts/bundle-api.js"
   },

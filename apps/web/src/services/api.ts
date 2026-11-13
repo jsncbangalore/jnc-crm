@@ -1242,6 +1242,17 @@ export const authApi = {
       headers: token ? { 'x-setup-token': token } : undefined,
     });
   },
+  sendSetupEmailCode: (setupToken?: string) => {
+    return api.post('/auth/2fa/setup/send-email-code', { setupToken }, {
+      headers: setupToken ? { 'x-setup-token': setupToken } : undefined,
+    });
+  },
+  verifySetupEmailCode: (data: { code: string; setupToken?: string }) => {
+    const token = data?.setupToken;
+    return api.post('/auth/2fa/setup/verify-email-code', data, {
+      headers: token ? { 'x-setup-token': token } : undefined,
+    });
+  },
   enableTwoFactor: (data: { code: string; setupToken?: string; trustDevice?: boolean }) => {
     const token = data?.setupToken;
     return api.post('/auth/2fa/enable', data, {
@@ -1271,6 +1282,17 @@ export const platformAuthApi = {
   setupTwoFactor: (data?: { currentPassword?: string; setupToken?: string }) => {
     const token = data?.setupToken;
     return api.post('/platform-auth/2fa/setup', data || {}, {
+      headers: token ? { 'x-setup-token': token } : undefined,
+    });
+  },
+  sendSetupEmailCode: (setupToken?: string) => {
+    return api.post('/platform-auth/2fa/setup/send-email-code', { setupToken }, {
+      headers: setupToken ? { 'x-setup-token': setupToken } : undefined,
+    });
+  },
+  verifySetupEmailCode: (data: { code: string; setupToken?: string }) => {
+    const token = data?.setupToken;
+    return api.post('/platform-auth/2fa/setup/verify-email-code', data, {
       headers: token ? { 'x-setup-token': token } : undefined,
     });
   },
@@ -1634,8 +1656,21 @@ export const usersApi = {
   sendResetCode: (id: string) => api.post(`/users/${id}/send-reset-code`),
   revokeSessions: (id: string) => api.post(`/users/${id}/revoke-sessions`),
   resetTwoFactor: (id: string) => api.post(`/users/${id}/reset-2fa`),
-  extendTwoFactorGrace: (id: string, days?: number) =>
-    api.post(`/users/${id}/extend-2fa-grace`, { days: days || 7 }),
+  extendTwoFactorGrace: (
+    id: string,
+    days?: number,
+    adminPasswordOrCreds?: string | { adminPassword?: string; adminTotp?: string },
+    adminTotp?: string
+  ) => {
+    let payload: any = { days: days || 7 };
+    if (typeof adminPasswordOrCreds === 'object' && adminPasswordOrCreds !== null) {
+      payload = { ...payload, ...adminPasswordOrCreds };
+    } else {
+      if (adminPasswordOrCreds) payload.adminPassword = adminPasswordOrCreds;
+      if (adminTotp) payload.adminTotp = adminTotp;
+    }
+    return api.post(`/users/${id}/extend-2fa-grace`, payload);
+  },
   unlock: (id: string) => api.post(`/users/${id}/unlock`),
   forceResetAllPasswords: () => api.post('/users/force-reset-all'),
   toggleActive: (id: string, isActive: boolean) =>

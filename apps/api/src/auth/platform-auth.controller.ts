@@ -25,6 +25,8 @@ import {
   SendTwoFactorEmailDto,
   SetupTwoFactorDto,
   EnableTwoFactorDto,
+  SendSetupEmailCodeDto,
+  VerifySetupEmailCodeDto,
 } from './dto/login.dto';
 import { Response, Request } from 'express';
 import { isAllowedOrigin } from '../common/cors-config';
@@ -160,13 +162,40 @@ export class PlatformAuthController {
     return this.authService.getTwoFactorStatus(authContext.userId);
   }
 
+  /** Platform Forced 2FA Setup: send 6-digit email code */
+  @HttpCode(HttpStatus.OK)
+  @Post('2fa/setup/send-email-code')
+  @Public()
+  async sendSetupEmailCode(@Body() dto: SendSetupEmailCodeDto, @Req() req: Request) {
+    const setupToken = (req.headers['x-setup-token'] as string) || dto?.setupToken;
+    const ip = req.ip || req.socket?.remoteAddress;
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    return this.authService.sendForcedSetupEmailOtp(setupToken, ip, userAgent);
+  }
+
+  /** Platform Forced 2FA Setup: verify 6-digit email code before showing QR */
+  @HttpCode(HttpStatus.OK)
+  @Post('2fa/setup/verify-email-code')
+  @Public()
+  async verifySetupEmailCode(@Body() dto: VerifySetupEmailCodeDto, @Req() req: Request) {
+    const setupToken = (req.headers['x-setup-token'] as string) || dto?.setupToken;
+    const ip = req.ip || req.socket?.remoteAddress;
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    return this.authService.verifyForcedSetupEmailOtp(setupToken, dto.code, ip, userAgent);
+  }
+
   /** Platform 2FA Setup: generates TOTP secret and otpauth URI */
   @HttpCode(HttpStatus.OK)
   @Post('2fa/setup')
   @Public()
   async setupTwoFactor(@Body() dto: SetupTwoFactorDto, @Req() req: Request) {
     const authContext = await this.resolvePlatformSetupContext(req, dto);
-    return this.authService.setupTwoFactor(authContext.userId, dto?.currentPassword || dto?.password, authContext.isSetupToken);
+    return this.authService.setupTwoFactor(
+      authContext.userId,
+      dto?.currentPassword || dto?.password,
+      authContext.isSetupToken,
+      authContext.emailVerified,
+    );
   }
 
   /** Platform 2FA Enable: verifies code, enables TOTP, and issues 10 backup codes once */

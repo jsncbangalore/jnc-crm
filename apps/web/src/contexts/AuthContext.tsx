@@ -54,6 +54,7 @@ export interface SetupPass {
   user?: any;
   issuedAt: number;
   expiresAt: number;
+  emailVerified?: boolean;
 }
 
 export type LoginResult =

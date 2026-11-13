@@ -4886,13 +4886,20 @@ export class AuthService {
 
       const appName = getProductName();
       if (type === '2fa_enabled') {
-        subject = 'Security Notice: 2-Step Verification Enabled';
-        text = `Hello ${user.name || ''},\n\n2-Step Verification has been enabled for your ${appName} account at ${timeStr}.\n\nIf you did not make this change, please contact your administrator immediately.`;
-        html = `<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
-          <h2 style="color: #0f172a; margin-top: 0;">2-Step Verification Enabled</h2>
-          <p style="color: #475569;">2-Step Verification has been successfully enabled for your ${appName} account.</p>
-          <p style="color: #64748b; font-size: 13px;">Time: ${timeStr}</p>
-          <p style="color: #ef4444; font-size: 13px;">If you did not perform this action, please contact your company administrator or platform support immediately.</p>
+        const browserLabel = parseDeviceLabel(metadata?.userAgent);
+        subject = 'Two-step verification was enabled on your account';
+        text = `Hello ${user.name || ''},\n\nTwo-step verification was enabled on your account.\nTime: ${timeStr}\nBrowser: ${browserLabel}\n\nThis wasn't me: If you did not make this change, your account may be compromised. Please contact your system administrator or reset your password immediately.`;
+        html = `<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+          <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">Two-step verification was enabled on your account</h2>
+          <p style="color: #475569; font-size: 14px;">Two-step verification was enabled on your ${appName} account.</p>
+          <div style="background-color: #f8fafc; border-radius: 8px; padding: 14px; margin: 16px 0; font-size: 13px; color: #334155;">
+            <p style="margin: 0 0 6px 0;"><strong>Time:</strong> ${timeStr}</p>
+            <p style="margin: 0;"><strong>Browser:</strong> ${browserLabel}</p>
+          </div>
+          <div style="padding: 12px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;">
+            <p style="color: #b91c1c; font-size: 13px; font-weight: bold; margin: 0 0 4px 0;">This wasn't me?</p>
+            <p style="color: #7f1d1d; font-size: 12px; margin: 0;">If you did not make this change, your account may be compromised. Please contact your system administrator or reset your password immediately.</p>
+          </div>
         </div>`;
       } else if (type === '2fa_disabled') {
         subject = 'Security Alert: 2-Step Verification Disabled';
@@ -5293,7 +5300,20 @@ export class AuthService {
     };
   }
 
-  async setupTwoFactor(userId: string, currentPassword?: string, isSetupToken: boolean = false) {
+  async setupTwoFactor(
+    userId: string,
+    currentPassword?: string,
+    isSetupToken: boolean = false,
+    isEmailVerified: boolean = false,
+  ) {
+    if (isSetupToken && !isEmailVerified) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'EMAIL_VERIFICATION_REQUIRED',
+        message: 'Email verification required before setting up authenticator.',
+      });
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, email: true, employeeCode: true, name: true, passwordHash: true, tenantId: true },
@@ -5381,6 +5401,309 @@ export class AuthService {
       otpauthUrl,
       otpauthUri: otpauthUrl,
       expiresAt: pendingExpiresAt,
+    };
+  }
+
+  async sendForcedSetupEmailOtp(setupToken: string, clientIp?: string, userAgent?: string) {
+    const authContext = await this.resolveSetupContext(null, setupToken);
+    const user = await this.prisma.user.findUnique({
+      where: { id: authContext.userId },
+      select: { id: true, email: true, name: true, tenantId: true },
+    });
+    if (!user || !user.email) {
+      throw new BadRequestException('No registered email address found for this account.');
+    }
+
+    const targetEmail = user.email.toLowerCase().trim();
+    const now = new Date();
+
+    // 1. Resend cooldown: 60 seconds
+    const existingChallenge = await this.prisma.otpChallenge.findFirst({
+      where: {
+        emailNormalized: targetEmail,
+        purpose: 'forced_2fa_setup',
+        resendAfter: { gt: now },
+        usedAt: null,
+      },
+    });
+
+    if (existingChallenge) {
+      const remainingSecs = Math.max(
+        1,
+        Math.ceil((new Date(existingChallenge.resendAfter).getTime() - now.getTime()) / 1000),
+      );
+      throw new HttpException(
+        {
+          statusCode: 429,
+          code: 'EMAIL_COOLDOWN_ACTIVE',
+          message: `Please wait ${remainingSecs}s before requesting another verification code.`,
+          resendAfterSeconds: remainingSecs,
+          emailMasked: this._maskEmail(targetEmail),
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // 2. Hourly rate limit: 5 requests per hour
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const countLastHour = await this.prisma.otpChallenge.count({
+      where: {
+        emailNormalized: targetEmail,
+        purpose: 'forced_2fa_setup',
+        createdAt: { gte: oneHourAgo },
+      },
+    });
+
+    if (countLastHour >= 5) {
+      return {
+        message: 'Too many verification code requests. Please wait before trying again.',
+        resendAfterSeconds: 60,
+        emailMasked: this._maskEmail(targetEmail),
+      };
+    }
+
+    // 3. Generate 6-digit code
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const challengeId = crypto.randomUUID();
+    const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'crm-otp-secret-key-2026';
+    const codeHash = crypto
+      .createHmac('sha256', otpSecret + challengeId)
+      .update(code)
+      .digest('hex');
+
+    // Invalidate prior unused challenges for this email and purpose
+    await this.prisma.otpChallenge.updateMany({
+      where: { emailNormalized: targetEmail, purpose: 'forced_2fa_setup', usedAt: null },
+      data: { usedAt: now },
+    });
+
+    // 10 minute life, 5 max attempts, 60s resend cooldown
+    await this.prisma.otpChallenge.create({
+      data: {
+        id: challengeId,
+        emailNormalized: targetEmail,
+        purpose: 'forced_2fa_setup',
+        codeHash,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        resendAfter: new Date(Date.now() + 60 * 1000),
+        attempts: 0,
+        maxAttempts: 5,
+        requestIp: maskIp(clientIp || '127.0.0.1'),
+        requestUserAgent: userAgent ? userAgent.substring(0, 500) : 'unknown',
+      },
+    });
+
+    // Queue email in EmailOutbox
+    const requestTime = new Date().toUTCString();
+    const browserLabel = parseDeviceLabel(userAgent);
+    const appName = getProductName();
+    const outboxSubject = `${code} is your ${appName} verification code`;
+    const outboxText = `Hello ${user.name || ''},\n\nYour 6-digit verification code to begin 2-step verification setup is: ${code}\n\nThis code expires in 10 minutes.\n\nTime: ${requestTime}\nBrowser: ${browserLabel}\n\nIf you did not attempt to sign in or set up 2-step verification, please contact your administrator immediately.`;
+    const outboxHtml = `<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+      <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">2-Step Verification Email Code</h2>
+      <p style="color: #475569; font-size: 14px;">Enter the 6-digit code below to verify your email before scanning your authenticator QR code:</p>
+      <div style="background-color: #f1f5f9; border-radius: 10px; padding: 18px; text-align: center; margin: 24px 0;">
+        <span style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #2563eb; font-family: monospace;">${code}</span>
+      </div>
+      <p style="color: #64748b; font-size: 13px;">This code expires in <strong>10 minutes</strong>. For your security, never share this code.</p>
+    </div>`;
+
+    const outboxItem = await this.prisma.emailOutbox.create({
+      data: {
+        to: targetEmail,
+        subject: outboxSubject,
+        text: outboxText,
+        html: outboxHtml,
+        status: 'pending',
+        isDecoy: false,
+        tenantId: user.tenantId || null,
+      },
+    });
+
+    setImmediate(() => {
+      void this.dispatchOutboxItem(outboxItem.id);
+    });
+
+    // Audit log
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: user.tenantId || 'default-tenant-id',
+        actorId: user.id,
+        actorName: user.name || user.email,
+        action: '2FA_FORCED_SETUP_EMAIL_CODE_SENT',
+        entityName: 'UserTwoFactor',
+        entityId: user.id,
+        ipAddress: maskIp(clientIp || '127.0.0.1'),
+      },
+    }).catch(() => {});
+
+    return {
+      success: true,
+      message: 'A 6-digit code was sent to your registered email address.',
+      resendAfterSeconds: 60,
+      emailMasked: this._maskEmail(targetEmail),
+    };
+  }
+
+  async verifyForcedSetupEmailOtp(setupToken: string, code: string, clientIp?: string, userAgent?: string) {
+    const authContext = await this.resolveSetupContext(null, setupToken);
+    const user = await this.prisma.user.findUnique({
+      where: { id: authContext.userId },
+      select: { id: true, email: true, name: true, tenantId: true, role: true },
+    });
+    if (!user || !user.email) {
+      throw new BadRequestException('User not found.');
+    }
+
+    const cleanCode = (code || '').trim();
+    if (!/^\d{6}$/.test(cleanCode)) {
+      throw new BadRequestException('Verification code must be 6 digits.');
+    }
+
+    const targetEmail = user.email.toLowerCase().trim();
+    const challenge = await this.prisma.otpChallenge.findFirst({
+      where: {
+        emailNormalized: targetEmail,
+        purpose: 'forced_2fa_setup',
+        usedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!challenge) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'EMAIL_CODE_MISSING',
+        message: 'No active verification code found. Please request a new code.',
+      });
+    }
+
+    // Expiration check (10 min life)
+    if (new Date(challenge.expiresAt) < new Date()) {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: user.tenantId || 'default-tenant-id',
+          actorId: user.id,
+          actorName: user.name || user.email,
+          action: '2FA_FORCED_SETUP_EMAIL_CODE_EXPIRED',
+          entityName: 'UserTwoFactor',
+          entityId: user.id,
+          ipAddress: maskIp(clientIp || '127.0.0.1'),
+        },
+      }).catch(() => {});
+
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'EMAIL_CODE_EXPIRED',
+        message: 'The verification code has expired. Please request a new one.',
+      });
+    }
+
+    // Max attempts check (5 tries)
+    if (challenge.attempts >= 5) {
+      await this.prisma.otpChallenge.update({
+        where: { id: challenge.id },
+        data: { usedAt: new Date() },
+      });
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'EMAIL_CODE_MAX_ATTEMPTS',
+        message: 'Too many incorrect attempts. Please request a new verification code.',
+      });
+    }
+
+    const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'crm-otp-secret-key-2026';
+    const expectedHash = crypto
+      .createHmac('sha256', otpSecret + challenge.id)
+      .update(cleanCode)
+      .digest('hex');
+
+    const match =
+      challenge.codeHash.length === expectedHash.length &&
+      crypto.timingSafeEqual(Buffer.from(challenge.codeHash), Buffer.from(expectedHash));
+
+    if (!match) {
+      const nextAttempts = challenge.attempts + 1;
+      await this.prisma.otpChallenge.update({
+        where: { id: challenge.id },
+        data: {
+          attempts: nextAttempts,
+          usedAt: nextAttempts >= 5 ? new Date() : null,
+        },
+      });
+
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: user.tenantId || 'default-tenant-id',
+          actorId: user.id,
+          actorName: user.name || user.email,
+          action: '2FA_FORCED_SETUP_EMAIL_CODE_FAILED',
+          entityName: 'UserTwoFactor',
+          entityId: user.id,
+          afterState: JSON.stringify({ attempts: nextAttempts }),
+          ipAddress: maskIp(clientIp || '127.0.0.1'),
+        },
+      }).catch(() => {});
+
+      if (nextAttempts >= 5) {
+        throw new BadRequestException({
+          statusCode: 400,
+          code: 'EMAIL_CODE_MAX_ATTEMPTS',
+          message: 'Too many incorrect attempts. Please request a new verification code.',
+        });
+      }
+
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'EMAIL_CODE_INVALID',
+        message: 'The code is not correct. Check your email.',
+      });
+    }
+
+    // Single use: burn the challenge immediately
+    await this.prisma.otpChallenge.update({
+      where: { id: challenge.id },
+      data: { usedAt: new Date() },
+    });
+
+    // Audit log
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: user.tenantId || 'default-tenant-id',
+        actorId: user.id,
+        actorName: user.name || user.email,
+        action: '2FA_FORCED_SETUP_EMAIL_CODE_VERIFIED',
+        entityName: 'UserTwoFactor',
+        entityId: user.id,
+        ipAddress: maskIp(clientIp || '127.0.0.1'),
+      },
+    }).catch(() => {});
+
+    // Mint verified setup token (10 minutes, emailVerified: true)
+    const portal = authContext.payload?.portal || (user.role === 'platform_super_admin' ? 'platform' : 'company');
+    const newJti = crypto.randomUUID();
+    const verifiedSetupToken = this.jwtService.sign(
+      {
+        sub: user.id,
+        tenantId: user.tenantId,
+        purpose: '2fa_setup',
+        portal,
+        emailVerified: true,
+        jti: newJti,
+      },
+      {
+        secret: process.env.JWT_SECRET,
+        expiresIn: '10m',
+        issuer: process.env.JWT_ISSUER || 'crm-api',
+        audience: process.env.JWT_AUDIENCE || 'crm-client',
+      },
+    );
+
+    return {
+      success: true,
+      emailVerified: true,
+      setupToken: verifiedSetupToken,
+      message: 'Email verified. You can now scan the QR code.',
     };
   }
 
@@ -5498,7 +5821,7 @@ export class AuthService {
       },
     }).catch(() => {});
 
-    void this.sendSecurityNotification(user.id, '2fa_enabled', { time: new Date() });
+    void this.sendSecurityNotification(user.id, '2fa_enabled', { time: new Date(), userAgent });
 
     // Handle trusted device if requested
     let trustedDeviceCookie: { name: string; value: string; options: any } | null = null;
@@ -5936,7 +6259,7 @@ export class AuthService {
     actor: any,
     setupToken?: string,
     expectedPortal?: 'company' | 'platform',
-  ): Promise<{ userId: string; isSetupToken: boolean; jti?: string; payload?: any }> {
+  ): Promise<{ userId: string; isSetupToken: boolean; jti?: string; payload?: any; emailVerified?: boolean }> {
     if (actor?.id) {
       if (expectedPortal === 'platform' && actor.role !== 'platform_super_admin') {
         throw new UnauthorizedException({
@@ -5952,7 +6275,7 @@ export class AuthService {
           message: 'This setup link is not valid for this portal. Please sign in again.',
         });
       }
-      return { userId: actor.id, isSetupToken: false };
+      return { userId: actor.id, isSetupToken: false, emailVerified: true };
     }
 
     if (!setupToken || typeof setupToken !== 'string' || setupToken.trim().length === 0) {
@@ -6033,6 +6356,7 @@ export class AuthService {
         isSetupToken: true,
         jti: payload.jti,
         payload,
+        emailVerified: Boolean(payload.emailVerified),
       };
     } catch (err: any) {
       if (err instanceof UnauthorizedException) throw err;
