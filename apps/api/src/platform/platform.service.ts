@@ -18,7 +18,9 @@ import { JwtService } from '@nestjs/jwt';
 import { NotificationsService } from '../notifications/notifications.service';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
-import { ResetTenantAdminPasswordDto } from './dto/platform-admin.dto';
+import * as fs from 'fs';
+import * as path from 'path';
+import { ResetTenantAdminPasswordDto, PermanentDeleteTenantDto } from './dto/platform-admin.dto';
 import { validatePasswordPolicy } from '../common/password-policy';
 import { PRODUCT_NAME, BRAND } from '../common/brand';
 
@@ -71,12 +73,16 @@ export class PlatformService {
    * List all client tenant organizations (Platform Super Admin only).
    * Excludes internal platform owner companies (isInternal = false).
    */
-  async listTenants() {
+  async listTenants(includeDeactivated = false) {
+    const where: any = {
+      isInternal: false,
+    };
+    if (!includeDeactivated) {
+      where.deletedAt = null;
+    }
+
     const tenants = await this.prisma.tenant.findMany({
-      where: {
-        deletedAt: null,
-        isInternal: false,
-      },
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
         _count: {
@@ -514,6 +520,257 @@ export class PlatformService {
     } catch {}
 
     return { message: 'Company workspace deactivated successfully' };
+  }
+
+  /**
+   * Get row counts for a tenant across child tables
+   */
+  async getTenantRowCounts(id: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException('Company tenant not found');
+    if (tenant.isInternal) {
+      throw new ForbiddenException('This is the platform owner company and cannot be managed here.');
+    }
+
+    const [
+      users,
+      leads,
+      companies,
+      contacts,
+      skus,
+      quotations,
+      quotationLines,
+      orders,
+      orderLines,
+      invoices,
+      invoiceLines,
+      ledgerEntries,
+      warehouses,
+      stockItems,
+      stockTransfers,
+      purchaseBills,
+      supplierPayments,
+      customObjects,
+      brandingAssets,
+      documentSeries,
+    ] = await Promise.all([
+      this.prisma.user.count({ where: { tenantId: id } }),
+      this.prisma.lead.count({ where: { tenantId: id } }),
+      this.prisma.company.count({ where: { tenantId: id } }),
+      this.prisma.contact.count({ where: { tenantId: id } }),
+      this.prisma.sku.count({ where: { tenantId: id } }),
+      this.prisma.quotation.count({ where: { tenantId: id } }),
+      this.prisma.quotationLine.count({ where: { quotation: { tenantId: id } } }),
+      this.prisma.order.count({ where: { tenantId: id } }),
+      this.prisma.orderLine.count({ where: { order: { tenantId: id } } }),
+      this.prisma.invoice.count({ where: { tenantId: id } }),
+      this.prisma.invoiceLine.count({ where: { invoice: { tenantId: id } } }),
+      this.prisma.ledgerEntry.count({ where: { tenantId: id } }),
+      this.prisma.warehouse.count({ where: { tenantId: id } }),
+      this.prisma.stockItem.count({ where: { sku: { tenantId: id } } }),
+      this.prisma.stockTransfer.count({ where: { tenantId: id } }),
+      this.prisma.purchaseBill.count({ where: { tenantId: id } }),
+      this.prisma.supplierPayment.count({ where: { tenantId: id } }),
+      this.prisma.customObject.count({ where: { tenantId: id } }),
+      this.prisma.brandingAsset.count({ where: { tenantId: id } }),
+      this.prisma.documentSeries.count({ where: { tenantId: id } }),
+    ]);
+
+    const totalRows =
+      users +
+      leads +
+      companies +
+      contacts +
+      skus +
+      quotations +
+      quotationLines +
+      orders +
+      orderLines +
+      invoices +
+      invoiceLines +
+      ledgerEntries +
+      warehouses +
+      stockItems +
+      stockTransfers +
+      purchaseBills +
+      supplierPayments +
+      customObjects +
+      brandingAssets +
+      documentSeries;
+
+    return {
+      tenantId: tenant.id,
+      tenantCode: tenant.code,
+      tenantName: tenant.name,
+      totalRows,
+      counts: {
+        users,
+        leads,
+        companies,
+        contacts,
+        skus,
+        quotations,
+        quotationLines,
+        orders,
+        orderLines,
+        invoices,
+        invoiceLines,
+        ledgerEntries,
+        warehouses,
+        stockItems,
+        stockTransfers,
+        purchaseBills,
+        supplierPayments,
+        customObjects,
+        brandingAssets,
+        documentSeries,
+      },
+    };
+  }
+
+  /**
+   * Permanently delete a company workspace and all its data
+   * Requirements:
+   * - Platform super admin only
+   * - Step-up 2-step verification verified in controller
+   * - Refuse if tenant.isInternal
+   * - Refuse unless tenant is already deactivated (deletedAt is set)
+   * - Require confirmCode === tenant.code (case-sensitive)
+   * - Single prisma.$transaction with sufficient timeout
+   * - Post-transaction deletion of uploaded files
+   * - Surviving audit record (does not depend on deleted tenant FK)
+   * - Return row counts per table
+   */
+  async permanentDeleteTenant(
+    id: string,
+    dto: { confirmCode: string },
+    actor?: any,
+    ipAddress?: string,
+  ) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException('Company tenant not found');
+
+    if (tenant.isInternal) {
+      throw new ForbiddenException('This is the platform owner company and cannot be deleted.');
+    }
+
+    if (!tenant.deletedAt) {
+      throw new BadRequestException('Company must be deactivated before permanent deletion.');
+    }
+
+    if (!dto.confirmCode || dto.confirmCode !== tenant.code) {
+      throw new BadRequestException(
+        `Confirmation code does not match company code '${tenant.code}'.`,
+      );
+    }
+
+    // 1. Collect row counts before deletion
+    const rowStats = await this.getTenantRowCounts(id);
+    const counts = rowStats.counts;
+
+    // 2. Execute deletion inside a single transaction with timeout
+    await this.prisma.$transaction(
+      async (tx) => {
+        await tx.tenant.delete({
+          where: { id },
+        });
+      },
+      {
+        timeout: 30000,
+        maxWait: 10000,
+      },
+    );
+
+    // 3. Post-transaction file deletion
+    const uploadDirs = [
+      path.resolve(process.cwd(), 'apps/web/public/uploads/branding'),
+      path.resolve(process.cwd(), 'uploads/branding'),
+      path.resolve(process.cwd(), 'uploads'),
+    ];
+
+    for (const dir of uploadDirs) {
+      try {
+        if (fs.existsSync(dir)) {
+          const files = fs.readdirSync(dir);
+          for (const file of files) {
+            if (file.startsWith(`${id}_`) || file.startsWith(`${tenant.code}_`)) {
+              try {
+                fs.unlinkSync(path.join(dir, file));
+              } catch (fileErr: any) {
+                this.logger.warn(`Failed to delete tenant file ${file}: ${fileErr.message}`);
+              }
+            }
+          }
+        }
+      } catch (dirErr: any) {
+        this.logger.warn(`Failed scanning directory for tenant files ${dir}: ${dirErr.message}`);
+      }
+    }
+
+    // 4. Write ONE surviving audit record that does NOT depend on a tenantId foreign key
+    const internalTenant = await this.prisma.tenant.findFirst({
+      where: {
+        OR: [
+          { isInternal: true },
+          { code: { in: ['ACME-DEV-001', 'DEMO', 'JNC', 'ORG-001'] } },
+        ],
+        deletedAt: null,
+      },
+    });
+    const activeTenant = internalTenant || (await this.prisma.tenant.findFirst({ where: { deletedAt: null } }));
+    const survivingTenantId = activeTenant?.id || null;
+
+    let validActorId = actor?.sub || actor?.id || null;
+    if (validActorId) {
+      const userExists = await this.prisma.user.findUnique({
+        where: { id: validActorId },
+        select: { id: true },
+      });
+      if (!userExists) {
+        validActorId = null;
+      }
+    }
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: survivingTenantId,
+          actorId: validActorId,
+          actorName: actor?.name || actor?.email || 'Platform Super Admin',
+          action: 'PERMANENT_DELETE_TENANT',
+          entityName: 'Tenant',
+          entityId: id,
+          beforeState: JSON.stringify({
+            tenantId: id,
+            tenantCode: tenant.code,
+            tenantName: tenant.name,
+            totalRows: rowStats.totalRows,
+          }),
+          afterState: JSON.stringify({
+            tenantId: id,
+            tenantCode: tenant.code,
+            tenantName: tenant.name,
+            deletedCounts: counts,
+            totalDeleted: rowStats.totalRows,
+          }),
+          ipAddress: ipAddress || '127.0.0.1',
+        },
+      });
+    } catch (auditErr: any) {
+      this.logger.warn(`Surviving audit record warning: ${auditErr.message}`);
+    }
+
+    return {
+      success: true,
+      message: `Company workspace '${tenant.name}' (${tenant.code}) was permanently deleted.`,
+      deletedTenant: {
+        id: tenant.id,
+        code: tenant.code,
+        name: tenant.name,
+      },
+      deletedCounts: counts,
+      totalDeleted: rowStats.totalRows,
+    };
   }
 
   /**

@@ -1255,7 +1255,7 @@ model MessageLog {
 
 model AuditLog {
   id          String    @id @default(uuid())
-  tenantId    String    @default("default-tenant-id")
+  tenantId    String?   @default("default-tenant-id")
   actorId     String?
   actorName   String?
   action      String
@@ -1266,7 +1266,7 @@ model AuditLog {
   ipAddress   String?
   timestamp   DateTime  @default(now())
 
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   actor       User?     @relation("UserAuditLogs", fields: [actorId], references: [id])
 
   @@index([tenantId])

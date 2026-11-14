@@ -26,6 +26,19 @@ export default function PlatformCompaniesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [showDeactivated, setShowDeactivated] = useState(false);
+
+  // Permanent Delete Modal State
+  const [permanentDeleteTenant, setPermanentDeleteTenant] = useState<Tenant | null>(null);
+  const [deleteRowCounts, setDeleteRowCounts] = useState<{
+    totalRows: number;
+    counts: Record<string, number>;
+  } | null>(null);
+  const [loadingRowCounts, setLoadingRowCounts] = useState(false);
+  const [typedConfirmCode, setTypedConfirmCode] = useState('');
+  const [stepUp2FACode, setStepUp2FACode] = useState('');
+  const [deletingPermanently, setDeletingPermanently] = useState(false);
+  const [permanentDeleteError, setPermanentDeleteError] = useState<string | null>(null);
 
   // Create Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -125,6 +138,64 @@ export default function PlatformCompaniesPage() {
     );
   };
 
+  const handleOpenPermanentDelete = async (tenant: Tenant) => {
+    if (tenant.isInternal) {
+      showAlert('Forbidden', 'The platform owner company cannot be deleted.', 'error');
+      return;
+    }
+    setPermanentDeleteTenant(tenant);
+    setTypedConfirmCode('');
+    setStepUp2FACode('');
+    setPermanentDeleteError(null);
+    setLoadingRowCounts(true);
+    setDeleteRowCounts(null);
+    try {
+      const { data } = await platformApi.getTenantRowCounts(tenant.id);
+      setDeleteRowCounts(data);
+    } catch (err: any) {
+      console.warn('Could not load row counts:', err);
+    } finally {
+      setLoadingRowCounts(false);
+    }
+  };
+
+  const handleExecutePermanentDelete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!permanentDeleteTenant) return;
+
+    if (typedConfirmCode.trim() !== permanentDeleteTenant.code) {
+      setPermanentDeleteError(`Confirmation code must match "${permanentDeleteTenant.code}" exactly.`);
+      return;
+    }
+
+    if (!stepUp2FACode.trim()) {
+      setPermanentDeleteError('Two-step verification code is required.');
+      return;
+    }
+
+    setDeletingPermanently(true);
+    setPermanentDeleteError(null);
+
+    try {
+      const res = await platformApi.permanentDeleteTenant(permanentDeleteTenant.id, {
+        confirmCode: typedConfirmCode.trim(),
+        stepUpToken: stepUp2FACode.trim(),
+      });
+      showAlert(
+        'Company Permanently Deleted',
+        res.data?.message || `Company workspace "${permanentDeleteTenant.name}" has been permanently erased.`,
+        'success'
+      );
+      setPermanentDeleteTenant(null);
+      fetchTenants();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Permanent deletion failed. Please verify your 2-step code.';
+      setPermanentDeleteError(msg);
+    } finally {
+      setDeletingPermanently(false);
+    }
+  };
+
   const handleAddEmp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!viewingTenant || !empForm.name || !empForm.email) {
@@ -168,7 +239,7 @@ export default function PlatformCompaniesPage() {
     try {
       setLoading(true);
       setLoadError(null);
-      const { data } = await platformApi.listTenants();
+      const { data } = await platformApi.listTenants(showDeactivated);
       setTenants(data || []);
     } catch (err: any) {
       const msg = err?.response?.data?.message || (err.response ? `Server Error (${err.response.status}): ${err.response.statusText || 'Failed to load companies'}` : 'Unable to connect to server. Please check your connection or refresh the page.');
@@ -193,7 +264,7 @@ export default function PlatformCompaniesPage() {
 
   useEffect(() => {
     fetchTenants();
-  }, []);
+  }, [showDeactivated]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -416,7 +487,8 @@ export default function PlatformCompaniesPage() {
       t.slug.toLowerCase().includes(search.toLowerCase());
 
     const matchesStatus = statusFilter === '' || t.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesDeactivated = showDeactivated ? true : !t.deletedAt;
+    return matchesSearch && matchesStatus && matchesDeactivated;
   });
 
   const totalCompaniesCount = clientTenants.length;
@@ -509,6 +581,16 @@ export default function PlatformCompaniesPage() {
             <option value="active">Active</option>
             <option value="suspended">Suspended</option>
           </select>
+
+          <label className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 font-medium cursor-pointer select-none px-3 py-2 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042]">
+            <input
+              type="checkbox"
+              checked={showDeactivated}
+              onChange={(e) => setShowDeactivated(e.target.checked)}
+              className="rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+            />
+            <span>Show deactivated</span>
+          </label>
         </div>
 
         <button
@@ -617,15 +699,21 @@ export default function PlatformCompaniesPage() {
                     </td>
 
                     <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold capitalize ${
-                          tenant.status === 'active'
-                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                            : 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'
-                        }`}
-                      >
-                        {tenant.status}
-                      </span>
+                      {tenant.deletedAt ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300">
+                          Deactivated
+                        </span>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold capitalize ${
+                            tenant.status === 'active'
+                              ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'
+                          }`}
+                        >
+                          {tenant.status}
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px]">
@@ -680,13 +768,26 @@ export default function PlatformCompaniesPage() {
                           <Power size={14} />
                         </button>
 
-                        <button
-                          onClick={() => handleDeleteTenant(tenant)}
-                          className="btn p-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20"
-                          title="Delete client company workspace"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {!tenant.isInternal && !tenant.deletedAt && (
+                          <button
+                            onClick={() => handleDeleteTenant(tenant)}
+                            className="btn p-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20"
+                            title="Deactivate client company workspace"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+
+                        {!tenant.isInternal && (tenant.deletedAt || tenant.status === 'suspended') && (
+                          <button
+                            onClick={() => handleOpenPermanentDelete(tenant)}
+                            className="btn px-2.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 flex items-center gap-1 shadow-sm"
+                            title="Permanently and irreversibly delete this company workspace and all its data"
+                          >
+                            <Trash2 size={13} />
+                            <span>Permanently delete</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1584,6 +1685,140 @@ export default function PlatformCompaniesPage() {
                   </div>
                 </form>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Permanent Delete Modal */}
+      <AnimatePresence>
+        {permanentDeleteTenant && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-[#181B26] border border-rose-200 dark:border-rose-900/40 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col"
+            >
+              <div className="flex items-center justify-between p-4 border-b border-rose-100 dark:border-rose-950/60 bg-rose-50/50 dark:bg-rose-950/20">
+                <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-bold text-sm">
+                  <Trash2 size={18} />
+                  <span>Permanently Delete Company Workspace</span>
+                </div>
+                <button
+                  onClick={() => setPermanentDeleteTenant(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleExecutePermanentDelete} className="p-5 space-y-4">
+                <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 rounded-xl p-3 text-xs text-rose-700 dark:text-rose-300">
+                  <p className="font-bold mb-1">Warning: Irreversible Data Destruction</p>
+                  <p>
+                    You are about to permanently delete <strong>{permanentDeleteTenant.name}</strong> (
+                    <span className="font-mono font-bold">{permanentDeleteTenant.code}</span>). This will purge all users, leads, quotations, invoices, ledger entries, SKUs, and files forever.
+                  </p>
+                </div>
+
+                {/* Row Counts Breakdown */}
+                <div className="bg-slate-50 dark:bg-[#1E2230] border border-slate-200 dark:border-[#2A3042] rounded-xl p-3 text-xs">
+                  <div className="font-bold text-slate-800 dark:text-slate-200 mb-2 flex justify-between items-center">
+                    <span>Records to be permanently erased:</span>
+                    {loadingRowCounts ? (
+                      <span className="text-slate-400 flex items-center gap-1 font-normal">
+                        <RefreshCw size={11} className="animate-spin" /> Counting records...
+                      </span>
+                    ) : (
+                      <span className="font-mono text-rose-600 dark:text-rose-400 font-bold">
+                        {deleteRowCounts?.totalRows ?? 0} total records
+                      </span>
+                    )}
+                  </div>
+                  {deleteRowCounts && (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-slate-600 dark:text-slate-400">
+                      <div>Users: <strong className="text-slate-900 dark:text-white">{deleteRowCounts.counts.users || 0}</strong></div>
+                      <div>Quotations: <strong className="text-slate-900 dark:text-white">{deleteRowCounts.counts.quotations || 0}</strong></div>
+                      <div>Orders: <strong className="text-slate-900 dark:text-white">{deleteRowCounts.counts.orders || 0}</strong></div>
+                      <div>Invoices: <strong className="text-slate-900 dark:text-white">{deleteRowCounts.counts.invoices || 0}</strong></div>
+                      <div>SKUs: <strong className="text-slate-900 dark:text-white">{deleteRowCounts.counts.skus || 0}</strong></div>
+                      <div>Ledger: <strong className="text-slate-900 dark:text-white">{deleteRowCounts.counts.ledgerEntries || 0}</strong></div>
+                      <div>Leads: <strong className="text-slate-900 dark:text-white">{deleteRowCounts.counts.leads || 0}</strong></div>
+                      <div>Contacts: <strong className="text-slate-900 dark:text-white">{deleteRowCounts.counts.contacts || 0}</strong></div>
+                    </div>
+                  )}
+                </div>
+
+                {permanentDeleteError && (
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl text-rose-600 dark:text-rose-400 text-xs">
+                    {permanentDeleteError}
+                  </div>
+                )}
+
+                {/* Input 1: Type company code */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Type company code <span className="font-mono font-bold text-rose-600 dark:text-rose-400 select-all">{permanentDeleteTenant.code}</span> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={`Type ${permanentDeleteTenant.code}`}
+                    value={typedConfirmCode}
+                    onChange={(e) => setTypedConfirmCode(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono"
+                  />
+                </div>
+
+                {/* Input 2: 2-step verification code */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Admin 2-step verification code:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={10}
+                    placeholder="Enter 6-digit authenticator code"
+                    value={stepUp2FACode}
+                    onChange={(e) => setStepUp2FACode(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono"
+                  />
+                  <p className="text-[11px] text-slate-400">Enter the 6-digit TOTP code from your authenticator app to authorize permanent deletion.</p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-[#2A3042]">
+                  <button
+                    type="button"
+                    onClick={() => setPermanentDeleteTenant(null)}
+                    className="btn btn-secondary text-xs px-4 py-2"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={
+                      typedConfirmCode.trim() !== permanentDeleteTenant.code ||
+                      !stepUp2FACode.trim() ||
+                      deletingPermanently
+                    }
+                    className="btn bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  >
+                    {deletingPermanently ? (
+                      <>
+                        <RefreshCw size={13} className="animate-spin" />
+                        <span>Erasing Workspace...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 size={13} />
+                        <span>Permanently Delete Everything</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

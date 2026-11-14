@@ -73,3 +73,12 @@ export class TogglePlatformAdminActiveDto {
   @IsBoolean()
   isActive?: boolean;
 }
+
+export class PermanentDeleteTenantDto {
+  @IsString({ message: 'Confirmation code is required.' })
+  confirmCode: string;
+
+  @IsOptional()
+  @IsString()
+  stepUpToken?: string;
+}

@@ -50,6 +50,8 @@ export interface Tenant {
   invoicePrefix?: string;
   requireTwoFactor?: boolean;
   isDemo?: boolean;
+  isInternal?: boolean;
+  deletedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
   _count?: {

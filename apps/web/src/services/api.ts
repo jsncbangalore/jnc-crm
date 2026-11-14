@@ -1321,11 +1321,18 @@ export const platformAuthApi = {
 
 // ─── Platform Multi-Tenant Master Portal ──────────────────────────────────────
 export const platformApi = {
-  listTenants: () => api.get('/platform/tenants'),
+  listTenants: (includeDeactivated?: boolean) =>
+    api.get('/platform/tenants', { params: includeDeactivated ? { includeDeactivated: 'true' } : undefined }),
   getTenant: (id: string) => api.get(`/platform/tenants/${id}`),
+  getTenantRowCounts: (id: string) => api.get(`/platform/tenants/${id}/row-counts`),
   createTenant: (data: any) => api.post('/platform/tenants', data),
   updateTenant: (id: string, data: any) => api.put(`/platform/tenants/${id}`, data),
   deleteTenant: (id: string) => api.delete(`/platform/tenants/${id}`),
+  permanentDeleteTenant: (id: string, data: { confirmCode: string; stepUpToken?: string }) =>
+    api.delete(`/platform/tenants/${id}/permanent`, {
+      data,
+      headers: data.stepUpToken ? { 'x-step-up-token': data.stepUpToken } : undefined,
+    }),
   impersonateTenant: (id: string) => api.post(`/platform/tenants/${id}/impersonate`),
   resetAdminPassword: (id: string, data?: { newPassword?: string; sendEmail?: boolean; mustResetPassword?: boolean; appUrl?: string; adminEmail?: string; adminPhone?: string }) =>
     api.post(`/platform/tenants/${id}/reset-admin-password`, data || {}),

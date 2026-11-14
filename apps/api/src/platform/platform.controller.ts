@@ -20,6 +20,7 @@ import {
   Req,
   BadRequestException,
   HttpException,
+  Query,
 } from '@nestjs/common';
 import { PlatformService, CreateTenantDto, UpdateTenantDto } from './platform.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -32,6 +33,7 @@ import {
   ResetTenantAdminPasswordDto,
   CreatePlatformAdminDto,
   TogglePlatformAdminActiveDto,
+  PermanentDeleteTenantDto,
 } from './dto/platform-admin.dto';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -54,8 +56,8 @@ export class PlatformController {
   ) {}
 
   @Get()
-  async listTenants() {
-    return this.platformService.listTenants();
+  async listTenants(@Query('includeDeactivated') includeDeactivated?: string) {
+    return this.platformService.listTenants(includeDeactivated === 'true');
   }
 
   @Get(':id')
@@ -94,6 +96,25 @@ export class PlatformController {
     await this.authService.validateStepUp(user, token);
     const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
     return this.platformService.deleteTenant(id, user, ip);
+  }
+
+  @Get(':id/row-counts')
+  async getTenantRowCounts(@Param('id') id: string) {
+    return this.platformService.getTenantRowCounts(id);
+  }
+
+  @Delete(':id/permanent')
+  @Roles('platform_super_admin')
+  async permanentDeleteTenant(
+    @Param('id') id: string,
+    @Body() dto: PermanentDeleteTenantDto,
+    @CurrentUser() user: any,
+    @Req() req: any,
+  ) {
+    const token = extractStepUpToken(req, dto);
+    await this.authService.validateStepUp(user, token);
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.permanentDeleteTenant(id, dto, user, ip);
   }
 
   @Post(':id/impersonate')
