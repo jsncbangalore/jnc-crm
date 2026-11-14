@@ -21,6 +21,7 @@ import {
 import { inventoryApi } from '../../services/api';
 import { parseApiError, ParsedApiError } from '../../utils/errorHelper';
 import { FormErrorBanner } from '../common/FormErrorBanner';
+import { cleanSku } from '@crm/shared-validation';
 
 interface RecordComponentPurchaseModalProps {
   isOpen: boolean;
@@ -258,10 +259,14 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. SKU-001"
+                  placeholder="Enter SKU code, for example SKU-001"
                   value={skuCode}
-                  onChange={(e) => setSkuCode(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs font-mono rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onChange={(e) => setSkuCode(cleanSku(e.target.value))}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    setSkuCode(cleanSku(e.clipboardData.getData('text')));
+                  }}
+                  className="w-full px-3 py-1.5 text-xs font-mono uppercase rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>

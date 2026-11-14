@@ -10,7 +10,7 @@ import { invoicesApi, inventoryApi, companiesApi, paymentsApi, bankAccountsApi }
 import CustomerSelectWithModal, { CustomerData } from '../common/CustomerSelectWithModal';
 import { numberToIndianWords } from './InvoiceModal';
 import { validateLutStatus } from '../../utils/lut-validator';
-import { validateGstin, toPlainText } from '@crm/shared-validation';
+import { validateGstin, cleanGstin, toPlainText } from '@crm/shared-validation';
 import { useAllowedPages } from '../../hooks/useAllowedPages';
 import FullCalendarPicker from '../common/FullCalendarPicker';
 import FormFeedback from '../common/FormFeedback';
@@ -1290,10 +1290,10 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                   className={`input text-xs font-mono uppercase ${
                     fieldErrors.customerGstin ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : ''
                   }`}
-                  placeholder="e.g. 29ABCDE1234F1Z5"
+                  placeholder="Enter 15 letters and digits, for example 29AAAAA0000A1ZY"
                   value={customerGstin}
                   onChange={(e) => {
-                    const val = e.target.value.toUpperCase();
+                    const val = cleanGstin(e.target.value);
                     setCustomerGstin(val);
                     if (val.trim()) {
                       const res = validateGstin(val);
@@ -1312,6 +1312,23 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                         delete copy.customerGstin;
                         return copy;
                       });
+                    }
+                  }}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    const val = cleanGstin(e.clipboardData.getData('text'));
+                    setCustomerGstin(val);
+                    if (val.trim()) {
+                      const res = validateGstin(val);
+                      if (!res.valid) {
+                        setFieldErrors((prev) => ({ ...prev, customerGstin: res.error || 'Invalid GSTIN' }));
+                      } else {
+                        setFieldErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.customerGstin;
+                          return copy;
+                        });
+                      }
                     }
                   }}
                 />

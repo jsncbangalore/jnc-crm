@@ -25,6 +25,13 @@ import {
   sanitizeText,
   validateTextOnlyName,
   filterTextOnly,
+  cleanGstin,
+  cleanPan,
+  cleanIfsc,
+  cleanSku,
+  cleanUpi,
+  cleanPhoneInput,
+  cleanAmountInput,
 } from '../packages/shared-validation/src/index';
 
 let passed = 0;
@@ -223,6 +230,58 @@ assert(calc.lineTotals[1] === 550, 'Line 2 total: 550 (with 50 discount)');
 assert(calc.taxableSubtotal === 1550, 'Taxable subtotal: 1550');
 assert(calc.gstAmount === 279, '18% GST: 279');
 assert(calc.grandTotal === 1829, 'Grand total: 1829');
+
+// 13. Paste & Input Cleaning (Topic 2)
+console.log('\n--- 13. Paste & Input Cleaning (GSTIN, PAN, IFSC, SKU, UPI, Phone, Amounts) ---');
+
+// GSTIN Cleaning
+assert(cleanGstin(' 29-aaaaa-0000-a1zy ') === '29AAAAA0000A1ZY', 'cleanGstin uppercases and strips spaces and dashes');
+assert(cleanGstin('29AAAAA0000A1ZY999999') === '29AAAAA0000A1ZY', 'cleanGstin limits to 15 characters');
+assert(cleanGstin('29@#AAAAA$0000%A1ZY') === '29AAAAA0000A1ZY', 'cleanGstin strips symbols');
+
+// PAN Cleaning
+assert(cleanPan(' abcde-1234-f ') === 'ABCDE1234F', 'cleanPan uppercases and strips spaces and dashes');
+assert(cleanPan('ABCDE1234F99999') === 'ABCDE1234F', 'cleanPan limits to 10 characters');
+
+// IFSC Cleaning
+assert(cleanIfsc(' hdfc-0001234 ') === 'HDFC0001234', 'cleanIfsc uppercases and strips spaces and dashes');
+assert(cleanIfsc('HDFC000123499999') === 'HDFC0001234', 'cleanIfsc limits to 11 characters');
+
+// SKU Cleaning
+assert(cleanSku(' sku-prod-001 ') === 'SKU-PROD-001', 'cleanSku uppercases and trims');
+assert(cleanSku('sku@prod#001$v2') === 'SKUPROD001V2', 'cleanSku strips illegal symbols like @#$');
+assert(cleanSku('PROD_ITEM.01/A') === 'PROD_ITEM.01/A', 'cleanSku preserves allowed characters - _ . /');
+
+// UPI Cleaning
+assert(cleanUpi(' merchant @ bank ') === 'merchant@bank', 'cleanUpi strips spaces');
+assert(cleanUpi('name!@#bank.upi') === 'name@bank.upi', 'cleanUpi strips invalid characters');
+
+// Phone Cleaning
+assert(cleanPhoneInput('+91 98765-43210') === '9876543210', 'cleanPhoneInput strips +91, spaces, dashes');
+assert(cleanPhoneInput('09876543210') === '9876543210', 'cleanPhoneInput strips leading 0');
+assert(cleanPhoneInput('+91-09876543210') === '9876543210', 'cleanPhoneInput strips +91 and leading 0');
+assert(cleanPhoneInput('98765 43210 999') === '9876543210', 'cleanPhoneInput restricts to 10 digits');
+
+// Amount Cleaning
+assert(cleanAmountInput('1,00,000.50') === '100000.50', 'cleanAmountInput removes commas');
+assert(cleanAmountInput('-5000.75') === '5000.75', 'cleanAmountInput removes minus / negatives');
+assert(cleanAmountInput('02') === '2', 'cleanAmountInput removes leading zero from integer');
+assert(cleanAmountInput('007.89') === '7.89', 'cleanAmountInput removes leading zeros before decimal');
+assert(cleanAmountInput('0.50') === '0.50', 'cleanAmountInput preserves valid 0.50');
+assert(cleanAmountInput('12.3456') === '12.34', 'cleanAmountInput restricts to 2 decimal places');
+assert(cleanAmountInput('12.34.56') === '12.34', 'cleanAmountInput handles multiple dots by keeping first only');
+assert(cleanAmountInput('.') === '0.', 'cleanAmountInput converts bare dot to 0.');
+assert(cleanAmountInput('.75') === '0.75', 'cleanAmountInput converts .75 to 0.75');
+
+// Hint formatting verification (no brackets around examples)
+const gstinErr = validateGstin('INVALID').error || '';
+assert(gstinErr.includes('for example 29AAAAA0000A1ZY') && !gstinErr.includes('(for example'), 'GSTIN hint has example without brackets');
+const panErr = validatePan('INVALID').error || '';
+assert(panErr.includes('for example AAAAA0000A') && !panErr.includes('(for example'), 'PAN hint has example without brackets');
+const ifscErr = validateIfsc('INVALID').error || '';
+assert(ifscErr.includes('for example HDFC0001234') && !ifscErr.includes('(for example'), 'IFSC hint has example without brackets');
+const unitRateErr = validateUnitRate('02').error || '';
+assert(unitRateErr.includes('for example enter 2 instead of 02') && !unitRateErr.includes('(for example'), 'Unit rate leading zero hint has example without brackets');
 
 console.log('\n========================================================================');
 console.log(`TEST SUMMARY: ${passed} passed, ${failed} failed`);

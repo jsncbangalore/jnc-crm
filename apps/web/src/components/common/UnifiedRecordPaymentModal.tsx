@@ -37,6 +37,8 @@ import {
   validateBankAccount,
   validateIfsc,
   validateUpiId,
+  cleanIfsc,
+  cleanUpi,
   formatDisplayDate,
   formatFriendlyErrorMessage,
   toPlainText,
@@ -1745,9 +1747,13 @@ export default function UnifiedRecordPaymentModal({
                     <input
                       type="text"
                       required
-                      placeholder="11 characters (e.g. HDFC0001234)"
+                      placeholder="Enter 11 letters and digits, for example HDFC0001234"
                       value={newBankForm.ifsc}
-                      onChange={(e) => setNewBankForm({ ...newBankForm, ifsc: e.target.value.toUpperCase() })}
+                      onChange={(e) => setNewBankForm({ ...newBankForm, ifsc: cleanIfsc(e.target.value) })}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        setNewBankForm({ ...newBankForm, ifsc: cleanIfsc(e.clipboardData.getData('text')) });
+                      }}
                       className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono uppercase"
                     />
                     {newBankErrors.ifsc && <p className="text-rose-500 text-[10px] mt-0.5">{newBankErrors.ifsc}</p>}
@@ -1761,7 +1767,7 @@ export default function UnifiedRecordPaymentModal({
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Koramangala"
+                      placeholder="Enter branch name, for example Koramangala"
                       value={newBankForm.branch}
                       onChange={(e) => setNewBankForm({ ...newBankForm, branch: e.target.value })}
                       className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
@@ -1773,9 +1779,13 @@ export default function UnifiedRecordPaymentModal({
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. company@okhdfcbank"
+                      placeholder="Enter UPI ID, for example company@okhdfcbank"
                       value={newBankForm.upiId}
-                      onChange={(e) => setNewBankForm({ ...newBankForm, upiId: e.target.value })}
+                      onChange={(e) => setNewBankForm({ ...newBankForm, upiId: cleanUpi(e.target.value) })}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        setNewBankForm({ ...newBankForm, upiId: cleanUpi(e.clipboardData.getData('text')) });
+                      }}
                       className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                     />
                     {newBankErrors.upiId && <p className="text-rose-500 text-[10px] mt-0.5">{newBankErrors.upiId}</p>}

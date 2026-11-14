@@ -40,6 +40,9 @@ import {
   IsValidUnitRate,
   IsValidHttpsUrl,
   IsValidCustomDate,
+  CleanPhone,
+  CleanGstin,
+  IsValidGstin,
 } from '../common/validation.transformers';
 import { roundCurrency } from '../common/shared-validation';
 import { PaymentsService } from '../payments/payments.service';
@@ -110,6 +113,7 @@ export class CreateOrderDto {
   @IsValidName()
   customerName: string;
 
+  @CleanPhone()
   @TrimString()
   @IsString()
   @IsNotEmpty()
@@ -124,8 +128,10 @@ export class CreateOrderDto {
   @IsValidEmail()
   customerEmail?: string;
 
+  @CleanGstin()
   @IsString()
   @IsOptional()
+  @IsValidGstin()
   customerGstin?: string;
 
   @IsString()

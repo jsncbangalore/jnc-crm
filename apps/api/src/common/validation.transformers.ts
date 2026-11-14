@@ -35,7 +35,86 @@ import {
   validateLogoField,
   validateNameField,
   validatePhoneField,
+  cleanGstin,
+  cleanPan,
+  cleanIfsc,
+  cleanSku,
+  cleanUpi,
+  cleanPhoneInput,
+  cleanAmountInput,
 } from './shared-validation';
+
+/**
+ * Transform decorator: cleans GSTIN (uppercase, strips spaces and symbols, max 15).
+ */
+export function CleanGstin() {
+  return Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return cleanGstin(value);
+    }
+    return value;
+  });
+}
+
+/**
+ * Transform decorator: cleans PAN (uppercase, strips spaces and symbols, max 10).
+ */
+export function CleanPan() {
+  return Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return cleanPan(value);
+    }
+    return value;
+  });
+}
+
+/**
+ * Transform decorator: cleans IFSC (uppercase, strips spaces and symbols, max 11).
+ */
+export function CleanIfsc() {
+  return Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return cleanIfsc(value);
+    }
+    return value;
+  });
+}
+
+/**
+ * Transform decorator: cleans SKU (uppercase, strips spaces and disallowed symbols, max 50).
+ */
+export function CleanSku() {
+  return Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return cleanSku(value);
+    }
+    return value;
+  });
+}
+
+/**
+ * Transform decorator: cleans UPI (strips spaces, max 50).
+ */
+export function CleanUpi() {
+  return Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return cleanUpi(value);
+    }
+    return value;
+  });
+}
+
+/**
+ * Transform decorator: cleans Phone (strips spaces, dashes, +91 and leading 0, max 10).
+ */
+export function CleanPhone() {
+  return Transform(({ value }) => {
+    if (typeof value === 'string') {
+      return cleanPhoneInput(value);
+    }
+    return value;
+  });
+}
 
 /**
  * Transform decorator: trims whitespace, removes control characters, and strips HTML tags.

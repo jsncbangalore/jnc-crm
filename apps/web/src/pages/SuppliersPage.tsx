@@ -11,6 +11,7 @@ import {
   validatePhone,
   validateEmail,
   validateGstin,
+  cleanGstin,
   validateAddress,
 } from '@crm/shared-validation';
 import { NameField, PhoneField, StateCityField } from '../components/common/forms';
@@ -529,12 +530,21 @@ export default function SuppliersPage() {
                   <FormField
                     id="new-supplier-gstin"
                     label="GSTIN / Tax ID"
-                    placeholder="e.g. 29ABCDE1234F1Z5"
+                    placeholder="Enter 15 letters and digits, for example 29AAAAA0000A1ZY"
                     value={newSupplier.gstin}
                     onChange={(e) => {
-                      const filtered = filterGstinInput(e.target.value);
+                      const filtered = cleanGstin(e.target.value);
                       setNewSupplier({ ...newSupplier, gstin: filtered });
                       if (addTouched.gstin && filtered) {
+                        const res = validateGstin(filtered);
+                        setAddErrors((prev) => ({ ...prev, gstin: res.valid ? '' : res.error! }));
+                      }
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const filtered = cleanGstin(e.clipboardData.getData('text'));
+                      setNewSupplier({ ...newSupplier, gstin: filtered });
+                      if (filtered) {
                         const res = validateGstin(filtered);
                         setAddErrors((prev) => ({ ...prev, gstin: res.valid ? '' : res.error! }));
                       }

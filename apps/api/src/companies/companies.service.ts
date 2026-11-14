@@ -22,6 +22,11 @@ import {
   IsValidContactName,
   IsValidPhone,
   IsValidEmail,
+  IsValidGstin,
+  IsValidPan,
+  CleanGstin,
+  CleanPan,
+  CleanPhone,
 } from '../common/validation.transformers';
 import { normalizeToE164 } from '../common/shared-validation';
 
@@ -86,8 +91,10 @@ export class CreateCompanyDto {
   @IsValidName()
   name: string;
 
+  @CleanGstin()
   @IsString()
   @IsOptional()
+  @IsValidGstin()
   gstin?: string;
 
   @IsString()
@@ -114,6 +121,7 @@ export class CreateCompanyDto {
   @IsOptional()
   billingEmail?: string;
 
+  @CleanPhone()
   @TrimString()
   @IsString()
   @IsOptional()
@@ -129,8 +137,10 @@ export class CreateCompanyDto {
   @IsOptional()
   pincode?: string;
 
+  @CleanPan()
   @IsString()
   @IsOptional()
+  @IsValidPan()
   pan?: string;
 }
 
@@ -139,8 +149,10 @@ export class UpdateCompanyDto {
   @IsOptional()
   name?: string;
 
+  @CleanGstin()
   @IsString()
   @IsOptional()
+  @IsValidGstin()
   gstin?: string;
 
   @IsString()
@@ -167,8 +179,10 @@ export class UpdateCompanyDto {
   @IsOptional()
   billingEmail?: string;
 
+  @CleanPhone()
   @IsString()
   @IsOptional()
+  @IsValidPhone()
   phone?: string;
 
   @IsEmail()
@@ -179,8 +193,10 @@ export class UpdateCompanyDto {
   @IsOptional()
   pincode?: string;
 
+  @CleanPan()
   @IsString()
   @IsOptional()
+  @IsValidPan()
   pan?: string;
 }
 
@@ -196,6 +212,7 @@ export class CreateContactDto {
   @IsOptional()
   email?: string;
 
+  @CleanPhone()
   @TrimString()
   @IsString()
   @IsNotEmpty()

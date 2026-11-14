@@ -170,6 +170,18 @@ export const cleanPhone = (raw: string): string => {
   return raw.replace(/[\s\-\(\)\.]/g, '').trim();
 };
 
+export const cleanPhoneInput = (val: string): string => {
+  if (typeof val !== 'string') return '';
+  let cleaned = val.replace(/[\s\-\(\)\.]/g, '').trim();
+  if (cleaned.startsWith('+91')) {
+    cleaned = cleaned.substring(3);
+  } else if (cleaned.startsWith('91') && cleaned.length > 10) {
+    cleaned = cleaned.substring(2);
+  }
+  cleaned = cleaned.replace(/^0+/, '');
+  return cleaned.replace(/\D/g, '').slice(0, 10);
+};
+
 export const normalizePhoneNumber = (raw: string): string => {
   let cleaned = cleanPhone(raw);
   // Handle Indian phone variations: +91, 0, or 91
@@ -252,39 +264,8 @@ export const validatePhone = (
     return { valid: false, error: 'Phone number is required.', value: '' };
   }
 
-  const indianNormalized = normalizePhoneNumber(cleaned);
-
-  // If explicitly requested landline / other (6 to 12 digits, optional STD code)
-  if (type === 'landline') {
-    const digitsOnly = cleaned.replace(/\D/g, '');
-    if (digitsOnly.length >= 6 && digitsOnly.length <= 12) {
-      return { valid: true, value: digitsOnly, isLandline: true };
-    }
-    return { valid: false, error: 'Enter a valid landline or phone number (6 to 12 digits, optional STD code).', value: digitsOnly };
-  }
-
-  // If explicitly requested mobile
-  if (type === 'mobile') {
-    if (/^[6-9]\d{9}$/.test(indianNormalized)) {
-      return { valid: true, value: indianNormalized, isLandline: false };
-    }
-    return { valid: false, error: 'Enter a 10-digit mobile number.', value: indianNormalized };
-  }
-
-  // If type is 'any':
-  // If Indian mobile number (10 digits starting 6-9) and did NOT explicitly start with 0 STD code
-  if (/^[6-9]\d{9}$/.test(indianNormalized) && !cleaned.startsWith('0')) {
-    return { valid: true, value: indianNormalized, isLandline: false };
-  }
-
-  // If Indian landline / other phone number (6 to 12 digits)
-  const digitsOnly = cleaned.replace(/\D/g, '');
-  if (digitsOnly.length >= 6 && digitsOnly.length <= 12) {
-    return { valid: true, value: digitsOnly, isLandline: true };
-  }
-
   // Check if international format with leading + (non-Indian)
-  if (cleaned.startsWith('+')) {
+  if (cleaned.startsWith('+') && !cleaned.startsWith('+91')) {
     const intlDigits = cleaned.substring(1);
     if (!/^\d+$/.test(intlDigits)) {
       return { valid: false, error: 'Phone number may only contain digits.', value: cleaned };
@@ -295,9 +276,27 @@ export const validatePhone = (
     return { valid: true, value: cleaned };
   }
 
+  const indianNormalized = normalizePhoneNumber(cleaned);
+
+  // If Indian mobile number (10 digits starting 6-9)
+  if (/^[6-9]\d{9}$/.test(indianNormalized)) {
+    return { valid: true, value: indianNormalized, isLandline: false };
+  }
+
+  // If explicitly requested landline OR type is 'any' and starts with 0 (STD code landline)
+  if (type === 'landline' || (type === 'any' && cleaned.startsWith('0'))) {
+    const digitsOnly = cleaned.replace(/\D/g, '');
+    if (digitsOnly.length >= 8 && digitsOnly.length <= 12 && digitsOnly.startsWith('0')) {
+      return { valid: true, value: digitsOnly, isLandline: true };
+    }
+    if (type === 'landline' && digitsOnly.length >= 6 && digitsOnly.length <= 12) {
+      return { valid: true, value: digitsOnly, isLandline: true };
+    }
+  }
+
   return {
     valid: false,
-    error: 'Enter a 10-digit mobile number or landline with STD code.',
+    error: 'Enter a valid 10-digit mobile number starting with 6-9.',
     value: indianNormalized,
   };
 };
@@ -440,7 +439,7 @@ export const validateEmail = (raw?: string, required = false): { valid: boolean;
   }
   const parts = value.split('@');
   if (parts.length !== 2 || !parts[1].includes('.')) {
-    return { valid: false, error: 'Email domain must contain a dot (e.g. domain.com).', value };
+    return { valid: false, error: 'Email domain must contain a dot, for example domain.com.', value };
   }
   const tld = parts[1].split('.').pop();
   if (!tld || tld.length < 2) {
@@ -476,6 +475,11 @@ export const validateProductName = (raw: string): { valid: boolean; error?: stri
 // 6. SKU Rules
 // Letters, digits, - _ . / (2-50 chars)
 export const SKU_REGEX = /^[a-zA-Z0-9\-_.\\/]{2,50}$/;
+
+export const cleanSku = (val: string): string => {
+  if (typeof val !== 'string') return '';
+  return val.toUpperCase().replace(/[^0-9A-Z\-_.\\/]/g, '').slice(0, 50);
+};
 
 export const validateSku = (raw?: string, required = false): { valid: boolean; error?: string; value: string } => {
   const value = (raw || '').trim();
@@ -535,6 +539,22 @@ export const validateQuantity = (
 // Greater than 0, max 100,000,000 (10 crore), at most 2 decimals, no leading zeros ('02' invalid, '0.5' ok, '2' ok, '0' invalid), no exponent ('1e5' invalid), no minus ('-5' invalid)
 export const UNIT_RATE_REGEX = /^(?:0\.\d{1,2}|[1-9]\d*(?:\.\d{1,2})?)$/;
 
+export const cleanAmountInput = (val: string | number): string => {
+  if (val === null || val === undefined || val === '') return '';
+  const str = String(val).replace(/,/g, '').trim();
+  const clean = str.replace(/[^0-9.]/g, '');
+  if (!clean) return '';
+  const parts = clean.split('.');
+  let integerPart = parts[0] || (parts.length > 1 ? '0' : '');
+  if (integerPart.length > 1) {
+    integerPart = integerPart.replace(/^0+(?=\d)/, '');
+  }
+  if (parts.length > 1) {
+    return integerPart + '.' + parts.slice(1).join('').slice(0, 2);
+  }
+  return integerPart;
+};
+
 export const validateUnitRate = (raw: number | string): { valid: boolean; error?: string; value: number } => {
   const str = String(raw).trim();
   if (!str) {
@@ -546,7 +566,7 @@ export const validateUnitRate = (raw: number | string): { valid: boolean; error?
   }
   if (!UNIT_RATE_REGEX.test(str)) {
     if (/^0[0-9]/.test(str)) {
-      return { valid: false, error: 'Leading zeros are not allowed (e.g. enter 2 instead of 02).', value: 0 };
+      return { valid: false, error: 'Leading zeros are not allowed, for example enter 2 instead of 02.', value: 0 };
     }
     return { valid: false, error: 'Rate must be positive with at most 2 decimal places.', value: 0 };
   }
@@ -621,6 +641,11 @@ export const validatePostalPin = (raw?: string, required = false): { valid: bool
 export const GSTIN_FORMAT_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 const GSTIN_CHAR_SET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+export const cleanGstin = (val: string): string => {
+  if (typeof val !== 'string') return '';
+  return val.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 15);
+};
+
 export const verifyGstinChecksum = (gstin: string): boolean => {
   if (gstin.length !== 15) return false;
   let sum = 0;
@@ -642,7 +667,7 @@ export const validateGstin = (raw?: string, required = false): { valid: boolean;
     return { valid: true, value: '' };
   }
   if (!GSTIN_FORMAT_REGEX.test(value)) {
-    return { valid: false, error: 'Invalid GSTIN format (15 characters: e.g. 29AAAAA0000A1ZY).', value };
+    return { valid: false, error: 'Invalid GSTIN format. Enter 15 letters and digits, for example 29AAAAA0000A1ZY', value };
   }
   if (!verifyGstinChecksum(value)) {
     return { valid: false, error: 'Invalid GSTIN checksum digit.', value };
@@ -654,6 +679,11 @@ export const validateGstin = (raw?: string, required = false): { valid: boolean;
 // 10 chars: 5 letters, 4 digits, 1 letter
 export const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
 
+export const cleanPan = (val: string): string => {
+  if (typeof val !== 'string') return '';
+  return val.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 10);
+};
+
 export const validatePan = (raw?: string, required = false): { valid: boolean; error?: string; value: string } => {
   const value = (raw || '').trim().toUpperCase();
   if (!value) {
@@ -661,7 +691,7 @@ export const validatePan = (raw?: string, required = false): { valid: boolean; e
     return { valid: true, value: '' };
   }
   if (!PAN_REGEX.test(value)) {
-    return { valid: false, error: 'Invalid PAN format (10 characters: 5 letters, 4 digits, 1 letter).', value };
+    return { valid: false, error: 'Invalid PAN format. Enter 10 letters and digits, for example AAAAA0000A', value };
   }
   return { valid: true, value };
 };
@@ -670,6 +700,11 @@ export const validatePan = (raw?: string, required = false): { valid: boolean; e
 // 11 chars: 4 letters, 0, 6 alphanum
 export const IFSC_REGEX = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
+export const cleanIfsc = (val: string): string => {
+  if (typeof val !== 'string') return '';
+  return val.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 11);
+};
+
 export const validateIfsc = (raw?: string, required = false): { valid: boolean; error?: string; value: string } => {
   const value = (raw || '').trim().toUpperCase();
   if (!value) {
@@ -677,7 +712,7 @@ export const validateIfsc = (raw?: string, required = false): { valid: boolean; 
     return { valid: true, value: '' };
   }
   if (!IFSC_REGEX.test(value)) {
-    return { valid: false, error: 'Invalid IFSC code (11 characters: 4 letters, 0, 6 alphanumeric).', value };
+    return { valid: false, error: 'Invalid IFSC code. Enter 11 letters and digits, for example HDFC0001234', value };
   }
   return { valid: true, value };
 };
@@ -959,6 +994,11 @@ export const formatIndianCurrency = (amount: number | string): string => {
 // 20. UPI ID Rules
 export const UPI_ID_REGEX = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z0-9]{2,64}$/;
 
+export const cleanUpi = (val: string): string => {
+  if (typeof val !== 'string') return '';
+  return val.replace(/\s+/g, '').replace(/[^a-zA-Z0-9.\-_@]/g, '').slice(0, 50);
+};
+
 export const validateUpiId = (
   raw?: string | null,
   required = false
@@ -969,7 +1009,7 @@ export const validateUpiId = (
     return { valid: true, value: '' };
   }
   if (!UPI_ID_REGEX.test(value)) {
-    return { valid: false, error: 'Invalid UPI ID format (e.g. name@bank or merchant@upi).', value };
+    return { valid: false, error: 'Invalid UPI ID format. Enter valid UPI ID, for example name@bank or merchant@upi', value };
   }
   return { valid: true, value };
 };

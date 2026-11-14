@@ -40,6 +40,9 @@ import {
   IsValidQuantity,
   IsValidUnitRate,
   IsValidGstRate,
+  CleanPhone,
+  CleanGstin,
+  IsValidGstin,
 } from '../common/validation.transformers';
 import { roundCurrency, validateDocumentAmountLimits } from '../common/shared-validation';
 import { DocumentSeriesService } from '../common/document-series.service';
@@ -109,6 +112,7 @@ export class CreateQuotationDto {
   @IsValidName()
   customerName: string;
 
+  @CleanPhone()
   @TrimString()
   @IsString()
   @IsNotEmpty()
@@ -123,8 +127,10 @@ export class CreateQuotationDto {
   @IsValidEmail()
   customerEmail?: string;
 
+  @CleanGstin()
   @IsString()
   @IsOptional()
+  @IsValidGstin()
   customerGstin?: string;
 
   @IsString()

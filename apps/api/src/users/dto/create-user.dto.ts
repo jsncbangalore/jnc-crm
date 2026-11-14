@@ -1,7 +1,7 @@
 import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateIf, MaxLength, IsArray } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ALL_ROLES, UserRole } from '../../auth/roles';
-import { SanitizeText, TrimString, IsValidContactName, IsValidEmail, IsValidPhone } from '../../common/validation.transformers';
+import { SanitizeText, TrimString, IsValidContactName, IsValidEmail, IsValidPhone, CleanPhone } from '../../common/validation.transformers';
 
 export class CreateUserDto {
   @SanitizeText()
@@ -16,6 +16,7 @@ export class CreateUserDto {
   @IsValidEmail()
   email: string;
 
+  @CleanPhone()
   @TrimString()
   @IsOptional()
   @IsString()

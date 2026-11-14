@@ -1,7 +1,7 @@
 import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateIf, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ALL_ROLES, UserRole } from '../../auth/roles';
-import { SanitizeText, TrimString, IsValidName, IsValidEmail, IsValidPhone } from '../../common/validation.transformers';
+import { SanitizeText, TrimString, IsValidName, IsValidEmail, IsValidPhone, CleanPhone } from '../../common/validation.transformers';
 
 export class UpdateUserDto {
   @SanitizeText()
@@ -17,6 +17,7 @@ export class UpdateUserDto {
   @IsValidEmail()
   email?: string;
 
+  @CleanPhone()
   @TrimString()
   @IsOptional()
   @IsString()

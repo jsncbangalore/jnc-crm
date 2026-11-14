@@ -30,6 +30,10 @@ import {
   IsValidUnitRate,
   IsValidGstRate,
   IsValidLogo,
+  CleanPhone,
+  CleanGstin,
+  CleanPan,
+  CleanIfsc,
 } from '../../common/validation.transformers';
 
 export class InvoiceLineItemDto {
@@ -157,6 +161,7 @@ export class CreateDirectInvoiceDto {
   @IsOptional()
   customerName?: string;
 
+  @CleanPhone()
   @IsString()
   @IsOptional()
   customerPhone?: string;
@@ -181,6 +186,7 @@ export class CreateDirectInvoiceDto {
   @IsOptional()
   deliveryAddress?: string;
 
+  @CleanGstin()
   @IsString()
   @IsOptional()
   customerGstin?: string;
@@ -318,6 +324,7 @@ export class UpdateInvoiceDto {
   @IsOptional()
   customerName?: string;
 
+  @CleanPhone()
   @IsString()
   @IsOptional()
   customerPhone?: string;
@@ -342,6 +349,7 @@ export class UpdateInvoiceDto {
   @IsOptional()
   deliveryAddress?: string;
 
+  @CleanGstin()
   @IsString()
   @IsOptional()
   customerGstin?: string;
@@ -436,10 +444,12 @@ export class CompanyProfileDto {
   @IsOptional()
   address?: string;
 
+  @CleanGstin()
   @IsString()
   @IsOptional()
   gstin?: string;
 
+  @CleanPan()
   @IsString()
   @IsOptional()
   pan?: string;
@@ -448,6 +458,7 @@ export class CompanyProfileDto {
   @IsOptional()
   email?: string;
 
+  @CleanPhone()
   @IsString()
   @IsOptional()
   phone?: string;

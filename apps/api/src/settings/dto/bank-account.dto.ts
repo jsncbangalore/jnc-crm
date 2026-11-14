@@ -11,6 +11,7 @@ import {
   IsOptional,
   IsBoolean,
 } from 'class-validator';
+import { CleanIfsc, CleanUpi, IsValidIfsc } from '../../common/validation.transformers';
 
 export class CreateBankAccountDto {
   @IsString({ message: 'Label requires a valid text entry.' })
@@ -29,14 +30,17 @@ export class CreateBankAccountDto {
   @IsNotEmpty({ message: 'Account number is required.' })
   accountNumber: string;
 
+  @CleanIfsc()
   @IsString({ message: 'IFSC requires a valid text entry.' })
   @IsNotEmpty({ message: 'IFSC is required.' })
+  @IsValidIfsc()
   ifsc: string;
 
   @IsString({ message: 'Branch requires a valid text entry.' })
   @IsOptional()
   branch?: string;
 
+  @CleanUpi()
   @IsString({ message: 'UPI ID requires a valid text entry.' })
   @IsOptional()
   upiId?: string;
@@ -67,14 +71,17 @@ export class UpdateBankAccountDto {
   @IsOptional()
   accountNumber?: string;
 
+  @CleanIfsc()
   @IsString({ message: 'IFSC requires a valid text entry.' })
   @IsOptional()
+  @IsValidIfsc()
   ifsc?: string;
 
   @IsString({ message: 'Branch requires a valid text entry.' })
   @IsOptional()
   branch?: string;
 
+  @CleanUpi()
   @IsString({ message: 'UPI ID requires a valid text entry.' })
   @IsOptional()
   upiId?: string;

@@ -26,6 +26,11 @@ import {
   IsValidBankAccount,
   IsValidHttpsUrl,
   IsValidLogo,
+  CleanPhone,
+  CleanGstin,
+  CleanPan,
+  CleanIfsc,
+  CleanUpi,
 } from '../../common/validation.transformers';
 
 export class UpdateBrandingDto {
@@ -36,6 +41,7 @@ export class UpdateBrandingDto {
   @IsValidName()
   companyDisplayName?: string;
 
+  @CleanPhone()
   @TrimString()
   @IsOptional()
   @IsString()
@@ -59,6 +65,7 @@ export class UpdateCompanyProfileDto {
   @IsValidName()
   name?: string;
 
+  @CleanPhone()
   @TrimString()
   @IsOptional()
   @IsString()
@@ -105,6 +112,7 @@ export class UpdateCompanyProfileDto {
   @IsValidHttpsUrl()
   website?: string;
 
+  @CleanGstin()
   @TrimString()
   @IsOptional()
   @IsString()
@@ -112,6 +120,7 @@ export class UpdateCompanyProfileDto {
   @IsValidGstin()
   gstin?: string;
 
+  @CleanPan()
   @TrimString()
   @IsOptional()
   @IsString()
@@ -154,6 +163,7 @@ export class UpdateCompanyProfileDto {
   @IsValidBankAccount()
   bankAccountNumber?: string;
 
+  @CleanIfsc()
   @TrimString()
   @IsOptional()
   @IsString()
@@ -167,6 +177,7 @@ export class UpdateCompanyProfileDto {
   @MaxLength(100)
   bankBranch?: string;
 
+  @CleanUpi()
   @TrimString()
   @IsOptional()
   @IsString()

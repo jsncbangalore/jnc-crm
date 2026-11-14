@@ -6,7 +6,7 @@
  * ----------------------------------------------------- */
 
 import React, { useState, useEffect, useId } from 'react';
-import { formatIndianCurrency } from '@crm/shared-validation';
+import { formatIndianCurrency, cleanAmountInput } from '@crm/shared-validation';
 import { toPlainText } from '../../../utils/toPlainText';
 
 export interface MoneyFieldProps {
@@ -90,17 +90,19 @@ export const MoneyField: React.FC<MoneyFieldProps> = ({
       return;
     }
 
-    // Digits and at most 1 decimal point with up to 2 decimal places
-    const clean = raw.replace(/[^0-9.]/g, '');
-    const parts = clean.split('.');
-    let formatted = parts[0];
-    if (parts.length > 1) {
-      formatted += '.' + parts.slice(1).join('').slice(0, 2);
-    }
-
+    const formatted = cleanAmountInput(raw);
     setTextValue(formatted);
     const parsed = parseFloat(formatted);
     onChange?.(isNaN(parsed) ? 0 : parsed, formatted);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text');
+    const cleaned = cleanAmountInput(pasted);
+    setTextValue(cleaned);
+    const parsed = parseFloat(cleaned);
+    onChange?.(isNaN(parsed) ? 0 : parsed, cleaned);
   };
 
   const handleBlurEvent = () => {
@@ -137,6 +139,7 @@ export const MoneyField: React.FC<MoneyFieldProps> = ({
           inputMode="decimal"
           value={displayString}
           onChange={handleChange}
+          onPaste={handlePaste}
           onFocus={handleFocus}
           onBlur={handleBlurEvent}
           disabled={disabled}

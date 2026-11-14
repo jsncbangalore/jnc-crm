@@ -7,7 +7,7 @@
 
 import React, { useId, useState, useEffect } from 'react';
 import { isValidPhoneNumber } from 'libphonenumber-js';
-import { checkPhonePaste, cleanPhonePaste, formatToE164, isIndianLandline } from '@crm/shared-validation';
+import { checkPhonePaste, cleanPhonePaste, formatToE164, isIndianLandline, cleanPhoneInput } from '@crm/shared-validation';
 import { toPlainText } from '../../../utils/toPlainText';
 
 export interface PhoneFieldProps {
@@ -185,7 +185,9 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
-    let digits = raw.replace(/\D/g, '');
+    let digits = selectedCountry === '+91' && currentPhoneType === 'mobile'
+      ? cleanPhoneInput(raw)
+      : raw.replace(/\D/g, '');
 
     // For +91 mobile, block more than 10 digits; for landline allow up to 12 (STD + local digits)
     const maxDigits = selectedCountry === '+91' ? (currentPhoneType === 'landline' ? 12 : 10) : 15;
@@ -206,7 +208,7 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
     if (selectedCountry === '+91') {
       if (currentPhoneType === 'mobile') {
         if (digits.length >= 1 && !/^[6-9]/.test(digits)) {
-          setInternalError('Enter a 10-digit mobile number.');
+          setInternalError('Enter a 10-digit mobile number, for example 9876543210');
         } else if (digits.length === 10) {
           setInternalError(null);
         } else {
@@ -237,14 +239,18 @@ export const PhoneField: React.FC<PhoneFieldProps> = ({
       }
     }
 
-    // Do NOT silently truncate too-long pasted numbers; show message
-    const check = checkPhonePaste(pasted, targetCountry, currentPhoneType);
-    if (!check.valid) {
-      setInternalError(check.error || 'Pasted number has too many digits. Please enter a valid number.');
-      return;
+    let finalDigits = '';
+    if (targetCountry === '+91' && currentPhoneType === 'mobile') {
+      finalDigits = cleanPhoneInput(pasted);
+    } else {
+      const check = checkPhonePaste(pasted, targetCountry, currentPhoneType);
+      if (!check.valid) {
+        setInternalError(check.error || 'Pasted number has too many digits. Please enter a valid number.');
+        return;
+      }
+      finalDigits = check.digits;
     }
 
-    const finalDigits = check.digits;
     setNationalNumber(finalDigits);
 
     const e164 = finalDigits ? formatToE164(finalDigits, targetCountry) : '';

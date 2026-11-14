@@ -15,6 +15,8 @@ import {
   validateBankAccount,
   validateIfsc,
   validateUpiId,
+  cleanIfsc,
+  cleanUpi,
   formatFriendlyErrorMessage,
   toPlainText,
 } from '@crm/shared-validation';
@@ -129,7 +131,7 @@ export default function CompanyBankAccountsSection() {
 
     const ifscCheck = validateIfsc(form.ifsc, true);
     if (!ifscCheck.valid) {
-      errs.ifsc = ifscCheck.error || 'Valid 11-character IFSC required (e.g. HDFC0001234).';
+      errs.ifsc = ifscCheck.error || 'Valid 11-character IFSC required, for example HDFC0001234';
     }
 
     if (form.upiId.trim()) {
@@ -506,8 +508,12 @@ export default function CompanyBankAccountsSection() {
                   <input
                     type="text"
                     value={form.ifsc}
-                    onChange={(e) => setForm({ ...form, ifsc: e.target.value.toUpperCase().trim() })}
-                    placeholder="e.g. SBIN0001234"
+                    onChange={(e) => setForm({ ...form, ifsc: cleanIfsc(e.target.value) })}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      setForm({ ...form, ifsc: cleanIfsc(e.clipboardData.getData('text')) });
+                    }}
+                    placeholder="Enter 11 letters and digits, for example SBIN0001234"
                     maxLength={11}
                     data-testid="input-bank-ifsc"
                     className="input text-xs font-mono uppercase"
@@ -522,7 +528,7 @@ export default function CompanyBankAccountsSection() {
                     type="text"
                     value={form.branch}
                     onChange={(e) => setForm({ ...form, branch: e.target.value })}
-                    placeholder="e.g. Industrial Area"
+                    placeholder="Enter branch name, for example Industrial Area"
                     data-testid="input-bank-branch"
                     className="input text-xs"
                   />
@@ -534,8 +540,12 @@ export default function CompanyBankAccountsSection() {
                 <input
                   type="text"
                   value={form.upiId}
-                  onChange={(e) => setForm({ ...form, upiId: e.target.value.trim() })}
-                  placeholder="e.g. company@upi"
+                  onChange={(e) => setForm({ ...form, upiId: cleanUpi(e.target.value) })}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    setForm({ ...form, upiId: cleanUpi(e.clipboardData.getData('text')) });
+                  }}
+                  placeholder="Enter UPI ID, for example company@upi"
                   data-testid="input-bank-upi"
                   className="input text-xs font-mono"
                 />

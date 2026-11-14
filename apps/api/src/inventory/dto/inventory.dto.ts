@@ -28,6 +28,8 @@ import {
   IsValidProductName,
   IsValidUnitRate,
   IsValidGstin,
+  CleanSku,
+  CleanGstin,
 } from '../../common/validation.transformers';
 
 export class CreateWarehouseDto {
@@ -95,6 +97,7 @@ export class RecordMovementDto {
 }
 
 export class CreateSkuDto {
+  @CleanSku()
   @TrimString()
   @IsString()
   @IsNotEmpty()
@@ -102,6 +105,7 @@ export class CreateSkuDto {
   @IsValidSku()
   skuCode: string;
 
+  @CleanSku()
   @TrimString()
   @IsString()
   @IsOptional()
@@ -212,10 +216,12 @@ export class CreateSkuDto {
 export class UpdateSkuDto {
   @TrimString()
   @IsString()
+  @CleanSku()
   @IsOptional()
   @MaxLength(50)
   code?: string;
 
+  @CleanSku()
   @TrimString()
   @IsString()
   @IsOptional()
@@ -589,10 +595,12 @@ export class CreatePurchaseBillDto {
   @IsOptional()
   vendorName?: string;
 
+  @CleanGstin()
   @IsValidGstin({ message: 'Vendor GSTIN requires a valid 15-character GSTIN with a valid checksum digit.' })
   @IsOptional()
   vendorGstin?: string;
 
+  @CleanGstin()
   @IsValidGstin({ message: 'Supplier GSTIN requires a valid 15-character GSTIN with a valid checksum digit.' })
   @IsOptional()
   supplierGstin?: string;
@@ -723,6 +731,7 @@ export class RecordPurchaseDto {
   @IsOptional()
   invoiceDate?: string;
 
+  @CleanGstin()
   @IsValidGstin({ message: 'Supplier GSTIN requires a valid 15-character GSTIN with a valid checksum digit.' })
   @IsOptional()
   supplierGstin?: string;
@@ -785,6 +794,7 @@ export class RecordProjectStockPurchaseDto {
   @IsOptional()
   supplierName?: string;
 
+  @CleanGstin()
   @IsValidGstin({ message: 'Supplier GSTIN requires a valid 15-character GSTIN with a valid checksum digit.' })
   @IsOptional()
   supplierGstin?: string;

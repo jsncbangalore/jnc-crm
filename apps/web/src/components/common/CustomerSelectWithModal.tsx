@@ -6,6 +6,7 @@ import {
   validatePhone,
   validateEmail,
   validateGstin,
+  cleanGstin,
   validateAddress,
   toPlainText,
 } from '@crm/shared-validation';
@@ -459,11 +460,11 @@ function CreateCustomerModal({
               </label>
               <input
                 type="text"
-                placeholder="15-character GSTIN"
+                placeholder="Enter 15 letters and digits, for example 29AAAAA0000A1ZY"
                 maxLength={15}
                 value={gstin}
                 onChange={(e) => {
-                  const val = e.target.value.toUpperCase();
+                  const val = cleanGstin(e.target.value);
                   setGstin(val);
                   if (val.trim()) {
                     const res = validateGstin(val);
@@ -482,6 +483,23 @@ function CreateCustomerModal({
                       delete copy.gstin;
                       return copy;
                     });
+                  }
+                }}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const val = cleanGstin(e.clipboardData.getData('text'));
+                  setGstin(val);
+                  if (val.trim()) {
+                    const res = validateGstin(val);
+                    if (!res.valid) {
+                      setErrors((prev) => ({ ...prev, gstin: res.error || 'Invalid GSTIN' }));
+                    } else {
+                      setErrors((prev) => {
+                        const copy = { ...prev };
+                        delete copy.gstin;
+                        return copy;
+                      });
+                    }
                   }
                 }}
                 className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono uppercase outline-none focus:border-indigo-500"

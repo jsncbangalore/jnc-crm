@@ -10,6 +10,7 @@ import {
 import { brandingApi } from '../services/api';
 import { FormFeedback, FormFieldError } from '../components/common/FormFeedback';
 import { PhoneField } from '../components/common/forms';
+import { cleanGstin, cleanPan, cleanIfsc, cleanUpi } from '@crm/shared-validation';
 import CompanyBankAccountsSection from '../components/settings/CompanyBankAccountsSection';
 
 async function resizeImageInBrowser(
@@ -529,7 +530,7 @@ export default function BrandingSettingsPage() {
                 phoneType="landline"
                 onChange={(val) => setCompanyPhone(val)}
                 error={fieldErrors.companyPhone}
-                placeholder="Enter company phone number (e.g. 0802345678)"
+                placeholder="Enter company phone number, for example 0802345678"
                 helperText="Included in outbound customer emails and documents."
                 dataTestId="input-company-phone"
               />
@@ -853,9 +854,14 @@ export default function BrandingSettingsPage() {
                 data-form-type="other"
                 data-testid="input-gstin"
                 className="input text-xs font-mono uppercase"
-                placeholder="29AAAAA0000A1Z5"
+                placeholder="Enter 15 letters and digits, for example 29AAAAA0000A1ZY"
+                maxLength={15}
                 value={gstin}
-                onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                onChange={(e) => setGstin(cleanGstin(e.target.value))}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  setGstin(cleanGstin(e.clipboardData.getData('text')));
+                }}
               />
               {fieldErrors.gstin && (
                 <p data-testid="error-gstin" className="text-rose-500 text-[11px] font-semibold mt-1">
@@ -876,9 +882,14 @@ export default function BrandingSettingsPage() {
                 data-form-type="other"
                 data-testid="input-pan"
                 className="input text-xs font-mono uppercase"
-                placeholder="AAAAA0000A"
+                placeholder="Enter 10 letters and digits, for example AAAAA0000A"
+                maxLength={10}
                 value={pan}
-                onChange={(e) => setPan(e.target.value.toUpperCase())}
+                onChange={(e) => setPan(cleanPan(e.target.value))}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  setPan(cleanPan(e.clipboardData.getData('text')));
+                }}
               />
               {fieldErrors.pan && (
                 <p data-testid="error-pan" className="text-rose-500 text-[11px] font-semibold mt-1">
@@ -982,9 +993,14 @@ export default function BrandingSettingsPage() {
                 data-form-type="other"
                 data-testid="input-bank-ifsc"
                 className="input text-xs font-mono uppercase"
-                placeholder="TEST0001234"
+                placeholder="Enter 11 letters and digits, for example HDFC0001234"
+                maxLength={11}
                 value={bankIfsc}
-                onChange={(e) => setBankIfsc(e.target.value.toUpperCase())}
+                onChange={(e) => setBankIfsc(cleanIfsc(e.target.value))}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  setBankIfsc(cleanIfsc(e.clipboardData.getData('text')));
+                }}
               />
               {fieldErrors.bankIfsc && (
                 <p data-testid="error-bank-ifsc" className="text-rose-500 text-[11px] font-semibold mt-1">
@@ -1023,9 +1039,14 @@ export default function BrandingSettingsPage() {
                 data-form-type="other"
                 data-testid="input-bank-upi"
                 className="input text-xs font-mono"
-                placeholder="company@bank"
+                placeholder="Enter UPI ID, for example company@bank"
+                maxLength={50}
                 value={bankUpi}
-                onChange={(e) => setBankUpi(e.target.value)}
+                onChange={(e) => setBankUpi(cleanUpi(e.target.value))}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  setBankUpi(cleanUpi(e.clipboardData.getData('text')));
+                }}
               />
             </div>
           </div>

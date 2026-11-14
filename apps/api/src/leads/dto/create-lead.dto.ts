@@ -6,7 +6,7 @@
  * ----------------------------------------------------- */
 
 import { IsNotEmpty, IsString, IsOptional, IsNumber, IsIn, IsArray, IsBoolean, MaxLength, Min, Max } from 'class-validator';
-import { SanitizeText, TrimString, IsValidName, IsValidContactName, IsValidPhone, IsValidEmail, IsValidQuantity } from '../../common/validation.transformers';
+import { SanitizeText, TrimString, IsValidName, IsValidContactName, IsValidPhone, IsValidEmail, IsValidQuantity, CleanPhone } from '../../common/validation.transformers';
 
 export class CreateLeadDto {
   @SanitizeText()
@@ -16,6 +16,7 @@ export class CreateLeadDto {
   @IsValidContactName(60)
   customerName: string;
 
+  @CleanPhone()
   @TrimString()
   @IsNotEmpty()
   @IsString()
@@ -116,6 +117,7 @@ export class CreateLeadDto {
   @IsString()
   name?: string;
 
+  @CleanPhone()
   @IsOptional()
   @IsString()
   phone?: string;
@@ -184,6 +186,7 @@ export class UpdateLeadDto {
   @IsValidContactName(60)
   customerName?: string;
 
+  @CleanPhone()
   @TrimString()
   @IsOptional()
   @IsString()

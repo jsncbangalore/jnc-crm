@@ -20,6 +20,10 @@ import {
   IsValidPhone,
   IsValidEmail,
   IsValidGstin,
+  IsValidPan,
+  CleanGstin,
+  CleanPan,
+  CleanPhone,
 } from '../common/validation.transformers';
 import { normalizeToE164 } from '../common/shared-validation';
 
@@ -45,6 +49,7 @@ export class CreateSupplierDto {
   @IsValidEmail()
   email?: string;
 
+  @CleanPhone()
   @TrimString()
   @IsString()
   @IsOptional()
@@ -52,6 +57,7 @@ export class CreateSupplierDto {
   @IsValidPhone()
   phone?: string;
 
+  @CleanGstin()
   @TrimString()
   @IsString()
   @IsOptional()
@@ -77,10 +83,12 @@ export class CreateSupplierDto {
   @Max(365)
   leadTimeDays?: number;
 
+  @CleanPan()
   @TrimString()
   @IsString()
   @IsOptional()
   @MaxLength(10)
+  @IsValidPan()
   pan?: string;
 
   @SanitizeText()
@@ -123,6 +131,7 @@ export class UpdateSupplierDto {
   @IsValidEmail()
   email?: string;
 
+  @CleanPhone()
   @TrimString()
   @IsString()
   @IsOptional()
@@ -130,6 +139,7 @@ export class UpdateSupplierDto {
   @IsValidPhone()
   phone?: string;
 
+  @CleanGstin()
   @TrimString()
   @IsString()
   @IsOptional()
@@ -155,10 +165,12 @@ export class UpdateSupplierDto {
   @Max(365)
   leadTimeDays?: number;
 
+  @CleanPan()
   @TrimString()
   @IsString()
   @IsOptional()
   @MaxLength(10)
+  @IsValidPan()
   pan?: string;
 
   @SanitizeText()
