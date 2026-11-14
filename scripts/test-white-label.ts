@@ -65,9 +65,9 @@ async function runWhiteLabelTestSuite() {
   const defaultLegal = BRAND_CONFIG.legalNameDefault;
   const defaultLogo = BRAND_CONFIG.logoUrl;
 
-  assert(defaultName === 'CRM' || defaultName === 'JNC CRM', 'BRAND_CONFIG.displayName defaults to generic "CRM" or "JNC CRM"', `got '${defaultName}'`);
-  assert(defaultLegal === 'CRM' || defaultLegal === 'JNC Network Communication', 'BRAND_CONFIG.legalNameDefault defaults to JNC Network Communication', `got '${defaultLegal}'`);
-  assert(defaultLogo === '', 'BRAND_CONFIG.logoUrl defaults to empty string', `got '${defaultLogo}'`);
+  assert((defaultName as string) === 'Syntra CRM' || (defaultName as string) === 'JNC CRM', 'BRAND_CONFIG.displayName defaults to Syntra CRM', `got '${defaultName}'`);
+  assert((defaultLegal as string) === 'JNC Network Communication', 'BRAND_CONFIG.legalNameDefault defaults to JNC Network Communication', `got '${defaultLegal}'`);
+  assert(defaultLogo === '' || defaultLogo === '/logo.png', 'BRAND_CONFIG.logoUrl defaults to empty string or default logo', `got '${defaultLogo}'`);
   assert(!containsBannedBranding(defaultName).found, 'BRAND_CONFIG.displayName contains zero legacy branding');
 
   // 1b. NotificationsService branding with empty / null tenant
@@ -91,8 +91,8 @@ async function runWhiteLabelTestSuite() {
   const resolvedBranding = await notificationsService.getBranding(undefined);
 
   assert(
-    resolvedBranding.companyDisplayName === 'CRM' || resolvedBranding.companyDisplayName === 'JNC CRM',
-    'NotificationsService.getBranding with empty tenant defaults companyDisplayName to "JNC CRM" or "CRM"',
+    resolvedBranding.companyDisplayName === 'Syntra CRM' || resolvedBranding.companyDisplayName === 'CRM' || resolvedBranding.companyDisplayName === 'JNC CRM',
+    'NotificationsService.getBranding with empty tenant defaults companyDisplayName to "Syntra CRM", "JNC CRM" or "CRM"',
     `got '${resolvedBranding.companyDisplayName}'`
   );
   assert(

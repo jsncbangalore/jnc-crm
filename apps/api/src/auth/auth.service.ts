@@ -6205,7 +6205,7 @@ export class AuthService {
   async isTwoFactorSetupAvailable(): Promise<boolean> {
     try {
       if (!process.env.JWT_SECRET) return false;
-      const testSecret = 'TESTSECRET123456';
+      const testSecret = 'PROBE_ENCRYPTION_ROUNDTRIP_TOKEN';
       const enc = encryptAtRest(testSecret);
       const dec = decryptAtRest(enc);
       if (dec !== testSecret) return false;
