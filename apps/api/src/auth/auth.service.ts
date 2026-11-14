@@ -4717,6 +4717,64 @@ export class AuthService {
     throw new ForbiddenException('Step-up authentication required: x-step-up-token must be provided.');
   }
 
+  /**
+   * Validates mandatory 2-step verification code, step-up token, or admin credential for high-risk destructive actions.
+   * Refuses if code is missing or invalid.
+   */
+  async validateStepUpOr2Fa(actor: any, code?: string): Promise<boolean> {
+    if (!code || !code.trim()) {
+      throw new UnauthorizedException('Two-step verification code is required.');
+    }
+
+    const cleanCode = code.trim();
+
+    // 1. Try step-up JWT token
+    try {
+      const payload: any = this.jwtService.verify(cleanCode, { secret: process.env.JWT_SECRET });
+      if (payload.purpose === 'platform_step_up' && payload.sub === (actor?.id || actor?.sub)) {
+        return true;
+      }
+    } catch {}
+
+    // 2. Try actor's TOTP / Backup Code / Password
+    const actorId = actor?.id || actor?.sub;
+    if (actorId) {
+      const dbUser = await this.prisma.user.findUnique({
+        where: { id: actorId },
+        include: { twoFactor: true },
+      });
+
+      if (dbUser) {
+        // TOTP verification
+        if (dbUser.twoFactor?.secretEnc) {
+          try {
+            const plainSecret = decryptAtRest(dbUser.twoFactor.secretEnc);
+            const totpRes = verifyTotpToken(cleanCode, plainSecret, dbUser.twoFactor.lastUsedStep ?? undefined, 1);
+            if (totpRes.valid) return true;
+          } catch {}
+        }
+
+        // Backup code verification
+        if (dbUser.twoFactor?.backupCodesHash) {
+          try {
+            const backupRes = verifyAndConsumeBackupCode(cleanCode, dbUser.twoFactor.backupCodesHash);
+            if (backupRes.valid) return true;
+          } catch {}
+        }
+
+        // Admin password fallback verification
+        if (dbUser.passwordHash) {
+          try {
+            const passMatch = await bcrypt.compare(cleanCode, dbUser.passwordHash);
+            if (passMatch) return true;
+          } catch {}
+        }
+      }
+    }
+
+    throw new UnauthorizedException('Invalid two-step verification code.');
+  }
+
   /** Adds ~200–400 ms of artificial delay to make timing attacks harder */
   private _addArtificialDelay() {
     return new Promise((r) => setTimeout(r, 200 + Math.random() * 200));

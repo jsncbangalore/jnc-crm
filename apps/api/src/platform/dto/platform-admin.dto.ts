@@ -81,4 +81,8 @@ export class PermanentDeleteTenantDto {
   @IsOptional()
   @IsString()
   stepUpToken?: string;
+
+  @IsOptional()
+  @IsString()
+  twoFactorCode?: string;
 }

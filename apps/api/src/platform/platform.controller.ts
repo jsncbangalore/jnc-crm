@@ -19,6 +19,7 @@ import {
   HttpStatus,
   Req,
   BadRequestException,
+  UnauthorizedException,
   HttpException,
   Query,
 } from '@nestjs/common';
@@ -111,8 +112,11 @@ export class PlatformController {
     @CurrentUser() user: any,
     @Req() req: any,
   ) {
-    const token = extractStepUpToken(req, dto);
-    await this.authService.validateStepUp(user, token);
+    const token = extractStepUpToken(req, dto) || dto.twoFactorCode || dto.stepUpToken;
+    if (!token || !token.trim()) {
+      throw new UnauthorizedException('Two-step verification code is required for permanent deletion.');
+    }
+    await this.authService.validateStepUpOr2Fa(user, token.trim());
     const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
     return this.platformService.permanentDeleteTenant(id, dto, user, ip);
   }

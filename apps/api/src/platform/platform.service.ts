@@ -553,6 +553,7 @@ export class PlatformService {
       customObjects,
       brandingAssets,
       documentSeries,
+      emailOutbox,
     ] = await Promise.all([
       this.prisma.user.count({ where: { tenantId: id } }),
       this.prisma.lead.count({ where: { tenantId: id } }),
@@ -574,6 +575,7 @@ export class PlatformService {
       this.prisma.customObject.count({ where: { tenantId: id } }),
       this.prisma.brandingAsset.count({ where: { tenantId: id } }),
       this.prisma.documentSeries.count({ where: { tenantId: id } }),
+      this.prisma.emailOutbox.count({ where: { tenantId: id } }),
     ]);
 
     const totalRows =
@@ -596,7 +598,8 @@ export class PlatformService {
       supplierPayments +
       customObjects +
       brandingAssets +
-      documentSeries;
+      documentSeries +
+      emailOutbox;
 
     return {
       tenantId: tenant.id,
@@ -624,6 +627,7 @@ export class PlatformService {
         customObjects,
         brandingAssets,
         documentSeries,
+        emailOutbox,
       },
     };
   }
@@ -671,6 +675,11 @@ export class PlatformService {
     // 2. Execute deletion inside a single transaction with timeout
     await this.prisma.$transaction(
       async (tx) => {
+        // Explicitly purge tables without cascading foreign keys
+        await tx.emailOutbox.deleteMany({
+          where: { tenantId: id },
+        });
+
         await tx.tenant.delete({
           where: { id },
         });
@@ -688,12 +697,16 @@ export class PlatformService {
       path.resolve(process.cwd(), 'uploads'),
     ];
 
+    const tenantIdPrefix = `${id.toLowerCase()}_`;
+    const tenantCodePrefix = `${tenant.code.toLowerCase()}_`;
+
     for (const dir of uploadDirs) {
       try {
         if (fs.existsSync(dir)) {
           const files = fs.readdirSync(dir);
           for (const file of files) {
-            if (file.startsWith(`${id}_`) || file.startsWith(`${tenant.code}_`)) {
+            const lowerFile = file.toLowerCase();
+            if (lowerFile.startsWith(tenantIdPrefix) || lowerFile.startsWith(tenantCodePrefix)) {
               try {
                 fs.unlinkSync(path.join(dir, file));
               } catch (fileErr: any) {
