@@ -27,8 +27,9 @@ import {
   CleanGstin,
   CleanPan,
   CleanPhone,
+  IsNotPlaceholderName,
 } from '../common/validation.transformers';
-import { normalizeToE164 } from '../common/shared-validation';
+import { normalizeToE164, isPlaceholderCustomerName } from '../common/shared-validation';
 
 export function cleanCustomerName(name: string): string {
   if (!name) return '';
@@ -44,6 +45,8 @@ export class RegisterAndLinkCustomerDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
+  @IsValidName()
+  @IsNotPlaceholderName()
   name: string;
 
   @IsString()
@@ -89,6 +92,7 @@ export class CreateCompanyDto {
   @IsNotEmpty()
   @MaxLength(100)
   @IsValidName()
+  @IsNotPlaceholderName()
   name: string;
 
   @CleanGstin()
@@ -147,6 +151,7 @@ export class CreateCompanyDto {
 export class UpdateCompanyDto {
   @IsString()
   @IsOptional()
+  @IsNotPlaceholderName()
   name?: string;
 
   @CleanGstin()
@@ -239,13 +244,19 @@ export class CompaniesService {
 
   async create(dto: CreateCompanyDto, user: ScopedUser) {
     const tenantId = requireTenantId(user);
+    const trimmedName = dto.name?.trim();
+    if (!trimmedName || isPlaceholderCustomerName(trimmedName)) {
+      throw new BadRequestException(
+        'A valid customer name is required. Placeholder names like Valued Client, Customer, Test, Walk-in, or NA cannot be saved.',
+      );
+    }
     const email = (dto.billingEmail || dto.email)?.trim().toLowerCase() || null;
     const phone = dto.phone?.trim() ? normalizeToE164(dto.phone) : null;
 
     const company = await this.prisma.company.create({
       data: {
         tenantId,
-        name: dto.name.trim(),
+        name: trimmedName,
         gstin: dto.gstin?.trim() || null,
         industry: dto.industry?.trim() || null,
         address: dto.address?.trim() || null,
@@ -384,6 +395,14 @@ export class CompaniesService {
 
   async update(id: string, dto: UpdateCompanyDto, user: ScopedUser) {
     const tenantId = requireTenantId(user);
+    if (dto.name !== undefined) {
+      const trimmedName = dto.name.trim();
+      if (!trimmedName || isPlaceholderCustomerName(trimmedName)) {
+        throw new BadRequestException(
+          'A valid customer name is required. Placeholder names like Valued Client, Customer, Test, Walk-in, or NA cannot be saved.',
+        );
+      }
+    }
     const scope = this.scopingService.getCompanyScope(user);
     const email = (dto.billingEmail || dto.email)?.trim().toLowerCase();
     const phone = dto.phone?.trim();
@@ -513,8 +532,10 @@ export class CompaniesService {
   async registerAndLink(dto: RegisterAndLinkCustomerDto, user: ScopedUser) {
     const tenantId = requireTenantId(user);
     const trimmedName = dto.name?.trim();
-    if (!trimmedName || trimmedName.toLowerCase() === 'valued client') {
-      throw new BadRequestException('A valid customer name is required.');
+    if (!trimmedName || isPlaceholderCustomerName(trimmedName)) {
+      throw new BadRequestException(
+        'A valid customer name is required. Placeholder names like Valued Client, Customer, Test, Walk-in, or NA cannot be registered.',
+      );
     }
 
     // Period lock check: prevent modifying historical documents in locked periods

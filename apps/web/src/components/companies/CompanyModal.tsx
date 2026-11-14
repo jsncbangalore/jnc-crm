@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Building2, Mail, Phone, MapPin, Globe, Check, AlertCircle } from 'lucide-react';
 import { companiesApi } from '../../services/api';
 import { Company } from '../../types';
+import { validateCustomerName, isPlaceholderCustomerName } from '@crm/shared-validation';
 
 interface CompanyModalProps {
   isOpen: boolean;
@@ -88,8 +89,9 @@ export default function CompanyModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) {
-      alert('Company Name is required');
+    const nameVal = validateCustomerName(formData.name);
+    if (!nameVal.valid) {
+      alert(nameVal.error || 'Please enter a valid company name.');
       return;
     }
 

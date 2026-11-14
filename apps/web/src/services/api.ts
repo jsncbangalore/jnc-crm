@@ -1517,6 +1517,8 @@ export const invoicesApi = {
     api.patch(`/invoices/${id}/void`, { reason, reversePayments }),
   linkCustomer: (id: string, customerId?: string) =>
     api.patch(`/invoices/${id}/link-customer`, { customerId }),
+  bulkLinkCustomer: (invoiceIds: string[], customerId: string) =>
+    api.post(`/invoices/bulk-link-customer`, { invoiceIds, customerId }),
   recordPayment: (id: string, data: any) => api.post(`/invoices/${id}/payments`, data),
   emailInvoice: (id: string, data?: { recipientEmail?: string; customNote?: string; templateType?: string }) =>
     api.post(`/invoices/${id}/email`, data || {}),

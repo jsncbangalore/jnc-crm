@@ -1,5 +1,6 @@
 import UnifiedRecordPaymentModal from '../components/common/UnifiedRecordPaymentModal';
 import InvoiceModal from '../components/invoices/InvoiceModal';
+import UnlinkedInvoicesModal from '../components/invoices/UnlinkedInvoicesModal';
 import { UnifiedErrorComponent } from '../components/common/UnifiedErrorComponent';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -1873,8 +1874,6 @@ export default function LedgerPage() {
           isOpen={showUnlinkedModal}
           onClose={() => {
             setShowUnlinkedModal(false);
-            setLinkingInvoiceId(null);
-            setSelectedTargetCustomerId('');
           }}
           unlinkedInvoices={unlinkedInvoices}
           loading={loadingUnlinked}
@@ -1885,12 +1884,11 @@ export default function LedgerPage() {
               name: p.partyName,
               gstin: p.partyGstin || undefined,
             }))}
-          linkingInvoiceId={linkingInvoiceId}
-          setLinkingInvoiceId={setLinkingInvoiceId}
-          selectedTargetCustomerId={selectedTargetCustomerId}
-          setSelectedTargetCustomerId={setSelectedTargetCustomerId}
-          onLink={handleLinkCustomer}
-          linkingLoading={linkingLoading}
+          onRefresh={async () => {
+            await loadUnlinkedInvoices();
+            await loadParties();
+          }}
+          onSuccess={(msg) => setSuccessMsg(msg)}
         />
       )}
 
@@ -2551,188 +2549,6 @@ function SendEmailModal({
             </button>
           </div>
         </form>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// UNLINKED INVOICES RECONCILIATION MODAL
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface UnlinkedInvoicesModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  unlinkedInvoices: any[];
-  loading: boolean;
-  registeredCustomers: Array<{ id: string; name: string; gstin?: string }>;
-  linkingInvoiceId: string | null;
-  setLinkingInvoiceId: (id: string | null) => void;
-  selectedTargetCustomerId: string;
-  setSelectedTargetCustomerId: (id: string) => void;
-  onLink: (invoiceId: string, customerId: string) => Promise<void>;
-  linkingLoading: boolean;
-}
-
-function UnlinkedInvoicesModal({
-  isOpen,
-  onClose,
-  unlinkedInvoices,
-  loading,
-  registeredCustomers,
-  linkingInvoiceId,
-  setLinkingInvoiceId,
-  selectedTargetCustomerId,
-  setSelectedTargetCustomerId,
-  onLink,
-  linkingLoading,
-}: UnlinkedInvoicesModalProps) {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden my-auto">
-        {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/40 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-500/20">
-              <Info className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Unlinked Invoices Reconciliation</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                  {unlinkedInvoices.length} unlinked
-                </span>
-              </h2>
-              <p className="text-xs text-slate-500">
-                Invoices requiring manual linking due to ambiguous party names, unmatched GSTINs, or missing customer master records.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Content Table */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-          {loading ? (
-            <div className="py-12 text-center text-xs text-slate-400">Loading unlinked invoices...</div>
-          ) : unlinkedInvoices.length === 0 ? (
-            <div className="py-12 text-center space-y-2">
-              <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
-              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                All invoices are clean & deterministically matched!
-              </p>
-              <p className="text-xs text-slate-500">
-                No unlinked or ambiguous invoices found in the system.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
-              <table className="w-full text-xs text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 font-bold text-slate-700 dark:text-slate-300">
-                    <th className="py-2.5 px-3">Invoice No.</th>
-                    <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3">Party on Invoice</th>
-                    <th className="py-2.5 px-3">GSTIN</th>
-                    <th className="py-2.5 px-3 text-right">Amount</th>
-                    <th className="py-2.5 px-3">Reason / Ambiguity</th>
-                    <th className="py-2.5 px-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
-                  {unlinkedInvoices.map((inv) => {
-                    const isLinkingThis = linkingInvoiceId === inv.id;
-                    return (
-                      <tr key={inv.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                        <td className="py-2.5 px-3 font-mono font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
-                          {inv.invoiceNumber}
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-slate-500 whitespace-nowrap">
-                          {inv.invoiceDate ? new Date(inv.invoiceDate).toISOString().slice(0, 10) : '-'}
-                        </td>
-                        <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">
-                          {inv.customerName}
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
-                          {inv.customerGstin || <span className="text-slate-400 italic">None</span>}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
-                          ₹{formatIndianCurrency(inv.totalAmount)}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
-                            {inv.reason}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                          {isLinkingThis ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <select
-                                value={selectedTargetCustomerId}
-                                onChange={(e) => setSelectedTargetCustomerId(e.target.value)}
-                                className="px-2 py-1 text-xs bg-white dark:bg-slate-800 border border-indigo-400 rounded-lg text-slate-900 dark:text-white focus:outline-none"
-                              >
-                                <option value="">Select customer...</option>
-                                {registeredCustomers.map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name} {c.gstin ? `(${c.gstin})` : ''}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                onClick={() => onLink(inv.id, selectedTargetCustomerId)}
-                                disabled={!selectedTargetCustomerId || linkingLoading}
-                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition shadow-2xs"
-                              >
-                                {linkingLoading ? 'Saving...' : 'Link'}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setLinkingInvoiceId(null);
-                                  setSelectedTargetCustomerId('');
-                                }}
-                                className="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setLinkingInvoiceId(inv.id);
-                                setSelectedTargetCustomerId('');
-                              }}
-                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-bold transition"
-                            >
-                              Link to customer &rarr;
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-200 dark:border-slate-800 flex justify-end shrink-0">
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-          >
-            Close
-          </button>
-        </div>
       </div>
     </div>
   );

@@ -6,9 +6,9 @@ import {
   Truck, FileSpreadsheet, Layers, Filter, CheckCircle2, DollarSign,
   Calendar, Eye, ArrowUpRight, Check, Download, Edit3, ChevronLeft,
   ChevronRight, ChevronsLeft, ChevronsRight, X, BarChart2, Link as LinkIcon,
-  MoreVertical
+  MoreVertical, Info
 } from 'lucide-react';
-import { invoicesApi, api } from '../services/api';
+import { invoicesApi, ledgerApi, companiesApi, api } from '../services/api';
 import { Invoice, DocumentType, SignatorySettings } from '../types';
 import { format } from 'date-fns';
 import InvoiceModal from '../components/invoices/InvoiceModal';
@@ -16,6 +16,7 @@ import CreateDocumentModal from '../components/invoices/CreateDocumentModal';
 import InvoiceSettingsModal from '../components/invoices/InvoiceSettingsModal';
 import CustomerAccountModal from '../components/common/CustomerAccountModal';
 import UnifiedRecordPaymentModal from '../components/common/UnifiedRecordPaymentModal';
+import UnlinkedInvoicesModal from '../components/invoices/UnlinkedInvoicesModal';
 import DropdownPortal from '../components/common/DropdownPortal';
 import { useAuth } from '../contexts/AuthContext';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
@@ -277,6 +278,41 @@ export default function InvoicesPage() {
   const [showSignatorySettings, setShowSignatorySettings] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
+  // Unlinked Invoices Modal State
+  const [showUnlinkedModal, setShowUnlinkedModal] = useState(false);
+  const [unlinkedInvoicesList, setUnlinkedInvoicesList] = useState<any[]>([]);
+  const [loadingUnlinked, setLoadingUnlinked] = useState(false);
+  const [registeredCustomers, setRegisteredCustomers] = useState<any[]>([]);
+
+  const loadUnlinkedInvoices = async () => {
+    setLoadingUnlinked(true);
+    try {
+      const [unlinkedRes, compsRes] = await Promise.all([
+        ledgerApi.getUnlinkedInvoices(),
+        companiesApi.list({ limit: 1000 }),
+      ]);
+      setUnlinkedInvoicesList(unlinkedRes.data || []);
+      const comps = compsRes.data?.data || compsRes.data || [];
+      setRegisteredCustomers(
+        comps.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          gstin: c.gstin || undefined,
+          phone: c.phone || undefined,
+          email: c.billingEmail || c.email || undefined,
+        }))
+      );
+    } catch (err) {
+      console.error('Failed to load unlinked invoices', err);
+    } finally {
+      setLoadingUnlinked(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUnlinkedInvoices();
+  }, []);
+
   const [paymentModalState, setPaymentModalState] = useState<{
     isOpen: boolean;
     customerId?: string;
@@ -359,14 +395,9 @@ export default function InvoicesPage() {
     return () => clearTimeout(timer);
   }, [search, docTypeFilter, statusFilter]);
 
-  const handleLinkInvoice = async (inv: Invoice) => {
-    try {
-      await api.patch(`/invoices/${inv.id}/link-customer`, {});
-      await fetchInvoices();
-      alert(`Invoice ${inv.invoiceNumber} successfully linked to customer master!`);
-    } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to link invoice to customer.');
-    }
+  const handleLinkInvoice = async (_inv: Invoice) => {
+    await loadUnlinkedInvoices();
+    setShowUnlinkedModal(true);
   };
 
   // Aggregate Metrics: Count only issued Tax and SEZ Invoices (matches Ledger)
@@ -546,6 +577,23 @@ export default function InvoicesPage() {
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
+
+          {unlinkedInvoicesList.length > 0 && (
+            <button
+              onClick={() => {
+                loadUnlinkedInvoices();
+                setShowUnlinkedModal(true);
+              }}
+              className="btn bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-300 text-xs py-2 px-3 flex items-center gap-1.5"
+              title="Reconcile unlinked invoices"
+            >
+              <Info size={14} />
+              <span>Unlinked</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">
+                {unlinkedInvoicesList.length}
+              </span>
+            </button>
+          )}
 
           <button
             onClick={() => setShowCreateModal(true)}
@@ -1183,6 +1231,23 @@ export default function InvoicesPage() {
           onSuccess={(msg) => {
             fetchInvoices();
             setSuccessToast(msg || 'Payment recorded. Invoice balance is now ₹0.00.');
+          }}
+        />
+      )}
+      {/* Unlinked Invoices Reconciliation Modal */}
+      {showUnlinkedModal && (
+        <UnlinkedInvoicesModal
+          isOpen={showUnlinkedModal}
+          onClose={() => setShowUnlinkedModal(false)}
+          unlinkedInvoices={unlinkedInvoicesList}
+          loading={loadingUnlinked}
+          registeredCustomers={registeredCustomers}
+          onRefresh={async () => {
+            await loadUnlinkedInvoices();
+            await fetchInvoices();
+          }}
+          onSuccess={(msg) => {
+            setSuccessToast(msg);
           }}
         />
       )}

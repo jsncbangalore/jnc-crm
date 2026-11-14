@@ -3,6 +3,8 @@ import { Building2, Search, Plus, X, AlertTriangle, CheckCircle2, User, Phone, M
 import { companiesApi } from '../../services/api';
 import {
   validatePersonOrCompanyName,
+  validateCustomerName,
+  isPlaceholderCustomerName,
   validatePhone,
   validateEmail,
   validateGstin,
@@ -293,7 +295,7 @@ function CreateCustomerModal({
     e.preventDefault();
     const newErrors: Record<string, string> = {};
 
-    const nameRes = validatePersonOrCompanyName(name);
+    const nameRes = validateCustomerName(name);
     if (!nameRes.valid) newErrors.name = nameRes.error!;
 
     if (phone.trim()) {

@@ -34,6 +34,9 @@ import {
   cleanAmountInput,
   validateMoneyAmount,
   MAX_DOCUMENT_AMOUNT,
+  isPlaceholderCustomerName,
+  validateCustomerName,
+  PLACEHOLDER_CUSTOMER_NAMES,
 } from '../packages/shared-validation/src/index';
 
 let passed = 0;
@@ -319,6 +322,68 @@ assert(res10Cr.valid && res10Cr.value === 100000000, 'Exact 10 Crore (100,000,00
 // Test exceeding 10 Crore boundary by 1 paisa
 const res10CrPlus = validateMoneyAmount(100000000.01, 'Payment amount');
 assert(!res10CrPlus.valid && (res10CrPlus.error?.includes('exceeds the maximum') || false), '100000000.01 rejected (> 10 Crore)');
+
+// 18. Placeholder Customer Names Blacklist & Validation
+console.log('\n--- 18. Placeholder Customer Names Blacklist ---');
+const blacklistedSamples = [
+  'Valued Client',
+  'valued client',
+  'Valued Customer',
+  'Customer',
+  'customer',
+  'Client',
+  'Test',
+  'test',
+  'test customer',
+  'Walk-in',
+  'walk in',
+  'walk-in customer',
+  'Walk in Customer',
+  'walkin',
+  'NA',
+  'na',
+  'N/A',
+  '-',
+  '--',
+  '---',
+  'None',
+  'none',
+  'Unknown',
+  'Dummy',
+  'Sample',
+  '   ',
+  '',
+];
+
+for (const name of blacklistedSamples) {
+  assert(
+    isPlaceholderCustomerName(name),
+    `isPlaceholderCustomerName rejects blacklisted placeholder "${name || '(empty)'}"`
+  );
+  if (name.trim()) {
+    const valRes = validateCustomerName(name);
+    assert(!valRes.valid, `validateCustomerName rejects "${name}" with error: ${valRes.error}`);
+  }
+}
+
+const legitimateNames = [
+  'Acme Industrial Solutions Pvt Ltd',
+  'JNC Network Communication',
+  'Tata Consultancy Services Ltd',
+  'Reliance Industries',
+  'Infosys Technologies',
+  'Rajesh Kumar Sharma',
+  'O\'Connor & Sons Engineering',
+];
+
+for (const name of legitimateNames) {
+  assert(
+    !isPlaceholderCustomerName(name),
+    `isPlaceholderCustomerName accepts valid customer name "${name}"`
+  );
+  const valRes = validateCustomerName(name);
+  assert(valRes.valid && valRes.value === name, `validateCustomerName accepts "${name}"`);
+}
 
 console.log('\n========================================================================');
 console.log(`TEST SUMMARY: ${passed} passed, ${failed} failed`);

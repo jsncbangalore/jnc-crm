@@ -39,11 +39,13 @@ import {
   validateUpiId,
   cleanIfsc,
   cleanUpi,
+  cleanAmountInput,
   formatDisplayDate,
   formatFriendlyErrorMessage,
   toPlainText,
   DEDUCTION_TYPE_OPTIONS,
   formatDeductionType,
+  isPlaceholderCustomerName,
 } from '@crm/shared-validation';
 
 // Safe array extraction helper
@@ -245,8 +247,10 @@ export default function UnifiedRecordPaymentModal({
         setRegCustomerName(defaultCustomerName);
       }
       if (!effectiveDefaultPartyId || effectiveDefaultPartyId === 'not-linked' || effectiveDefaultPartyId.startsWith('unlinked:')) {
-        if (defaultCustomerName) {
+        if (defaultCustomerName && !isPlaceholderCustomerName(defaultCustomerName)) {
           setShowRegisterCustomerStep(true);
+        } else {
+          setShowRegisterCustomerStep(false);
         }
       } else {
         setShowRegisterCustomerStep(false);
@@ -392,9 +396,10 @@ export default function UnifiedRecordPaymentModal({
       setRegCustomerPhone(selectedParty.partyPhone || '');
       setRegCustomerEmail(selectedParty.partyEmail || '');
       if (
-        selectedParty.isUnlinked ||
+        (selectedParty.isUnlinked ||
         selectedParty.partyId?.startsWith('unlinked:') ||
-        selectedParty.partyId === 'not-linked'
+        selectedParty.partyId === 'not-linked') &&
+        !isPlaceholderCustomerName(selectedParty.partyName)
       ) {
         setShowRegisterCustomerStep(true);
       } else {
@@ -402,15 +407,20 @@ export default function UnifiedRecordPaymentModal({
       }
     } else if (defaultCustomerName) {
       setRegCustomerName(defaultCustomerName);
-      if (!selectedPartyId || selectedPartyId === 'not-linked' || selectedPartyId.startsWith('unlinked:')) {
+      if (
+        (!selectedPartyId || selectedPartyId === 'not-linked' || selectedPartyId.startsWith('unlinked:')) &&
+        !isPlaceholderCustomerName(defaultCustomerName)
+      ) {
         setShowRegisterCustomerStep(true);
+      } else {
+        setShowRegisterCustomerStep(false);
       }
     }
   }, [selectedParty, defaultCustomerName, selectedPartyId]);
 
   const handleRegisterAndLinkCustomer = async () => {
-    if (!regCustomerName.trim()) {
-      setRegError('Customer name is required.');
+    if (!regCustomerName.trim() || isPlaceholderCustomerName(regCustomerName)) {
+      setRegError('Please enter a real customer name. Generic placeholder names (such as Valued Client, Customer, Test, Walk-in, or NA) cannot be registered.');
       return;
     }
     setRegisteringCustomer(true);

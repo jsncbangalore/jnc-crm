@@ -239,6 +239,16 @@ export class InvoicingController {
     return this.invoicingService.recordPayment(id, body, user);
   }
 
+  @Post('bulk-link-customer')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
+  async bulkLinkCustomer(
+    @Body('invoiceIds') invoiceIds: string[],
+    @Body('customerId') customerId: string,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.invoicingService.bulkLinkCustomer(invoiceIds, customerId, user);
+  }
+
   @Patch(':id/link-customer')
   @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async linkCustomer(

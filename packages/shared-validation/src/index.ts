@@ -1393,4 +1393,79 @@ export function validateDocumentAmountLimits(params: {
   return { valid: true, needsConfirmation: false };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER CUSTOMER NAMES BLACKLIST & VALIDATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const PLACEHOLDER_CUSTOMER_NAMES: readonly string[] = [
+  'valued client',
+  'valued customer',
+  'customer',
+  'client',
+  'test',
+  'test customer',
+  'test client',
+  'walk-in',
+  'walk in',
+  'walkin',
+  'walk-in customer',
+  'walk in customer',
+  'na',
+  'n/a',
+  '-',
+  '--',
+  '---',
+  'none',
+  'unknown',
+  'dummy',
+  'sample',
+  'general customer',
+  'cash customer',
+  'retail customer',
+  'anonymous',
+];
+
+export function isPlaceholderCustomerName(name?: string | null): boolean {
+  if (!name) return true;
+  const trimmed = name.trim();
+  if (!trimmed) return true;
+
+  // Purely punctuation / symbols (e.g. "-", "--", "...", "#")
+  if (/^[\p{P}\p{S}\s]+$/u.test(trimmed)) {
+    return true;
+  }
+
+  const normalized = trimmed.toLowerCase().replace(/[\s\-_.]+/g, ' ').trim();
+  if (!normalized) return true;
+
+  const alphanumericOnly = normalized.replace(/[^a-z0-9]/g, '');
+  if (['na', 'none', 'unknown', 'test', 'client', 'customer', 'walkin', 'dummy', 'sample'].includes(alphanumericOnly)) {
+    return true;
+  }
+
+  for (const placeholder of PLACEHOLDER_CUSTOMER_NAMES) {
+    const cleanP = placeholder.toLowerCase().replace(/[\s\-_.]+/g, ' ').trim();
+    if (normalized === cleanP) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function validateCustomerName(raw: string): { valid: boolean; error?: string; value: string } {
+  const base = validatePersonOrCompanyName(raw);
+  if (!base.valid) {
+    return base;
+  }
+  if (isPlaceholderCustomerName(base.value)) {
+    return {
+      valid: false,
+      error: 'Customer name cannot be a placeholder name (such as Valued Client, Customer, Test, Walk-in, or NA). Please enter the real customer name.',
+      value: base.value,
+    };
+  }
+  return base;
+}
+
 

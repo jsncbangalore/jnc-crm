@@ -348,7 +348,7 @@ export default function QuotationsPage() {
         <div style="display: flex; justify-content: space-between; margin-bottom: 16px; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
           <div>
             <strong>Quotation For:</strong>
-            <div style="font-size: 13px; font-weight: bold; margin-top: 2px;">${q.customerName || q.lead?.customerName || q.contact?.name || 'Walk-in Customer'}</div>
+            <div style="font-size: 13px; font-weight: bold; margin-top: 2px;">${q.customerName || q.lead?.customerName || q.contact?.name || 'Unassigned'}</div>
             <div>${q.lead?.company?.name || q.lead?.companyName || ''}</div>
             <div>Phone: ${q.lead?.customerPhone || q.contact?.phone || '—'}</div>
             <div>Email: ${q.lead?.customerEmail || q.contact?.email || '—'}</div>
@@ -549,7 +549,7 @@ export default function QuotationsPage() {
             sortable: true,
             sortAccessor: (q) => q.customerName || q.lead?.customerName || '',
             cell: (q) => {
-              const clientName = q.customerName || q.lead?.customerName || q.contact?.name || 'Walk-in Customer';
+              const clientName = q.customerName || q.lead?.customerName || q.contact?.name || 'Unassigned';
               const clientEmail = q.customerEmail || q.lead?.customerEmail || q.contact?.email;
               const clientPhone = q.customerPhone || q.lead?.customerPhone || q.contact?.phone || '—';
               const cid = q.customerId || q.lead?.companyId || q.lead?.company?.id;
@@ -776,7 +776,7 @@ export default function QuotationsPage() {
               </div>
               <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
                 <span className="font-medium text-slate-900 dark:text-white truncate">
-                  {q.customerName || q.lead?.customerName || 'Walk-in Customer'}
+                  {q.customerName || q.lead?.customerName || 'Unassigned'}
                 </span>
                 <span className="text-[11px] text-slate-500 font-mono">
                   {q.lines?.length || 0} {q.lines?.length === 1 ? 'item' : 'items'}

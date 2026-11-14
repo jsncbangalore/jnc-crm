@@ -23,7 +23,7 @@ import { validateLutStatus } from './lut-validator';
 import { sanitizeHtml } from '../common/html-sanitize.util';
 import { decryptAtRest } from '../common/encryption.util';
 import { getCompanyProfileCompleteness, getUnifiedCompanyProfile, updateUnifiedCompanyProfile } from '../common/company-profile.util';
-import { validateDocumentAmountLimits } from '../common/shared-validation';
+import { validateDocumentAmountLimits, isPlaceholderCustomerName } from '../common/shared-validation';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -342,8 +342,8 @@ export class InvoicingService {
     const fieldErrors: Record<string, string> = {};
 
     const rawCustName = dto.customerName?.trim();
-    if (!rawCustName || rawCustName.toLowerCase() === 'valued client') {
-      fieldErrors.customerName = 'A customer is required. Please choose a customer, create one, or use Walk-in customer.';
+    if (!rawCustName || isPlaceholderCustomerName(rawCustName)) {
+      fieldErrors.customerName = 'A real customer is required. Generic placeholder names like Valued Client, Customer, Test, Walk-in, or NA are not permitted.';
     }
 
     let resolvedPhone = dto.customerPhone?.trim();
@@ -1593,6 +1593,41 @@ export class InvoicingService {
     return {
       success: true,
       invoice: updated,
+      linkedCustomer: { id: targetCompany.id, name: targetCompany.name },
+    };
+  }
+
+  /**
+   * Bulk link multiple unlinked invoices to a designated customer
+   */
+  async bulkLinkCustomer(invoiceIds: string[], customerId: string, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    if (!Array.isArray(invoiceIds) || invoiceIds.length === 0) {
+      throw new BadRequestException('At least one invoice ID is required for bulk linking.');
+    }
+    if (!customerId) {
+      throw new BadRequestException('Target customer ID is required.');
+    }
+    const targetCompany = await this.prisma.company.findFirst({
+      where: { id: customerId, tenantId, deletedAt: null },
+    });
+    if (!targetCompany) {
+      throw new NotFoundException(`Customer company ${customerId} not found`);
+    }
+
+    const linkedInvoices = [];
+    for (const id of invoiceIds) {
+      try {
+        const res = await this.linkCustomer(id, customerId, user);
+        linkedInvoices.push(res.invoice);
+      } catch (err: any) {
+        this.logger.warn(`Failed to link invoice ${id} in bulk: ${err?.message}`);
+      }
+    }
+
+    return {
+      success: true,
+      count: linkedInvoices.length,
       linkedCustomer: { id: targetCompany.id, name: targetCompany.name },
     };
   }

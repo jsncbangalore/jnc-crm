@@ -42,6 +42,7 @@ import {
   cleanUpi,
   cleanPhoneInput,
   cleanAmountInput,
+  isPlaceholderCustomerName,
 } from './shared-validation';
 
 /**
@@ -158,6 +159,29 @@ export function IsValidName(validationOptions?: ValidationOptions) {
         defaultMessage(args: ValidationArguments) {
           const res = validatePersonOrCompanyName(args.value);
           return res.error || `${args.property} must be 2-100 characters and contain valid letters`;
+        },
+      },
+    });
+  };
+}
+
+/**
+ * Validates that a customer or company name is not a generic placeholder (e.g. Valued Client, Customer, Test, Walk-in, NA).
+ */
+export function IsNotPlaceholderName(validationOptions?: ValidationOptions) {
+  return function (object: Object, propertyName: string) {
+    registerDecorator({
+      name: 'isNotPlaceholderName',
+      target: object.constructor,
+      propertyName: propertyName,
+      options: validationOptions,
+      validator: {
+        validate(value: any, _args: ValidationArguments) {
+          if (value === undefined || value === null || value === '') return true;
+          return !isPlaceholderCustomerName(String(value));
+        },
+        defaultMessage(_args: ValidationArguments) {
+          return 'Customer name cannot be a placeholder name (such as Valued Client, Customer, Test, Walk-in, or NA). Please enter the real customer name.';
         },
       },
     });

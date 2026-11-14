@@ -43,8 +43,9 @@ import {
   CleanPhone,
   CleanGstin,
   IsValidGstin,
+  IsNotPlaceholderName,
 } from '../common/validation.transformers';
-import { roundCurrency, validateDocumentAmountLimits } from '../common/shared-validation';
+import { roundCurrency, validateDocumentAmountLimits, isPlaceholderCustomerName } from '../common/shared-validation';
 import { DocumentSeriesService } from '../common/document-series.service';
 import { calculateDocumentTotals } from '../common/pricing.calculator';
 
@@ -110,6 +111,7 @@ export class CreateQuotationDto {
   @IsNotEmpty()
   @MaxLength(100)
   @IsValidName()
+  @IsNotPlaceholderName()
   customerName: string;
 
   @CleanPhone()
@@ -271,8 +273,8 @@ export class QuotationsService {
   async create(dto: CreateQuotationDto, user: ScopedUser) {
     const tenantId = requireTenantId(user);
     const custName = dto.customerName?.trim();
-    if (!custName || custName.toLowerCase() === 'valued client' || !dto.customerPhone) {
-      throw new BadRequestException('A customer is required. Please choose a customer, create one, or use Walk-in customer.');
+    if (!custName || isPlaceholderCustomerName(custName) || !dto.customerPhone) {
+      throw new BadRequestException('A real customer is required. Generic placeholder names like Valued Client, Customer, Test, Walk-in, or NA are not permitted.');
     }
     if (!dto.lines || dto.lines.length === 0) {
       throw new BadRequestException('At least 1 product line is required for quotation.');
@@ -533,8 +535,8 @@ export class QuotationsService {
     }
 
     const customerName = (q.customerName || quote.lead?.customerName || quote.contact?.name || '').trim();
-    if (!customerName || customerName.toLowerCase() === 'valued client') {
-      throw new BadRequestException('A customer is required. Please choose a customer, create one, or use Walk-in customer.');
+    if (!customerName || isPlaceholderCustomerName(customerName)) {
+      throw new BadRequestException('A real customer is required to convert quotation to order. Generic placeholder names like Valued Client, Customer, Test, Walk-in, or NA are not permitted.');
     }
     const customerPhone = q.customerPhone || quote.lead?.customerPhone || quote.contact?.phone || '—';
     const customerEmail = q.customerEmail || quote.lead?.customerEmail || quote.contact?.email;

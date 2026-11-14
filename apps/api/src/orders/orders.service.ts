@@ -43,8 +43,9 @@ import {
   CleanPhone,
   CleanGstin,
   IsValidGstin,
+  IsNotPlaceholderName,
 } from '../common/validation.transformers';
-import { roundCurrency } from '../common/shared-validation';
+import { roundCurrency, isPlaceholderCustomerName } from '../common/shared-validation';
 import { PaymentsService } from '../payments/payments.service';
 import { DocumentSeriesService } from '../common/document-series.service';
 import { calculateDocumentTotals } from '../common/pricing.calculator';
@@ -111,6 +112,7 @@ export class CreateOrderDto {
   @IsNotEmpty()
   @MaxLength(100)
   @IsValidName()
+  @IsNotPlaceholderName()
   customerName: string;
 
   @CleanPhone()
@@ -476,8 +478,8 @@ export class OrdersService {
   async createOrder(dto: CreateOrderDto, user: ScopedUser) {
     const tenantId = requireTenantId(user);
     const custName = dto.customerName?.trim();
-    if (!custName || custName.toLowerCase() === 'valued client') {
-      throw new BadRequestException('A customer is required. Please choose a customer, create one, or use Walk-in customer.');
+    if (!custName || isPlaceholderCustomerName(custName)) {
+      throw new BadRequestException('A real customer is required. Generic placeholder names like Valued Client, Customer, Test, Walk-in, or NA are not permitted.');
     }
     // Resolve SKUs (matching dropdown or typed text)
     const resolvedLines: any[] = [];
