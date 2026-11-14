@@ -302,7 +302,10 @@ async function bootstrap() {
             statusCode: 400,
             code: 'UNKNOWN_FIELD',
             message: formatted.topMessage,
-            fieldErrors: [],
+            fieldErrors: formatted.unknownFields.map((f) => ({
+              field: f,
+              message: `Unrecognized parameter: ${f}`,
+            })),
             unknownFields: formatted.unknownFields,
           });
         }

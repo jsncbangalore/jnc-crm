@@ -254,7 +254,6 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
           quantity: l.quantity,
           unitPrice: l.unitPrice,
           discount: l.discount || 0,
-          unit: l.unit || 'NOS',
           hsnCode: l.hsnCode || undefined,
         })),
       };

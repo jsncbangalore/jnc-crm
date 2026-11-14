@@ -136,7 +136,7 @@ export function formatValidationErrors(errors: ValidationError[]): FormattedVali
 
   const hasUnknownField = unknownFields.length > 0;
   const topMessage = hasUnknownField
-    ? 'The submitted form contains unrecognized parameters. Please refresh and try again.'
+    ? `The submitted form contains unrecognized parameters: ${unknownFields.join(', ')}. Please refresh and try again.`
     : fieldErrors.length > 0
       ? 'Please correct the highlighted fields and try again.'
       : 'Validation failed. Please check the submitted fields.';

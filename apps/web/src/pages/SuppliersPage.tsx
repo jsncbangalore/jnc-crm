@@ -187,7 +187,8 @@ export default function SuppliersPage() {
     }
 
     try {
-      await suppliersApi.update(editingSupplier.id, editingSupplier);
+      const { id, ...updatePayload } = editingSupplier;
+      await suppliersApi.update(id, updatePayload);
       setEditingSupplier(null);
       setEditErrors({});
       setEditTouched({});

@@ -216,6 +216,171 @@ const KNOWN_WEB_PAYLOADS: Array<{
   expectedDto: string;
   payloadKeys: string[];
 }> = [
+  // 1. Quotations
+  {
+    endpointMatch: /^\/quotations$/,
+    httpMethod: 'POST',
+    clientCall: 'quotationsApi.create',
+    formFile: 'apps/web/src/components/quotations/CreateQuotationModal.tsx',
+    expectedDto: 'CreateQuotationDto',
+    payloadKeys: [
+      'customerId', 'customerName', 'customerPhone', 'customerEmail',
+      'companyName', 'shippingAddress', 'taxRate', 'terms', 'lines'
+    ],
+  },
+  {
+    endpointMatch: /^\/quotations$/,
+    httpMethod: 'POST',
+    clientCall: 'quotationsApi.create (page)',
+    formFile: 'apps/web/src/pages/QuotationsPage.tsx',
+    expectedDto: 'CreateQuotationDto',
+    payloadKeys: [
+      'leadId', 'customerName', 'customerPhone', 'customerEmail',
+      'companyName', 'shippingAddress', 'notes', 'terms', 'taxRate', 'lines'
+    ],
+  },
+  {
+    endpointMatch: /^\/quotations\/[^/]+\/status$/,
+    httpMethod: 'PATCH',
+    clientCall: 'quotationsApi.updateStatus',
+    formFile: 'apps/web/src/pages/QuotationsPage.tsx',
+    expectedDto: 'UpdateQuotationStatusDto',
+    payloadKeys: ['status'],
+  },
+  {
+    endpointMatch: /^\/quotations\/lines$/,
+    httpMethod: 'POST',
+    clientCall: 'CreateQuotationModal line items',
+    formFile: 'apps/web/src/components/quotations/CreateQuotationModal.tsx',
+    expectedDto: 'QuotationLineItemDto',
+    payloadKeys: ['skuId', 'name', 'quantity', 'unitPrice', 'discount', 'hsnCode'],
+  },
+
+  // 2. Leads
+  {
+    endpointMatch: /^\/leads$/,
+    httpMethod: 'POST',
+    clientCall: 'leadsApi.create',
+    formFile: 'apps/web/src/components/leads/CreateLeadModal.tsx',
+    expectedDto: 'CreateLeadDto',
+    payloadKeys: [
+      'customerName', 'customerPhone', 'customerEmail', 'companyName',
+      'state', 'city', 'productCategory', 'productName', 'quantity', 'unit',
+      'estimatedValue', 'urgency', 'queryMessage', 'source', 'forceSave', 'allowDuplicate'
+    ],
+  },
+  {
+    endpointMatch: /^\/leads\/[^/]+$/,
+    httpMethod: 'PATCH',
+    clientCall: 'leadsApi.update',
+    formFile: 'apps/web/src/components/leads/CreateLeadModal.tsx',
+    expectedDto: 'UpdateLeadDto',
+    payloadKeys: [
+      'customerName', 'customerPhone', 'customerEmail', 'companyName',
+      'state', 'city', 'productCategory', 'productName', 'quantity', 'unit',
+      'estimatedValue', 'urgency', 'queryMessage'
+    ],
+  },
+  {
+    endpointMatch: /^\/leads\/[^/]+\/status$/,
+    httpMethod: 'PATCH',
+    clientCall: 'leadsApi.updateStatus',
+    formFile: 'apps/web/src/pages/LeadsPage.tsx',
+    expectedDto: 'UpdateLeadStatusDto',
+    payloadKeys: ['status'],
+  },
+
+  // 3. Orders
+  {
+    endpointMatch: /^\/orders$/,
+    httpMethod: 'POST',
+    clientCall: 'ordersApi.create',
+    formFile: 'apps/web/src/components/orders/CreateOrderModal.tsx',
+    expectedDto: 'CreateOrderDto',
+    payloadKeys: [
+      'customerId', 'customerName', 'customerPhone', 'customerEmail',
+      'shippingAddress', 'notes', 'lines'
+    ],
+  },
+  {
+    endpointMatch: /^\/orders\/lines$/,
+    httpMethod: 'POST',
+    clientCall: 'CreateOrderModal line items',
+    formFile: 'apps/web/src/components/orders/CreateOrderModal.tsx',
+    expectedDto: 'OrderLineItemDto',
+    payloadKeys: ['skuId', 'name', 'quantity', 'unitPrice'],
+  },
+  {
+    endpointMatch: /^\/orders\/[^/]+$/,
+    httpMethod: 'PATCH',
+    clientCall: 'ordersApi.update',
+    formFile: 'apps/web/src/components/orders/EditOrderModal.tsx',
+    expectedDto: 'UpdateOrderDto',
+    payloadKeys: [
+      'customerName', 'customerPhone', 'customerEmail', 'shippingAddress',
+      'paymentStatus', 'notes', 'lines'
+    ],
+  },
+  {
+    endpointMatch: /^\/orders\/[^/]+\/status$/,
+    httpMethod: 'PATCH',
+    clientCall: 'ordersApi.updateStatus',
+    formFile: 'apps/web/src/components/orders/EditOrderModal.tsx',
+    expectedDto: 'UpdateOrderStatusDto',
+    payloadKeys: ['status'],
+  },
+
+  // 4. Customers & Companies
+  {
+    endpointMatch: /^\/companies$/,
+    httpMethod: 'POST',
+    clientCall: 'companiesApi.create',
+    formFile: 'apps/web/src/components/companies/CompanyModal.tsx',
+    expectedDto: 'CreateCompanyDto',
+    payloadKeys: ['name', 'gstin', 'industry', 'address', 'city', 'state', 'website', 'billingEmail'],
+  },
+  {
+    endpointMatch: /^\/companies$/,
+    httpMethod: 'POST',
+    clientCall: 'companiesApi.create (select modal)',
+    formFile: 'apps/web/src/components/common/CustomerSelectWithModal.tsx',
+    expectedDto: 'CreateCompanyDto',
+    payloadKeys: ['name', 'gstin', 'billingEmail', 'phone', 'address', 'state', 'city'],
+  },
+  {
+    endpointMatch: /^\/companies\/[^/]+$/,
+    httpMethod: 'PATCH',
+    clientCall: 'companiesApi.update',
+    formFile: 'apps/web/src/components/companies/CompanyModal.tsx',
+    expectedDto: 'UpdateCompanyDto',
+    payloadKeys: ['name', 'gstin', 'industry', 'address', 'city', 'state', 'website', 'billingEmail'],
+  },
+  {
+    endpointMatch: /^\/companies\/[^/]+\/contacts$/,
+    httpMethod: 'POST',
+    clientCall: 'companiesApi.createContact',
+    formFile: 'apps/web/src/components/companies/CompanyContactsModal.tsx',
+    expectedDto: 'CreateContactDto',
+    payloadKeys: ['name', 'phone', 'email', 'designation'],
+  },
+
+  // 5. Suppliers
+  {
+    endpointMatch: /^\/suppliers$/,
+    httpMethod: 'POST',
+    clientCall: 'suppliersApi.create',
+    formFile: 'apps/web/src/pages/SuppliersPage.tsx',
+    expectedDto: 'CreateSupplierDto',
+    payloadKeys: ['name', 'contactPerson', 'phone', 'email', 'gstin', 'city', 'address', 'leadTimeDays', 'notes'],
+  },
+  {
+    endpointMatch: /^\/suppliers\/[^/]+$/,
+    httpMethod: 'PATCH',
+    clientCall: 'suppliersApi.update',
+    formFile: 'apps/web/src/pages/SuppliersPage.tsx',
+    expectedDto: 'UpdateSupplierDto',
+    payloadKeys: ['name', 'contactPerson', 'phone', 'email', 'gstin', 'city', 'address', 'leadTimeDays', 'notes', 'isActive'],
+  },
   {
     endpointMatch: /^\/inventory\/suppliers\/[^/]+\/purchase$/,
     httpMethod: 'POST',
@@ -236,28 +401,46 @@ const KNOWN_WEB_PAYLOADS: Array<{
       'grandTotal', 'items', 'notes'
     ],
   },
+
+  // 6. SKUs and Stock
   {
-    endpointMatch: /^\/inventory\/project-stock\/[^/]+\/purchase$/,
+    endpointMatch: /^\/inventory\/skus$/,
     httpMethod: 'POST',
-    clientCall: 'inventoryApi.recordProjectStockPurchase',
-    formFile: 'apps/web/src/components/inventory/RecordPurchaseModal.tsx',
-    expectedDto: 'RecordProjectStockPurchaseDto',
+    clientCall: 'inventoryApi.createSku',
+    formFile: 'apps/web/src/components/inventory/RecordComponentPurchaseModal.tsx',
+    expectedDto: 'CreateSkuDto',
+    payloadKeys: ['skuCode', 'name', 'category', 'unitPrice', 'costPrice', 'taxRate', 'packageType', 'reorderPoint', 'reorderQty'],
+  },
+  {
+    endpointMatch: /^\/inventory\/skus\/[^/]+$/,
+    httpMethod: 'PATCH',
+    clientCall: 'inventoryApi.updateSku',
+    formFile: 'apps/web/src/pages/InventoryPage.tsx',
+    expectedDto: 'UpdateSkuDto',
+    payloadKeys: ['skuCode', 'name', 'category', 'unitPrice', 'costPrice', 'unit', 'taxRate', 'packageType', 'reorderPoint', 'reorderQty'],
+  },
+  {
+    endpointMatch: /^\/inventory\/project-stock$/,
+    httpMethod: 'POST',
+    clientCall: 'inventoryApi.createProjectStockPosition',
+    formFile: 'apps/web/src/components/inventory/RecordComponentPurchaseModal.tsx',
+    expectedDto: 'CreateProjectStockDto',
     payloadKeys: [
-      'quantityPurchased', 'unitRate', 'taxRate', 'supplierName',
-      'supplierGstin', 'invoiceNumber', 'invoiceDate', 'documentDataUrl', 'notes'
+      'project', 'reference', 'quantity', 'itemCode', 'partValue',
+      'package', 'unit', 'bomQtyPerUnit', 'batchQty', 'plannedRequirement',
+      'openingStock', 'inflow', 'outflow', 'notes'
     ],
   },
   {
-    endpointMatch: /^\/payments$/,
+    endpointMatch: /^\/inventory\/transfers$/,
     httpMethod: 'POST',
-    clientCall: 'paymentApi.record',
-    formFile: 'apps/web/src/components/payments/RecordPaymentModal.tsx',
-    expectedDto: 'RecordPaymentDto',
-    payloadKeys: [
-      'partyId', 'partyType', 'amount', 'paymentType', 'paymentMethod',
-      'transactionRef', 'paymentDate', 'notes', 'allocations', 'allowAdvance', 'confirmDuplicate'
-    ],
+    clientCall: 'inventoryApi.transferStock',
+    formFile: 'apps/web/src/components/inventory/WarehouseTransferModal.tsx',
+    expectedDto: 'TransferStockDto',
+    payloadKeys: ['skuId', 'sourceWarehouseId', 'destinationWarehouseId', 'quantity', 'notes'],
   },
+
+  // 7. Invoices
   {
     endpointMatch: /^\/invoices\/create-direct$/,
     httpMethod: 'POST',
@@ -271,25 +454,116 @@ const KNOWN_WEB_PAYLOADS: Array<{
     ],
   },
   {
-    endpointMatch: /^\/inventory\/skus$/,
+    endpointMatch: /^\/invoices\/lines$/,
     httpMethod: 'POST',
-    clientCall: 'inventoryApi.createSku',
-    formFile: 'apps/web/src/components/inventory/RecordComponentPurchaseModal.tsx',
-    expectedDto: 'CreateSkuDto',
-    payloadKeys: ['skuCode', 'name', 'category', 'unitPrice', 'costPrice', 'taxRate', 'packageType', 'reorderPoint', 'reorderQty'],
+    clientCall: 'CreateDocumentModal line items',
+    formFile: 'apps/web/src/components/invoices/CreateDocumentModal.tsx',
+    expectedDto: 'InvoiceLineItemDto',
+    payloadKeys: ['skuId', 'description', 'hsnCode', 'unit', 'quantity', 'unitPrice', 'discount', 'taxRate'],
   },
   {
-    endpointMatch: /^\/inventory\/project-stock$/,
-    httpMethod: 'POST',
-    clientCall: 'inventoryApi.createProjectStockPosition',
-    formFile: 'apps/web/src/components/inventory/RecordComponentPurchaseModal.tsx',
-    expectedDto: 'CreateProjectStockPositionDto',
+    endpointMatch: /^\/invoices\/[^/]+$/,
+    httpMethod: 'PATCH',
+    clientCall: 'invoicingApi.update',
+    formFile: 'apps/web/src/pages/InvoicesPage.tsx',
+    expectedDto: 'UpdateInvoiceDto',
     payloadKeys: [
-      'project', 'reference', 'quantity', 'itemCode', 'partValue',
-      'package', 'unit', 'bomQtyPerUnit', 'batchQty', 'plannedRequirement',
-      'openingStock', 'inflow', 'outflow', 'notes'
+      'invoiceNumber', 'invoiceDate', 'dueDate', 'customerName',
+      'customerPhone', 'customerEmail', 'customerAddress', 'customerGstin', 'notes'
     ],
   },
+
+  // 8. Receipts and Payments
+  {
+    endpointMatch: /^\/payments$/,
+    httpMethod: 'POST',
+    clientCall: 'paymentApi.record',
+    formFile: 'apps/web/src/components/payments/RecordPaymentModal.tsx',
+    expectedDto: 'RecordPaymentDto',
+    payloadKeys: [
+      'partyId', 'partyType', 'customerId', 'supplierId', 'amount',
+      'paymentType', 'paymentMethod', 'transactionRef', 'reference',
+      'bankAccountId', 'paymentDate', 'notes', 'allocations', 'deductions',
+      'allowAdvance', 'isAdvance', 'confirmDuplicate', 'confirmedLargePayment', 'typedConfirmation'
+    ],
+  },
+  {
+    endpointMatch: /^\/payments\/allocations$/,
+    httpMethod: 'POST',
+    clientCall: 'RecordPaymentModal allocation items',
+    formFile: 'apps/web/src/components/payments/RecordPaymentModal.tsx',
+    expectedDto: 'PaymentAllocationDto',
+    payloadKeys: ['documentId', 'invoiceId', 'billId', 'amount'],
+  },
+  {
+    endpointMatch: /^\/payments\/deductions$/,
+    httpMethod: 'POST',
+    clientCall: 'RecordPaymentModal deduction items',
+    formFile: 'apps/web/src/components/payments/RecordPaymentModal.tsx',
+    expectedDto: 'PaymentDeductionDto',
+    payloadKeys: ['type', 'amount', 'note', 'notes'],
+  },
+
+  // 9. Bank Accounts
+  {
+    endpointMatch: /^\/settings\/bank-accounts$/,
+    httpMethod: 'POST',
+    clientCall: 'bankAccountsApi.create',
+    formFile: 'apps/web/src/components/settings/CompanyBankAccountsSection.tsx',
+    expectedDto: 'CreateBankAccountDto',
+    payloadKeys: ['label', 'bankName', 'holderName', 'accountNumber', 'ifsc', 'branch', 'upiId', 'isDefault', 'isDocumentDefault'],
+  },
+  {
+    endpointMatch: /^\/settings\/bank-accounts\/[^/]+$/,
+    httpMethod: 'PATCH',
+    clientCall: 'bankAccountsApi.update',
+    formFile: 'apps/web/src/components/settings/CompanyBankAccountsSection.tsx',
+    expectedDto: 'UpdateBankAccountDto',
+    payloadKeys: ['label', 'bankName', 'holderName', 'accountNumber', 'ifsc', 'branch', 'upiId', 'isDefault', 'isDocumentDefault'],
+  },
+
+  // 10. Branding & Profile
+  {
+    endpointMatch: /^\/settings\/branding$/,
+    httpMethod: 'POST',
+    clientCall: 'brandingApi.update',
+    formFile: 'apps/web/src/pages/BrandingSettingsPage.tsx',
+    expectedDto: 'UpdateBrandingDto',
+    payloadKeys: ['companyDisplayName', 'companyPhone', 'companyLogoUrl'],
+  },
+  {
+    endpointMatch: /^\/settings\/company-profile$/,
+    httpMethod: 'POST',
+    clientCall: 'brandingApi.updateProfile',
+    formFile: 'apps/web/src/pages/BrandingSettingsPage.tsx',
+    expectedDto: 'UpdateCompanyProfileDto',
+    payloadKeys: [
+      'name', 'phone', 'email', 'address', 'city', 'state', 'pincode',
+      'website', 'gstin', 'pan', 'invoicePrefix', 'lutBondNo', 'lutValidity',
+      'bankName', 'bankAccountNumber', 'bankIfsc', 'bankBranch', 'bankUpi',
+      'signatoryName', 'signatoryDesignation', 'signatureUrl', 'stampUrl', 'requireTwoFactor'
+    ],
+  },
+
+  // 11. Users
+  {
+    endpointMatch: /^\/users$/,
+    httpMethod: 'POST',
+    clientCall: 'usersApi.create',
+    formFile: 'apps/web/src/pages/UsersPage.tsx',
+    expectedDto: 'CreateUserDto',
+    payloadKeys: ['name', 'email', 'phone', 'role', 'teamId', 'warehouseId', 'pages', 'homePage'],
+  },
+  {
+    endpointMatch: /^\/users\/[^/]+$/,
+    httpMethod: 'PATCH',
+    clientCall: 'usersApi.update',
+    formFile: 'apps/web/src/pages/UsersPage.tsx',
+    expectedDto: 'UpdateUserDto',
+    payloadKeys: ['name', 'phone', 'role', 'teamId', 'warehouseId'],
+  },
+
+  // 12. Authentication
   {
     endpointMatch: /^\/auth\/login$/,
     httpMethod: 'POST',
@@ -305,22 +579,6 @@ const KNOWN_WEB_PAYLOADS: Array<{
     formFile: 'apps/web/src/components/auth/AuthLoginForm.tsx',
     expectedDto: 'VerifyTwoFactorDto',
     payloadKeys: ['loginTicket', 'code', 'rememberDevice'],
-  },
-  {
-    endpointMatch: /^\/leads$/,
-    httpMethod: 'POST',
-    clientCall: 'leadsApi.create',
-    formFile: 'apps/web/src/pages/LeadsPage.tsx',
-    expectedDto: 'CreateLeadDto',
-    payloadKeys: ['customerName', 'customerPhone', 'customerEmail', 'companyName', 'city', 'productCategory', 'estimatedValue', 'urgency'],
-  },
-  {
-    endpointMatch: /^\/suppliers$/,
-    httpMethod: 'POST',
-    clientCall: 'suppliersApi.create',
-    formFile: 'apps/web/src/pages/SuppliersPage.tsx',
-    expectedDto: 'CreateSupplierDto',
-    payloadKeys: ['name', 'gstin', 'pan', 'contactPerson', 'email', 'phone', 'address', 'city', 'state', 'pincode', 'leadTimeDays'],
   },
 ];
 
@@ -344,7 +602,7 @@ async function runContractAudit() {
       (ep) => ep.httpMethod === check.httpMethod && check.endpointMatch.test(ep.fullPath)
     );
 
-    const dtoName = matchingEndpoint?.dtoName || check.expectedDto;
+    const dtoName = check.expectedDto || matchingEndpoint?.dtoName;
     const dto = dtos.get(dtoName);
 
     if (!dto) {
@@ -369,7 +627,7 @@ async function runContractAudit() {
     }
 
     results.push({
-      endpoint: matchingEndpoint ? `${matchingEndpoint.httpMethod} ${matchingEndpoint.fullPath}` : `UNKNOWN ${check.clientCall}`,
+      endpoint: matchingEndpoint ? `${matchingEndpoint.httpMethod} ${matchingEndpoint.fullPath}` : `${check.httpMethod} [model] ${check.clientCall}`,
       httpMethod: check.httpMethod,
       dtoName,
       clientCall: check.clientCall,

@@ -334,7 +334,6 @@ function CreateCustomerModal({
         address: address.trim() || undefined,
         state: state.trim() || undefined,
         city: city.trim() || undefined,
-        contactPerson: contactPerson.trim() || undefined,
       });
 
       const created = res.data;

@@ -23,6 +23,7 @@ export interface StandardApiErrorResponse {
   message: string;
   field?: string;
   fieldErrors?: Array<{ field: string; message: string }>;
+  unknownFields?: string[];
   requestId: string;
   timestamp?: string;
 }
@@ -85,8 +86,7 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
             })
             .filter(Boolean);
 
-          const isDev = process.env.NODE_ENV !== 'production';
-          if (isDev && extractedFields.length > 0) {
+          if (extractedFields.length > 0) {
             field = extractedFields[0];
             message = `The submitted form contains unrecognized parameters: ${extractedFields.join(', ')}. Please refresh and try again.`;
             fieldErrors = extractedFields.map((f) => ({
@@ -229,6 +229,7 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
       message,
       ...(field ? { field } : {}),
       fieldErrors,
+      ...(code === 'UNKNOWN_FIELD' && fieldErrors.length > 0 ? { unknownFields: fieldErrors.map((f) => f.field) } : {}),
       requestId,
       timestamp: new Date().toISOString(),
     };
