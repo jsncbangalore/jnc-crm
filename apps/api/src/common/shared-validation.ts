@@ -580,6 +580,55 @@ export const validateUnitRate = (raw: number | string): { valid: boolean; error?
   return { valid: true, value: num };
 };
 
+export const MAX_DOCUMENT_AMOUNT = 100_000_000; // 10 Crore (₹10,00,00,000)
+export const MAX_MONEY_AMOUNT = MAX_DOCUMENT_AMOUNT;
+
+export const validateMoneyAmount = (
+  raw: any,
+  fieldName = 'Amount',
+  maxLimit = MAX_DOCUMENT_AMOUNT
+): { valid: boolean; error?: string; value: number } => {
+  if (raw === null || raw === undefined || raw === '') {
+    return { valid: false, error: `${fieldName} is required.`, value: 0 };
+  }
+  const str = String(raw).trim();
+  // Disallow scientific notation / exponents
+  if (/[eE]/.test(str)) {
+    return { valid: false, error: `${fieldName} cannot contain scientific notation or exponents (e.g. 1e9).`, value: 0 };
+  }
+  // Disallow negative
+  if (str.startsWith('-') || Number(str) < 0) {
+    return { valid: false, error: `${fieldName} cannot be negative.`, value: 0 };
+  }
+  // Check for comma-separated or clean amount
+  const cleanedStr = str.replace(/,/g, '');
+  const num = Number(cleanedStr);
+  if (isNaN(num) || !isFinite(num)) {
+    return { valid: false, error: `${fieldName} must be a valid number.`, value: 0 };
+  }
+  if (num === 0) {
+    return { valid: false, error: `${fieldName} must be greater than zero.`, value: 0 };
+  }
+  // Max 2 decimal places check
+  const decimalParts = cleanedStr.split('.');
+  if (decimalParts[1] && decimalParts[1].length > 2) {
+    return { valid: false, error: `${fieldName} can have at most 2 decimal places.`, value: num };
+  }
+  // Leading zeros check (e.g. "02")
+  if (decimalParts[0].length > 1 && /^0\d+/.test(decimalParts[0])) {
+    return { valid: false, error: `Leading zeros are not allowed, for example enter 2 instead of 02.`, value: num };
+  }
+  // Max limit check (default 10 crore = 100,000,000)
+  if (num > maxLimit) {
+    return {
+      valid: false,
+      error: `${fieldName} of ₹${Math.round(num).toLocaleString('en-IN')} exceeds the maximum allowed limit of ₹${maxLimit.toLocaleString('en-IN')} (10 Crore).`,
+      value: num,
+    };
+  }
+  return { valid: true, value: num };
+};
+
 // 9. GST Rate Rules
 export const ALLOWED_GST_RATES = [0, 5, 12, 18, 28] as const;
 export type GstRate = (typeof ALLOWED_GST_RATES)[number];

@@ -830,16 +830,24 @@ export default function UnifiedRecordPaymentModal({
     if (!validateForm()) return;
 
     const enteredAmt = fromPaise(numEnteredAmountPaise);
-    if (enteredAmt > 10000000 && typedConfirmation !== 'CONFIRM') {
-      setShowTypedConfirmModal(true);
-      return;
-    }
-    if (enteredAmt > 1000000 && !confirmedLargeAmount) {
-      setShowLargeAmountModal(true);
+    if (enteredAmt > 100000000) {
+      setErr('Payment amount cannot exceed the maximum allowed limit of ₹10,00,00,000 (10 Crore).');
       return;
     }
 
     const totalOpenDuePaise = allocations.reduce((sum, a) => sum + toPaise(a.balanceDue), 0);
+    const partyOutstanding = fromPaise(totalOpenDuePaise);
+    const isExceeding10x = partyOutstanding > 0 && enteredAmt > 10 * partyOutstanding;
+    const isExceeding10Lakh = enteredAmt > 1000000;
+
+    if (isExceeding10x || isExceeding10Lakh) {
+      const cleanTyped = cleanAmountInput(typedConfirmation);
+      const cleanExpected = cleanAmountInput(enteredAmt);
+      if (!cleanTyped || cleanTyped !== cleanExpected) {
+        setShowTypedConfirmModal(true);
+        return;
+      }
+    }
     const activeAllocations = allocations
       .filter((a) => a.selected && toPaise(a.allocatedAmount) > 0)
       .map((a) => ({
@@ -886,8 +894,8 @@ export default function UnifiedRecordPaymentModal({
         isAdvance: isAdvance || overrideAdvance || confirmAdvanceOverride,
         allowAdvance: allowAdvance || overrideAdvance || confirmAdvanceOverride,
         confirmDuplicate,
-        confirmedLargePayment: Boolean(confirmedLargeAmount || enteredAmt > 1000000),
-        typedConfirmation: enteredAmt > 10000000 ? 'CONFIRM' : undefined,
+        confirmedLargePayment: Boolean(isExceeding10x || isExceeding10Lakh),
+        typedConfirmation: (isExceeding10x || isExceeding10Lakh) ? enteredAmt.toString() : undefined,
         allocations: activeAllocations.length > 0 ? activeAllocations : undefined,
         idempotencyKey: keyToUse,
       };
@@ -1588,7 +1596,7 @@ export default function UnifiedRecordPaymentModal({
           </div>
         )}
 
-        {/* Modal: Typed confirmation for payment > ₹1,00,00,000 */}
+        {/* Modal: Typed confirmation for payment > 10x outstanding or > ₹10,00,000 */}
         {showTypedConfirmModal && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
@@ -1599,14 +1607,14 @@ export default function UnifiedRecordPaymentModal({
                 <h4 className="text-base font-bold text-slate-900 dark:text-white">High-Value Confirmation Required</h4>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300">
-                This transaction of <strong>₹{formatIndianCurrency(fromPaise(numEnteredAmountPaise))}</strong> exceeds ₹1,00,00,000 (1 Crore). To prevent accidental entries, please type <strong>CONFIRM</strong> below:
+                This transaction of <strong>₹{formatIndianCurrency(fromPaise(numEnteredAmountPaise))}</strong> exceeds {fromPaise(numEnteredAmountPaise) > 1000000 ? '₹10,00,000 (10 Lakh)' : "10 times the party's outstanding balance"}. To prevent accidental entries, please type the exact amount <strong>{fromPaise(numEnteredAmountPaise)}</strong> below to confirm:
               </p>
               <input
                 type="text"
-                placeholder="Type CONFIRM"
+                placeholder={`Type ${fromPaise(numEnteredAmountPaise)}`}
                 value={typedConfirmation}
-                onChange={(e) => setTypedConfirmation(e.target.value)}
-                className="w-full px-3 py-2 text-xs font-mono font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl uppercase tracking-wider"
+                onChange={(e) => setTypedConfirmation(cleanAmountInput(e.target.value))}
+                className="w-full px-3 py-2 text-xs font-mono font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl tracking-wider"
               />
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
@@ -1621,7 +1629,7 @@ export default function UnifiedRecordPaymentModal({
                 </button>
                 <button
                   type="button"
-                  disabled={typedConfirmation !== 'CONFIRM'}
+                  disabled={cleanAmountInput(typedConfirmation) !== cleanAmountInput(fromPaise(numEnteredAmountPaise))}
                   onClick={() => {
                     setShowTypedConfirmModal(false);
                     setTimeout(() => {

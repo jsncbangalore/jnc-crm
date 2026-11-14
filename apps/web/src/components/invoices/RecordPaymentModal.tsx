@@ -11,7 +11,7 @@ import { invoicesApi, ordersApi } from '../../services/api';
 import FullCalendarPicker from '../common/FullCalendarPicker';
 import { parseApiError, ParsedApiError } from '../../utils/errorHelper';
 import FormErrorBanner from '../common/FormErrorBanner';
-import { validatePaymentReference, getPaymentReferenceHint } from '@crm/shared-validation';
+import { validatePaymentReference, getPaymentReferenceHint, cleanAmountInput, formatIndianCurrency } from '@crm/shared-validation';
 
 interface RecordPaymentModalProps {
   isOpen: boolean;
@@ -58,6 +58,8 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const [apiError, setApiError] = useState<ParsedApiError | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [confirmDuplicate, setConfirmDuplicate] = useState<boolean>(false);
+  const [showTypedConfirm, setShowTypedConfirm] = useState<boolean>(false);
+  const [typedConfirmation, setTypedConfirmation] = useState<string>('');
 
   if (!isOpen || !doc) return null;
 
@@ -69,6 +71,22 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
     if (numAmount <= 0) {
       setError('Please enter a valid payment amount greater than ₹0.');
       return;
+    }
+
+    if (numAmount > 100000000) {
+      setError('Payment amount cannot exceed the maximum allowed limit of ₹10,00,00,000 (10 Crore).');
+      return;
+    }
+
+    const isExceeding10x = currentBalance > 0 && numAmount > 10 * currentBalance;
+    const isExceeding10Lakh = numAmount > 1000000;
+    if (isExceeding10x || isExceeding10Lakh) {
+      const cleanTyped = cleanAmountInput(typedConfirmation);
+      const cleanExpected = cleanAmountInput(numAmount);
+      if (!cleanTyped || cleanTyped !== cleanExpected) {
+        setShowTypedConfirm(true);
+        return;
+      }
     }
 
     const refCheck = validatePaymentReference(paymentMethod, transactionRef);
@@ -90,6 +108,8 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
         paymentDate,
         notes: notes.trim() || undefined,
         confirmDuplicate,
+        confirmedLargePayment: Boolean(isExceeding10x || isExceeding10Lakh),
+        typedConfirmation: (isExceeding10x || isExceeding10Lakh) ? numAmount.toString() : undefined,
       };
 
       let res;
@@ -378,6 +398,53 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               </button>
             </div>
           </form>
+
+          {/* Modal: Typed confirmation for payment > 10x outstanding or > ₹10,00,000 */}
+          {showTypedConfirm && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+                <div className="flex items-center gap-3">
+                  <span className="p-2.5 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400">
+                    <AlertCircle className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-base font-bold text-slate-900 dark:text-white">High-Value Confirmation Required</h4>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  This transaction of <strong>₹{formatIndianCurrency(numAmount)}</strong> exceeds {numAmount > 1000000 ? '₹10,00,000 (10 Lakh)' : "10 times the party's outstanding balance"}. To prevent accidental entries, please type the exact amount <strong>{numAmount}</strong> below to confirm:
+                </p>
+                <input
+                  type="text"
+                  placeholder={`Type ${numAmount}`}
+                  value={typedConfirmation}
+                  onChange={(e) => setTypedConfirmation(cleanAmountInput(e.target.value))}
+                  className="w-full px-3 py-2 text-xs font-mono font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl tracking-wider"
+                />
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTypedConfirm(false);
+                      setTypedConfirmation('');
+                    }}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={cleanAmountInput(typedConfirmation) !== cleanAmountInput(numAmount)}
+                    onClick={(e) => {
+                      setShowTypedConfirm(false);
+                      handleSubmit(e as any);
+                    }}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Confirm & Proceed
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </motion.div>
       </div>
     </AnimatePresence>

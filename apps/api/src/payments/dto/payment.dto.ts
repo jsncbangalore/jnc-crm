@@ -13,6 +13,7 @@ import {
   IsArray,
   IsBoolean,
   Min,
+  Max,
   IsIn,
   IsDateString,
   ValidateNested,
@@ -88,8 +89,9 @@ export class RecordPaymentDto {
   @IsOptional()
   invoiceId?: string;
 
-  @IsNumber({}, { message: 'Payment amount requires a valid number entry.' })
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Payment amount requires a valid number entry with at most 2 decimal places.' })
   @Min(0.01, { message: 'Payment amount should be greater than zero.' })
+  @Max(100000000, { message: 'Payment amount cannot exceed the maximum allowed limit of ₹10,00,00,000 (10 Crore).' })
   amount: number;
 
   @IsString({ message: 'Payment type requires a valid text entry.' })

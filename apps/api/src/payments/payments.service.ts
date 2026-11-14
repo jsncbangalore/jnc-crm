@@ -12,7 +12,7 @@ import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 import { AuditService } from '../audit/audit.service';
 import { DocumentSeriesService } from '../common/document-series.service';
-import { formatIndianCurrency, validateMeaningfulNarration, validatePaymentReference, formatDeductionType } from '../common/shared-validation';
+import { formatIndianCurrency, validateMeaningfulNarration, validatePaymentReference, formatDeductionType, validateMoneyAmount, cleanAmountInput, MAX_DOCUMENT_AMOUNT } from '../common/shared-validation';
 import { getEffectivePagesForUser } from '../auth/effective-page-access';
 import { numberToIndianWords } from '../invoicing/invoice-config';
 
@@ -129,8 +129,10 @@ export class PaymentsService {
       }
     }
 
-    if (isNaN(amount) || amount <= 0) {
-      throw new BadRequestException('Payment amount must be greater than 0.');
+    // Amount validation with shared limits (max 10 crore, no negative, no scientific notation, max 2 decimals)
+    const moneyCheck = validateMoneyAmount(amount, 'Payment amount', MAX_DOCUMENT_AMOUNT);
+    if (!moneyCheck.valid) {
+      throw new BadRequestException(moneyCheck.error);
     }
 
     // Payment reference validation by mode
@@ -174,17 +176,79 @@ export class PaymentsService {
       }
     }
 
-    // High value payment confirmations
-    if (amount > 10000000) {
-      if (dto.typedConfirmation !== 'CONFIRM') {
-        throw new BadRequestException(
-          `Payment of ${formatIndianCurrency(amount)} exceeds ₹1,00,00,000. Please type CONFIRM to proceed.`
-        );
+    // Calculate party outstanding to evaluate high-value thresholds:
+    // (Above 10 times the party's outstanding amount, or above 10 lakh, ask for confirmation by typing the amount)
+    let partyOutstanding = 0;
+    const isSupplier = dto.partyType === 'supplier' || Boolean(dto.supplierId);
+    if (isSupplier) {
+      const supplierId = dto.supplierId || dto.partyId;
+      if (supplierId) {
+        const supplierBills = await this.prisma.purchaseBill.findMany({
+          where: {
+            tenantId,
+            supplierId,
+            deletedAt: null,
+            paymentStatus: { in: ['unpaid', 'partial'] },
+          },
+          include: { allocations: true },
+        });
+        partyOutstanding = supplierBills.reduce((sum, bill) => {
+          const paid = (bill.allocations || []).reduce((s: number, a: any) => s + Number(a.amount), 0);
+          return sum + Math.max(0, Number(bill.grandTotal) - paid);
+        }, 0);
       }
-    } else if (amount > 1000000) {
-      if (!dto.confirmedLargePayment) {
+    } else {
+      let customerId = dto.customerId || dto.partyId;
+      if (!customerId && dto.invoiceId) {
+        const inv = await this.prisma.invoice.findFirst({
+          where: { id: dto.invoiceId, tenantId },
+          select: { customerId: true, companyId: true },
+        });
+        if (inv) customerId = inv.customerId || inv.companyId;
+      }
+      if (!customerId && dto.orderId) {
+        const ord = await this.prisma.order.findFirst({
+          where: { id: dto.orderId, tenantId },
+          select: { customerId: true },
+        });
+        if (ord) customerId = ord.customerId;
+      }
+      if (customerId && customerId !== 'not-linked' && !customerId.startsWith('unlinked:')) {
+        const customerInvoices = await this.prisma.invoice.findMany({
+          where: {
+            tenantId,
+            isVoided: false,
+            paymentStatus: { in: ['unpaid', 'partial'] },
+            OR: [
+              { customerId },
+              { companyId: customerId },
+            ],
+          },
+          select: { balanceDue: true, totalAmount: true },
+        });
+        partyOutstanding = customerInvoices.reduce((sum, inv) => {
+          const bal = inv.balanceDue != null && inv.balanceDue >= 0 ? Number(inv.balanceDue) : Number(inv.totalAmount);
+          return sum + bal;
+        }, 0);
+      }
+    }
+
+    const isExceeding10xOutstanding = partyOutstanding > 0 && amount > 10 * partyOutstanding;
+    const isExceeding10Lakh = amount > 1_000_000;
+
+    if (isExceeding10xOutstanding || isExceeding10Lakh) {
+      const typed = dto.typedConfirmation ? String(dto.typedConfirmation).replace(/,/g, '').trim() : '';
+      const expectedAmountStr = String(amount);
+      const isTypedMatch = typed === expectedAmountStr || Number(typed) === amount;
+      const isLegacyConfirmed = (dto.typedConfirmation === 'CONFIRM' && amount <= 10000000) ||
+                                (dto.confirmedLargePayment && !isExceeding10xOutstanding && amount <= 10000000 && !dto.typedConfirmation);
+
+      if (!isTypedMatch && !isLegacyConfirmed) {
+        const reason = isExceeding10Lakh
+          ? '₹10,00,000 (10 Lakh)'
+          : `10 times the party's outstanding balance of ₹${Math.round(partyOutstanding).toLocaleString('en-IN')}`;
         throw new BadRequestException(
-          `Payment of ${formatIndianCurrency(amount)} exceeds ₹10,00,000. Confirmation is required.`
+          `High-value confirmation required: Payment of ${formatIndianCurrency(amount)} exceeds ${reason}. Please confirm by typing the exact amount "${amount}".`
         );
       }
     }

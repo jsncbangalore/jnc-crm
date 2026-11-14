@@ -78,7 +78,16 @@ export function formatValidationErrors(errors: ValidationError[]): FormattedVali
         const fieldName = humanizeField(err.property);
         let sentence = '';
 
-        if (key === 'isNotEmpty') {
+        const isDefaultClassValidatorMsg =
+          rawMsg.startsWith(err.property + ' must') ||
+          rawMsg.startsWith(err.property + ' should') ||
+          rawMsg.startsWith(err.property + ' cannot');
+
+        if (!isDefaultClassValidatorMsg) {
+          sentence = rawMsg.trim();
+          if (!sentence.endsWith('.')) sentence += '.';
+          sentence = sentence.charAt(0).toUpperCase() + sentence.slice(1);
+        } else if (key === 'isNotEmpty') {
           sentence = `${fieldName} is required.`;
         } else if (key === 'isDateString') {
           sentence = `${fieldName} requires a valid date (YYYY-MM-DD).`;
@@ -91,7 +100,7 @@ export function formatValidationErrors(errors: ValidationError[]): FormattedVali
         } else if (key === 'min') {
           sentence = `${fieldName} is below the minimum allowed value.`;
         } else if (key === 'max') {
-          sentence = `${fieldName} exceeds the maximum allowed value.`;
+          sentence = `${fieldName} exceeds the maximum allowed limit of ₹10,00,00,000 (10 Crore).`;
         } else if (key === 'isIn') {
           sentence = `${fieldName} contains an invalid selection.`;
         } else if (key === 'isEmail') {

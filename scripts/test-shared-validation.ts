@@ -32,6 +32,8 @@ import {
   cleanUpi,
   cleanPhoneInput,
   cleanAmountInput,
+  validateMoneyAmount,
+  MAX_DOCUMENT_AMOUNT,
 } from '../packages/shared-validation/src/index';
 
 let passed = 0;
@@ -282,6 +284,41 @@ const ifscErr = validateIfsc('INVALID').error || '';
 assert(ifscErr.includes('for example HDFC0001234') && !ifscErr.includes('(for example'), 'IFSC hint has example without brackets');
 const unitRateErr = validateUnitRate('02').error || '';
 assert(unitRateErr.includes('for example enter 2 instead of 02') && !unitRateErr.includes('(for example'), 'Unit rate leading zero hint has example without brackets');
+
+// 14. Amount Limits & Money Validation (Topic 3)
+console.log('\n--- 14. Amount Limits & Money Validation (Topic 3: 10 Crore, 2000000000, 0, negative, 12.345, 1e9, commas) ---');
+
+// Test 2000000000 (200 Crore): Exceeds 10 Crore limit
+const res2Billion = validateMoneyAmount(2000000000, 'Payment amount');
+assert(!res2Billion.valid && (res2Billion.error?.includes('10 Crore') || false), '2000000000 rejected (exceeds 10 Crore limit)');
+
+// Test 0: Must be greater than zero
+const resZero = validateMoneyAmount(0, 'Payment amount');
+assert(!resZero.valid && (resZero.error?.includes('greater than zero') || false), '0 rejected (must be greater than zero)');
+
+// Test negative (-500): Negative rejected
+const resNeg = validateMoneyAmount(-500, 'Payment amount');
+assert(!resNeg.valid && (resNeg.error?.includes('cannot be negative') || false), 'Negative amount -500 rejected');
+
+// Test 12.345: Max 2 decimal places
+const res3Decimals = validateMoneyAmount('12.345', 'Payment amount');
+assert(!res3Decimals.valid && (res3Decimals.error?.includes('at most 2 decimal places') || false), '12.345 rejected (max 2 decimal places)');
+
+// Test 1e9: Scientific notation / exponents rejected
+const resExp = validateMoneyAmount('1e9', 'Payment amount');
+assert(!resExp.valid && (resExp.error?.includes('exponents') || false), '1e9 rejected (scientific notation not allowed)');
+
+// Test pasted value with commas ('1,00,000')
+const resCommas = validateMoneyAmount('1,00,000', 'Payment amount');
+assert(resCommas.valid && resCommas.value === 100000, 'Pasted value with commas "1,00,000" parsed and accepted as 100000');
+
+// Test valid 10 Crore ceiling boundary
+const res10Cr = validateMoneyAmount(100000000, 'Payment amount');
+assert(res10Cr.valid && res10Cr.value === 100000000, 'Exact 10 Crore (100,000,000) boundary accepted');
+
+// Test exceeding 10 Crore boundary by 1 paisa
+const res10CrPlus = validateMoneyAmount(100000000.01, 'Payment amount');
+assert(!res10CrPlus.valid && (res10CrPlus.error?.includes('exceeds the maximum') || false), '100000000.01 rejected (> 10 Crore)');
 
 console.log('\n========================================================================');
 console.log(`TEST SUMMARY: ${passed} passed, ${failed} failed`);
