@@ -102,6 +102,10 @@ export class CreateQuotationDto {
   @IsOptional()
   customerId?: string;
 
+  @IsBoolean()
+  @IsOptional()
+  confirmCreateCustomer?: boolean;
+
   @IsString()
   @IsOptional()
   contactId?: string;
@@ -325,77 +329,133 @@ export class QuotationsService {
 
     const validUntil = dto.validUntil ? new Date(dto.validUntil) : new Date(Date.now() + 30 * 86_400_000); // 30 days validity
 
-    const quotation = await this.prisma.quotation.create({
-      data: {
-        tenantId,
-        quoteNumber,
-        customerId: dto.customerId || null,
-        customerName: dto.customerName,
-        customerPhone: dto.customerPhone,
-        customerEmail: dto.customerEmail || null,
-        customerGstin: dto.customerGstin || null,
-        customerAddress: dto.customerAddress || dto.shippingAddress || null,
-        customerState,
-        leadId: dto.leadId,
-        contactId: dto.contactId,
-        createdById: user.id,
-        status: 'draft',
-        subtotal: totals.subtotal,
-        taxRate: Number(dto.taxRate) || 18.0,
-        taxAmount: totals.totalTax,
-        totalAmount: totals.totalAmount,
-        validUntil,
-        notes: sanitizeHtml(dto.notes),
-        terms: sanitizeHtml(dto.terms) || '1. 100% advance or approved credit terms.\n2. Delivery within 7–10 days of confirmation.\n3. Prices inclusive/exclusive of GST as indicated.',
-        lines: {
-          create: totals.lines.map((l) => ({
-            skuId: l.skuId!,
-            hsnCode: l.hsnCode,
-            description: l.description,
-            quantity: l.quantity,
-            unitPrice: l.unitPrice,
-            discount: l.discount,
-            gstRate: l.taxRate,
-            totalPrice: l.lineTotal,
-          })),
+    return this.prisma.$transaction(async (tx) => {
+      let targetCompany: any = null;
+
+      if (dto.customerId) {
+        targetCompany = await tx.company.findFirst({
+          where: { id: dto.customerId, tenantId, deletedAt: null },
+        });
+        if (!targetCompany) {
+          throw new BadRequestException(`Customer with ID "${dto.customerId}" not found.`);
+        }
+      } else {
+        // Look up by exact customer name
+        const existingCompany = await tx.company.findFirst({
+          where: {
+            tenantId,
+            deletedAt: null,
+            name: { equals: custName, mode: 'insensitive' as const },
+          },
+        });
+
+        if (existingCompany) {
+          targetCompany = existingCompany;
+        } else if (dto.confirmCreateCustomer || (dto as any).createCustomer) {
+          // Explicit confirmation: create customer record in same transaction
+          targetCompany = await tx.company.create({
+            data: {
+              tenantId,
+              name: custName,
+              gstin: dto.customerGstin?.trim().toUpperCase() || null,
+              address: dto.customerAddress || dto.shippingAddress || null,
+              state: customerState,
+              billingEmail: dto.customerEmail?.trim().toLowerCase() || null,
+              createdById: user.id,
+            },
+          });
+          if (dto.customerPhone?.trim()) {
+            await tx.contact.create({
+              data: {
+                tenantId,
+                companyId: targetCompany.id,
+                name: custName,
+                phone: dto.customerPhone.trim(),
+                email: dto.customerEmail?.trim().toLowerCase() || null,
+                isPrimary: true,
+                createdById: user.id,
+              },
+            });
+          }
+        } else {
+          throw new BadRequestException(
+            `A registered customer account is required on quotations. "${custName}" does not exist in your customer master. Please select an existing customer or confirm customer creation.`
+          );
+        }
+      }
+
+      const quotation = await tx.quotation.create({
+        data: {
+          tenantId,
+          quoteNumber,
+          customerId: targetCompany.id,
+          customerName: targetCompany.name,
+          customerPhone: dto.customerPhone || targetCompany.phone || null,
+          customerEmail: dto.customerEmail || targetCompany.billingEmail || null,
+          customerGstin: targetCompany.gstin || dto.customerGstin || null,
+          customerAddress: dto.customerAddress || dto.shippingAddress || targetCompany.address || null,
+          customerState,
+          leadId: dto.leadId,
+          contactId: dto.contactId,
+          createdById: user.id,
+          status: 'draft',
+          subtotal: totals.subtotal,
+          taxRate: Number(dto.taxRate) || 18.0,
+          taxAmount: totals.totalTax,
+          totalAmount: totals.totalAmount,
+          validUntil,
+          notes: sanitizeHtml(dto.notes),
+          terms: sanitizeHtml(dto.terms) || '1. 100% advance or approved credit terms.\n2. Delivery within 7–10 days of confirmation.\n3. Prices inclusive/exclusive of GST as indicated.',
+          lines: {
+            create: totals.lines.map((l) => ({
+              skuId: l.skuId!,
+              hsnCode: l.hsnCode,
+              description: l.description,
+              quantity: l.quantity,
+              unitPrice: l.unitPrice,
+              discount: l.discount,
+              gstRate: l.taxRate,
+              totalPrice: l.lineTotal,
+            })),
+          },
         },
-      },
-      include: {
-        lines: { include: { sku: true } },
-        lead: true,
-        contact: true,
-        createdBy: { select: { id: true, name: true, employeeCode: true } },
-      },
-    });
+        include: {
+          lines: { include: { sku: true } },
+          lead: true,
+          contact: true,
+          createdBy: { select: { id: true, name: true, employeeCode: true } },
+        },
+      });
 
-    await this.prisma.statusHistory.create({
-      data: {
-        entityType: 'Quotation',
+      await tx.statusHistory.create({
+        data: {
+          entityType: 'Quotation',
+          entityId: quotation.id,
+          toStatus: 'draft',
+          changedById: user.id,
+          note: `Quotation #${quoteNumber} created`,
+        },
+      });
+
+      if (dto.leadId) {
+        await tx.lead.update({
+          where: { id: dto.leadId },
+          data: { status: 'quoted' },
+        }).catch(() => {});
+      }
+
+      await this.auditService.log({
+        tenantId,
+        actorId: user.id,
+        actorName: user.employeeCode,
+        action: 'CREATE',
+        entityName: 'Quotation',
         entityId: quotation.id,
-        toStatus: 'draft',
-        changedById: user.id,
-        note: `Quotation #${quoteNumber} created`,
-      },
+        afterState: { quoteNumber, totalAmount: totals.totalAmount, customerId: targetCompany.id },
+      });
+
+      return quotation;
     });
-
-    if (dto.leadId) {
-      await this.prisma.lead.update({
-        where: { id: dto.leadId },
-        data: { status: 'quoted' },
-      }).catch(() => {});
-    }
-
-    await this.auditService.log({
-      tenantId,
-      actorId: user.id,
-      actorName: user.employeeCode,
-      action: 'CREATE',
-      entityName: 'Quotation',
-      entityId: quotation.id,
-      afterState: { quoteNumber, totalAmount: totals.totalAmount },
-    });
-
-    return quotation;
   }
 
   async findAll(user: ScopedUser, query: { status?: string; search?: string; page?: number; limit?: number }) {
@@ -544,10 +604,28 @@ export class QuotationsService {
     const customerAddress = q.customerAddress || quote.lead?.city;
     const customerState = q.customerState || 'Karnataka';
 
+    let customerId = q.customerId;
+    if (!customerId && customerName) {
+      const existingCompany = await this.prisma.company.findFirst({
+        where: {
+          tenantId,
+          deletedAt: null,
+          name: { equals: customerName, mode: 'insensitive' as const },
+        },
+      });
+      if (existingCompany) {
+        customerId = existingCompany.id;
+        await this.prisma.quotation.updateMany({
+          where: { id: quote.id, tenantId },
+          data: { customerId: existingCompany.id },
+        });
+      }
+    }
+
     const order = await this.ordersService.createOrder(
       {
         quotationId: quote.id,
-        customerId: q.customerId || undefined,
+        customerId: customerId || undefined,
         contactId: quote.contactId || undefined,
         customerName,
         customerPhone,

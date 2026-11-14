@@ -199,6 +199,10 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
   const validateAll = (): boolean => {
     const nextErrors: Record<string, string> = {};
 
+    if (!customerId) {
+      nextErrors.customerId = 'Customer account is required. Please select an existing customer or click "+ New Customer" to register one.';
+    }
+
     const nameRes = validatePersonOrCompanyName(customerName);
     if (!nameRes.valid) {
       nextErrors.customerName = nameRes.error || 'Customer / client name is required.';
@@ -225,6 +229,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
 
     setErrors(nextErrors);
     setTouched({
+      customerId: true,
       customerName: true,
       customerPhone: true,
       customerEmail: true,
@@ -304,7 +309,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
           </div>
         )}
 
-        {/* Existing Customer Account Selection */}
+        {/* Customer Account Selection (Required) */}
         <CustomerSelectWithModal
           selectedCustomerId={customerId}
           onSelectCustomer={(c: CustomerData) => {
@@ -314,9 +319,17 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
             if (c.email) setCustomerEmail(c.email);
             if (c.state) setDeliveryState(c.state);
             setCompanyName(c.name);
+            setErrors((prev) => {
+              const next = { ...prev };
+              delete next.customerId;
+              delete next.customerName;
+              delete next.customerPhone;
+              return next;
+            });
           }}
-          required={false}
-          label="Select Existing Client Account (Optional)"
+          required={true}
+          label="Customer Account *"
+          error={touched.customerId ? errors.customerId : null}
         />
 
         {/* Client Name & Mobile Grid */}

@@ -6,8 +6,7 @@ import {
   ArrowRight, CheckCircle2, ChevronRight, ChevronDown, Tag
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
-import { quotationsApi, inventoryApi } from '../services/api';
-import { Sku } from '../types';
+import { quotationsApi } from '../services/api';
 
 export const QUOTATION_STATUSES = [
   { value: 'draft', label: 'Draft', color: 'bg-slate-100 text-slate-800 dark:bg-slate-700/40 dark:text-slate-300 border-slate-300 dark:border-slate-600/40' },
@@ -31,15 +30,6 @@ import RelatedDocumentsPanel from '../components/common/RelatedDocumentsPanel';
 import { useAllowedPages } from '../hooks/useAllowedPages';
 import DataTable, { ColumnDef } from '../components/common/DataTable';
 
-interface QuotationLineItem {
-  skuId: string;
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  discount: number;
-  notes?: string;
-}
-
 export default function QuotationsPage() {
   const { user } = useAuth();
   const { branding } = useBranding();
@@ -59,26 +49,8 @@ export default function QuotationsPage() {
   const [accountCustomerName, setAccountCustomerName] = useState<string | null>(null);
   const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
 
-  // Skus for catalog autocomplete
-  const [skus, setSkus] = useState<Sku[]>([]);
-
   // Create Quotation Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [leadId, setLeadId] = useState<string | undefined>(undefined);
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
-  const [companyName, setCompanyName] = useState('');
-  const [shippingAddress, setShippingAddress] = useState('');
-  const [notes, setNotes] = useState('');
-  const [terms, setTerms] = useState(
-    '1. 100% advance or approved credit terms.\n2. Delivery within 7–10 days of confirmation.\n3. GST 18% extra as applicable.'
-  );
-  const [taxRate, setTaxRate] = useState(18.0);
-  const [lines, setLines] = useState<QuotationLineItem[]>([
-    { skuId: '', name: '', quantity: 1, unitPrice: 0, discount: 0 },
-  ]);
 
   // View / Print Modal
   const [selectedQuote, setSelectedQuote] = useState<any | null>(null);
@@ -151,19 +123,6 @@ export default function QuotationsPage() {
     }
   };
 
-  const fetchSkus = async () => {
-    try {
-      const { data } = await inventoryApi.getSkus();
-      setSkus(data.items || data || []);
-    } catch (err) {
-      console.error('Failed to load SKUs', err);
-    }
-  };
-
-  useEffect(() => {
-    fetchSkus();
-  }, []);
-
   useEffect(() => {
     const t = setTimeout(() => {
       fetchQuotations();
@@ -175,120 +134,13 @@ export default function QuotationsPage() {
   useEffect(() => {
     const urlLeadId = searchParams.get('leadId');
     const urlName = searchParams.get('name');
-    const urlPhone = searchParams.get('phone');
-    const urlEmail = searchParams.get('email');
-    const urlCompany = searchParams.get('company');
-
-    if (urlLeadId || urlName) {
-      setLeadId(urlLeadId || undefined);
-      setCustomerName(urlName || '');
-      setCustomerPhone(urlPhone || '');
-      setCustomerEmail(urlEmail || '');
-      setCompanyName(urlCompany || '');
-      setShowCreateModal(true);
-    } else if (searchParams.get('action') === 'create') {
+    if (urlLeadId || urlName || searchParams.get('action') === 'create') {
       setShowCreateModal(true);
     }
     if (searchParams.get('filter') === 'pending') {
       setStatusFilter('draft');
     }
   }, [searchParams]);
-
-  // Line item helpers
-  const handleAddLine = () => {
-    setLines([...lines, { skuId: '', name: '', quantity: 1, unitPrice: 0, discount: 0 }]);
-  };
-
-  const handleRemoveLine = (idx: number) => {
-    setLines(lines.filter((_, i) => i !== idx));
-  };
-
-  const handleLineChange = (idx: number, field: keyof QuotationLineItem, value: any) => {
-    const updated = [...lines];
-    updated[idx] = { ...updated[idx], [field]: value };
-    setLines(updated);
-  };
-
-  const handleSelectSku = (idx: number, sku: Sku) => {
-    const updated = [...lines];
-    updated[idx] = {
-      ...updated[idx],
-      skuId: sku.id,
-      name: `${sku.skuCode} - ${sku.name}`,
-      unitPrice: sku.unitPrice || 0,
-    };
-    setLines(updated);
-  };
-
-  const calcSubtotal = () => {
-    return lines.reduce((acc, l) => acc + Math.max(0, (l.quantity || 1) * (l.unitPrice || 0) - (l.discount || 0)), 0);
-  };
-
-  const calcTax = () => (calcSubtotal() * taxRate) / 100;
-  const calcTotal = () => calcSubtotal() + calcTax();
-
-  const handleCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (lines.length === 0 || !lines[0].name.trim()) {
-      setInAppPopup({
-        show: true,
-        type: 'error',
-        title: 'Missing Line Items',
-        message: 'Please add at least 1 equipment or product item with description/price.',
-      });
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await quotationsApi.create({
-        leadId,
-        customerName,
-        customerPhone,
-        customerEmail: customerEmail || undefined,
-        companyName: companyName || undefined,
-        shippingAddress: shippingAddress || undefined,
-        notes: notes || undefined,
-        terms: terms || undefined,
-        taxRate,
-        lines: lines.map((l) => ({
-          skuId: l.skuId || undefined,
-          name: l.name,
-          quantity: l.quantity || 1,
-          unitPrice: l.unitPrice || 0,
-          discount: l.discount || 0,
-          notes: l.notes,
-        })),
-      });
-
-      setShowCreateModal(false);
-      setCustomerName('');
-      setCustomerPhone('');
-      setCustomerEmail('');
-      setCompanyName('');
-      setShippingAddress('');
-      setNotes('');
-      setLines([{ skuId: '', name: '', quantity: 1, unitPrice: 0, discount: 0 }]);
-      await fetchQuotations();
-
-      // Sleek In-App Success Popup
-      setInAppPopup({
-        show: true,
-        type: 'success',
-        title: 'Quotation Created Successfully',
-        message: `Quotation has been generated with GST breakdown. You can now print the PDF or convert it to an active order.`,
-      });
-    } catch (err: any) {
-      setInAppPopup({
-        show: true,
-        type: 'error',
-        title: 'Failed to Create Quotation',
-        message: err?.response?.data?.message || err.message,
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleConvertToOrder = async (quoteId: string) => {
     setInAppPopup({
@@ -441,10 +293,7 @@ export default function QuotationsPage() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              setLeadId(undefined);
-              setShowCreateModal(true);
-            }}
+            onClick={() => setShowCreateModal(true)}
             className="btn bg-crm-amber hover:bg-crm-amber-hover text-black font-bold text-xs gap-1.5 shadow-glow-amber"
           >
             <Plus size={15} /> Create Quotation
