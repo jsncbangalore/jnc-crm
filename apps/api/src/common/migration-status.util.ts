@@ -38,14 +38,15 @@ export async function getMigrationStatus(prisma: any): Promise<MigrationStatusRe
 
   try {
     const appliedRows: any[] = await prisma.$queryRawUnsafe(
-      'SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'
+      'SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL'
     );
     const appliedSet = new Set((appliedRows || []).map((r: any) => r.migration_name));
     const pending = builtMigrations.filter((m) => !appliedSet.has(m));
+    const appliedCount = builtMigrations.filter((m) => appliedSet.has(m)).length;
 
     return {
       total: builtMigrations.length,
-      applied: appliedSet.size,
+      applied: appliedCount,
       pending,
       isReady: pending.length === 0,
     };

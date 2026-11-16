@@ -276,13 +276,6 @@ export const validatePhone = (
     return { valid: true, value: cleaned };
   }
 
-  const indianNormalized = normalizePhoneNumber(cleaned);
-
-  // If Indian mobile number (10 digits starting 6-9)
-  if (/^[6-9]\d{9}$/.test(indianNormalized)) {
-    return { valid: true, value: indianNormalized, isLandline: false };
-  }
-
   // If explicitly requested landline OR type is 'any' and starts with 0 (STD code landline)
   if (type === 'landline' || (type === 'any' && cleaned.startsWith('0'))) {
     const digitsOnly = cleaned.replace(/\D/g, '');
@@ -292,6 +285,13 @@ export const validatePhone = (
     if (type === 'landline' && digitsOnly.length >= 6 && digitsOnly.length <= 12) {
       return { valid: true, value: digitsOnly, isLandline: true };
     }
+  }
+
+  const indianNormalized = normalizePhoneNumber(cleaned);
+
+  // If Indian mobile number (10 digits starting 6-9)
+  if (/^[6-9]\d{9}$/.test(indianNormalized)) {
+    return { valid: true, value: indianNormalized, isLandline: false };
   }
 
   return {
@@ -478,7 +478,12 @@ export const SKU_REGEX = /^[a-zA-Z0-9\-_.\\/]{2,50}$/;
 
 export const cleanSku = (val: string): string => {
   if (typeof val !== 'string') return '';
-  return val.toUpperCase().replace(/[^0-9A-Z\-_.\\/]/g, '').slice(0, 50);
+  const trimmed = val.trim();
+  const cleaned = trimmed.toUpperCase().replace(/[^0-9A-Z\-_.\\/]/g, '').slice(0, 50);
+  if (!cleaned && trimmed.length > 0) {
+    return trimmed.slice(0, 50);
+  }
+  return cleaned;
 };
 
 export const validateSku = (raw?: string, required = false): { valid: boolean; error?: string; value: string } => {
@@ -687,7 +692,14 @@ export const validatePostalPin = (raw?: string, required = false): { valid: bool
 
 // 13. GSTIN Rules
 // 15 characters, valid checksum
-export const GSTIN_FORMAT_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+export const VALID_GST_STATE_CODES = new Set([
+  '01', '02', '03', '04', '05', '06', '07', '08', '09', '10',
+  '11', '12', '13', '14', '15', '16', '17', '18', '19', '20',
+  '21', '22', '23', '24', '25', '26', '27', '28', '29', '30',
+  '31', '32', '33', '34', '35', '36', '37', '38', '97', '99',
+]);
+
+export const GSTIN_FORMAT_REGEX = /^(?:[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}|[0-9]{2}[A-Z]{4}[0-9]{5}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}|99[A-Z0-9]{10}[1-9A-Z]{1}[A-Z0-9]{1}[0-9A-Z]{1})$/;
 const GSTIN_CHAR_SET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 export const cleanGstin = (val: string): string => {
@@ -709,7 +721,7 @@ export const verifyGstinChecksum = (gstin: string): boolean => {
   return gstin[14] === GSTIN_CHAR_SET[checkCode];
 };
 
-export const validateGstin = (raw?: string, required = false): { valid: boolean; error?: string; value: string } => {
+export const validateGstin = (raw?: string, required = false, expectedPan?: string): { valid: boolean; error?: string; value: string } => {
   const value = (raw || '').trim().toUpperCase();
   if (!value) {
     if (required) return { valid: false, error: 'GSTIN is required.', value: '' };
@@ -717,6 +729,20 @@ export const validateGstin = (raw?: string, required = false): { valid: boolean;
   }
   if (!GSTIN_FORMAT_REGEX.test(value)) {
     return { valid: false, error: 'Invalid GSTIN format. Enter 15 letters and digits, for example 29AAAAA0000A1ZY', value };
+  }
+  const stateCode = value.slice(0, 2);
+  if (!VALID_GST_STATE_CODES.has(stateCode)) {
+    return { valid: false, error: 'Invalid GSTIN state code. Must start with a valid 2-digit Indian state code (01-38, 97, 99).', value };
+  }
+  if (expectedPan && expectedPan.trim()) {
+    const cleanedExpectedPan = cleanPan(expectedPan);
+    const isPanBased = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}/.test(value);
+    if (isPanBased && cleanedExpectedPan.length === 10) {
+      const embeddedPan = value.slice(2, 12);
+      if (embeddedPan !== cleanedExpectedPan) {
+        return { valid: false, error: 'GSTIN does not match the provided PAN number.', value };
+      }
+    }
   }
   if (!verifyGstinChecksum(value)) {
     return { valid: false, error: 'Invalid GSTIN checksum digit.', value };

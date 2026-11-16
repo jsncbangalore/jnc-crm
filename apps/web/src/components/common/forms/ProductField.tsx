@@ -86,8 +86,9 @@ export const ProductField: React.FC<ProductFieldProps> = ({
   // Sync external value with selection mode
   useEffect(() => {
     if (!value) {
-      setIsOther(false);
-      setCustomName('');
+      if (!isOther) {
+        setCustomName('');
+      }
       return;
     }
 
@@ -103,6 +104,7 @@ export const ProductField: React.FC<ProductFieldProps> = ({
         setCustomName(value === 'Other' ? '' : value);
       }
     } else if (value) {
+      setIsOther(true);
       setCustomName(value);
     }
   }, [value, selectedSkuCode, skus]);
@@ -153,11 +155,12 @@ export const ProductField: React.FC<ProductFieldProps> = ({
     setIsOther(true);
     setIsOpen(false);
     setSearch('');
-    onChange?.({
-      name: customName || '',
-      isCustom: true,
-      unit: 'NOS',
-    });
+    if (customName) {
+      onChange?.({
+        name: customName,
+        isCustom: true,
+      });
+    }
   };
 
   const handleCustomChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -166,7 +169,6 @@ export const ProductField: React.FC<ProductFieldProps> = ({
     onChange?.({
       name: text,
       isCustom: true,
-      unit: 'NOS',
     });
   };
 

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Plus, Trash2, FileText, Truck, FileSpreadsheet, ShieldAlert, ShieldCheck,
   Building2, User, Phone, Mail, MapPin, Hash, DollarSign, Calculator,
-  Calendar, Check, Sparkles, AlertCircle, AlertTriangle
+  Calendar, Check, Sparkles, AlertCircle, AlertTriangle, Loader2
 } from 'lucide-react';
 import { DocumentType, Invoice } from '../../types';
 import { invoicesApi, inventoryApi, companiesApi, paymentsApi, bankAccountsApi } from '../../services/api';
@@ -410,6 +410,18 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
     if (e) e.preventDefault();
     setFormError(null);
     setFieldErrors({});
+
+    if (import.meta.env.DEV) {
+      console.log('[CreateDocumentModal] handleSubmit check:', {
+        missingCompanyFields,
+        invoiceNumber,
+        invoiceDate,
+        customerName,
+        customerGstin,
+        lines,
+      });
+    }
+
     if (missingCompanyFields.length > 0) {
       // The amber banner displays the missing fields clearly once.
       // Suppress submit to prevent duplicate error boxes or duplicate toasts.
@@ -434,7 +446,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
     if (customerGstin.trim()) {
       const gstinRes = validateGstin(customerGstin);
       if (!gstinRes.valid) {
-        setFormError(null);
+        setFormError('Please fix the highlighted errors before saving');
         setFieldErrors({ customerGstin: gstinRes.error || 'Invalid GSTIN.' });
         scrollAndFocusGstin();
         return;
@@ -469,9 +481,10 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
       return;
     }
 
+    let payload: any;
     try {
       setSubmitting(true);
-      const payload = {
+      payload = {
         docType,
         invoiceNumber: invoiceNumber.trim(),
         invoiceDate,
@@ -529,6 +542,14 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
       onCreated(data);
       onClose();
     } catch (err: any) {
+      if (import.meta.env.DEV) {
+        console.error('[InvoiceSave] Submit error:', {
+          status: err?.response?.status,
+          data: err?.response?.data,
+          payload,
+          error: err,
+        });
+      }
       const respData = err?.response?.data;
       const msg = toPlainText(respData?.message || err.message || 'Failed to process document');
 
@@ -560,10 +581,19 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         }
       }
 
+      if (Array.isArray(respData?.message)) {
+        for (const m of respData.message) {
+          const mStr = String(m);
+          if (mStr.toLowerCase().includes('gstin')) {
+            normalizedErrors.customerGstin = mStr;
+          }
+        }
+      }
+
       if (normalizedErrors.customerGstin || (msg.toLowerCase().includes('gstin') && !msg.toLowerCase().includes('company profile'))) {
         const gstinError = normalizedErrors.customerGstin || msg;
-        setFormError(null);
-        setFieldErrors({ customerGstin: gstinError });
+        setFormError('Please fix the highlighted errors before saving');
+        setFieldErrors((prev) => ({ ...prev, ...normalizedErrors, customerGstin: gstinError }));
         scrollAndFocusGstin();
         return;
       }
@@ -1333,7 +1363,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                   }}
                 />
                 {fieldErrors.customerGstin && (
-                  <p className="text-red-500 text-[11px] mt-1 font-semibold">{fieldErrors.customerGstin}</p>
+                  <p data-testid="error-customer-gstin" className="text-red-500 text-[11px] mt-1 font-semibold">{fieldErrors.customerGstin}</p>
                 )}
               </div>
 
@@ -1587,7 +1617,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
 
           {/* Footer Actions */}
           <div className="sticky bottom-0 bg-white dark:bg-[#181B26] p-4 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6 border-t border-slate-200 dark:border-[#2A3042] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 z-10 shadow-md shrink-0">
-            <div className="flex-1">
+            <div className="flex-1 flex items-center gap-3">
               <FormFeedback
                 error={formError}
                 onDismiss={() => {
@@ -1596,6 +1626,16 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 }}
                 data-testid="invoice-form-feedback"
               />
+              {formError && (
+                <button
+                  type="button"
+                  data-testid="btn-retry-invoice"
+                  onClick={() => handleSubmit()}
+                  className="px-2.5 py-1 text-[11px] font-semibold bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/50 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 rounded-lg transition-colors shrink-0 cursor-pointer"
+                >
+                  Retry
+                </button>
+              )}
             </div>
             <div className="flex items-center justify-end gap-3 shrink-0">
               <button
@@ -1611,7 +1651,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 disabled={submitting || (!isProforma && !isDC && advanceAdjusted > grandTotal && grandTotal > 0)}
                 className="btn-primary text-xs px-6 py-2.5 shadow-glow-blue flex items-center gap-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Check size={15} /> {submitting ? 'Saving Document...' : editInvoice ? 'Update & Save Changes' : 'Save & Generate Document'}
+                {submitting ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {submitting ? 'Saving Document...' : editInvoice ? 'Update & Save Changes' : 'Save & Generate Document'}
               </button>
             </div>
           </div>

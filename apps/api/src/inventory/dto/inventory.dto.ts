@@ -816,4 +816,68 @@ export class RecordProjectStockPurchaseDto {
   notes?: string;
 }
 
+export class RecordComponentPurchaseDto {
+  @CleanSku()
+  @TrimString()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  @IsValidSku()
+  skuCode: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  @IsValidProductName()
+  name: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  project: string;
+
+  @IsNumber()
+  @Min(0.0001)
+  quantity: number;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  unit?: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  unitPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  taxRate?: number;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  category?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(150)
+  supplierName?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  invoiceNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  documentDataUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+}
+
 

@@ -13,12 +13,16 @@ interface FormErrorBannerProps {
   error: ParsedApiError | string | null | undefined;
   className?: string;
   onDismiss?: () => void;
+  onRetry?: () => void;
+  retryTestId?: string;
 }
 
 export const FormErrorBanner: React.FC<FormErrorBannerProps> = ({
   error,
   className = '',
   onDismiss,
+  onRetry,
+  retryTestId,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -58,6 +62,16 @@ export const FormErrorBanner: React.FC<FormErrorBannerProps> = ({
       </div>
 
       <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            data-testid={retryTestId || 'btn-retry'}
+            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1.5 transition cursor-pointer"
+          >
+            Retry
+          </button>
+        )}
         {rawDetails && (
           <button
             type="button"

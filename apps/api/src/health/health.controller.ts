@@ -5,8 +5,9 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Controller, Get, Req, Res, HttpStatus, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Req, Res, HttpStatus, ForbiddenException, UseGuards } from '@nestjs/common';
 import { Response, Request } from 'express';
+import { AuthGuard } from '@nestjs/passport';
 import { Public } from '../auth/page-access.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { getMigrationStatus } from '../common/migration-status.util';
@@ -72,6 +73,7 @@ export class HealthController {
   }
 
   @Get('schema')
+  @UseGuards(AuthGuard('jwt'))
   async getSchemaStatus(@Req() req: Request) {
     const user = (req as any).user;
     if (!user || (!['admin', 'tenant_admin', 'super_admin', 'platform_super_admin'].includes(user.role) && !user.isPlatformAdmin)) {

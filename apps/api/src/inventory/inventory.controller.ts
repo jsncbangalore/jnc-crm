@@ -33,6 +33,7 @@ import {
   BulkEditComponentsDto,
   RecordPurchaseDto,
   RecordProjectStockPurchaseDto,
+  RecordComponentPurchaseDto,
   ClearAllInventoryDto,
 } from './dto/inventory.dto';
 import * as Papa from 'papaparse';
@@ -408,6 +409,15 @@ export class InventoryController {
     @CurrentUser() user: ScopedUser,
   ) {
     return this.inventoryService.recordProjectStockPurchase(id, body, user);
+  }
+
+  @Post('project-stock/atomic-purchase')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
+  async recordComponentPurchase(
+    @Body() body: RecordComponentPurchaseDto,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.inventoryService.recordComponentPurchase(body, user);
   }
 
   @Delete('project-stock/:id')

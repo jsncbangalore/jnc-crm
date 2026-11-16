@@ -951,8 +951,8 @@ api.interceptors.response.use(
       handleSessionExpired(isPlatform);
       return Promise.reject(err);
     }
-    // Requirement 6: After a 403 with pageKey, dispatch event to refresh access and navigate
-    if (err.response?.status === 403 && err.response?.data?.pageKey) {
+    // Requirement 6: After any 403, dispatch event to refresh effective pages from /auth/me
+    if (err.response?.status === 403) {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('crm:page-access-revoked', {
@@ -1462,6 +1462,8 @@ export const inventoryApi = {
   getProjectStockSummary: () => api.get('/inventory/project-stock/summary'),
   createProjectStock: (data: any) => api.post('/inventory/project-stock', data),
   createProjectStockPosition: (data: any) => api.post('/inventory/project-stock', data),
+  recordComponentPurchase: (data: any) =>
+    api.post('/inventory/project-stock/atomic-purchase', data),
   updateProjectStock: (id: string, data: any) => api.patch(`/inventory/project-stock/${id}`, data),
   updateProjectStockPosition: (id: string, data: any) => api.patch(`/inventory/project-stock/${id}`, data),
   deleteProjectStock: (id: string) => api.delete(`/inventory/project-stock/${id}`),

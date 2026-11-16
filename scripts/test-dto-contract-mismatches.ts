@@ -253,7 +253,7 @@ const KNOWN_WEB_PAYLOADS: Array<{
     clientCall: 'CreateQuotationModal line items',
     formFile: 'apps/web/src/components/quotations/CreateQuotationModal.tsx',
     expectedDto: 'QuotationLineItemDto',
-    payloadKeys: ['skuId', 'name', 'quantity', 'unitPrice', 'discount', 'hsnCode'],
+    payloadKeys: ['skuId', 'name', 'quantity', 'unitPrice', 'unit', 'discount', 'hsnCode'],
   },
 
   // 2. Leads
@@ -432,6 +432,14 @@ const KNOWN_WEB_PAYLOADS: Array<{
     ],
   },
   {
+    endpointMatch: /^\/inventory\/project-stock\/atomic-purchase$/,
+    httpMethod: 'POST',
+    clientCall: 'inventoryApi.recordComponentPurchase',
+    formFile: 'apps/web/src/components/inventory/RecordComponentPurchaseModal.tsx',
+    expectedDto: 'RecordComponentPurchaseDto',
+    payloadKeys: ['skuCode', 'name', 'project', 'quantity', 'unit', 'unitPrice', 'taxRate', 'supplierName', 'invoiceNumber', 'documentDataUrl', 'notes'],
+  },
+  {
     endpointMatch: /^\/inventory\/transfers$/,
     httpMethod: 'POST',
     clientCall: 'inventoryApi.transferStock',
@@ -603,6 +611,10 @@ async function runContractAudit() {
     );
 
     const dtoName = check.expectedDto || matchingEndpoint?.dtoName;
+    if (!dtoName) {
+      console.warn(`[WARN] No DTO identified for endpoint ${check.httpMethod} ${check.clientCall}`);
+      continue;
+    }
     const dto = dtos.get(dtoName);
 
     if (!dto) {

@@ -189,6 +189,7 @@ export class CreateDirectInvoiceDto {
   @CleanGstin()
   @IsString()
   @IsOptional()
+  @IsValidGstin()
   customerGstin?: string;
 
   @IsString()
@@ -352,6 +353,7 @@ export class UpdateInvoiceDto {
   @CleanGstin()
   @IsString()
   @IsOptional()
+  @IsValidGstin()
   customerGstin?: string;
 
   @IsString()

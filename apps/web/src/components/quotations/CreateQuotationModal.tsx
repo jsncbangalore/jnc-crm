@@ -138,7 +138,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
         skuId: payload.skuId,
         skuCode: payload.skuCode,
         name: payload.name,
-        unit: payload.unit || 'NOS',
+        unit: payload.unit || copy[index].unit || 'NOS',
         unitPrice: payload.unitPrice ?? copy[index].unitPrice,
         hsnCode: payload.hsnCode,
         taxRate: payload.taxRate ?? taxRate,
@@ -183,6 +183,14 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
     setLines((prev) => {
       const copy = [...prev];
       copy[index] = { ...copy[index], unitPrice: rate };
+      return copy;
+    });
+  };
+
+  const handleLineUnitChange = (index: number, unitVal: string) => {
+    setLines((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], unit: unitVal };
       return copy;
     });
   };
@@ -235,6 +243,10 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
       customerEmail: true,
     });
 
+    if (import.meta.env.DEV) {
+      console.log('[CreateQuotationModal] validateAll errors:', nextErrors, { lines, customerId, customerName, customerPhone });
+    }
+
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -258,6 +270,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
           name: sanitizeText(l.name),
           quantity: l.quantity,
           unitPrice: l.unitPrice,
+          unit: l.unit || 'NOS',
           discount: l.discount || 0,
           hsnCode: l.hsnCode || undefined,
         })),
@@ -274,6 +287,9 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
         if (onSuccess) onSuccess(created, 'close');
       }
     } catch (err: any) {
+      if (import.meta.env.DEV) {
+        console.error('[CreateQuotationModal] Submit error:', err);
+      }
       const data = err?.response?.data;
       if (Array.isArray(data?.message)) {
         setErrors((prev) => ({ ...prev, form: data.message.join(', ') }));
@@ -303,9 +319,19 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
     >
       <form onSubmit={(e) => handleSubmit(e, 'close')} className="p-4 sm:p-6 space-y-4 text-left" noValidate autoComplete="off" data-lpignore="true">
         {errors.form && (
-          <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
-            <AlertCircle size={14} className="shrink-0" />
-            <span>{toPlainText(errors.form)}</span>
+          <div data-testid="quotation-error-banner" className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-xs text-red-600 dark:text-red-400 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={14} className="shrink-0" />
+              <span>{toPlainText(errors.form)}</span>
+            </div>
+            <button
+              type="button"
+              data-testid="btn-retry-quotation"
+              onClick={(e) => handleSubmit(e as any, 'close')}
+              className="px-2.5 py-1 text-[11px] font-semibold bg-red-100 hover:bg-red-200 dark:bg-red-900/50 dark:hover:bg-red-900 text-red-700 dark:text-red-300 rounded-lg transition-colors shrink-0 cursor-pointer"
+            >
+              Retry
+            </button>
           </div>
         )}
 
@@ -448,7 +474,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
               >
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
                   {/* Product Field */}
-                  <div className="sm:col-span-5">
+                  <div className="sm:col-span-4">
                     <ProductField
                       value={line.name}
                       selectedSkuCode={line.skuCode}
@@ -459,7 +485,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                   </div>
 
                   {/* Quantity Field */}
-                  <div className="sm:col-span-3">
+                  <div className="sm:col-span-2">
                     <QuantityField
                       value={line.quantity}
                       unit={line.unit}
@@ -469,10 +495,27 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
                     />
                   </div>
 
+                  {/* Unit Field */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 select-none mb-1.5">
+                      Unit
+                    </label>
+                    <input
+                      type="text"
+                      list="quotation-units"
+                      data-testid={`line-unit-${idx}`}
+                      value={line.unit}
+                      onChange={(e) => handleLineUnitChange(idx, e.target.value.toUpperCase())}
+                      placeholder="NOS"
+                      maxLength={20}
+                      className="h-10 text-center font-bold text-xs w-full bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white border border-slate-300 dark:border-[#2A3042] rounded-xl focus:border-crm-blue outline-none transition-all"
+                    />
+                  </div>
+
                   {/* Rate Field */}
                   <div className="sm:col-span-2">
                     <MoneyField
-                      label={`Rate (${line.unit})`}
+                      label={`Rate (${line.unit || 'NOS'})`}
                       value={line.unitPrice}
                       onChange={(r) => handleLineRateChange(idx, r)}
                       disabled={Boolean(line.skuId)}
@@ -508,6 +551,17 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
               </div>
             ))}
           </div>
+
+          <datalist id="quotation-units">
+            <option value="NOS" />
+            <option value="MTR" />
+            <option value="KG" />
+            <option value="SET" />
+            <option value="HOUR" />
+            <option value="SQFT" />
+            <option value="BOX" />
+            <option value="PKT" />
+          </datalist>
         </div>
 
         {/* Live Quotation Summary Box */}

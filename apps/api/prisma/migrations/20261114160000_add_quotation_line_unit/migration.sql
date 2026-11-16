@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "QuotationLine" ADD COLUMN IF NOT EXISTS "unit" TEXT DEFAULT 'NOS';

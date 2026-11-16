@@ -48,7 +48,18 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
     let field: string | undefined = undefined;
     let fieldErrors: Array<{ field: string; message: string }> = [];
 
-    if (exception instanceof HttpException) {
+    const isPayloadTooLarge =
+      (exception as any)?.status === 413 ||
+      (exception as any)?.statusCode === 413 ||
+      (exception as any)?.type === 'entity.too.large' ||
+      (exception as any)?.name === 'PayloadTooLargeException';
+
+    if (isPayloadTooLarge) {
+      status = HttpStatus.PAYLOAD_TOO_LARGE;
+      code = 'PAYLOAD_TOO_LARGE';
+      message = 'Request payload is too large. Images must be compressed before upload.';
+      fieldErrors = [];
+    } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       const res = exception.getResponse();
 
@@ -233,6 +244,12 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
       requestId,
       timestamp: new Date().toISOString(),
     };
+
+    const reqOrigin = request.headers?.origin;
+    if (reqOrigin && !response.getHeader('Access-Control-Allow-Origin')) {
+      response.setHeader('Access-Control-Allow-Origin', reqOrigin);
+      response.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
 
     return response.status(status).json(errorBody);
   }

@@ -1276,7 +1276,7 @@ export class InvoicingService {
         upiId: '',
       },
       lutBondNo: '',
-      logoUrl: process.env.PRODUCT_LOGO_URL || '',
+      logoUrl: null,
       invoicePrefix: 'INV',
       isOnboarded: false,
       completeness: {
@@ -1729,27 +1729,10 @@ export class InvoicingService {
   }
 
   /**
-   * Helper to get company logo base64
+   * Helper to get company logo base64.
+   * Strictly returns empty string if tenant has no custom logo (never falls back to product logo).
    */
    private getLogoBase64(): string {
-     try {
-       const logoFile = process.env.PRODUCT_LOGO_PATH || 'logo.png';
-       const possiblePaths = [
-         path.join(process.cwd(), 'apps/web/public', logoFile),
-         path.join(process.cwd(), 'public', logoFile),
-         path.join(process.cwd(), '../web/public', logoFile),
-         path.join(process.cwd(), '../../apps/web/public', logoFile),
-       ];
-       for (const p of possiblePaths) {
-         if (fs.existsSync(p)) {
-           const buf = fs.readFileSync(p);
-           const mime = p.endsWith('.png') ? 'image/png' : 'image/jpeg';
-           return `data:${mime};base64,${buf.toString('base64')}`;
-         }
-       }
-     } catch (e) {
-       // fallback
-     }
      return '';
    }
 

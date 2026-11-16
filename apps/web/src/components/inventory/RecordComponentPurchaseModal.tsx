@@ -17,11 +17,12 @@ import {
   Trash2,
   Boxes,
   IndianRupee,
+  Loader2,
 } from 'lucide-react';
 import { inventoryApi } from '../../services/api';
 import { parseApiError, ParsedApiError } from '../../utils/errorHelper';
 import { FormErrorBanner } from '../common/FormErrorBanner';
-import { cleanSku } from '@crm/shared-validation';
+import { cleanSku, validateSku } from '@crm/shared-validation';
 
 interface RecordComponentPurchaseModalProps {
   isOpen: boolean;
@@ -55,6 +56,7 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
 
   const [saving, setSaving] = useState(false);
   const [apiError, setApiError] = useState<ParsedApiError | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   if (!isOpen) return null;
 
@@ -99,8 +101,10 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
     setDocumentName('');
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setFieldErrors({});
+
     if (!componentName.trim()) {
       setApiError({
         statusCode: 400,
@@ -110,6 +114,7 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
         requestId: 'client-validation',
         rawDetails: 'Missing component name',
       });
+      setFieldErrors({ componentName: 'Component Name is required.' });
       return;
     }
     if (!effectiveProject) {
@@ -121,6 +126,7 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
         requestId: 'client-validation',
         rawDetails: 'Missing project',
       });
+      setFieldErrors({ project: 'Project is required.' });
       return;
     }
     if (qty <= 0) {
@@ -132,62 +138,75 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
         requestId: 'client-validation',
         rawDetails: 'Invalid quantity',
       });
+      setFieldErrors({ quantity: 'Quantity must be greater than 0.' });
+      return;
+    }
+
+    // Auto-generate or validate SKU
+    let effectiveSku = skuCode.trim();
+    if (!effectiveSku) {
+      effectiveSku = componentName
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '-')
+        .slice(0, 16);
+      if (!effectiveSku || effectiveSku.length < 2) {
+        effectiveSku = `COMP-${Date.now().toString().slice(-4)}`;
+      }
+    }
+
+    const skuCheck = validateSku(effectiveSku, true);
+    if (!skuCheck.valid) {
+      setApiError({
+        statusCode: 400,
+        code: 'VALIDATION_FAILED',
+        message: skuCheck.error || 'Invalid SKU format.',
+        fieldErrors: { skuCode: skuCheck.error || 'Invalid SKU format.' },
+        requestId: 'client-validation',
+        rawDetails: skuCheck.error || 'Invalid SKU format',
+      });
+      setFieldErrors({ skuCode: skuCheck.error || 'Invalid SKU format.' });
       return;
     }
 
     setSaving(true);
     setApiError(null);
 
-    const generatedSku =
-      skuCode.trim() ||
-      componentName.trim().toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 16);
+    const payload = {
+      skuCode: skuCheck.value,
+      name: componentName.trim(),
+      project: effectiveProject,
+      quantity: qty,
+      unit,
+      unitPrice: baseRate,
+      taxRate,
+      supplierName: supplierName.trim() || undefined,
+      invoiceNumber: invoiceNumber.trim() || undefined,
+      documentDataUrl: documentDataUrl || undefined,
+      notes: notes.trim() || undefined,
+    };
 
     try {
-      // 1. Create or ensure SKU exists in Catalog
-      try {
-        await inventoryApi.createSku({
-          skuCode: generatedSku,
-          name: componentName.trim(),
-          category: effectiveProject.split(' ')[0] || 'General',
-          unitPrice: baseRate,
-          costPrice: baseRate,
-          taxRate: taxRate,
-          packageType: unit,
-          reorderPoint: Math.max(5, Math.floor(qty * 0.2)),
-          reorderQty: qty,
-        });
-      } catch (skuErr) {
-        // Ignore if SKU code already exists, we will update stock position
-      }
-
-      // 2. Create Project Stock Position
-      const purchaseNote = `Purchased ${qty} ${unit} from ${
-        supplierName.trim() || 'Supplier'
-      } (GST: ${taxRate}%, Inv: ${invoiceNumber.trim() || 'N/A'}, Total: ₹${grandTotal.toLocaleString(
-        'en-IN'
-      )})`;
-
-      await inventoryApi.createProjectStockPosition({
-        project: effectiveProject,
-        reference: `PUR-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
-        quantity: qty,
-        itemCode: generatedSku,
-        partValue: componentName.trim(),
-        package: unit,
-        unit: unit,
-        bomQtyPerUnit: 1,
-        batchQty: qty,
-        plannedRequirement: qty,
-        openingStock: 0,
-        inflow: qty,
-        outflow: 0,
-        notes: notes.trim() ? `${notes.trim()} | ${purchaseNote}` : purchaseNote,
-      });
-
+      await inventoryApi.recordComponentPurchase(payload);
       onSuccess();
       onClose();
     } catch (err: any) {
-      setApiError(parseApiError(err));
+      if (import.meta.env.DEV) {
+        console.error('[BillSave] Component purchase error:', {
+          status: err?.response?.status,
+          data: err?.response?.data,
+          payload,
+          error: err,
+        });
+      }
+      const parsed = parseApiError(err);
+      setApiError(parsed);
+      if (parsed.fieldErrors) {
+        setFieldErrors(parsed.fieldErrors);
+      }
+      if (parsed.message?.toLowerCase().includes('sku')) {
+        setFieldErrors((prev) => ({ ...prev, skuCode: parsed.message }));
+      }
     } finally {
       setSaving(false);
     }
@@ -228,7 +247,15 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
 
           {/* Form Content */}
           <form id="record-purchase-form" onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto space-y-3.5 flex-1">
-            <FormErrorBanner error={apiError} />
+            <FormErrorBanner
+              error={apiError}
+              onRetry={() => handleSubmit()}
+              retryTestId="btn-retry-purchase"
+              onDismiss={() => {
+                setApiError(null);
+                setFieldErrors({});
+              }}
+            />
 
             {/* Row 1: Component Name & SKU */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -258,16 +285,62 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
                   SKU / ITEM CODE
                 </label>
                 <input
+                  id="componentSkuInput"
+                  data-testid="component-sku-input"
                   type="text"
                   placeholder="Enter SKU code, for example SKU-001"
                   value={skuCode}
-                  onChange={(e) => setSkuCode(cleanSku(e.target.value))}
+                  onChange={(e) => {
+                    const val = cleanSku(e.target.value);
+                    setSkuCode(val);
+                    if (val) {
+                      const chk = validateSku(val);
+                      if (!chk.valid) {
+                        setFieldErrors((prev) => ({ ...prev, skuCode: chk.error || 'Invalid SKU' }));
+                      } else {
+                        setFieldErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.skuCode;
+                          return copy;
+                        });
+                      }
+                    } else {
+                      setFieldErrors((prev) => {
+                        const copy = { ...prev };
+                        delete copy.skuCode;
+                        return copy;
+                      });
+                    }
+                  }}
                   onPaste={(e) => {
                     e.preventDefault();
-                    setSkuCode(cleanSku(e.clipboardData.getData('text')));
+                    const text = e.clipboardData.getData('text');
+                    const val = cleanSku(text);
+                    setSkuCode(val);
+                    if (val) {
+                      const chk = validateSku(val);
+                      if (!chk.valid) {
+                        setFieldErrors((prev) => ({ ...prev, skuCode: chk.error || 'Invalid SKU' }));
+                      } else {
+                        setFieldErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.skuCode;
+                          return copy;
+                        });
+                      }
+                    } else {
+                      setFieldErrors((prev) => {
+                        const copy = { ...prev };
+                        delete copy.skuCode;
+                        return copy;
+                      });
+                    }
                   }}
                   className="w-full px-3 py-1.5 text-xs font-mono uppercase rounded-lg border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1E2230] text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                {fieldErrors.skuCode && (
+                  <p data-testid="error-sku-code" className="text-red-500 text-[11px] mt-1 font-semibold">{fieldErrors.skuCode}</p>
+                )}
               </div>
             </div>
 
@@ -508,7 +581,10 @@ export const RecordComponentPurchaseModal: React.FC<RecordComponentPurchaseModal
               className="px-5 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm flex items-center gap-1.5 transition-all disabled:opacity-50"
             >
               {saving ? (
-                <span>Saving Component & Purchase...</span>
+                <div className="flex items-center gap-1.5">
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Saving Component & Purchase...</span>
+                </div>
               ) : (
                 <>
                   <Plus size={14} />

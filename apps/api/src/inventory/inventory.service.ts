@@ -19,6 +19,8 @@ import * as Papa from 'papaparse';
 import * as path from 'path';
 import * as fs from 'fs';
 import { sanitizeHtml, stripAllHtml } from '../common/html-sanitize.util';
+import { cleanSku, validateSku } from '../common/shared-validation';
+import { RecordComponentPurchaseDto } from './dto/inventory.dto';
 
 
 @Injectable()
@@ -1875,7 +1877,7 @@ export class InventoryService {
       newStatus = 'Surplus';
     }
 
-    const purchaseNote = `Purchased ${qty} ${position.unit} from ${dto.supplierName || 'Supplier'} (GST: ${taxRate}%, Inv: ${dto.invoiceNumber || 'N/A'}, Total: ₹${grandTotal.toLocaleString('en-IN')})`;
+    const purchaseNote = `Purchased ${qty} ${position.unit} from ${dto.supplierName || 'Supplier'} (GST: ${taxRate}%, Inv: ${dto.invoiceNumber || 'N/A'}, Total: Rs. ${grandTotal.toLocaleString('en-IN')})`;
 
     const updatedPosition = await this.prisma.projectStockPosition.update({
       where: { id: positionId },
@@ -1968,6 +1970,127 @@ export class InventoryService {
         documentAttached: !!dto.documentDataUrl,
       },
     };
+  }
+
+  /**
+   * Atomic creation of SKU and Project Stock Position.
+   * If SKU creation/validation fails or project stock creation fails, rolls back completely.
+   */
+  async recordComponentPurchase(data: RecordComponentPurchaseDto, user: ScopedUser) {
+    const tenantId = requireTenantId(user);
+    if (!data.name || !data.name.trim()) {
+      throw new BadRequestException('Component name is required');
+    }
+    if (!data.project || !data.project.trim()) {
+      throw new BadRequestException('Project name is required');
+    }
+    const cleanCode = cleanSku(data.skuCode || '');
+    const validSku = validateSku(cleanCode, true);
+    if (!validSku.valid) {
+      throw new BadRequestException(
+        validSku.error || 'SKU must be 2-50 characters containing letters, digits, -, _, ., or / only',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Find existing SKU or create it
+      let sku = await tx.sku.findUnique({
+        where: { tenantId_skuCode: { tenantId, skuCode: validSku.value } },
+      });
+
+      if (!sku) {
+        sku = await tx.sku.create({
+          data: {
+            tenantId,
+            skuCode: validSku.value,
+            name: data.name.trim(),
+            category: data.category?.trim() || data.project.trim().split(' ')[0] || 'General',
+            unitPrice: Number(data.unitPrice) || 0,
+            costPrice: Number(data.unitPrice) || 0,
+            taxRate: Number(data.taxRate) || 18,
+            packageType: data.unit || 'Nos',
+            reorderPoint: Math.max(5, Math.floor((Number(data.quantity) || 1) * 0.2)),
+            reorderQty: Number(data.quantity) || 1,
+          },
+        });
+      }
+
+      // 2. Create Project Stock Position
+      const qty = Number(data.quantity) || 1;
+      const baseRate = Number(data.unitPrice) || 0;
+      const taxRate = Number(data.taxRate) || 18;
+      const baseAmount = Number((qty * baseRate).toFixed(2));
+      const gstAmount = Number(((baseAmount * taxRate) / 100).toFixed(2));
+      const grandTotal = Number((baseAmount + gstAmount).toFixed(2));
+      const purchaseNote = `Purchased ${qty} ${data.unit || 'Nos'} from ${
+        data.supplierName?.trim() || 'Supplier'
+      } (GST: ${taxRate}%, Inv: ${data.invoiceNumber?.trim() || 'N/A'}, Total: Rs. ${grandTotal.toLocaleString('en-IN')})`;
+
+      const positionData = this.computeProjectStockFields({
+        project: data.project.trim(),
+        reference: `PUR-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+        quantity: qty,
+        itemCode: validSku.value,
+        partValue: data.name.trim(),
+        package: data.unit || 'Nos',
+        unit: data.unit || 'Nos',
+        bomQtyPerUnit: 1,
+        batchQty: qty,
+        plannedRequirement: qty,
+        openingStock: 0,
+        inflow: qty,
+        outflow: 0,
+        notes: data.notes?.trim() ? `${data.notes.trim()} | ${purchaseNote}` : purchaseNote,
+      });
+
+      const position = await tx.projectStockPosition.create({
+        data: {
+          ...positionData,
+          tenantId,
+        },
+      });
+
+      // 3. Create Purchase Bill in register atomically
+      const bill = await tx.purchaseBill.create({
+        data: {
+          tenantId,
+          invoiceNumber: data.invoiceNumber?.trim() || `PB-${Date.now().toString().slice(-6)}`,
+          vendorName: data.supplierName?.trim() || 'Direct Component Purchase',
+          vendorGstin: null,
+          project: data.project.trim(),
+          items: [
+            {
+              skuCode: validSku.value,
+              name: data.name.trim(),
+              quantity: qty,
+              unit: data.unit || 'Nos',
+              unitPrice: baseRate,
+              taxRate: taxRate,
+              subtotal: baseAmount,
+              taxAmount: gstAmount,
+              total: grandTotal,
+            },
+          ],
+          subtotal: baseAmount,
+          taxRate,
+          cgst: Number((gstAmount / 2).toFixed(2)),
+          sgst: Number((gstAmount / 2).toFixed(2)),
+          igst: 0,
+          totalTax: gstAmount,
+          grandTotal,
+          paymentStatus: 'paid',
+          notes: data.notes?.trim() ? `${data.notes.trim()} | ${purchaseNote}` : purchaseNote,
+          createdById: user.id || null,
+        },
+      });
+
+      return {
+        success: true,
+        sku,
+        position,
+        bill,
+      };
+    });
   }
 
   /**

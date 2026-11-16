@@ -181,8 +181,8 @@ export default function QuotationsPage() {
         <div class="header" style="display: flex; justify-content: space-between; border-bottom: 2px solid #2E5EFF; padding-bottom: 12px; margin-bottom: 16px;">
           <div>
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-              ${(q.tenant?.logoUrl || branding?.companyLogoUrl || BRAND_CONFIG.logoUrl) ? `
-                <img src="${q.tenant?.logoUrl || branding?.companyLogoUrl || BRAND_CONFIG.logoUrl}" alt="Logo" style="max-height: 32px !important; max-width: 140px !important; width: auto !important; height: auto !important; object-fit: contain !important;" />
+              ${(q.tenant?.logoUrl || branding?.companyLogoUrl) ? `
+                <img src="${q.tenant?.logoUrl || branding?.companyLogoUrl}" alt="Logo" style="max-height: 32px !important; max-width: 140px !important; width: auto !important; height: auto !important; object-fit: contain !important;" />
               ` : ''}
               <h1 style="font-size: 18px; font-weight: 900; color: #2E5EFF; margin: 0;">${(q.tenant?.name || branding?.companyDisplayName || BRAND_CONFIG.displayName).toUpperCase()}</h1>
             </div>
@@ -228,7 +228,7 @@ export default function QuotationsPage() {
               <tr>
                 <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: center;">${i + 1}</td>
                 <td style="border: 1px solid #cbd5e1; padding: 7px 9px;"><strong>${l.sku?.skuCode || ''}</strong> - ${l.sku?.name || 'Item'}</td>
-                <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">${l.quantity}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">${l.quantity} ${l.unit || 'NOS'}</td>
                 <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">${Number(l.unitPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                 <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">${Number(l.discount || 0).toLocaleString('en-IN')}</td>
                 <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right; font-weight: bold;">${Number(l.totalPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>

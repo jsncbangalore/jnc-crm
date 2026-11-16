@@ -254,7 +254,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
 
       // Resolve Company Document Logo
       let resolvedLogo: any = (profile as any)?.logoBuffer || null;
-      const candidateLogo = (profile as any)?.logoBase64 || profile.logoUrl || process.env.PRODUCT_LOGO_URL;
+      const candidateLogo = (profile as any)?.logoBase64 || profile.logoUrl;
       const tenantId = (profile as any)?.tenantId || (invoice as any)?.tenantId;
 
       if (!resolvedLogo && tenantId) {
@@ -297,19 +297,6 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
             const relPath = path.resolve(process.cwd(), candidateLogo);
             if (fs.existsSync(relPath)) {
               resolvedLogo = relPath;
-            } else if (candidateLogo.includes('logo') || candidateLogo.startsWith('/')) {
-              const staticCandidates = [
-                path.resolve(process.cwd(), 'apps/web/public/logo.png'),
-                path.resolve(process.cwd(), '../web/public/logo.png'),
-                path.resolve(process.cwd(), 'apps/api/assets/logo.png'),
-                path.resolve(process.cwd(), 'public/logo.png'),
-              ];
-              for (const c of staticCandidates) {
-                if (fs.existsSync(c)) {
-                  resolvedLogo = c;
-                  break;
-                }
-              }
             }
           }
         }

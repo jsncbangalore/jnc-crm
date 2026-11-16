@@ -14,6 +14,7 @@ export interface LinePricingInput {
   skuId?: string | null;
   hsnCode?: string | null;
   description?: string | null;
+  unit?: string | null;
   quantity: number;
   unitPrice: number;
   discount?: number; // flat discount amount or 0
@@ -25,6 +26,7 @@ export interface CalculatedLineItem {
   skuId?: string | null;
   hsnCode: string;
   description: string;
+  unit?: string | null;
   quantity: number;
   unitPrice: number;
   discount: number;
@@ -112,6 +114,7 @@ export function calculateLineGst(
     skuId: line.skuId || null,
     hsnCode: (line.hsnCode || '85184000').trim(),
     description: (line.description || 'System Component / Service').trim(),
+    unit: (line.unit || 'NOS').trim(),
     quantity: qty,
     unitPrice: rate,
     discount: disc,

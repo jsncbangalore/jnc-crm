@@ -42,6 +42,7 @@ import {
   IsValidGstRate,
   CleanPhone,
   CleanGstin,
+  CleanSku,
   IsValidGstin,
   IsNotPlaceholderName,
 } from '../common/validation.transformers';
@@ -54,12 +55,30 @@ export class QuotationLineItemDto {
   @IsOptional()
   skuId?: string;
 
+  @CleanSku()
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  skuCode?: string;
+
   @SanitizeText()
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   @IsValidProductName()
   name: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  description?: string;
+
+  @SanitizeText()
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  unit?: string;
 
   @IsNumber()
   @Min(0.0001)
@@ -84,7 +103,16 @@ export class QuotationLineItemDto {
 
   @IsNumber()
   @IsOptional()
+  @IsValidGstRate()
+  taxRate?: number;
+
+  @IsNumber()
+  @IsOptional()
   gstRate?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  isCustom?: boolean;
 
   @SanitizeText()
   @IsString()
@@ -194,6 +222,14 @@ export class CreateQuotationDto {
   @IsOptional()
   @IsBoolean()
   confirmHighAmount?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  createCustomer?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  confirmDuplicate?: boolean;
 }
 
 export class UpdateQuotationStatusDto {
@@ -304,6 +340,7 @@ export class QuotationsService {
         skuId: sku.id,
         hsnCode: l.hsnCode || sku.hsnCode || '85184000',
         description: l.name || sku.name,
+        unit: l.unit || 'NOS',
         quantity: qty,
         unitPrice: price,
         discount,
@@ -411,6 +448,7 @@ export class QuotationsService {
               skuId: l.skuId!,
               hsnCode: l.hsnCode,
               description: l.description,
+              unit: l.unit || 'NOS',
               quantity: l.quantity,
               unitPrice: l.unitPrice,
               discount: l.discount,

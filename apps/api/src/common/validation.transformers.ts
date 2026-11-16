@@ -414,12 +414,14 @@ export function IsValidGstin(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, _args: ValidationArguments) {
+        validate(value: any, args: ValidationArguments) {
           if (value === undefined || value === null || value === '') return true;
-          return validateGstin(value).valid;
+          const pan = (args?.object as any)?.pan;
+          return validateGstin(value, false, pan).valid;
         },
         defaultMessage(args: ValidationArguments) {
-          const res = validateGstin(args.value);
+          const pan = (args?.object as any)?.pan;
+          const res = validateGstin(args.value, false, pan);
           return res.error || `${args.property} is not a valid GSTIN format or checksum`;
         },
       },
