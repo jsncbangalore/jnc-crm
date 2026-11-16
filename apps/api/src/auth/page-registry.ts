@@ -40,22 +40,6 @@ export const COMPANY_PAGE_REGISTRY: Record<string, PageDefinition> = {
     controllers: ['leads', 'companies'],
     description: 'Lead generation, sales pipeline, client accounts, and contacts',
   },
-  lead_flow: {
-    key: 'lead_flow',
-    label: 'Lead Flow & Pipeline',
-    group: 'Sales',
-    frontendRoutes: ['/lead-flow'],
-    controllers: ['leads'],
-    description: 'Visual stage flow and Kanban board for active leads',
-  },
-  lead_setup: {
-    key: 'lead_setup',
-    label: 'Lead Setup & Web Forms',
-    group: 'Sales',
-    frontendRoutes: ['/start-setup', '/lead-setup'],
-    controllers: ['settings', 'webhooks'],
-    description: 'Web-to-lead form builder, webhook ingestion, and inquiry configuration',
-  },
   quotations: {
     key: 'quotations',
     label: 'Quotations & Estimates',
@@ -74,6 +58,18 @@ export const COMPANY_PAGE_REGISTRY: Record<string, PageDefinition> = {
     controllers: ['orders'],
     description: 'Customer purchase orders, advance payments, and production milestones',
   },
+
+  // ─── Finance ────────────────────────────────────────────────────────────────
+  invoices: {
+    key: 'invoices',
+    label: 'Tax Invoices & Billing',
+    group: 'Finance',
+    frontendRoutes: ['/invoices'],
+    controllers: ['invoicing'],
+    description: 'GST tax invoices, LUT exports, delivery challans, and payment receipts',
+  },
+
+  // ─── Operations (continued) ──────────────────────────────────────────────────
   shipments: {
     key: 'shipments',
     label: 'Shipments & Logistics',
@@ -99,15 +95,7 @@ export const COMPANY_PAGE_REGISTRY: Record<string, PageDefinition> = {
     description: 'Approved vendor directory, lead times, and supplier performance',
   },
 
-  // ─── Finance ────────────────────────────────────────────────────────────────
-  invoices: {
-    key: 'invoices',
-    label: 'Tax Invoices & Billing',
-    group: 'Finance',
-    frontendRoutes: ['/invoices'],
-    controllers: ['invoicing'],
-    description: 'GST tax invoices, LUT exports, delivery challans, and payment receipts',
-  },
+  // ─── Finance (continued) ─────────────────────────────────────────────────────
   bills: {
     key: 'bills',
     label: 'Purchase Bills & OCR',
@@ -123,6 +111,24 @@ export const COMPANY_PAGE_REGISTRY: Record<string, PageDefinition> = {
     frontendRoutes: ['/ledger'],
     controllers: ['ledger'],
     description: 'Customer and supplier party statements, ledger entries, and payment allocations',
+  },
+
+  // ─── Lead & Pipeline Setup (Admin) ──────────────────────────────────────────
+  lead_flow: {
+    key: 'lead_flow',
+    label: 'Lead Flow & Pipeline',
+    group: 'Admin',
+    frontendRoutes: ['/lead-flow', '/start-setup'],
+    controllers: ['leads'],
+    description: 'Visual stage flow and Kanban board for active leads',
+  },
+  lead_setup: {
+    key: 'lead_setup',
+    label: 'Lead Setup & Web Forms',
+    group: 'Admin',
+    frontendRoutes: ['/start-setup', '/lead-setup'],
+    controllers: ['settings', 'webhooks'],
+    description: 'Web-to-lead form builder, webhook ingestion, and inquiry configuration',
   },
 
   // ─── Work ───────────────────────────────────────────────────────────────────
@@ -203,6 +209,29 @@ export const COMPANY_PAGE_REGISTRY: Record<string, PageDefinition> = {
 };
 
 export const ALL_COMPANY_PAGE_KEYS = Object.keys(COMPANY_PAGE_REGISTRY);
+
+export const STANDARD_TEMPLATES: Record<string, { name: string; pages: string[] }> = {
+  inventory_only: {
+    name: 'Inventory only',
+    pages: ['inventory', 'suppliers', 'bills', 'shipments', 'notifications'],
+  },
+  sales: {
+    name: 'Sales',
+    pages: ['leads', 'lead_flow', 'quotations', 'orders', 'notifications'],
+  },
+  accounts: {
+    name: 'Accounts',
+    pages: ['invoices', 'quotations', 'bills', 'ledger', 'orders', 'notifications'],
+  },
+  daily_activities: {
+    name: 'Project Work / Timesheets',
+    pages: ['daily_activities', 'notifications'],
+  },
+  full_access: {
+    name: 'Full Company Access',
+    pages: ALL_COMPANY_PAGE_KEYS,
+  },
+};
 
 export const PAGE_GROUPS: PageGroup[] = ['Sales', 'Operations', 'Finance', 'Work', 'Admin'];
 

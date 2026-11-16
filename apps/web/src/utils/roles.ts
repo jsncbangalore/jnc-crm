@@ -2,6 +2,8 @@
  * Centralized Role Definitions & Hierarchy (Frontend)
  */
 
+import { PAGE_KEY_TO_ROUTE, COMPANY_PAGE_REGISTRY } from '../config/page-registry';
+
 export const ALL_ROLES = [
   'platform_super_admin',
   'tenant_admin',
@@ -57,11 +59,29 @@ export function isPlatformOwner(user?: { role?: string; tenantId?: string | null
 /**
  * Determines redirect path based on user role and tenant
  */
-export function getRoleRedirectPath(user?: { role?: string; tenantId?: string | null } | null): string {
+export function getRoleRedirectPath(user?: { role?: string; tenantId?: string | null; effectivePages?: string[]; homePage?: string | null } | null): string {
   if (!user) return '/login';
   if (isPlatformOwner(user)) {
     return '/platform/companies';
   }
+
+  // If user has effectivePages defined, validate landing path strictly against granted pages
+  if (Array.isArray(user.effectivePages)) {
+    if (user.effectivePages.length === 0) {
+      return '/';
+    }
+    const pages = user.effectivePages.map((k) => (k === 'purchase_bills' ? 'bills' : k));
+    if (user.homePage && pages.includes(user.homePage) && PAGE_KEY_TO_ROUTE[user.homePage]) {
+      return PAGE_KEY_TO_ROUTE[user.homePage];
+    }
+    for (const key of Object.keys(COMPANY_PAGE_REGISTRY)) {
+      if (pages.includes(key) && PAGE_KEY_TO_ROUTE[key]) {
+        return PAGE_KEY_TO_ROUTE[key];
+      }
+    }
+    return PAGE_KEY_TO_ROUTE[pages[0]] || '/';
+  }
+
   switch (user.role) {
     case 'tenant_admin':
     case 'platform_admin':

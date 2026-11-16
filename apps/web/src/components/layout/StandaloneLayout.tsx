@@ -61,7 +61,10 @@ export default function StandaloneLayout({ children }: { children?: React.ReactN
       user?.role === 'platform_admin' ||
       Boolean((user as any)?.isPlatformAdmin);
 
-    if (!isAdmin) return;
+    if (!user || !isAdmin) {
+      setSchemaPendingCount(null);
+      return;
+    }
 
     let mounted = true;
     authApi
@@ -74,7 +77,9 @@ export default function StandaloneLayout({ children }: { children?: React.ReactN
           setSchemaPendingCount(null);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (mounted) setSchemaPendingCount(null);
+      });
 
     return () => {
       mounted = false;

@@ -13,7 +13,8 @@ export type ModelName =
 
 export type RoleName =
   | 'platform_super_admin' | 'platform_admin' | 'tenant_admin' | 'admin' | 'sub_admin'
-  | 'employee' | 'store_manager' | 'project_manager' | 'developer_lead' | 'developer';
+  | 'employee' | 'store_manager' | 'project_manager' | 'developer_lead' | 'developer'
+  | 'finance' | 'accountant';
 
 export type CustomerListScope = 'own' | 'company';
 
@@ -33,6 +34,8 @@ export const VISIBILITY_TABLE_OWN: Record<RoleName, Record<ModelName, Visibility
   project_manager:      { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'team' },
   developer_lead:       { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'team' },
   developer:            { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'own' },
+  finance:              { Lead:'team', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'team' },
+  accountant:           { Lead:'team', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'team' },
 };
 
 export const VISIBILITY_TABLE_COMPANY: Record<RoleName, Record<ModelName, VisibilityLevel>> = {
@@ -46,6 +49,8 @@ export const VISIBILITY_TABLE_COMPANY: Record<RoleName, Record<ModelName, Visibi
   project_manager:      { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'team' },
   developer_lead:       { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'team' },
   developer:            { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'own' },
+  finance:              { Lead:'team', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'team' },
+  accountant:           { Lead:'team', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'team' },
 };
 
 export function getVisibilityTable(scopeMode?: CustomerListScope): Record<RoleName, Record<ModelName, VisibilityLevel>> {

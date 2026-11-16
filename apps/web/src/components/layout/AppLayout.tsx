@@ -38,7 +38,10 @@ export default function AppLayout({ children }: { children?: React.ReactNode } =
       user?.role === 'platform_admin' ||
       Boolean((user as any)?.isPlatformAdmin);
 
-    if (!isAdmin) return;
+    if (!user || !isAdmin) {
+      setSchemaPendingCount(null);
+      return;
+    }
 
     let mounted = true;
     authApi.getSchemaStatus()
@@ -50,7 +53,9 @@ export default function AppLayout({ children }: { children?: React.ReactNode } =
           setSchemaPendingCount(null);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (mounted) setSchemaPendingCount(null);
+      });
 
     return () => { mounted = false; };
   }, [user]);

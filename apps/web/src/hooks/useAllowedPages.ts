@@ -257,9 +257,9 @@ export function useAllowedPages() {
 
   const homePageRoute = useMemo<string>(() => {
     if (isPlatform) return '/platform/companies';
-    if (!homePageKey) return '/login';
+    if (!homePageKey) return user ? '/' : '/login';
     return PAGE_KEY_TO_ROUTE[homePageKey] || '/';
-  }, [isPlatform, homePageKey]);
+  }, [isPlatform, homePageKey, user]);
 
   // Granted modules that are searchable
   const searchableModules = useMemo(() => {

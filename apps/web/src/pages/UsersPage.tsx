@@ -2128,10 +2128,11 @@ export default function UsersPage() {
                         ...createForm,
                         role: newRole,
                       });
-                      const defaultPages = getLegacyPagesForRole(newRole);
-                      setCreatePages(defaultPages);
-                      setCreateHomePage(defaultPages[0] || 'dashboard');
-                      setCreateTemplateId('');
+                      if (!createTemplateId) {
+                        const defaultPages = getLegacyPagesForRole(newRole);
+                        setCreatePages(defaultPages);
+                        setCreateHomePage(defaultPages[0] || 'dashboard');
+                      }
                     }}
                     required
                   >
@@ -2261,6 +2262,29 @@ export default function UsersPage() {
                     <strong className="text-amber-600 dark:text-crm-amber text-sm font-bold tracking-wider">
                       {createdCredentialModal.tempPassword}
                     </strong>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-200 dark:border-[#2A3042] pb-2">
+                    <span className="text-slate-500">Landing Page:</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {createdCredentialModal.user.homePage
+                        ? `${COMPANY_PAGE_REGISTRY[createdCredentialModal.user.homePage]?.label || createdCredentialModal.user.homePage} (${COMPANY_PAGE_REGISTRY[createdCredentialModal.user.homePage]?.frontendRoutes[0] || '/'})`
+                        : 'None (No Access screen)'}
+                    </span>
+                  </div>
+                  <div className="border-b border-slate-200 dark:border-[#2A3042] pb-2">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-slate-500">Saved Modules:</span>
+                      <span className="font-bold text-crm-blue">
+                        {(createdCredentialModal.user.pages || createdCredentialModal.user.effectivePages || []).length} pages
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-1 font-sans">
+                      {(createdCredentialModal.user.pages || createdCredentialModal.user.effectivePages || []).map((pk: string) => (
+                        <span key={pk} className="px-1.5 py-0.5 rounded text-[10px] bg-crm-blue/10 text-crm-blue border border-crm-blue/20">
+                          {COMPANY_PAGE_REGISTRY[pk]?.label || pk}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-slate-500">Login Portal:</span>

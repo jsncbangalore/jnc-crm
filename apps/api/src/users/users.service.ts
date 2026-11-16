@@ -274,6 +274,12 @@ export class UsersService {
       pagesToAssign = getLegacyPagesForRole(dto.role);
     }
 
+    if (dto.homePage && !pagesToAssign.includes(dto.homePage)) {
+      throw new BadRequestException(
+        `Default landing page "${dto.homePage}" is not included in the granted pages list: ${pagesToAssign.join(', ')}`,
+      );
+    }
+
     let homePageToAssign: string | null = null;
     if (dto.homePage && pagesToAssign.includes(dto.homePage)) {
       homePageToAssign = dto.homePage;
@@ -438,7 +444,12 @@ export class UsersService {
     });
 
     return {
-      user: newUser,
+      user: {
+        ...newUser,
+        pages: pagesToAssign,
+        homePage: homePageToAssign,
+        effectivePages: pagesToAssign,
+      },
       tempPassword,
       emailSent,
       emailError,
@@ -1642,6 +1653,12 @@ export class UsersService {
       try {
         beforePages = JSON.parse(targetUser.pageAccess.pages);
       } catch {}
+    }
+
+    if (homePage && !pages.includes(homePage)) {
+      throw new BadRequestException(
+        `Default landing page "${homePage}" is not included in the granted pages list: ${pages.join(', ')}`,
+      );
     }
 
     let homePageToSave: string | null = null;
