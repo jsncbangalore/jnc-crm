@@ -222,7 +222,7 @@ export async function getUnifiedCompanyProfile(prisma: any, tenantId: string) {
     logoBase64 ||
     (tenant.logoUrl && tenant.logoUrl.trim() !== ''
       ? tenant.logoUrl
-      : (process.env.PRODUCT_LOGO_URL || ''));
+      : null);
 
   return {
     ...tenant,

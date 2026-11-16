@@ -10,7 +10,20 @@ import {
 import { brandingApi } from '../services/api';
 import { FormFeedback, FormFieldError } from '../components/common/FormFeedback';
 import { PhoneField } from '../components/common/forms';
-import { cleanGstin, cleanPan, cleanIfsc, cleanUpi } from '@crm/shared-validation';
+import { cleanUpi } from '@crm/shared-validation';
+import {
+  validatePan,
+  validateGstin,
+  validateIfsc,
+  cleanPan,
+  cleanGstin,
+  cleanIfsc,
+} from '../utils/taxValidation';
+import {
+  compressLogoImage,
+  compressSignatoryImage,
+  dataUrlToFile,
+} from '../utils/imageCompression';
 import CompanyBankAccountsSection from '../components/settings/CompanyBankAccountsSection';
 
 async function resizeImageInBrowser(
@@ -221,11 +234,12 @@ export default function BrandingSettingsPage() {
     setFieldErrors((prev) => ({ ...prev, logo: undefined }));
     setUploadingLogo(true);
     try {
-      const resized = await resizeImageInBrowser(file, 300, 80);
-      const kb = (resized.sizeBytes / 1024).toFixed(1);
-      setLogoResizeInfo(`Resized: ${resized.width}x${resized.height} px (${kb} KB)`);
+      const dataUrl = await compressLogoImage(file);
+      const compressedFile = dataUrlToFile(dataUrl, file.name);
+      const kb = (compressedFile.size / 1024).toFixed(1);
+      setLogoResizeInfo(`Compressed: ${kb} KB`);
 
-      const { data } = await brandingApi.uploadLogo(resized.file);
+      const { data } = await brandingApi.uploadLogo(compressedFile);
       const bustedUrl = data?.logoUrl ? `${data.logoUrl}?t=${Date.now()}` : null;
       await updateBranding({ companyLogoUrl: bustedUrl });
       if (bustedUrl) {
@@ -235,7 +249,7 @@ export default function BrandingSettingsPage() {
       setSuccessMessage('Document Logo updated successfully! Used on invoices, quotations, and document PDFs.');
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Failed to upload document logo.';
+      const msg = err?.response?.data?.message || err.message || 'Failed to upload document logo.';
       setFieldErrors((prev) => ({
         ...prev,
         logo: typeof msg === 'string' ? msg : 'The logo must be a PNG, JPEG or WebP image.',
@@ -279,14 +293,15 @@ export default function BrandingSettingsPage() {
     setFieldErrors((prev) => ({ ...prev, stamp: undefined }));
     setUploadingStamp(true);
     try {
-      const resized = await resizeImageInBrowser(file, 200, 200);
-      const { data } = await brandingApi.uploadStamp(resized.file);
+      const dataUrl = await compressSignatoryImage(file, 'Stamp');
+      const compressedFile = dataUrlToFile(dataUrl, file.name);
+      const { data } = await brandingApi.uploadStamp(compressedFile);
       const bustedUrl = data?.stampUrl ? `${data.stampUrl}?t=${Date.now()}` : null;
       if (bustedUrl) setStampPreview(bustedUrl);
       setSuccessMessage('Company stamp uploaded successfully! Applied to invoices and signatory signatures.');
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Failed to upload stamp.';
+      const msg = err?.response?.data?.message || err.message || 'Failed to upload stamp.';
       setFieldErrors((prev) => ({
         ...prev,
         stamp: typeof msg === 'string' ? msg : 'The stamp must be a PNG, JPEG or WebP image.',
@@ -323,8 +338,35 @@ export default function BrandingSettingsPage() {
       return;
     }
 
+    const errors: Record<string, string> = {};
+
     if (!companyName.trim()) {
-      setFieldErrors((prev) => ({ ...prev, companyName: 'Company Name is required.' }));
+      errors.companyName = 'Company Name is required.';
+    }
+
+    if (pan.trim()) {
+      const panRes = validatePan(pan);
+      if (!panRes.valid && panRes.error) {
+        errors.pan = panRes.error;
+      }
+    }
+
+    if (gstin.trim()) {
+      const gstinRes = validateGstin(gstin, false, pan.trim() || undefined);
+      if (!gstinRes.valid && gstinRes.error) {
+        errors.gstin = gstinRes.error;
+      }
+    }
+
+    if (bankIfsc.trim()) {
+      const ifscRes = validateIfsc(bankIfsc);
+      if (!ifscRes.valid && ifscRes.error) {
+        errors.bankIfsc = ifscRes.error;
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       setErrorMessage('Please fix the highlighted field errors before saving.');
       return;
     }
@@ -380,9 +422,20 @@ export default function BrandingSettingsPage() {
       setSuccessMessage('Company details and branding updated successfully!');
       setTimeout(() => setSuccessMessage(''), 4000);
     } catch (err: any) {
-      const rawMsg = err?.response?.data?.message;
+      const data = err?.response?.data;
+      const rawMsg = data?.message;
+      const serverFieldErrors = data?.fieldErrors;
+      const errMap: Record<string, string> = {};
+
+      if (Array.isArray(serverFieldErrors) && serverFieldErrors.length > 0) {
+        for (const fe of serverFieldErrors) {
+          if (fe.field && fe.message) {
+            errMap[fe.field] = fe.message;
+          }
+        }
+      }
+
       if (Array.isArray(rawMsg)) {
-        const errMap: Record<string, string> = {};
         for (const m of rawMsg) {
           if (/companyLogoUrl|logo/i.test(m)) errMap.logo = m;
           else if (/stamp/i.test(m)) errMap.stamp = m;
@@ -395,12 +448,22 @@ export default function BrandingSettingsPage() {
           else if (/bankAccountNumber/i.test(m)) errMap.bankAccountNumber = m;
           else if (/bankIfsc/i.test(m)) errMap.bankIfsc = m;
         }
+      }
+
+      if (Object.keys(errMap).length > 0) {
         setFieldErrors(errMap);
+        setErrorMessage(typeof rawMsg === 'string' ? rawMsg : 'Please correct the highlighted fields and try again.');
       } else if (typeof rawMsg === 'string') {
         if (/logo/i.test(rawMsg)) {
           setFieldErrors({ logo: rawMsg });
         } else if (/stamp/i.test(rawMsg)) {
           setFieldErrors({ stamp: rawMsg });
+        } else if (/pan/i.test(rawMsg)) {
+          setFieldErrors({ pan: rawMsg });
+        } else if (/gstin/i.test(rawMsg)) {
+          setFieldErrors({ gstin: rawMsg });
+        } else if (/ifsc/i.test(rawMsg)) {
+          setFieldErrors({ bankIfsc: rawMsg });
         } else {
           setErrorMessage(rawMsg);
         }
@@ -1003,7 +1066,7 @@ export default function BrandingSettingsPage() {
                 }}
               />
               {fieldErrors.bankIfsc && (
-                <p data-testid="error-bank-ifsc" className="text-rose-500 text-[11px] font-semibold mt-1">
+                <p data-testid="error-ifsc" id="error-bank-ifsc" className="text-rose-500 text-[11px] font-semibold mt-1">
                   {fieldErrors.bankIfsc}
                 </p>
               )}

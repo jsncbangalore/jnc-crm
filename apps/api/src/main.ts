@@ -55,7 +55,7 @@ import { validateEnvironmentOrExit } from './common/env-validation';
 validateEnvironmentOrExit();
 
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, BadRequestException } from '@nestjs/common';
+import { ValidationPipe, BadRequestException, PayloadTooLargeException } from '@nestjs/common';
 import { formatValidationErrors } from './common/validation-error.formatter';
 import { AppModule } from './app.module';
 import { json, urlencoded } from 'express';
@@ -198,6 +198,32 @@ async function bootstrap() {
 
   // 5. Request ID tracking & secure logging (never log secrets/tokens/credentials)
   app.use(requestIdMiddleware);
+  // 5a. Deploy Safety Guard & CORS Configuration: MUST run BEFORE body parsers so 413s & error responses carry CORS headers
+  const prismaService = app.get(PrismaService);
+  await verifyMigrationsAppliedOrExit(prismaService);
+
+  const mainCorsMiddleware = cors({
+    origin: corsOriginCallback,
+    methods: CORS_ALLOWED_METHODS,
+    allowedHeaders: CORS_ALLOWED_HEADERS,
+    exposedHeaders: CORS_EXPOSED_HEADERS,
+    credentials: true,
+  });
+
+  app.use(async (req: any, res: any, next: any) => {
+    const url = req.originalUrl || req.url || '';
+    if (url === '/public/demo-request' || url.startsWith('/public/demo-request?')) {
+      req.url = '/api/v1' + req.url;
+    }
+    if (url.includes('/public/demo-request')) {
+      return next();
+    }
+    if (isPublicInquiryRoute(url)) {
+      return handlePublicCors(req, res, next, prismaService);
+    }
+    return mainCorsMiddleware(req, res, next);
+  });
+
 
   // 5b. Strict Cache Headers: no-store on private routes, public cross-origin on branding, private no-store on file downloads
   app.use((req: any, res: any, next: any) => {
@@ -236,7 +262,7 @@ async function bootstrap() {
     next();
   });
 
-  // 6. Body Size Limits: 64kb for public forms, 1MB globally, 50MB only for spreadsheet imports
+  // 6. Body Size Limits: 64kb for public forms, 1MB globally, 6MB for image settings, 50MB only for spreadsheet imports
   const defaultJsonParser = json({
     limit: '1mb',
     verify: (req: any, _res, buf) => {
@@ -244,6 +270,14 @@ async function bootstrap() {
     },
   });
   const defaultUrlencodedParser = urlencoded({ extended: true, limit: '1mb' });
+
+  const imageSettingsJsonParser = json({
+    limit: '6mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    },
+  });
+  const imageSettingsUrlencodedParser = urlencoded({ extended: true, limit: '6mb' });
 
   const publicJsonParser = json({
     limit: '64kb',
@@ -261,28 +295,58 @@ async function bootstrap() {
   });
   const importUrlencodedParser = urlencoded({ extended: true, limit: '50mb' });
 
+  const runParser = (jsonParser: any, urlParser: any, req: any, res: any, next: any) => {
+    jsonParser(req, res, (err: any) => {
+      if (err) {
+        if (err.type === 'entity.too.large' || err.status === 413) {
+          return next(
+            new PayloadTooLargeException({
+              statusCode: 413,
+              code: 'PAYLOAD_TOO_LARGE',
+              message: 'Request payload is too large. Images must be compressed before upload.',
+            }),
+          );
+        }
+        return next(err);
+      }
+      urlParser(req, res, (err2: any) => {
+        if (err2) {
+          if (err2.type === 'entity.too.large' || err2.status === 413) {
+            return next(
+              new PayloadTooLargeException({
+                statusCode: 413,
+                code: 'PAYLOAD_TOO_LARGE',
+                message: 'Request payload is too large. Images must be compressed before upload.',
+              }),
+            );
+          }
+          return next(err2);
+        }
+        next();
+      });
+    });
+  };
+
   app.use((req: any, res: any, next: any) => {
     const url = req.originalUrl || req.url || '';
     const isImportRoute =
       url.includes('/leads/import') ||
       url.includes('/inventory/import');
+    const isImageSettingsRoute =
+      url.includes('/invoices/settings/signatory') ||
+      url.includes('/settings/branding') ||
+      url.includes('/settings/company-profile') ||
+      url.includes('/invoices/company-profile');
     const isPublicRoute = isPublicInquiryRoute(url);
 
     if (isImportRoute) {
-      importJsonParser(req, res, (err: any) => {
-        if (err) return next(err);
-        importUrlencodedParser(req, res, next);
-      });
+      runParser(importJsonParser, importUrlencodedParser, req, res, next);
+    } else if (isImageSettingsRoute) {
+      runParser(imageSettingsJsonParser, imageSettingsUrlencodedParser, req, res, next);
     } else if (isPublicRoute) {
-      publicJsonParser(req, res, (err: any) => {
-        if (err) return next(err);
-        publicUrlencodedParser(req, res, next);
-      });
+      runParser(publicJsonParser, publicUrlencodedParser, req, res, next);
     } else {
-      defaultJsonParser(req, res, (err: any) => {
-        if (err) return next(err);
-        defaultUrlencodedParser(req, res, next);
-      });
+      runParser(defaultJsonParser, defaultUrlencodedParser, req, res, next);
     }
   });
 
@@ -326,33 +390,6 @@ async function bootstrap() {
     new CacheControlInterceptor(),
     new StripTenantPayloadInterceptor(),
   );
-
-  // 10. CORS Configuration: Dedicated handling for public endpoints vs authenticated app
-  const prismaService = app.get(PrismaService);
-
-  // Deploy Safety Guard: Refuse to start in production if migrations are pending
-  await verifyMigrationsAppliedOrExit(prismaService);
-  const mainCorsMiddleware = cors({
-    origin: corsOriginCallback,
-    methods: CORS_ALLOWED_METHODS,
-    allowedHeaders: CORS_ALLOWED_HEADERS,
-    exposedHeaders: CORS_EXPOSED_HEADERS,
-    credentials: true,
-  });
-
-  app.use(async (req: any, res: any, next: any) => {
-    const url = req.originalUrl || req.url || '';
-    if (url === '/public/demo-request' || url.startsWith('/public/demo-request?')) {
-      req.url = '/api/v1' + req.url;
-    }
-    if (url.includes('/public/demo-request')) {
-      return next();
-    }
-    if (isPublicInquiryRoute(url)) {
-      return handlePublicCors(req, res, next, prismaService);
-    }
-    return mainCorsMiddleware(req, res, next);
-  });
 
   const port = process.env.PORT || 3333;
   await app.listen(port);

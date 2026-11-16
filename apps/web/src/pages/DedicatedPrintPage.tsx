@@ -424,12 +424,18 @@ export default function DedicatedPrintPage() {
             >
               <div className="border-b-2 border-black pb-3 mb-4 flex justify-between items-start">
                 <div>
-                  {(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || BRAND_CONFIG.logoUrl) && (
+                  {(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) ? (
                     <img
-                      src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || BRAND_CONFIG.logoUrl}
+                      src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl}
                       alt="Company Logo"
                       className="max-h-10 max-w-[160px] object-contain mb-2 inline-block"
                     />
+                  ) : (
+                    <div className="mb-2 print:hidden" data-testid="logo-not-added-badge">
+                      <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                        Upload your company logo in Settings &gt; Branding
+                      </span>
+                    </div>
                   )}
                   <h2 className="text-base font-black uppercase text-black">
                     {brandingProfile?.companyName || docData.tenant?.name || BRAND_CONFIG.displayName}
@@ -546,12 +552,18 @@ export default function DedicatedPrintPage() {
             >
               <div className="border-b-2 border-black pb-3 mb-4 flex justify-between items-start">
                 <div>
-                  {(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || BRAND_CONFIG.logoUrl) && (
+                  {(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) ? (
                     <img
-                      src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || BRAND_CONFIG.logoUrl}
+                      src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl}
                       alt="Company Logo"
                       className="max-h-10 max-w-[160px] object-contain mb-2 inline-block"
                     />
+                  ) : (
+                    <div className="mb-2 print:hidden" data-testid="logo-not-added-badge">
+                      <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                        Upload your company logo in Settings &gt; Branding
+                      </span>
+                    </div>
                   )}
                   <h2 className="text-base font-black uppercase text-black">
                     {brandingProfile?.companyName || BRAND_CONFIG.displayName}
@@ -732,12 +744,18 @@ export default function DedicatedPrintPage() {
               {/* Header with Company Logo & Details */}
               <div className="border-b-2 border-black pb-3 mb-4 flex justify-between items-start">
                 <div>
-                  {(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl || BRAND_CONFIG.logoUrl) && (
+                  {(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl) ? (
                     <img
-                      src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl || BRAND_CONFIG.logoUrl}
+                      src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl}
                       alt="Company Logo"
                       className="max-h-12 max-w-[180px] object-contain mb-2 inline-block"
                     />
+                  ) : (
+                    <div className="mb-2 print:hidden" data-testid="logo-not-added-badge">
+                      <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                        Upload your company logo in Settings &gt; Branding
+                      </span>
+                    </div>
                   )}
                   <h2 className="text-base font-black uppercase text-black">
                     {brandingProfile?.companyName || docData.company?.legalName || docData.company?.name || BRAND_CONFIG.displayName}

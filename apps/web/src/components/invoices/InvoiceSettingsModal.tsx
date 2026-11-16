@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Upload, Check, Image as ImageIcon, Trash2, ShieldCheck, AlertCircle } from 'lucide-react';
+import { X, Upload, Check, Image as ImageIcon, Trash2, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
 import { invoicesApi } from '../../services/api';
 import { SignatorySettings } from '../../types';
 import { BRAND_CONFIG } from '../../config/brand';
+import { compressSignatoryImage } from '../../utils/imageCompression';
 
 interface InvoiceSettingsModalProps {
   isOpen: boolean;
@@ -23,12 +24,20 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorState, setErrorState] = useState<{
+    message: string;
+    code?: string;
+    fieldErrors?: Record<string, string>;
+    canRetry?: boolean;
+  } | null>(null);
+  const [uploadingField, setUploadingField] = useState<'signatureImage' | 'stampImage' | null>(null);
 
   const signatureInputRef = useRef<HTMLInputElement>(null);
   const stampInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
+      setErrorState(null);
       fetchSettings();
     }
   }, [isOpen]);
@@ -53,40 +62,56 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
     }
   };
 
-  const handleImageUpload = (
+  const handleImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     field: 'signatureImage' | 'stampImage'
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate size (< 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Image size must be under 2MB. Please upload a compressed PNG or JPG.');
-      return;
-    }
+    setErrorState(null);
+    setUploadingField(field);
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const base64 = evt.target?.result as string;
-      setSettings((prev) => ({ ...prev, [field]: base64 }));
-    };
-    reader.readAsDataURL(file);
+    try {
+      const label = field === 'signatureImage' ? 'Signature' : 'Stamp';
+      const compressed = await compressSignatoryImage(file, label);
+      setSettings((prev) => ({ ...prev, [field]: compressed }));
+    } catch (err: any) {
+      const msg = err.message || 'Failed to process image file.';
+      setErrorState({
+        message: msg,
+        fieldErrors: { [field]: msg },
+        canRetry: false,
+      });
+    } finally {
+      setUploadingField(null);
+      if (e.target) e.target.value = '';
+    }
   };
 
   const handleSave = async () => {
+    const errors: Record<string, string> = {};
     if (!settings.companyName?.trim()) {
-      alert('Please provide your Company / Business name');
+      errors.companyName = 'Please provide your Company / Business name.';
+    }
+
+    if (!settings.signatoryName?.trim()) {
+      errors.signatoryName = 'Please provide a signatory name.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setErrorState({
+        message: 'Please complete all required fields highlighted below.',
+        fieldErrors: errors,
+        canRetry: false,
+      });
       return;
     }
 
-    if (!settings.signatoryName.trim()) {
-      alert('Please provide a signatory name');
-      return;
-    }
+    setErrorState(null);
+    setSaving(true);
 
     try {
-      setSaving(true);
       const { data } = await invoicesApi.updateSignatorySettings(settings);
       setSaveSuccess(true);
       if (onSaved) onSaved(data);
@@ -95,7 +120,35 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
         onClose();
       }, 1200);
     } catch (err: any) {
-      alert('Failed to save settings: ' + (err?.response?.data?.message || err.message));
+      const status = err?.response?.status;
+      const errCode = err?.response?.data?.code;
+      const serverMsg = err?.response?.data?.message;
+
+      if (status === 401 || errCode === 'UNAUTHORIZED') {
+        setErrorState({
+          message: 'Your session has expired. Please refresh the page and sign in again.',
+          code: 'SESSION_EXPIRED',
+          canRetry: false,
+        });
+      } else if (status === 413 || errCode === 'PAYLOAD_TOO_LARGE') {
+        setErrorState({
+          message: serverMsg || 'The uploaded images are too large. Images have been compressed, but further reduction is needed.',
+          code: 'PAYLOAD_TOO_LARGE',
+          canRetry: true,
+        });
+      } else if (!err.response || err.message === 'Network Error') {
+        setErrorState({
+          message: 'The server could not be reached. Please check your network connection and try again.',
+          code: 'NETWORK_ERROR',
+          canRetry: true,
+        });
+      } else {
+        setErrorState({
+          message: typeof serverMsg === 'string' ? serverMsg : 'Failed to save settings. Please try again.',
+          code: errCode,
+          canRetry: true,
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -133,6 +186,38 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
           </div>
 
           <div className="space-y-5 text-xs">
+            {/* Inline Error Banner */}
+            {errorState && (
+              <div
+                className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-900 dark:text-rose-200 flex items-start justify-between gap-3"
+                data-testid="inline-error-banner"
+              >
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle size={16} className="text-rose-600 dark:text-rose-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold leading-snug">{errorState.message}</p>
+                    {errorState.code && (
+                      <p className="text-[10px] text-rose-500 dark:text-rose-400 mt-0.5 font-mono">
+                        Error code: {errorState.code}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {errorState.canRetry && (
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="px-3 py-1 text-xs font-bold text-rose-800 dark:text-rose-100 bg-rose-200/70 dark:bg-rose-500/30 hover:bg-rose-200 dark:hover:bg-rose-500/40 rounded-lg shrink-0 transition-colors flex items-center gap-1.5 cursor-pointer"
+                    data-testid="btn-retry-save"
+                  >
+                    <RefreshCw size={12} className={saving ? 'animate-spin' : ''} />
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Note banner */}
             <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 text-slate-800 dark:text-slate-300 flex items-start gap-2.5">
               <AlertCircle size={15} className="text-crm-blue mt-0.5 flex-shrink-0" />
@@ -153,6 +238,11 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
                 value={settings.companyName || ''}
                 onChange={(e) => setSettings({ ...settings, companyName: e.target.value })}
               />
+              {errorState?.fieldErrors?.companyName && (
+                <p data-testid="error-companyName" className="text-rose-500 text-[11px] font-semibold mt-1">
+                  {errorState.fieldErrors.companyName}
+                </p>
+              )}
               <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
                 Updating this name automatically sets the company title across all invoice types, signatory blocks, and delivery declarations.
               </p>
@@ -168,6 +258,11 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
                   value={settings.signatoryName}
                   onChange={(e) => setSettings({ ...settings, signatoryName: e.target.value })}
                 />
+                {errorState?.fieldErrors?.signatoryName && (
+                  <p data-testid="error-signatoryName" className="text-rose-500 text-[11px] font-semibold mt-1">
+                    {errorState.fieldErrors.signatoryName}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -221,10 +316,17 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
                   <button
                     type="button"
                     onClick={() => signatureInputRef.current?.click()}
-                    className="mt-3 btn bg-white dark:bg-[#1E2230] border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white text-[11px] py-1 px-3 shadow-sm font-bold"
+                    disabled={uploadingField === 'signatureImage'}
+                    className="mt-3 btn bg-white dark:bg-[#1E2230] border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white text-[11px] py-1 px-3 shadow-sm font-bold cursor-pointer"
+                    data-testid="btn-upload-signature"
                   >
-                    <Upload size={12} /> {settings.signatureImage ? 'Change Signature' : 'Upload Signature'}
+                    <Upload size={12} /> {uploadingField === 'signatureImage' ? 'Compressing...' : settings.signatureImage ? 'Change Signature' : 'Upload Signature'}
                   </button>
+                  {errorState?.fieldErrors?.signatureImage && (
+                    <p data-testid="error-signatureImage" className="text-rose-500 text-[11px] font-semibold mt-1">
+                      {errorState.fieldErrors.signatureImage}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -252,7 +354,7 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
                     <div className="space-y-1">
                       <ImageIcon size={28} className="text-slate-400 dark:text-slate-500 mx-auto" />
                       <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Round/Oval Seal (PNG Transparent)</p>
-                      <p className="text-[10px] text-slate-500">Max size 2MB</p>
+                      <p className="text-[10px] text-slate-500">Auto-compressed to ~200 KB</p>
                     </div>
                   )}
 
@@ -266,10 +368,17 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
                   <button
                     type="button"
                     onClick={() => stampInputRef.current?.click()}
-                    className="mt-3 btn bg-white dark:bg-[#1E2230] border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white text-[11px] py-1 px-3 shadow-sm font-bold"
+                    disabled={uploadingField === 'stampImage'}
+                    className="mt-3 btn bg-white dark:bg-[#1E2230] border border-slate-300 dark:border-[#2A3042] hover:border-crm-blue text-slate-800 dark:text-white text-[11px] py-1 px-3 shadow-sm font-bold cursor-pointer"
+                    data-testid="btn-upload-stamp"
                   >
-                    <Upload size={12} /> {settings.stampImage ? 'Change Stamp' : 'Upload Stamp'}
+                    <Upload size={12} /> {uploadingField === 'stampImage' ? 'Compressing...' : settings.stampImage ? 'Change Stamp' : 'Upload Stamp'}
                   </button>
+                  {errorState?.fieldErrors?.stampImage && (
+                    <p data-testid="error-stampImage" className="text-rose-500 text-[11px] font-semibold mt-1">
+                      {errorState.fieldErrors.stampImage}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
