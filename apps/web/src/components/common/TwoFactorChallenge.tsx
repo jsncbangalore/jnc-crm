@@ -264,19 +264,22 @@ export default function TwoFactorChallenge({
     }
   }, [activeSetupToken, portal]);
 
+  const initialEmailSentRef = useRef(false);
+
   // Automatically trigger email code send when entering forced setup email verification step
   useEffect(() => {
     if (
       mode === 'setup' &&
       setupStep === 'email_verification' &&
       activeSetupToken &&
-      !emailSent &&
-      !emailSending &&
+      !initialEmailSentRef.current &&
       remainingMs > 0
     ) {
+      setError('');
+      initialEmailSentRef.current = true;
       handleSendSetupEmailCode();
     }
-  }, [mode, setupStep, activeSetupToken, emailSent, emailSending, remainingMs, handleSendSetupEmailCode]);
+  }, [mode, setupStep, activeSetupToken, remainingMs, handleSendSetupEmailCode]);
 
   // Load setup data if in forced setup (only after email verification is complete)
   const loadSetupData = useCallback((explicitToken?: string) => {
@@ -314,6 +317,18 @@ export default function TwoFactorChallenge({
       .catch((err) => {
         didRespond = true;
         clearTimeout(timeoutId);
+        const errCode = err?.response?.data?.code;
+        const errMsg = err?.response?.data?.message || '';
+        if (
+          errCode === 'EMAIL_VERIFICATION_REQUIRED' ||
+          errMsg.includes('Email verification required')
+        ) {
+          setSetupStep('email_verification');
+          setError('');
+          initialEmailSentRef.current = false;
+          handleSendSetupEmailCode();
+          return;
+        }
         setError(mapTwoFactorError(err));
       })
       .finally(() => {
@@ -448,6 +463,7 @@ export default function TwoFactorChallenge({
 
   // ── Input box change handling for Setup Email Code ───────────────────────────
   const handleEmailDigitChange = (index: number, val: string) => {
+    setError('');
     const clean = val.replace(/\D/g, '');
     const targetDigits = [...emailOtpDigits];
 
@@ -471,6 +487,7 @@ export default function TwoFactorChallenge({
   };
 
   const handleEmailKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    setError('');
     if (e.key === 'Backspace' && !emailOtpDigits[index] && index > 0) {
       emailInputRefs.current[index - 1]?.focus();
     }
@@ -478,6 +495,7 @@ export default function TwoFactorChallenge({
 
   const handleEmailPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
+    setError('');
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     if (!pasted) return;
 
@@ -851,6 +869,7 @@ export default function TwoFactorChallenge({
                       <input
                         key={idx}
                         ref={(el) => (emailInputRefs.current[idx] = el)}
+                        data-testid={`email-otp-${idx}`}
                         type="text"
                         inputMode="numeric"
                         pattern="[0-9]*"

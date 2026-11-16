@@ -69,6 +69,7 @@ export const ENV_CATALOG: EnvDefinition[] = [
   { key: 'PLATFORM_ADMIN_NAME', category: 'OPTIONAL', description: 'Display name for platform admin in scripts' },
   { key: 'PLATFORM_ADMIN_CODE', category: 'OPTIONAL', description: 'Employee code override for platform admin' },
   { key: 'TENANT_NAME', category: 'OPTIONAL', description: 'Tenant company display name in prod:bootstrap' },
+  { key: 'DEV_DEMO_LOGIN', category: 'OPTIONAL', description: 'Enable local developer demo login (only permitted in development with local database)' },
 ];
 
 const KNOWN_DEFAULT_SECRETS = [
@@ -332,6 +333,35 @@ export function validateEnvironment(
       }
     } catch {
       invalidVariables.push('DATABASE_URL is not a valid URL format.');
+    }
+  }
+
+  // ─── STARTUP GUARD: DEV DEMO LOGIN RESTRICTION ─────────────────────────
+  if (env.DEV_DEMO_LOGIN === 'true') {
+    if (isProduction) {
+      invalidVariables.push('DEV_DEMO_LOGIN cannot be enabled in production mode (NODE_ENV=production).');
+    }
+    if (env.DATABASE_URL) {
+      try {
+        const parsedDb = new URL(env.DATABASE_URL.trim());
+        const dbHost = parsedDb.hostname.toLowerCase();
+        const localHosts = ['localhost', '127.0.0.1', '::1'];
+        if (!localHosts.includes(dbHost)) {
+          invalidVariables.push(
+            `DEV_DEMO_LOGIN cannot be enabled when DATABASE_URL host is '${dbHost}'. Database host must be localhost (127.0.0.1, ::1).`
+          );
+        }
+        const dbName = parsedDb.pathname.replace(/^\//, '');
+        if (!dbName.startsWith('jnc_crm_dev')) {
+          invalidVariables.push(
+            `DEV_DEMO_LOGIN cannot be enabled when DATABASE_URL database name is '${dbName}'. Database name must start with 'jnc_crm_dev'.`
+          );
+        }
+      } catch {
+        invalidVariables.push('DATABASE_URL is not a valid URL format for DEV_DEMO_LOGIN check.');
+      }
+    } else {
+      invalidVariables.push('DATABASE_URL is required when DEV_DEMO_LOGIN is enabled.');
     }
   }
 

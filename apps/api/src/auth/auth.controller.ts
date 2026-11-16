@@ -21,6 +21,7 @@ import {
   ForbiddenException,
   HttpException,
   UnauthorizedException,
+  NotFoundException,
   ConflictException,
   HttpCode,
   Query,
@@ -61,6 +62,7 @@ import {
   VerifyExistingPhoneDto,
   SendSetupEmailCodeDto,
   VerifySetupEmailCodeDto,
+  DevDemoLoginDto,
 } from './dto/login.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { CurrentUser } from './current-user.decorator';
@@ -199,6 +201,64 @@ export class AuthController {
     const ip = req.ip || req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'] as string | undefined;
     return this.authService.sendTwoFactorEmail(dto.loginTicket, ip, userAgent);
+  }
+
+  /** Local development only demo login — strictly guarded to return 404 in non-dev or remote setups */
+  @HttpCode(HttpStatus.OK)
+  @Post('dev-demo-login')
+  @Public()
+  async devDemoLogin(
+    @Body() dto: DevDemoLoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // 1. Environment check: NODE_ENV must be exactly 'development'
+    if (process.env.NODE_ENV !== 'development') {
+      this.logger.warn(`[DEV-DEMO-LOGIN] Rejected: NODE_ENV='${process.env.NODE_ENV}'`);
+      throw new NotFoundException();
+    }
+
+    // 2. Feature flag check: DEV_DEMO_LOGIN must be 'true'
+    if (process.env.DEV_DEMO_LOGIN !== 'true') {
+      this.logger.warn(`[DEV-DEMO-LOGIN] Rejected: DEV_DEMO_LOGIN='${process.env.DEV_DEMO_LOGIN}'`);
+      throw new NotFoundException();
+    }
+
+    // 3. Direct Loopback check: socket remoteAddress must be loopback (NEVER read X-Forwarded-For)
+    const remoteAddress = (req.socket?.remoteAddress || (req.connection as any)?.remoteAddress || '').trim();
+    const isLoopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remoteAddress);
+    if (!isLoopback) {
+      this.logger.warn(`[DEV-DEMO-LOGIN] Rejected: non-loopback remoteAddress='${remoteAddress}'`);
+      throw new NotFoundException();
+    }
+
+    // 4. Database check: host must be localhost, db name must start with 'jnc_crm_dev'
+    const dbUrl = process.env.DATABASE_URL || '';
+    try {
+      const parsed = new URL(dbUrl);
+      const dbHost = parsed.hostname.toLowerCase();
+      const dbName = parsed.pathname.replace(/^\//, '');
+      const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(dbHost);
+      const isDevDb = dbName.startsWith('jnc_crm_dev');
+      if (!isLocalHost || !isDevDb) {
+        this.logger.warn(`[DEV-DEMO-LOGIN] Rejected: dbHost='${dbHost}', dbName='${dbName}'`);
+        throw new NotFoundException();
+      }
+    } catch {
+      this.logger.warn(`[DEV-DEMO-LOGIN] Rejected: DATABASE_URL format invalid`);
+      throw new NotFoundException();
+    }
+
+    const result: any = await this.authService.devDemoLogin(
+      dto,
+      remoteAddress,
+      req.headers['user-agent'] as string | undefined,
+    );
+    if (result && result.refreshToken) {
+      res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, getRefreshCookieOptions(AUTH_COOKIE_PATH, true, req));
+      res.cookie(SESSION_ACTIVE_COOKIE_NAME, '1', getSessionIndicatorCookieOptions(true, req));
+    }
+    return result;
   }
 
   /** Returns current password policy rules and public sender address */

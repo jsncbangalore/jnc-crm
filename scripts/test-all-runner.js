@@ -260,6 +260,28 @@ runLayer('K', 'Post-Deploy Smoke Contract & Version Parity', (assert) => {
   assert('release:verify script configured', fs.existsSync(path.join(ROOT_DIR, 'scripts/release-verify.js')));
 });
 
+// ─── LAYER L: DEV DEMO LOGIN & SAFETY CONTROLS ─────────────────────────────
+runLayer('L', 'Dev Demo Login, Production Hardening & Safety Controls', (assert) => {
+  const demoProc = spawnSync(
+    process.execPath,
+    ['scripts/test-dev-demo-login-suite.js'],
+    { cwd: ROOT_DIR, encoding: 'utf8' }
+  );
+
+  const out = demoProc.stdout || '';
+  const err = demoProc.stderr || '';
+
+  assert('Dev demo login suite script completed successfully', demoProc.status === 0, err || out.slice(-200).trim());
+  assert('Startup guard refuses DEV_DEMO_LOGIN in production and remote DBs', out.includes('[PASS] validateEnvironment flags DEV_DEMO_LOGIN=true in production'));
+  assert('dev:demo-seed refuses to run against non-localhost database', out.includes('[PASS] dev:demo-seed exits non-zero and refuses to run against non-localhost database'));
+  assert('dev:demo-reset refuses to run against non-localhost database', out.includes('[PASS] dev:demo-reset exits non-zero and refuses to run against non-localhost database'));
+  assert('Endpoint returns 404 for unauthorized or non-demo requests', out.includes('[PASS] Returns 404 for unknown or unpermitted role'));
+  assert('All 6 demo roles login successfully with valid tokens and routing', out.includes("Role 'viewer'"));
+  assert('Accountant effectivePages includes invoices with full access', out.includes('[PASS] GET /invoices authorized and returned HTTP 200 for accountant'));
+  assert('Production bundle leak scan passes with 0 dev leaks in dist', out.includes('[PASS] scripts/scan-dist-leaks.js passed'));
+  assert('TwoFactorChallenge component clears error immediately upon input', out.includes('[PASS] TwoFactorChallenge clears error immediately upon user typing, keydown, or paste'));
+});
+
 // ─── REPORT GENERATION ───────────────────────────────────────────────────────
 const jsonReportPath = path.join(REPORT_DIR, 'test-all-report.json');
 fs.writeFileSync(jsonReportPath, JSON.stringify(report, null, 2), 'utf8');

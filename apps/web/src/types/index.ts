@@ -80,6 +80,7 @@ export interface User {
   teamId?: string;
   team?: string;
   teamRef?: { id: string; name: string; allowedPages?: string };
+  pages?: string[];
   effectivePages?: string[];
   homePage?: string;
   warehouseId?: string;

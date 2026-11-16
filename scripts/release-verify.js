@@ -320,6 +320,20 @@ async function run() {
     process.exit(1);
   }
 
+  // Step 0.6: Production dist bundle leak check (scan-dist-leaks.js)
+  console.log(' [VERIFY] Running Production Dist Leak Scanner (scripts/scan-dist-leaks.js)...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/scan-dist-leaks.js', {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'inherit',
+    });
+    console.log(' [SUCCESS] Production dist scan passed: zero dev-demo-login, DevPassword, or dev-credentials-box found.');
+  } catch (err) {
+    console.error(' [FAIL] Forbidden dev credentials or dev demo strings detected in dist! Deployment blocked.');
+    process.exit(1);
+  }
+
   // Resolve health URL: try /health if path contains /api/v1, or /api/v1/health if root
   let healthUrl = baseUrl.endsWith('/health')
     ? baseUrl

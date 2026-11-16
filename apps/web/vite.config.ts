@@ -20,9 +20,13 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     resolve: {
-      alias: {
-        '@crm/shared-validation': path.resolve(__dirname, '../../packages/shared-validation/src/index.ts'),
-      },
+      alias: [
+        { find: '@crm/shared-validation', replacement: path.resolve(__dirname, '../../packages/shared-validation/src/index.ts') },
+        ...(!isDev ? [
+          { find: /.*\/DevAccountsBox/, replacement: path.resolve(__dirname, 'src/components/auth/EmptyDevStub.tsx') },
+          { find: /.*\/DemoLoginPanel/, replacement: path.resolve(__dirname, 'src/components/auth/EmptyDevStub.tsx') },
+        ] : []),
+      ],
     },
     build: {
       sourcemap: false,

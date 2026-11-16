@@ -9,6 +9,8 @@
   "scripts": {
     "scan:branding": "node scripts/scan-branding.js",
     "test:white-label": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-white-label.ts",
+    "dev:demo-seed": "node scripts/dev-demo-seed.js",
+    "dev:demo-reset": "node scripts/dev-demo-reset.js",
     "start:api": "npm --workspace=apps/api run start:dev",
     "start:web": "npm --workspace=apps/web run dev",
     "build": "npm --workspace=apps/api run build && npm --workspace=apps/web run build",

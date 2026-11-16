@@ -443,4 +443,18 @@ export class VerifySetupEmailCodeDto {
   setupToken?: string;
 }
 
+export class DevDemoLoginDto {
+  @IsOptional()
+  @IsString()
+  role?: string;
+
+  @IsOptional()
+  @IsString()
+  roleKey?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+}
+
 

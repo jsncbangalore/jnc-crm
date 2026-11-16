@@ -106,6 +106,7 @@ interface AuthContextType {
   sessionExpired: boolean;
   /** Clears session and redirects to appropriate login page */
   clearSession: () => Promise<void>;
+  applyLoginSession?: (session: { user: User; accessToken: string; refreshToken?: string; redirectPath?: string }) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -334,6 +335,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!staffUser) return;
+
+    // Refresh permissions on initial mount
+    refreshEffectivePages(false);
 
     let lastFocusTime = 0;
     const handleFocus = () => {
@@ -1167,6 +1171,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [clearSetupPass]
   );
 
+  const applyLoginSession = useCallback((data: { user: User; accessToken: string; refreshToken?: string; redirectPath?: string }) => {
+    const isPlatform = data.user?.role === 'platform_super_admin' && !data.user?.tenantId;
+    lastActivityRef.current = Date.now();
+    try {
+      sessionStorage.setItem('crm_portal', isPlatform ? 'platform' : 'staff');
+      localStorage.setItem('crm_portal', isPlatform ? 'platform' : 'staff');
+    } catch {}
+    setStaffAccessToken(data.accessToken);
+    if (isPlatform) {
+      setPlatformAccessToken(data.accessToken);
+      setPlatformUserWithStorage(data.user);
+    } else {
+      setStaffUserWithStorage(data.user);
+    }
+    if (data.refreshToken) {
+      setStoredRefreshToken(data.refreshToken, isPlatform);
+    }
+    if (data.user) {
+      try {
+        localStorage.removeItem('app_branding');
+        sessionStorage.removeItem('app_branding');
+      } catch {}
+      setCurrentTabUserId(data.user.id);
+      broadcastSignIn(data.user.id, isPlatform ? 'platform' : 'staff');
+    }
+  }, [setStaffUserWithStorage, setPlatformUserWithStorage]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -1187,6 +1218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!user,
         sessionExpired,
         clearSession,
+        applyLoginSession,
         setupPass,
         setSetupPass,
         clearSetupPass,

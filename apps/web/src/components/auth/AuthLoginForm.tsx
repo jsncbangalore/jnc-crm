@@ -29,6 +29,10 @@ const DevAccountsBox = (import.meta.env.DEV && import.meta.env.VITE_SHOW_DEV_ACC
   ? React.lazy(() => import('./DevAccountsBox'))
   : null;
 
+const DemoLoginPanel = (import.meta.env.DEV && import.meta.env.VITE_DEMO_LOGIN === 'true')
+  ? React.lazy(() => import('./DemoLoginPanel'))
+  : null;
+
 export interface AuthLoginFormProps {
   portal: 'company' | 'platform';
 }
@@ -500,6 +504,13 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
               setPassword(pass);
             }}
           />
+        </React.Suspense>
+      )}
+
+      {/* Dev Demo Login Panel (Local development only, completely omitted in production builds) */}
+      {DemoLoginPanel && (
+        <React.Suspense fallback={null}>
+          <DemoLoginPanel />
         </React.Suspense>
       )}
 

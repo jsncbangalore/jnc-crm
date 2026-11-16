@@ -12,13 +12,23 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const WEB_DIST = path.join(REPO_ROOT, 'apps/web/dist');
 const API_DIST = path.join(REPO_ROOT, 'apps/api/dist');
 
-const BANNED_PATTERNS = [
+const COMMON_BANNED_PATTERNS = [
   { name: 'DevPassword', regex: /DevPassword/i },
   { name: 'Admin@123', regex: /Admin@123/i },
   { name: 'DemoPassword', regex: /DemoPassword/i },
   { name: 'test accounts', regex: /test accounts/i },
   { name: 'secret123', regex: /secret123/i },
   { name: 'Dev box seed email domain (seed.dev)', regex: /@(?:[a-zA-Z0-9-]+\.)?seed\.dev/i },
+];
+
+const WEB_BANNED_PATTERNS = [
+  ...COMMON_BANNED_PATTERNS,
+  { name: 'dev-demo-login', regex: /dev-demo-login/i },
+  { name: 'dev-credentials-box', regex: /dev-credentials-box/i },
+];
+
+const API_BANNED_PATTERNS = [
+  ...COMMON_BANNED_PATTERNS,
 ];
 
 function getAllFiles(dir, fileList = []) {
@@ -39,7 +49,7 @@ function getAllFiles(dir, fileList = []) {
   return fileList;
 }
 
-function scanDirectory(dir, label) {
+function scanDirectory(dir, label, patterns) {
   console.log(`\nScanning ${label} (${dir})...`);
   const files = getAllFiles(dir);
   console.log(`Found ${files.length} build asset files to inspect.`);
@@ -50,7 +60,7 @@ function scanDirectory(dir, label) {
     const content = fs.readFileSync(file, 'utf8');
     const relativePath = path.relative(REPO_ROOT, file);
 
-    for (const pattern of BANNED_PATTERNS) {
+    for (const pattern of patterns) {
       if (pattern.regex.test(content)) {
         violations.push({
           file: relativePath,
@@ -69,8 +79,8 @@ function runLeakScan() {
   console.log('Checking for dev fallback passwords, aliases, test account leaks & seed domains');
   console.log('========================================================================');
 
-  const webViolations = scanDirectory(WEB_DIST, 'Web Production Dist');
-  const apiViolations = scanDirectory(API_DIST, 'API Production Dist');
+  const webViolations = scanDirectory(WEB_DIST, 'Web Production Dist', WEB_BANNED_PATTERNS);
+  const apiViolations = scanDirectory(API_DIST, 'API Production Dist', API_BANNED_PATTERNS);
 
   const allViolations = [...webViolations, ...apiViolations];
 

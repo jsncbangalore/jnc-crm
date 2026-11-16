@@ -43,6 +43,7 @@ const PRE_MIGRATION_USER_COLUMNS: Record<string, boolean> = {
   createdAt: true,
   updatedAt: true,
   deletedAt: true,
+  isDemo: true,
 };
 
 const PRE_MIGRATION_MAIL_ACCOUNT_COLUMNS: Record<string, boolean> = {
@@ -239,6 +240,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           if (u.photoUrl === undefined) u.photoUrl = null;
           if (u.lastPasswordChangeAt === undefined) u.lastPasswordChangeAt = null;
           if (u.firstLoginAfter2FaReleaseAt === undefined) u.firstLoginAfter2FaReleaseAt = null;
+          if (u.isDemo === undefined) u.isDemo = false;
           if (u.tenant && typeof u.tenant === 'object' && u.tenant.requireTwoFactor === undefined) {
             u.tenant.requireTwoFactor = false;
           }

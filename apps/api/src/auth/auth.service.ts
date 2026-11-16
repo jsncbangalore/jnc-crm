@@ -121,7 +121,7 @@ export function formatAuthUser(user: any, effectivePages?: string[], homePage?: 
     photoUrl: user.photoUrl ?? null,
     role: user.role,
     mustResetPassword: Boolean(user.mustResetPassword),
-    isDemo: Boolean(user.tenant?.isDemo),
+    isDemo: Boolean(user.isDemo || user.tenant?.isDemo),
     lastPasswordChangeAt: user.lastPasswordChangeAt ?? null,
     createdAt: user.createdAt ?? null,
     tenant: user.tenant
@@ -2095,13 +2095,16 @@ export class AuthService {
     const mem = AuthService.inMemoryOtpChallenges.get(challenge.id);
     if (mem) mem.usedAt = now;
 
+    const effectivePages = await this.getEffectivePages(updatedUser);
+    const homePage = await this.getHomePage(updatedUser);
+
     return {
       success: true,
       message: 'Mobile number verified successfully.',
       phone: updatedUser.phone,
       phoneVerified: true,
       phoneVerifiedAt: updatedUser.phoneVerifiedAt,
-      user: formatAuthUser(updatedUser),
+      user: formatAuthUser(updatedUser, effectivePages, homePage),
     };
   }
 
@@ -3538,13 +3541,19 @@ export class AuthService {
         issuer: process.env.JWT_ISSUER || 'crm-api',
         audience: process.env.JWT_AUDIENCE || 'crm-client',
       });
+      const impEffectivePages = await this.getEffectivePages(impersonatedUser);
+      const impHomePage = await this.getHomePage(impersonatedUser);
       return {
-        user: formatAuthUser({
-          ...impersonatedUser,
-          isImpersonating: true,
-          impersonatedTenantName: impersonatedUser.tenant.name,
-          impersonatedTenantCode: impersonatedUser.tenant.code,
-        }),
+        user: formatAuthUser(
+          {
+            ...impersonatedUser,
+            isImpersonating: true,
+            impersonatedTenantName: impersonatedUser.tenant.name,
+            impersonatedTenantCode: impersonatedUser.tenant.code,
+          },
+          impEffectivePages,
+          impHomePage,
+        ),
         redirectPath: '/',
         accessToken: impersonatedAccessToken,
         refreshToken: newTokens.refreshToken,
@@ -3830,9 +3839,12 @@ export class AuthService {
       }).catch(() => {});
     }
 
+    const effectivePages = await this.getEffectivePages(updatedUser);
+    const homePage = await this.getHomePage(updatedUser);
+
     return {
       message: 'Password updated successfully',
-      user: formatAuthUser(updatedUser),
+      user: formatAuthUser(updatedUser, effectivePages, homePage),
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     };
@@ -4292,25 +4304,27 @@ export class AuthService {
       return '/platform/companies';
     }
 
+    const pages = effectivePages !== undefined ? effectivePages : await this.getEffectivePages(user);
+    if (!pages || pages.length === 0) {
+      return '/';
+    }
+
     const resolvedHomePage = homePage !== undefined ? homePage : await this.getHomePage(user);
-    if (resolvedHomePage && COMPANY_PAGE_REGISTRY[resolvedHomePage]) {
+    if (resolvedHomePage && pages.includes(resolvedHomePage) && COMPANY_PAGE_REGISTRY[resolvedHomePage]) {
       return COMPANY_PAGE_REGISTRY[resolvedHomePage].frontendRoutes[0] || '/';
     }
 
-    const pages = effectivePages || (await this.getEffectivePages(user));
-    if (pages && pages.length > 0) {
-      for (const key of ALL_COMPANY_PAGE_KEYS) {
-        if (pages.includes(key) && COMPANY_PAGE_REGISTRY[key]) {
-          return COMPANY_PAGE_REGISTRY[key].frontendRoutes[0] || '/';
-        }
-      }
-      const first = pages[0];
-      if (COMPANY_PAGE_REGISTRY[first]) {
-        return COMPANY_PAGE_REGISTRY[first].frontendRoutes[0] || '/';
+    for (const key of ALL_COMPANY_PAGE_KEYS) {
+      if (pages.includes(key) && COMPANY_PAGE_REGISTRY[key]) {
+        return COMPANY_PAGE_REGISTRY[key].frontendRoutes[0] || '/';
       }
     }
+    const first = pages[0];
+    if (COMPANY_PAGE_REGISTRY[first]) {
+      return COMPANY_PAGE_REGISTRY[first].frontendRoutes[0] || '/';
+    }
 
-    return getRoleRedirectPath(user);
+    return '/';
   }
 
   // ─── Sign-In Auditing & Recent Sign-Ins ──────────────────────────────────────
@@ -4400,6 +4414,87 @@ export class AuthService {
     });
   }
 
+  /** Local development only demo login — skips 2FA, OTP, and password reset strictly for demo accounts */
+  async devDemoLogin(dto: { role?: string; roleKey?: string; email?: string }, clientIp?: string, userAgent?: string) {
+    if (process.env.NODE_ENV !== 'development' || process.env.DEV_DEMO_LOGIN !== 'true') {
+      throw new NotFoundException();
+    }
+    try {
+      const parsed = new URL(process.env.DATABASE_URL || '');
+      const dbHost = parsed.hostname.toLowerCase();
+      const dbName = parsed.pathname.replace(/^\//, '');
+      if (!['localhost', '127.0.0.1', '::1'].includes(dbHost) || !dbName.startsWith('jnc_crm_dev')) {
+        throw new NotFoundException();
+      }
+    } catch {
+      throw new NotFoundException();
+    }
+
+    const role = dto?.role || dto?.roleKey;
+    const email = dto?.email;
+    let user: any = null;
+
+    if (email) {
+      user = await this.prisma.user.findFirst({
+        where: {
+          email: email.toLowerCase().trim(),
+          isDemo: true,
+        },
+        include: { tenant: true },
+      });
+    } else if (role) {
+      const targetRole = role.toLowerCase().trim();
+      let targetEmail: string | null = null;
+      if (['platform_owner', 'platform_super_admin'].includes(targetRole)) {
+        targetEmail = 'platform_owner@demo.test';
+      } else if (['admin', 'company_admin', 'tenant_admin'].includes(targetRole)) {
+        targetEmail = 'admin@demo.test';
+      } else if (['sales', 'sales_rep', 'sales_user'].includes(targetRole)) {
+        targetEmail = 'sales@demo.test';
+      } else if (['accountant', 'accounts'].includes(targetRole)) {
+        targetEmail = 'accountant@demo.test';
+      } else if (['store_manager', 'store', 'inventory'].includes(targetRole)) {
+        targetEmail = 'store@demo.test';
+      } else if (['viewer', 'readonly', 'read_only'].includes(targetRole)) {
+        targetEmail = 'viewer@demo.test';
+      }
+
+      if (targetEmail) {
+        user = await this.prisma.user.findFirst({
+          where: {
+            email: targetEmail,
+            isDemo: true,
+          },
+          include: { tenant: true },
+        });
+      } else {
+        user = await this.prisma.user.findFirst({
+          where: {
+            role: targetRole,
+            isDemo: true,
+          },
+          include: { tenant: true },
+        });
+      }
+    }
+
+    if (!user || user.isDemo !== true || !user.email?.toLowerCase().endsWith('@demo.test')) {
+      this.logger.warn(`[DEV-DEMO-LOGIN] Rejected: user invalid. exists=${!!user}, isDemo=${user?.isDemo}, email=${user?.email}`);
+      throw new NotFoundException();
+    }
+
+    const portal = user.role === 'platform_super_admin' && !user.tenantId ? 'platform' : 'company';
+    return this._buildLoginResponse(
+      user,
+      clientIp,
+      undefined,
+      true, // keepSignedIn
+      userAgent,
+      portal,
+      true, // bypass2Fa = true
+    );
+  }
+
   private async _buildLoginResponse(
     user: any,
     ipAddress?: string,
@@ -4474,10 +4569,12 @@ export class AuthService {
                   audience: process.env.JWT_AUDIENCE || 'crm-client',
                 },
               );
+              const effectivePages = await this.getEffectivePages(freshUser || resolvedUser);
+              const homePage = await this.getHomePage(freshUser || resolvedUser);
               return {
                 requiresTwoFactorSetup: true,
                 setupToken,
-                user: formatAuthUser(freshUser || resolvedUser),
+                user: formatAuthUser(freshUser || resolvedUser, effectivePages, homePage),
                 message: '2-Step verification is required. Please set up two-factor authentication to continue.',
               };
             }
@@ -5522,6 +5619,11 @@ export class AuthService {
 
     // 3. Generate 6-digit code
     const code = crypto.randomInt(100000, 1000000).toString();
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`\n======================================================`);
+      console.log(`[DEV 2FA EMAIL CODE] ${targetEmail}: ${code}`);
+      console.log(`======================================================\n`);
+    }
     const challengeId = crypto.randomUUID();
     const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'crm-otp-secret-key-2026';
     const codeHash = crypto
@@ -5911,6 +6013,8 @@ export class AuthService {
     }
 
     const tokens = this.generateTokens(user, undefined, false);
+    const effectivePages = await this.getEffectivePages(user);
+    const homePage = await this.getHomePage(user);
 
     return {
       success: true,
@@ -5918,7 +6022,7 @@ export class AuthService {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       trustedDeviceCookie,
-      user: formatAuthUser(user),
+      user: formatAuthUser(user, effectivePages, homePage),
       message: '2-Step verification has been successfully enabled.',
     };
   }
