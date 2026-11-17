@@ -5,10 +5,11 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BRAND } from '../../config/brand';
 import { openCookiePreferencesPanel } from '../../utils/cookieConsent';
+import { authApi } from '../../services/api';
 
 export interface FooterProps {
   className?: string;
@@ -21,6 +22,26 @@ export const Footer: React.FC<FooterProps> = ({
   mobileDockOffset = false,
   showCookieLinks = true,
 }) => {
+  const [apiCommitId, setApiCommitId] = useState<string | null>(null);
+  const webCommitId = (import.meta.env.VITE_GIT_COMMIT as string) || 'dev';
+
+  useEffect(() => {
+    let mounted = true;
+    authApi
+      .getHealth()
+      .then((res) => {
+        if (mounted && res?.data?.commitId) {
+          setApiCommitId(res.data.commitId);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const isMismatch = Boolean(apiCommitId && webCommitId && !['dev', 'unknown', 'local-dev'].includes(webCommitId) && !['dev', 'unknown', 'local-dev'].includes(apiCommitId) && apiCommitId !== webCommitId);
+
   return (
     <footer
       data-testid="global-footer"
@@ -30,8 +51,20 @@ export const Footer: React.FC<FooterProps> = ({
         mobileDockOffset ? 'mb-14 lg:mb-0' : ''
       } ${className}`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3 flex-wrap">
         <span data-testid="footer-copyright-text">{BRAND.copyright}</span>
+        <span aria-hidden="true" className="opacity-40">•</span>
+        <div data-testid="footer-build-ids" className="flex items-center gap-1.5 text-[11px] font-mono">
+          {isMismatch ? (
+            <span className="text-amber-600 dark:text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+              ⚠️ Build mismatch: Web {webCommitId.slice(0, 7)} / API {apiCommitId?.slice(0, 7)}
+            </span>
+          ) : (
+            <span className="opacity-75">
+              Build {webCommitId.slice(0, 7)}{apiCommitId && apiCommitId !== webCommitId ? ` (API: ${apiCommitId.slice(0, 7)})` : ''}
+            </span>
+          )}
+        </div>
       </div>
       {showCookieLinks && (
         <div className="flex items-center gap-3 sm:gap-4 text-xs" data-testid="footer-cookie-links-container">

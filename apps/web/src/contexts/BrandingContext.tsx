@@ -45,9 +45,14 @@ const BrandingContext = createContext<BrandingContextType>({
 
 const sanitizeCompanyLogo = (url?: string | null): string | null => {
   if (!url || typeof url !== 'string' || url.trim() === '') return null;
+  const lower = url.trim().toLowerCase();
+  if (lower === '/logo.png' || lower === 'logo.png' || lower.endsWith('/logo.png')) return null;
   if (url.startsWith('data:image/')) return url;
   const resolved = resolveFileUrl(url);
-  return resolved || null;
+  if (!resolved) return null;
+  const resolvedLower = resolved.toLowerCase();
+  if (resolvedLower === '/logo.png' || resolvedLower === 'logo.png' || resolvedLower.endsWith('/logo.png')) return null;
+  return resolved;
 };
 
 export const BrandingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
