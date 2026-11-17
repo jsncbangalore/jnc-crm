@@ -58,6 +58,7 @@ model Tenant {
   isInternal          Boolean        @default(false)
   requireTwoFactor    Boolean        @default(false)
   isDemo              Boolean        @default(false)
+  autoAllocateAdvance Boolean        @default(true)
   webhookKeyHash      String?        @unique
 
   createdAt           DateTime       @default(now())

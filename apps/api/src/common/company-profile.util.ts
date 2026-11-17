@@ -6,6 +6,7 @@
  * ----------------------------------------------------- */
 
 import { decryptAtRest, encryptAtRest } from './encryption.util';
+import { normalizeHttpsUrl } from './shared-validation';
 
 export interface CompanyProfileCompletenessResult {
   complete: boolean;
@@ -175,6 +176,7 @@ export async function getUnifiedCompanyProfile(prisma: any, tenantId: string) {
     return null;
   }
 
+
   let logoBuffer: Buffer | null = null;
   let logoBase64: string | null = null;
 
@@ -218,10 +220,16 @@ export async function getUnifiedCompanyProfile(prisma: any, tenantId: string) {
 
   const completeness = await getCompanyProfileCompleteness(prisma, tenant.id);
 
+  const isProductLogo =
+    typeof tenant.logoUrl === 'string' &&
+    (tenant.logoUrl === '/logo.png' ||
+      tenant.logoUrl === 'logo.png' ||
+      tenant.logoUrl.endsWith('/logo.png'));
+
   const resolvedLogoUrl =
     logoBase64 ||
-    (tenant.logoUrl && tenant.logoUrl.trim() !== ''
-      ? tenant.logoUrl
+    (!isProductLogo && tenant.logoUrl && tenant.logoUrl.trim() !== ''
+      ? (tenant.logoUrl === '/api/v1/settings/branding/logo' ? `/api/v1/settings/branding/logo/${tenant.id}` : tenant.logoUrl)
       : null);
 
   return {
@@ -258,6 +266,7 @@ export async function getUnifiedCompanyProfile(prisma: any, tenantId: string) {
     logoBase64,
     logoBuffer,
     invoicePrefix: tenant.invoicePrefix || 'INV',
+    autoAllocateAdvance: tenant.autoAllocateAdvance !== false,
     isOnboarded: tenant.isOnboarded || false,
     completeness,
   };
@@ -288,7 +297,7 @@ export async function updateUnifiedCompanyProfile(
     if (dto.city !== undefined) updateData.city = dto.city?.trim();
     if (dto.state !== undefined) updateData.state = dto.state?.trim();
     if (dto.pincode !== undefined) updateData.pincode = dto.pincode?.trim();
-    if (dto.website !== undefined) updateData.website = dto.website?.trim();
+    if (dto.website !== undefined) updateData.website = dto.website ? normalizeHttpsUrl(dto.website) : null;
     if (dto.gstin !== undefined) updateData.gstin = dto.gstin?.trim()?.toUpperCase();
     if (dto.pan !== undefined) updateData.pan = dto.pan?.trim()?.toUpperCase();
     if (dto.lutBondNo !== undefined) updateData.lutBondNo = dto.lutBondNo?.trim();
@@ -298,6 +307,7 @@ export async function updateUnifiedCompanyProfile(
     if (dto.signatoryName !== undefined) updateData.signatoryName = dto.signatoryName?.trim();
     if (dto.signatoryDesignation !== undefined) updateData.signatoryDesignation = dto.signatoryDesignation?.trim();
     if (dto.requireTwoFactor !== undefined) updateData.requireTwoFactor = Boolean(dto.requireTwoFactor);
+    if (dto.autoAllocateAdvance !== undefined) updateData.autoAllocateAdvance = Boolean(dto.autoAllocateAdvance);
 
     // Handle branding URLs
     if (dto.logoUrl !== undefined) updateData.logoUrl = dto.logoUrl;

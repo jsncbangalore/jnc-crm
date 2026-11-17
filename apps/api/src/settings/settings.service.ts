@@ -27,7 +27,8 @@ import {
 } from './web-form-settings.util';
 import { UpdateWebFormSettingsDto, TestMailAccountDto } from './dto/settings.dto';
 import * as crypto from 'crypto';
-import { validateLogoField, hasValidImageMagicSignature } from '../common/shared-validation';
+import * as jwt from 'jsonwebtoken';
+import { validateLogoField, hasValidImageMagicSignature, normalizeHttpsUrl } from '../common/shared-validation';
 
 export interface CompanyBrandingConfig {
   companyDisplayName: string;
@@ -38,7 +39,7 @@ export interface CompanyBrandingConfig {
 export const DEFAULT_BRANDING: CompanyBrandingConfig = {
   companyDisplayName: BRAND_CONFIG.displayName,
   companyPhone: (process.env.DEFAULT_COMPANY_PHONE || '').trim(),
-  companyLogoUrl: '/api/v1/settings/branding/logo',
+  companyLogoUrl: null, // Strictly null. Never product logo or default logo URL for documents!
 };
 
 @Injectable()
@@ -81,6 +82,30 @@ export class SettingsService {
   }
 
   /**
+   * Helper to delete cached branding assets from disk
+   */
+  private deleteDiskAssetCache(tenantId: string, assetType: string): void {
+    try {
+      const baseDirs = [
+        path.resolve(process.cwd(), 'apps/web/public/uploads/branding'),
+        path.resolve(process.cwd(), 'apps/api/uploads/branding'),
+        path.resolve(process.cwd(), 'uploads/branding'),
+      ];
+      const extensions = ['png', 'jpg', 'jpeg', 'webp'];
+      for (const baseDir of baseDirs) {
+        for (const ext of extensions) {
+          const p = path.join(baseDir, `${tenantId}_${assetType}.${ext}`);
+          if (fs.existsSync(p)) {
+            try {
+              fs.unlinkSync(p);
+            } catch {}
+          }
+        }
+      }
+    } catch {}
+  }
+
+  /**
    * Retrieve company branding for a specific tenant or user context
    * Ensures short internal addresses are always returned, never raw image text!
    */
@@ -103,7 +128,12 @@ export class SettingsService {
         if (tenant) {
           // Check if custom logo exists (either in BrandingAsset table, disk cache, or tenant.logoUrl)
           let customLogoExists = false;
-          if (tenant.logoUrl && tenant.logoUrl.trim() !== '') {
+          if (
+            tenant.logoUrl &&
+            tenant.logoUrl.trim() !== '' &&
+            tenant.logoUrl !== '/logo.png' &&
+            !tenant.logoUrl.endsWith('/logo.png')
+          ) {
             customLogoExists = true;
           } else {
             try {
@@ -114,9 +144,9 @@ export class SettingsService {
             } catch {}
           }
 
-          let resolvedLogoUrl = DEFAULT_BRANDING.companyLogoUrl;
+          let resolvedLogoUrl: string | null = null;
           if (customLogoExists) {
-            resolvedLogoUrl = '/api/v1/settings/branding/logo';
+            resolvedLogoUrl = `/api/v1/settings/branding/logo/${tenant.id}`;
           }
 
           return {
@@ -164,7 +194,12 @@ export class SettingsService {
     }
 
     if (dto.companyLogoUrl !== undefined) {
-      if (dto.companyLogoUrl && dto.companyLogoUrl.trim() !== '') {
+      if (
+        dto.companyLogoUrl &&
+        dto.companyLogoUrl.trim() !== '' &&
+        dto.companyLogoUrl !== '/logo.png' &&
+        !dto.companyLogoUrl.endsWith('/logo.png')
+      ) {
         const v = validateLogoField(dto.companyLogoUrl);
         if (!v.valid) {
           throw new BadRequestException(v.error || 'Invalid document logo.');
@@ -196,7 +231,8 @@ export class SettingsService {
           updateData.logoUrl = dto.companyLogoUrl;
         }
       } else {
-        updateData.logoUrl = '/logo.png';
+        updateData.logoUrl = null;
+        this.deleteDiskAssetCache(tenantId, 'logo');
         try {
           await (this.prisma as any).brandingAsset.deleteMany({
             where: { tenantId, assetType: 'logo' },
@@ -211,14 +247,33 @@ export class SettingsService {
       data: updateData,
     });
 
+    const brandingChangedFields = Object.keys(updateData);
+    if (brandingChangedFields.length > 0) {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId,
+          actorId: user.id,
+          actorName: (user as any).name || (user as any).email || user.employeeCode,
+          action: 'COMPANY_BRANDING_UPDATED',
+          entityName: 'Tenant',
+          entityId: tenantId,
+          afterState: JSON.stringify({ changedFields: brandingChangedFields }),
+        },
+      }).catch(() => {});
+    }
+
     this.logger.log(
       `Tenant branding updated for ${updatedTenant.code} by ${user.employeeCode}: ${updatedTenant.name}`,
     );
 
-    let finalLogoUrl = DEFAULT_BRANDING.companyLogoUrl;
-    if (updatedTenant.logoUrl) {
+    let finalLogoUrl: string | null = null;
+    if (
+      updatedTenant.logoUrl &&
+      updatedTenant.logoUrl !== '/logo.png' &&
+      !updatedTenant.logoUrl.endsWith('/logo.png')
+    ) {
       finalLogoUrl = updatedTenant.logoUrl.startsWith('data:image/')
-        ? '/api/v1/settings/branding/logo'
+        ? (user.tenantId ? `/api/v1/settings/branding/logo/${user.tenantId}` : '/api/v1/settings/branding/logo')
         : updatedTenant.logoUrl;
     }
 
@@ -256,7 +311,9 @@ export class SettingsService {
     }
 
     const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
-    const shortUrl = '/api/v1/settings/branding/logo';
+    const shortUrl = user?.tenantId
+      ? `/api/v1/settings/branding/logo/${user.tenantId}`
+      : '/api/v1/settings/branding/logo';
 
     if (user?.tenantId) {
       try {
@@ -390,7 +447,7 @@ export class SettingsService {
     if (dto.city !== undefined) updateData.city = dto.city?.trim();
     if (dto.state !== undefined) updateData.state = dto.state?.trim();
     if (dto.pincode !== undefined) updateData.pincode = dto.pincode?.trim();
-    if (dto.website !== undefined) updateData.website = dto.website?.trim();
+    if (dto.website !== undefined) updateData.website = dto.website ? normalizeHttpsUrl(dto.website) : null;
     if (dto.gstin !== undefined) updateData.gstin = dto.gstin?.trim()?.toUpperCase();
     if (dto.pan !== undefined) updateData.pan = dto.pan?.trim()?.toUpperCase();
     if (dto.lutBondNo !== undefined) updateData.lutBondNo = dto.lutBondNo?.trim();
@@ -405,6 +462,7 @@ export class SettingsService {
     if (dto.signatoryName !== undefined) updateData.signatoryName = dto.signatoryName?.trim();
     if (dto.signatoryDesignation !== undefined) updateData.signatoryDesignation = dto.signatoryDesignation?.trim();
     if (dto.requireTwoFactor !== undefined) updateData.requireTwoFactor = Boolean(dto.requireTwoFactor);
+    if (dto.autoAllocateAdvance !== undefined) updateData.autoAllocateAdvance = Boolean(dto.autoAllocateAdvance);
 
     if (dto.signatureUrl !== undefined) {
       if (dto.signatureUrl && dto.signatureUrl.startsWith('data:image/')) {
@@ -453,7 +511,12 @@ export class SettingsService {
     }
 
     if (dto.logoUrl !== undefined) {
-      if (dto.logoUrl && dto.logoUrl.trim() !== '') {
+      if (
+        dto.logoUrl &&
+        dto.logoUrl.trim() !== '' &&
+        dto.logoUrl !== '/logo.png' &&
+        !dto.logoUrl.endsWith('/logo.png')
+      ) {
         const v = validateLogoField(dto.logoUrl);
         if (!v.valid) throw new BadRequestException(v.error || 'Invalid document logo.');
         if (dto.logoUrl.startsWith('data:image/')) {
@@ -477,7 +540,13 @@ export class SettingsService {
           updateData.logoUrl = dto.logoUrl;
         }
       } else {
-        updateData.logoUrl = '/logo.png';
+        updateData.logoUrl = null;
+        this.deleteDiskAssetCache(tenantId, 'logo');
+        try {
+          await (this.prisma as any).brandingAsset.deleteMany({
+            where: { tenantId, assetType: 'logo' },
+          });
+        } catch {}
       }
     }
 
@@ -558,6 +627,42 @@ export class SettingsService {
           updateData.bankBranch = defaultBank.branch;
           updateData.bankUpi = defaultBank.upiId;
         }
+      }
+
+      const currentTenant = await tx.tenant.findUnique({ where: { id: tenantId } });
+
+      const changedFields = Object.keys(updateData).filter(
+        (key) => key !== 'isOnboarded' && (currentTenant as any)?.[key] !== updateData[key]
+      );
+
+      if (changedFields.length > 0) {
+        // Redact bank account numbers (no values for bank account numbers)
+        const sanitizedBefore: Record<string, any> = {};
+        const sanitizedAfter: Record<string, any> = {};
+        for (const k of changedFields) {
+          if (k === 'bankAccountNumber') {
+            sanitizedBefore[k] = '[REDACTED]';
+            sanitizedAfter[k] = '[REDACTED]';
+          } else {
+            sanitizedBefore[k] = (currentTenant as any)?.[k] ?? null;
+            sanitizedAfter[k] = updateData[k] ?? null;
+          }
+        }
+
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            actorId: user.id,
+            actorName: (user as any).name || (user as any).email || user.employeeCode,
+            action: 'COMPANY_PROFILE_UPDATED',
+            entityName: 'Tenant',
+            entityId: tenantId,
+            beforeState: JSON.stringify({ changedFields, values: sanitizedBefore }),
+            afterState: JSON.stringify({ changedFields, values: sanitizedAfter }),
+          },
+        }).catch((err: any) => {
+          this.logger.warn(`Failed to create audit log for company profile update: ${err.message}`);
+        });
       }
 
       await tx.tenant.update({
@@ -1366,10 +1471,32 @@ export class SettingsService {
 
     let tenant: any = null;
     try {
-      if (tenantKey) {
+      let resolvedKey = tenantKey;
+      if (!resolvedKey && res.req) {
+        const req = res.req;
+        resolvedKey =
+          (req.query?.tenantId as string) ||
+          (req.query?.tenantKey as string) ||
+          (req.headers?.['x-tenant-id'] as string) ||
+          (req.headers?.['x-tenant-key'] as string);
+        if (!resolvedKey && req.headers?.authorization) {
+          try {
+            const authHeader = req.headers.authorization;
+            if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+              const token = authHeader.slice(7);
+              const decoded = jwt.decode(token) as any;
+              if (decoded && decoded.tenantId) {
+                resolvedKey = decoded.tenantId;
+              }
+            }
+          } catch {}
+        }
+      }
+
+      if (resolvedKey) {
         tenant = await this.prisma.tenant.findFirst({
           where: {
-            OR: [{ id: tenantKey }, { code: tenantKey }, { slug: tenantKey }],
+            OR: [{ id: resolvedKey }, { code: resolvedKey }, { slug: resolvedKey }],
             deletedAt: null,
           },
         });
@@ -1441,7 +1568,16 @@ export class SettingsService {
       }
     }
 
-    // 4. Default logo fallback
+    // For document logo or stamp: NEVER fall back to product logo!
+    // Company documents must show ONLY the company's own logo, or plain text with none.
+    if (type === 'logo' || type === 'stamp') {
+      return res.status(404).json({
+        statusCode: 404,
+        message: `No custom ${type} configured for this company`,
+      });
+    }
+
+    // 4. Default logo fallback (only for non-document system assets)
     const logoCandidates = [process.env.PRODUCT_LOGO_PATH, 'logo.png', 'logo.jpg', 'logo-icon.png', 'logo-full.png'].filter(Boolean);
     const candidateDirs = [
       path.resolve(process.cwd(), 'apps/api/assets'),

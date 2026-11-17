@@ -834,6 +834,27 @@ export const validateDate = (raw?: string | Date, required = false): { valid: bo
 // https:// only, max 500 characters
 export const URL_REGEX = /^https:\/\/[^\s$.?#].[^\s]*$/i;
 
+/**
+ * Normalizes a website URL by trimming and ensuring https:// protocol.
+ * Accepts 'www.example.com', 'example.com', 'http://example.com', 'https://example.com'.
+ * Keeps other schemes (e.g. ftp://) untouched so validators can reject them.
+ */
+export const normalizeHttpsUrl = (raw?: string): string => {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (/^https:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^http:\/\//i.test(trimmed)) {
+    return trimmed.replace(/^http:\/\//i, 'https://');
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+};
+
 export const validateHttpsUrl = (raw?: string, required = false): { valid: boolean; error?: string; value: string } => {
   const value = (raw || '').trim();
   if (!value) {
@@ -847,6 +868,10 @@ export const validateHttpsUrl = (raw?: string, required = false): { valid: boole
     return { valid: false, error: 'URL must start with https:// and be a valid web address.', value };
   }
   return { valid: true, value };
+};
+
+export const isValidHttpsUrl = (raw?: string, required = false): boolean => {
+  return validateHttpsUrl(raw, required).valid;
 };
 
 /**

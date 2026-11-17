@@ -158,8 +158,17 @@ export class InvoicingService {
         };
       });
 
+      // Check tenant auto-allocate advance setting (default: true)
+      const tenantSetting = await tx.tenant.findUnique({
+        where: { id: tenantId },
+        select: { autoAllocateAdvance: true },
+      });
+      const autoAllocateEnabled = tenantSetting?.autoAllocateAdvance !== false;
+
       const totalAmount = subtotal + totalCgst + totalSgst + totalIgst;
-      const advanceAdjusted = (order.paidAmount && order.paidAmount > 0) ? order.paidAmount : (order.advanceAmount || 0);
+      const advanceAdjusted = autoAllocateEnabled
+        ? ((order.paidAmount && order.paidAmount > 0) ? order.paidAmount : (order.advanceAmount || 0))
+        : 0;
       const balanceDue = Math.max(0, Number((totalAmount - advanceAdjusted).toFixed(2)));
       let initialPaymentStatus = 'unpaid';
       if (advanceAdjusted >= totalAmount - 0.5) {
@@ -217,6 +226,34 @@ export class InvoicingService {
         entityId: invoice.id,
         afterState: { invoiceNumber, orderId: order.id, totalAmount },
       }, tx);
+
+      // Link any existing unallocated advance payments on this order to the new invoice
+      if (advanceAdjusted > 0) {
+        const existingOrderPayments = await tx.paymentRecord.findMany({
+          where: { orderId: order.id, tenantId },
+          include: { allocations: true },
+        });
+
+        let remainingToAllocate = advanceAdjusted;
+        for (const pmt of existingOrderPayments) {
+          if (remainingToAllocate <= 0) break;
+          const totalAlloc = pmt.allocations.reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
+          const unallocatedInPmt = Math.max(0, Number(pmt.amount) - totalAlloc);
+          if (unallocatedInPmt > 0) {
+            const toAlloc = Math.min(remainingToAllocate, unallocatedInPmt);
+            await tx.paymentAllocation.create({
+              data: {
+                tenantId,
+                paymentType: 'customer_receipt',
+                paymentRecordId: pmt.id,
+                invoiceId: invoice.id,
+                amount: new Prisma.Decimal(toAlloc.toFixed(2)),
+              },
+            });
+            remainingToAllocate -= toAlloc;
+          }
+        }
+      }
 
       // Automated LUT Validity Verification for SEZ Invoices
       if (invoice.isSez || invoice.docType === 'sez_invoice') {
@@ -1636,8 +1673,9 @@ export class InvoicingService {
    * Void an invoice (Admin & Super Admin only)
    */
   async voidInvoice(id: string, reason: string, user: ScopedUser, reversePayments = false) {
-    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
-      throw new ForbiddenException('Only Administrators can void invoices.');
+    const allowedRoles = ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'finance', 'accountant'];
+    if (!allowedRoles.includes(user.role)) {
+      throw new ForbiddenException('Only Administrators, Finance, and Accountants can void invoices.');
     }
 
     const tenantId = requireTenantId(user);

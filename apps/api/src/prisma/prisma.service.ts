@@ -98,6 +98,9 @@ const PRE_MIGRATION_TENANT_COLUMNS: Record<string, boolean> = {
   stampUrl: true,
   isOnboarded: true,
   isInternal: true,
+  requireTwoFactor: true,
+  isDemo: true,
+  autoAllocateAdvance: true,
   webhookKeyHash: true,
   createdAt: true,
   updatedAt: true,
@@ -288,6 +291,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           if (!t || typeof t !== 'object') return t;
           if (t.requireTwoFactor === undefined) {
             t.requireTwoFactor = false;
+          }
+          if (t.autoAllocateAdvance === undefined) {
+            t.autoAllocateAdvance = true;
           }
           return t;
         };

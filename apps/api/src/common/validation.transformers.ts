@@ -31,6 +31,7 @@ import {
   validateIfsc,
   validateBankAccount,
   validateDate,
+  normalizeHttpsUrl,
   validateHttpsUrl,
   validateLogoField,
   validateNameField,
@@ -136,6 +137,21 @@ export function TrimString() {
   return Transform(({ value }) => {
     if (typeof value === 'string') {
       return removeControlCharacters(value).trim();
+    }
+    return value;
+  });
+}
+
+/**
+ * Transform decorator: trims whitespace and normalizes website to https:// scheme.
+ * Accepts 'www.example.com', 'example.com', 'http://example.com', 'https://example.com'.
+ */
+export function NormalizeHttpsUrl() {
+  return Transform(({ value }) => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return '';
+      return normalizeHttpsUrl(trimmed);
     }
     return value;
   });

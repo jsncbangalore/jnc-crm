@@ -25,6 +25,7 @@ import {
   IsValidIfsc,
   IsValidBankAccount,
   IsValidHttpsUrl,
+  NormalizeHttpsUrl,
   IsValidLogo,
   CleanPhone,
   CleanGstin,
@@ -105,6 +106,7 @@ export class UpdateCompanyProfileDto {
   @IsValidPin()
   pincode?: string;
 
+  @NormalizeHttpsUrl()
   @TrimString()
   @IsOptional()
   @IsString()
@@ -215,6 +217,10 @@ export class UpdateCompanyProfileDto {
   @IsOptional()
   @IsBoolean()
   requireTwoFactor?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  autoAllocateAdvance?: boolean;
 }
 
 export class DetectMailProviderDto {
