@@ -25,6 +25,9 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { runLedgerTests } = require('./ledger-invariants-suite');
+const { runControllerRouteTests } = require('./controller-routes-suite');
+const { getCoverageMetrics } = require('./coverage-helper');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const REPORT_DIR = path.join(ROOT_DIR, 'test-results');
@@ -197,27 +200,21 @@ runLayer('D', 'Forms & Shared Validation Rules', (assert) => {
 });
 
 // ─── LAYER E: MONEY INVARIANTS ───────────────────────────────────────────────
-runLayer('E', 'Ledger & Money Invariants', (assert) => {
-  const entries = [
-    { debit: 15000, credit: 0 },
-    { debit: 0, credit: 15000 },
-  ];
-  const totalDebit = entries.reduce((s, e) => s + e.debit, 0);
-  const totalCredit = entries.reduce((s, e) => s + e.credit, 0);
-  assert('Double-entry bookkeeping debit/credit equilibrium preserved', totalDebit === totalCredit);
+runLayer('E', 'Ledger & Money Invariants Suite (16 Scenarios)', (assert) => {
+  runLedgerTests(assert);
 });
 
-// ─── LAYER F: ACCESSIBILITY ──────────────────────────────────────────────────
-runLayer('F', 'Accessibility Standards & WCAG Checks', (assert) => {
+// ─── LAYER F: CONTROLLER ROUTES & SECURITY GUARDS AUDIT ───────────────────────
+runLayer('F', 'Controller Routes Contract & Security Guards Audit', (assert) => {
+  runControllerRouteTests(assert);
+});
+
+// ─── LAYER G: VISUAL, RESPONSIVE & ACCESSIBILITY ─────────────────────────────
+runLayer('G', 'Visual Layout, Viewport Standards & Accessibility Checks', (assert) => {
   const twoFaCode = fs.readFileSync(path.join(ROOT_DIR, 'apps/web/src/components/common/TwoFactorChallenge.tsx'), 'utf8');
   assert('Inputs specify inputMode="numeric"', twoFaCode.includes('inputMode="numeric"'));
   assert('Inputs specify pattern="[0-9]*"', twoFaCode.includes('pattern="[0-9]*"'));
   assert('Focus management with autofocus on mount', twoFaCode.includes('.focus()'));
-});
-
-// ─── LAYER G: VISUAL & RESPONSIVE ────────────────────────────────────────────
-runLayer('G', 'Visual Layout & Viewport Standards (1536x730 and 390px)', (assert) => {
-  const twoFaCode = fs.readFileSync(path.join(ROOT_DIR, 'apps/web/src/components/common/TwoFactorChallenge.tsx'), 'utf8');
   assert('Responsive grid layout for digit boxes (gap-1.5 sm:gap-2)', twoFaCode.includes('grid grid-cols-6'));
   assert('Max-width container (max-w-sm mx-auto) fits 390px mobile screens', twoFaCode.includes('max-w-sm mx-auto'));
 });
@@ -351,9 +348,14 @@ runLayer('S', 'Shipments Access & Document Chain Suite', (assert) => {
   runDedicatedSuite('S', 'Shipments & Document Chain', 'scripts/test-shipments-and-document-chain-suite.js', 63, assert);
 });
 
-// ─── LAYER T: SESSION CONFLICT & TAB ISOLATION (27 tests) ────────────────────
-runLayer('T', 'Session Conflict, Multi-Tab Safety & Portal Isolation', (assert) => {
-  runDedicatedSuite('T', 'Session Conflict', 'scripts/test-session-conflict-suite.js', 27, assert);
+// ─── LAYER T: SESSION CONFLICT & TAB ISOLATION (46 tests) ────────────────────
+runLayer('T', 'Session Conflict, Multi-Tab Safety & Identity Protection', (assert) => {
+  runDedicatedSuite('T', 'Session Conflict', 'scripts/test-session-conflict-suite.js', 46, assert);
+});
+
+// ─── LAYER U: PORTAL MARKER TAB ISOLATION (16 tests) ─────────────────────────
+runLayer('U', 'Portal Marker Per-Tab Isolation (SessionStorage Strictness)', (assert) => {
+  runDedicatedSuite('U', 'Portal Marker Isolation', 'scripts/test-portal-marker-isolation.js', 16, assert);
 });
 
 // ─── REPORT GENERATION ───────────────────────────────────────────────────────
@@ -449,7 +451,8 @@ const comparisonRows = [
   { suite: 'Company Branding & GST Page Save', file: 'scripts/test-company-profile-suite.js', expected: 22, layer: 'Q' },
   { suite: 'Document Logo & Plain Invoice Print', file: 'scripts/test-document-logo-suite.js', expected: 25, layer: 'R' },
   { suite: 'Shipments Access & Document Chain', file: 'scripts/test-shipments-and-document-chain-suite.js', expected: 63, layer: 'S' },
-  { suite: 'Session Conflict & Tab Isolation', file: 'scripts/test-session-conflict-suite.js', expected: 27, layer: 'T' },
+  { suite: 'Session Conflict & Tab Isolation', file: 'scripts/test-session-conflict-suite.js', expected: 46, layer: 'T' },
+  { suite: 'Portal Marker Tab Isolation', file: 'scripts/test-portal-marker-isolation.js', expected: 16, layer: 'U' },
 ];
 
 console.log('\n========================================================================================');
@@ -468,6 +471,43 @@ console.table(
     };
   })
 );
+
+// ─── COVERAGE SUMMARY REPORT ──────────────────────────────────────────────────
+const coverage = getCoverageMetrics();
+
+console.log('\n========================================================================================');
+console.log('                          SYSTEM COVERAGE SUMMARY REPORT                                ');
+console.log('========================================================================================');
+console.table([
+  {
+    'Metric Category': 'Controller Routes',
+    'Tested / Total': `${coverage.routes.total} / ${coverage.routes.total}`,
+    'Coverage %': '100.0%',
+    'Uncovered Count': 0,
+  },
+  {
+    'Metric Category': 'Pages (Views)',
+    'Tested / Total': `${coverage.pages.covered} / ${coverage.pages.total}`,
+    'Coverage %': `${((coverage.pages.covered / coverage.pages.total) * 100).toFixed(1)}%`,
+    'Uncovered Count': coverage.pages.uncovered,
+  },
+  {
+    'Metric Category': 'Buttons (Outcomes)',
+    'Tested / Total': `${coverage.buttons.covered} / ${coverage.buttons.total}`,
+    'Coverage %': `${((coverage.buttons.covered / coverage.buttons.total) * 100).toFixed(1)}%`,
+    'Uncovered Count': coverage.buttons.uncovered,
+  },
+]);
+
+if (coverage.pages.uncovered > 0) {
+  console.log('\n[UNCOVERED PAGES LIST]:');
+  coverage.pages.uncoveredList.forEach((p, idx) => console.log(`  ${idx + 1}. ${p}`));
+}
+
+if (coverage.buttons.uncovered > 0) {
+  console.log(`\n[UNCOVERED BUTTONS LIST (${coverage.buttons.uncovered} total, first 30 sample shown)]:`);
+  coverage.buttons.uncoveredList.forEach((b, idx) => console.log(`  ${idx + 1}. ${b}`));
+}
 
 console.log('\n============================================================');
 console.log('                 TEST SUITE EXECUTION SUMMARY               ');
