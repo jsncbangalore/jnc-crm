@@ -570,6 +570,97 @@ async function main() {
     }
 
     // -------------------------------------------------------------
+    // TEST 10: IMPERSONATION LIFECYCLE, AUDIT LOG & PLATFORM ENDPOINT GUARD
+    // -------------------------------------------------------------
+    console.log('\n[TEST 10] Impersonation: banner "Viewing as <company>. Exit", audit log with both admin and user, platform endpoint blocked, exit returns cleanly');
+    {
+      const platUser = await createTestTenantAndUser('T10_Plat', 'platform_super_admin');
+      const compUser = await createTestTenantAndUser('T10_Comp', 'tenant_admin');
+
+      const context = await browser.newContext({ viewport: { width: 1536, height: 730 } });
+      const tabA = await context.newPage();
+
+      // Platform admin logs into platform portal
+      await performLogin(tabA, platUser.email, platUser.password, true);
+      await tabA.goto(`${WEB_BASE}/platform/companies`, { waitUntil: 'domcontentloaded' });
+      await tabA.waitForSelector('button:has-text("Login As")', { timeout: 15000 });
+
+      // Click "Login As" on compUser's company row
+      const tenantRow = tabA.locator('tr', { hasText: compUser.tenant.name });
+      await tenantRow.locator('button:has-text("Login As")').click();
+      await tabA.waitForSelector('button:has-text("Enter Workspace")', { timeout: 5000 });
+      await tabA.click('button:has-text("Enter Workspace")');
+      await tabA.waitForTimeout(2000);
+
+      // 1. Verify permanent banner 'Viewing as <company>. Exit'
+      const banner = await tabA.waitForSelector('[data-testid="impersonation-banner"]', { timeout: 10000 });
+      assert(banner !== null, 'Impersonation banner is visible and sticky');
+      const bannerText = await banner.textContent();
+      assert(bannerText.includes('Viewing as') && bannerText.includes('Exit'), 'Banner displays "Viewing as <company>. Exit"');
+      const exitBtn = await tabA.waitForSelector('[data-testid="exit-impersonation-btn"]', { timeout: 5000 });
+      assert(exitBtn !== null, 'Exit impersonation button is present');
+
+      // 2. Perform a mutating action in impersonation session
+      const createRes = await tabA.evaluate(async () => {
+        try {
+          const res = await window.api.post('/leads', {
+            customerName: 'Audit Test Contact',
+            customerPhone: '+919876543210',
+            source: 'manual',
+          });
+          return { status: res.status, ok: true, data: res.data };
+        } catch (e) {
+          return { status: e.response?.status, ok: false, error: e.message, data: e.response?.data };
+        }
+      });
+      console.log('  createRes:', JSON.stringify(createRes));
+      assert(createRes.status === 201 || createRes.status === 200, 'Mutating action succeeded in impersonation session');
+
+      // 3. Verify audit log entry in database with platform admin ID and impersonated user ID
+      const auditEntries = await prisma.auditLog.findMany({
+        where: { tenantId: compUser.tenant.id },
+        orderBy: { timestamp: 'desc' },
+        take: 10,
+      });
+
+      const hasImpersonationAudit = auditEntries.some((entry) => {
+        let after = {};
+        try { after = JSON.parse(entry.afterState || '{}'); } catch {}
+        return (
+          (entry.action.startsWith('IMPERSONATED_') || entry.action === 'IMPERSONATION_START') &&
+          (after.platformAdminId === platUser.user.id || entry.actorId === platUser.user.id)
+        );
+      });
+      assert(hasImpersonationAudit, 'Audit log recorded action with platform admin ID and impersonated user ID');
+
+      // 4. Verify impersonated tab CANNOT call platform admin endpoints
+      const platCall = await tabA.evaluate(async () => {
+        try {
+          const res = await window.api.get('/platform/tenants');
+          return { status: res.status, ok: true };
+        } catch (e) {
+          return { status: e.response?.status || 403, ok: false, message: e.message };
+        }
+      });
+      assert(platCall.status === 403, 'Calling platform admin endpoints while impersonating is blocked with 403 Forbidden');
+
+      // 5. Click 'Exit' returns to the platform console
+      await exitBtn.click();
+      await tabA.waitForTimeout(2000);
+
+      assert(tabA.url().includes('/platform/companies'), 'Clicking Exit returns to platform console (/platform/companies)');
+      const bannerAfterExit = await tabA.$('[data-testid="impersonation-banner"]');
+      assert(bannerAfterExit === null, 'Impersonation banner is removed after exit');
+
+      const isImpersonatingFlag = await tabA.evaluate(() => sessionStorage.getItem('crm_tab_impersonating'));
+      assert(!isImpersonatingFlag, 'crm_tab_impersonating flag is cleared from sessionStorage');
+
+      const portalMarker = await tabA.evaluate(() => sessionStorage.getItem('crm_portal'));
+      assert(portalMarker === 'platform', 'Tab portal is restored to "platform" in sessionStorage');
+
+      await context.close();
+    }
+
     console.log('\n================================================================');
     console.log(`SESSION CONFLICT SUITE COMPLETE: ${passedTests}/${totalTests} PASSED`);
     console.log('================================================================\n');

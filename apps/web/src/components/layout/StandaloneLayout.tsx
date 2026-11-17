@@ -12,6 +12,7 @@ import {
   getImpersonationAccessToken,
   setCurrentTabUserId,
 } from '../../services/api';
+import { clearTabSessionUser } from '../../utils/sessionSync';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
@@ -32,7 +33,7 @@ import SessionExpiredBanner from './SessionExpiredBanner';
 import DropdownPortal from '../common/DropdownPortal';
 
 export default function StandaloneLayout({ children }: { children?: React.ReactNode } = {}) {
-  const { user, updateUser, logout, sessionExpired } = useAuth();
+  const { user, updateUser, logout, sessionExpired, exitImpersonation, isImpersonating } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const { branding } = useBranding();
   const { hasZeroPages } = useAllowedPages();
@@ -118,9 +119,20 @@ export default function StandaloneLayout({ children }: { children?: React.ReactN
   };
 
   const handleExitImpersonation = async () => {
-    setImpersonationAccessToken(null);
-    setAccessToken(null);
-    setCurrentTabUserId(null);
+    if (exitImpersonation) {
+      exitImpersonation();
+    } else {
+      setImpersonationAccessToken(null);
+      setAccessToken(null);
+      setCurrentTabUserId(null);
+      clearTabSessionUser('staff');
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('crm_tab_impersonating');
+        sessionStorage.removeItem('crm_tab_impersonate_token');
+        sessionStorage.removeItem('crm_tab_impersonate_user');
+        sessionStorage.setItem('crm_portal', 'platform');
+      }
+    }
     navigate('/platform/companies');
   };
 
@@ -128,8 +140,6 @@ export default function StandaloneLayout({ children }: { children?: React.ReactN
     setProfileOpen(false);
     await logout();
   };
-
-  const isImpersonating = Boolean((user as any)?.isImpersonating || getImpersonationAccessToken());
 
   if (hasZeroPages) {
     return (
@@ -160,13 +170,17 @@ export default function StandaloneLayout({ children }: { children?: React.ReactN
 
       {/* ─── IMPERSONATION BANNER ───── */}
       {isImpersonating && (
-        <div className="bg-amber-600 text-white px-4 py-2 flex items-center justify-between text-xs font-medium shadow-md z-50 sticky top-0">
-          <span>
-            You are viewing <strong>{(user as any)?.impersonatedTenantName || 'Client Workspace'}</strong>
+        <div
+          className="bg-amber-600 text-white px-4 py-2 flex items-center justify-between text-xs font-medium shadow-md z-50 sticky top-0"
+          data-testid="impersonation-banner"
+        >
+          <span data-testid="impersonation-banner-text">
+            Viewing as <strong>{(user as any)?.impersonatedTenantName || 'Company'}</strong>.
           </span>
           <button
             onClick={handleExitImpersonation}
             className="btn bg-white text-slate-900 hover:bg-slate-100 text-xs px-3 py-1 rounded-lg font-bold shadow-sm transition-all"
+            data-testid="exit-impersonation-btn"
           >
             Exit
           </button>

@@ -7,6 +7,7 @@ import { useBranding } from '../../contexts/BrandingContext';
 import { useAllowedPages } from '../../hooks/useAllowedPages';
 import { getProductName, PRODUCT_NAME } from '../../config/brand';
 import { authApi, setAccessToken, setImpersonationAccessToken, getImpersonationAccessToken, setCurrentTabUserId } from '../../services/api';
+import { clearTabSessionUser } from '../../utils/sessionSync';
 import { motion, AnimatePresence } from 'framer-motion';
 import { KeyRound, ShieldAlert, CheckCircle2, Lock, Database } from 'lucide-react';
 import { openCookiePreferencesPanel } from '../../utils/cookieConsent';
@@ -15,7 +16,7 @@ import Footer from '../common/Footer';
 import SessionExpiredBanner from './SessionExpiredBanner';
 
 export default function AppLayout({ children }: { children?: React.ReactNode } = {}) {
-  const { user, updateUser, logout, sessionExpired } = useAuth();
+  const { user, updateUser, logout, sessionExpired, exitImpersonation, isImpersonating } = useAuth();
   const { branding } = useBranding();
   const { hasZeroPages } = useAllowedPages();
 
@@ -91,13 +92,22 @@ export default function AppLayout({ children }: { children?: React.ReactNode } =
   const navigate = useNavigate();
 
   const handleExitImpersonation = async () => {
-    setImpersonationAccessToken(null);
-    setAccessToken(null);
-    setCurrentTabUserId(null);
+    if (exitImpersonation) {
+      exitImpersonation();
+    } else {
+      setImpersonationAccessToken(null);
+      setAccessToken(null);
+      setCurrentTabUserId(null);
+      clearTabSessionUser('staff');
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('crm_tab_impersonating');
+        sessionStorage.removeItem('crm_tab_impersonate_token');
+        sessionStorage.removeItem('crm_tab_impersonate_user');
+        sessionStorage.setItem('crm_portal', 'platform');
+      }
+    }
     navigate('/platform/companies');
   };
-
-  const isImpersonating = Boolean((user as any)?.isImpersonating || getImpersonationAccessToken());
 
   // When user has zero pages, hide all navigation surfaces (desktop navbar, mobile dock, footer, top bar)
   if (hasZeroPages) {
@@ -129,13 +139,17 @@ export default function AppLayout({ children }: { children?: React.ReactNode } =
 
       {/* ─── IMPERSONATION BANNER ───── */}
       {isImpersonating && (
-        <div className="bg-amber-600 text-white px-4 py-2 flex items-center justify-between text-xs font-medium shadow-md z-50 sticky top-0">
-          <span>
-            You are viewing <strong>{(user as any)?.impersonatedTenantName || 'Client Workspace'}</strong>
+        <div
+          className="bg-amber-600 text-white px-4 py-2 flex items-center justify-between text-xs font-medium shadow-md z-50 sticky top-0"
+          data-testid="impersonation-banner"
+        >
+          <span data-testid="impersonation-banner-text">
+            Viewing as <strong>{(user as any)?.impersonatedTenantName || 'Company'}</strong>.
           </span>
           <button
             onClick={handleExitImpersonation}
             className="btn bg-white text-slate-900 hover:bg-slate-100 text-xs px-3 py-1 rounded-lg font-bold shadow-sm transition-all"
+            data-testid="exit-impersonation-btn"
           >
             Exit
           </button>

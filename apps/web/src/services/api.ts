@@ -307,10 +307,25 @@ let _inMemoryImpersonateToken: string | null = null;
 
 export const setImpersonationAccessToken = (token: string | null) => {
   _inMemoryImpersonateToken = token;
+  if (typeof window !== 'undefined') {
+    try {
+      if (token) {
+        sessionStorage.setItem('crm_tab_impersonate_token', token);
+      } else {
+        sessionStorage.removeItem('crm_tab_impersonate_token');
+      }
+    } catch {}
+  }
 };
 
 export const getImpersonationAccessToken = (): string | null => {
-  return _inMemoryImpersonateToken;
+  if (_inMemoryImpersonateToken) return _inMemoryImpersonateToken;
+  if (typeof window !== 'undefined') {
+    try {
+      return sessionStorage.getItem('crm_tab_impersonate_token');
+    } catch {}
+  }
+  return null;
 };
 
 export const setAccessToken = (token: string | null, forcePlatform?: boolean) => {
@@ -340,8 +355,9 @@ export const setPlatformAccessToken = (token: string | null) => {
 };
 
 export const getAccessToken = (forcePlatform?: boolean) => {
-  if (_inMemoryImpersonateToken) {
-    return _inMemoryImpersonateToken;
+  const impersonationToken = getImpersonationAccessToken();
+  if (impersonationToken) {
+    return impersonationToken;
   }
   const isPlatform = forcePlatform !== undefined ? forcePlatform : isPlatformPath();
   if (isPlatform) {
@@ -563,6 +579,18 @@ api.interceptors.request.use((config) => {
     config.url?.startsWith('/platform') ||
     config.url?.startsWith('/platform-auth') ||
     isPlatformPath();
+
+  // Requirement 6: Impersonated tab cannot call platform administration endpoints
+  const isImpersonatingTab = typeof window !== 'undefined' && (
+    sessionStorage.getItem('crm_tab_impersonating') === 'true' ||
+    getImpersonationAccessToken() !== null
+  );
+  if (isImpersonatingTab && (config.url?.startsWith('/platform') || config.url?.startsWith('/platform-auth')) && !config.url?.includes('/impersonate')) {
+    const err = new Error('Cannot access platform administration endpoints while impersonating a company workspace. Exit impersonation first.');
+    (err as any).response = { status: 403, data: { statusCode: 403, message: err.message, code: 'FORBIDDEN' } };
+    return Promise.reject(err);
+  }
+
   const token = getAccessToken(isPlatformReq);
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -1033,6 +1061,14 @@ api.interceptors.response.use(
     }
 
     if (err.response?.status === 401 && !original._retry) {
+      const isImpersonatingTab = typeof window !== 'undefined' && (
+        sessionStorage.getItem('crm_tab_impersonating') === 'true' ||
+        getImpersonationAccessToken() !== null
+      );
+      if (isImpersonatingTab) {
+        return Promise.reject(err);
+      }
+
       original._retry = true;
 
       const isPlatformReq =

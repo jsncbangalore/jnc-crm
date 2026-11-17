@@ -73,6 +73,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Your company account is suspended or expired. Please contact support.');
     }
 
+    if (payload.isImpersonating) {
+      (user as any).isImpersonating = true;
+      (user as any).impersonatorAdminId = payload.impersonatorAdminId || payload.impersonatedByPlatformAdminId || 'platform-admin';
+      (user as any).impersonatedTenantName = payload.impersonatedTenantName;
+      (user as any).impersonatedTenantCode = payload.impersonatedTenantCode;
+    }
+
     return user;
   }
 }

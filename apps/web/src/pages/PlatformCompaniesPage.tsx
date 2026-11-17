@@ -358,6 +358,11 @@ export default function PlatformCompaniesPage() {
           setImpersonationAccessToken(data.accessToken);
           setAccessToken(data.accessToken);
           if (data.user) {
+            if (typeof window !== 'undefined') {
+              try {
+                sessionStorage.setItem('crm_tab_impersonate_user', JSON.stringify(data.user));
+              } catch {}
+            }
             updateUser(data.user);
             if (data.user.id) {
               setCurrentTabUserId(data.user.id);

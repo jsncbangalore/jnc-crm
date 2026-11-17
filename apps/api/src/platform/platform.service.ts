@@ -822,13 +822,19 @@ export class PlatformService {
       employeeCode: targetUser.employeeCode,
       role: targetUser.role,
       tenantId: tenant.id,
+      tokenVersion: targetUser.tokenVersion,
       isImpersonating: true,
+      impersonatorAdminId: actor?.sub || actor?.id || 'platform-admin',
       impersonatedTenantName: tenant.name,
       impersonatedTenantCode: tenant.code,
     };
 
     const accessToken = this.jwtService.sign(payload, {
+      secret: process.env.JWT_SECRET,
       expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
+      algorithm: 'HS256',
+      issuer: process.env.JWT_ISSUER || 'crm-api',
+      audience: process.env.JWT_AUDIENCE || 'crm-client',
     });
 
     // Write audit log entry for impersonation
@@ -842,6 +848,7 @@ export class PlatformService {
           entityName: 'Tenant',
           entityId: tenant.id,
           afterState: JSON.stringify({
+            platformAdminId: actor?.sub || actor?.id || 'platform-admin',
             impersonatedUserId: targetUser.id,
             impersonatedUserEmail: targetUser.email,
             impersonatedRole: targetUser.role,

@@ -24,6 +24,7 @@ import {
   setCurrentTabUserId,
   getCurrentTabUserId,
   getImpersonationAccessToken,
+  setImpersonationAccessToken,
   hasInFlightRequests,
   isSaveInProgress,
   notifyUserActivity,
@@ -103,6 +104,8 @@ interface AuthContextType {
   logoutAll: () => Promise<void>;
   updateUser: (updatedFields: Partial<User>) => void;
   isAuthenticated: boolean;
+  isImpersonating?: boolean;
+  exitImpersonation?: () => void;
   /** Flag indicating session has expired (detected 401/403) */
   sessionExpired: boolean;
   /** Clears session and redirects to appropriate login page */
@@ -561,6 +564,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setStaffUserWithStorage(null);
           setPlatformUserWithStorage(null);
           clearTabSessionUser();
+          setIsLoading(false);
+          return;
+        }
+
+        const isTabImpersonating =
+          typeof window !== 'undefined' &&
+          (sessionStorage.getItem('crm_tab_impersonating') === 'true' ||
+           Boolean(getImpersonationAccessToken()));
+        if (isTabImpersonating) {
+          // Tab is in an active impersonation session: do not call authApi.refresh() which relies on staff cookies!
+          const storedImpersonateUser = typeof window !== 'undefined' ? sessionStorage.getItem('crm_tab_impersonate_user') : null;
+          if (storedImpersonateUser) {
+            try {
+              const parsed = JSON.parse(storedImpersonateUser);
+              setStaffUser(parsed);
+              if (parsed.id) setCurrentTabUserId(parsed.id, false);
+            } catch {}
+          }
           setIsLoading(false);
           return;
         }
@@ -1236,12 +1257,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [setStaffUserWithStorage, setPlatformUserWithStorage, dismissSessionConflictBanner]);
 
+  const exitImpersonation = useCallback(() => {
+    setStaffUser(null);
+    setImpersonationAccessToken(null);
+    setStaffAccessToken(null);
+    setCurrentTabUserId(null);
+    clearTabSessionUser('staff');
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('crm_tab_impersonating');
+      sessionStorage.removeItem('crm_tab_impersonate_token');
+      sessionStorage.removeItem('crm_tab_impersonate_user');
+      sessionStorage.setItem('crm_portal', 'platform');
+    }
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
         user,
         staffUser,
         platformUser,
+        isImpersonating,
+        exitImpersonation,
         isLoading,
         login,
         platformLogin,

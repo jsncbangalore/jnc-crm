@@ -6,9 +6,10 @@
  * ----------------------------------------------------- */
 
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { DualKeyThrottlerGuard } from './common/dual-key-throttler.guard';
+import { ImpersonationAuditInterceptor } from './common/impersonation-audit.interceptor';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { AuditModule } from './audit/audit.module';
@@ -73,6 +74,10 @@ import { ClientErrorsController } from './common/client-errors.controller';
     {
       provide: APP_GUARD,
       useClass: DualKeyThrottlerGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ImpersonationAuditInterceptor,
     },
   ],
 })

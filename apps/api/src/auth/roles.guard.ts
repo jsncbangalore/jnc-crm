@@ -98,6 +98,20 @@ export class RolesGuard implements CanActivate {
       );
     }
 
+    // Impersonation restriction: Cannot call platform administration endpoints while impersonating
+    if (user.isImpersonating) {
+      const path = (req.path || req.url || '').toLowerCase();
+      const isPlatformRoute = path.includes('/platform/') || path.includes('/platform-auth/') || path.endsWith('/platform') || path.endsWith('/platform-auth');
+      const isPlatformRole = requiredRoles && requiredRoles.includes('platform_super_admin');
+      if (isPlatformRoute || isPlatformRole) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'FORBIDDEN',
+          message: 'Cannot access platform administration endpoints while impersonating a company workspace. Exit impersonation first.',
+        });
+      }
+    }
+
     // 1. Check Page Access (Dynamic Per-User & Per-Team Page Access from database, no stale cache)
     let userEffectivePages: string[] | null = null;
     let hasPageAccess = true;
