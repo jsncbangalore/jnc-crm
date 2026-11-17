@@ -12,6 +12,7 @@ export interface MigrationStatusResult {
   total: number;
   applied: number;
   pending: string[];
+  failedList: string[];
   isReady: boolean;
   error?: string;
 }
@@ -44,17 +45,24 @@ export async function getMigrationStatus(prisma: any): Promise<MigrationStatusRe
     const pending = builtMigrations.filter((m) => !appliedSet.has(m));
     const appliedCount = builtMigrations.filter((m) => appliedSet.has(m)).length;
 
+    const failedRows: any[] = await prisma.$queryRawUnsafe(
+      'SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NULL AND rolled_back_at IS NULL'
+    );
+    const failedList: string[] = Array.from(new Set((failedRows || []).map((r: any) => String(r.migration_name))));
+
     return {
       total: builtMigrations.length,
       applied: appliedCount,
       pending,
-      isReady: pending.length === 0,
+      failedList,
+      isReady: pending.length === 0 && failedList.length === 0,
     };
   } catch (err: any) {
     return {
       total: builtMigrations.length,
       applied: 0,
       pending: builtMigrations,
+      failedList: [],
       isReady: false,
       error: err.message,
     };

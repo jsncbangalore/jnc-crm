@@ -15,21 +15,70 @@ import { getMigrationStatus } from '../common/migration-status.util';
 export const API_VERSION = '1.2.0';
 const STARTED_AT = new Date().toISOString();
 
+function resolveApiCommitId(): string {
+  if (process.env.GIT_COMMIT) return process.env.GIT_COMMIT.trim();
+  if (process.env.RENDER_GIT_COMMIT) return process.env.RENDER_GIT_COMMIT.trim();
+  if (process.env.GIT_COMMIT_HASH) return process.env.GIT_COMMIT_HASH.trim();
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    if (out && out.trim()) return out.trim();
+  } catch {}
+  return 'local-dev';
+}
+
 @Controller('health')
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Get()
   @Public()
-  getHealth() {
+  async getHealth() {
+    let database = false;
+    try {
+      await this.prisma.$queryRawUnsafe('SELECT 1');
+      database = true;
+    } catch {
+      database = false;
+    }
+
+    let migrationCounts = {
+      total: 0,
+      applied: 0,
+      pendingCount: 0,
+      failedCount: 0,
+    };
+
+    let migrationStatusObj: any = null;
+    try {
+      migrationStatusObj = await getMigrationStatus(this.prisma);
+      migrationCounts = {
+        total: migrationStatusObj.total,
+        applied: migrationStatusObj.applied,
+        pendingCount: migrationStatusObj.pending.length,
+        failedCount: (migrationStatusObj.failedList || []).length,
+      };
+    } catch {}
+
+    const isHealthy = database && migrationCounts.pendingCount === 0 && migrationCounts.failedCount === 0;
+
     return {
-      status: 'ok',
+      status: isHealthy ? 'ok' : 'degraded',
       version: API_VERSION,
       apiVersion: API_VERSION,
-      commitId: process.env.GIT_COMMIT_HASH || process.env.RENDER_GIT_COMMIT || 'unknown',
+      commitId: resolveApiCommitId(),
       buildTime: process.env.BUILD_TIME || STARTED_AT,
       timestamp: new Date().toISOString(),
       uptime: Math.round(process.uptime()),
+      database: database ? 'connected' : 'disconnected',
+      isDatabaseConnected: database,
+      migrations: migrationCounts,
+      migrationState: {
+        total: migrationCounts.total,
+        appliedCount: migrationCounts.applied,
+        pendingList: migrationStatusObj?.pending || [],
+        failedList: migrationStatusObj?.failedList || [],
+      },
       features: [
         'auth',
         'rbac',
@@ -86,7 +135,9 @@ export class HealthController {
         status: 'pending_update',
         ok: false,
         pendingCount: status.pending.length,
+        failedCount: (status.failedList || []).length,
         missingMigrations: status.pending,
+        failedMigrations: status.failedList || [],
         applied: status.applied,
         total: status.total,
       };
@@ -96,7 +147,9 @@ export class HealthController {
       status: 'ok',
       ok: true,
       pendingCount: 0,
+      failedCount: 0,
       missingMigrations: [],
+      failedMigrations: [],
       applied: status.applied,
       total: status.total,
     };

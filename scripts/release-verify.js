@@ -292,7 +292,52 @@ async function run() {
   console.log(` Target API Base : ${baseUrl}`);
   console.log(` Required Version: ${requiredVersion}`);
 
-  // Step 0: React rules-of-hooks AST verification
+  // Step 0.1: Production VITE_API_URL Configuration Check
+  console.log(' [VERIFY] Validating production VITE_API_URL configuration...');
+  const envProdPath = path.resolve(__dirname, '..', 'apps', 'web', '.env.production');
+  const envProd = fs.existsSync(envProdPath) ? fs.readFileSync(envProdPath, 'utf8') : '';
+  const matchApiUrl = envProd.match(/^VITE_API_URL\s*=\s*(.+)$/m);
+  const prodApiUrl = (process.env.VITE_API_URL || (matchApiUrl ? matchApiUrl[1].trim() : '')).replace(/\/+$/, '');
+
+  if (!prodApiUrl) {
+    console.error(' [FAIL] Missing VITE_API_URL in production configuration! Deployment blocked.');
+    process.exit(1);
+  }
+  if (prodApiUrl !== 'https://api.jsnc.co.in/api/v1') {
+    console.error(` [FAIL] Invalid production VITE_API_URL: "${prodApiUrl}". Must be strictly "https://api.jsnc.co.in/api/v1"! Deployment blocked.`);
+    process.exit(1);
+  }
+  console.log(` [SUCCESS] Production VITE_API_URL verified: ${prodApiUrl}`);
+
+  // Step 0.2: Brand Lock / White Label Verification
+  console.log(' [VERIFY] Running Brand Lock Verification (scripts/scan-branding.js)...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/scan-branding.js', {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'inherit',
+    });
+    console.log(' [SUCCESS] Brand lock verification passed with 0 violations.');
+  } catch (err) {
+    console.error(' [FAIL] Brand lock check failed! Brand constants or lock file modified. Deployment blocked.');
+    process.exit(1);
+  }
+
+  // Step 0.3: Database Migration Rehearsal
+  console.log(' [VERIFY] Running Database Migration Rehearsal (scripts/migrate-rehearse.js)...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/migrate-rehearse.js', {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'inherit',
+    });
+    console.log(' [SUCCESS] Migration rehearsal passed cleanly on throwaway copy.');
+  } catch (err) {
+    console.error(' [FAIL] Migration rehearsal failed on throwaway database! Deployment blocked.');
+    process.exit(1);
+  }
+
+  // Step 0.4: React rules-of-hooks AST verification
   console.log(' [VERIFY] Running React hooks AST scanner (scripts/scan-hooks.js)...');
   try {
     const { execSync } = require('child_process');
@@ -328,7 +373,7 @@ async function run() {
       cwd: path.resolve(__dirname, '..'),
       stdio: 'inherit',
     });
-    console.log(' [SUCCESS] Production dist scan passed: zero dev-demo-login, DevPassword, or dev-credentials-box found.');
+    console.log(' [SUCCESS] Production dist scan passed: zero dev-demo-login, DevPassword, dev-credentials-box, or fixed verification code bypasses found.');
   } catch (err) {
     console.error(' [FAIL] Forbidden dev credentials or dev demo strings detected in dist! Deployment blocked.');
     process.exit(1);
