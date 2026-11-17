@@ -23,6 +23,7 @@ import {
   setStoredRefreshToken,
   setCurrentTabUserId,
   getCurrentTabUserId,
+  getImpersonationAccessToken,
   hasInFlightRequests,
   isSaveInProgress,
   notifyUserActivity,
@@ -33,7 +34,7 @@ import {
   broadcastSignIn,
   broadcastSignOut,
 } from '../utils/crossTabSync';
-import { clearTabSessionUser } from '../utils/sessionSync';
+import { clearTabSessionUser, clearStaleTabKeys } from '../utils/sessionSync';
 import { isPlatformOwner } from '../utils/roles';
 import { Clock, AlertCircle } from 'lucide-react';
 import { PAGE_KEY_TO_ROUTE } from '../config/page-registry';
@@ -201,7 +202,8 @@ const persistUserToStorage = (u: User | null, portal: 'staff' | 'platform') => {
     const key = portal === 'platform' ? 'crm_platform_user' : 'crm_user';
     if (u) {
       localStorage.setItem(key, JSON.stringify(u));
-      localStorage.setItem('crm_portal', portal);
+      // Portal type is strictly tab-specific (sessionStorage only). Never leak to localStorage across tabs!
+      localStorage.removeItem('crm_portal');
       sessionStorage.setItem('crm_portal', portal);
       localStorage.setItem(ACTIVITY_STORAGE_KEY, String(Date.now()));
     } else {
@@ -238,7 +240,11 @@ export function isPublicPath(path: string): boolean {
     p === '/terms' ||
     p === '/terms-of-service' ||
     p === '/contact' ||
-    p === '/contact-us'
+    p === '/contact-us' ||
+    p === '/2fa' ||
+    p.startsWith('/2fa') ||
+    p === '/setup-2fa' ||
+    p.startsWith('/setup-2fa')
   );
 }
 
@@ -253,6 +259,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [setupPass, setSetupPass] = useState<SetupPass | null>(null);
   const clearSetupPass = useCallback(() => setSetupPass(null), []);
 
+  const [sessionConflictBanner, setSessionConflictBanner] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('crm_session_conflict_banner') === 'true';
+    }
+    return false;
+  });
+
+  const dismissSessionConflictBanner = useCallback(() => {
+    setSessionConflictBanner(false);
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.removeItem('crm_session_conflict_banner');
+      } catch {}
+    }
+  }, []);
+
   const lastActivityRef = useRef<number>(Date.now());
   const lastUserInputRef = useRef<number>(Date.now());
   const lastStorageWriteRef = useRef<number>(0);
@@ -260,7 +282,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isPlatform =
     typeof window !== 'undefined' && window.location.pathname.startsWith('/platform');
-  const user = isPlatform ? (platformUser || staffUser) : (staffUser || platformUser);
+  const isImpersonating = typeof window !== 'undefined' && (
+    sessionStorage.getItem('crm_tab_impersonating') === 'true' ||
+    getImpersonationAccessToken() !== null
+  );
+  const user = isImpersonating ? (staffUser || platformUser) : isPlatform ? platformUser : staffUser;
 
   const setStaffUserWithStorage = useCallback((updater: User | null | ((prev: User | null) => User | null)) => {
     setStaffUser((prev) => {
@@ -278,7 +304,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const [sessionChangedNotice, setSessionChangedNotice] = useState(false);
   const [accessChangedNotice, setAccessChangedNotice] = useState(false);
 
   // Requirement 6: Refresh user's effective pages on window focus and after 403
@@ -516,48 +541,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {}
     }
 
-    const savedPortal = typeof window !== 'undefined'
-      ? (sessionStorage.getItem('crm_portal') || localStorage.getItem('crm_portal'))
-      : null;
-    
-    // Check if there are active user credentials or session hints in browser storage
-    const hasExistingSession =
-      typeof window !== 'undefined' &&
-      (Boolean(localStorage.getItem('crm_user')) ||
-       Boolean(localStorage.getItem('crm_platform_user')) ||
-       Boolean(localStorage.getItem('crm_staff_refresh_token')) ||
-       Boolean(localStorage.getItem('crm_platform_refresh_token')) ||
-       Boolean(localStorage.getItem('crm_refresh_token_fb')) ||
-       Boolean(localStorage.getItem('platform_refresh_token_fb')));
-
-    const isPublicStatic = !hasExistingSession && isPublicPath(currentPath);
-
-    if (isPublicStatic) {
-      setIsLoading(false);
-      return;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('crm_portal');
+      } catch {}
     }
 
     const isPlatformRoute = currentPath.startsWith('/platform');
 
     (async () => {
       try {
-        if (savedPortal === 'platform') {
-          // Restore ONLY platform session
+        const hasConflictBanner =
+          typeof window !== 'undefined' && sessionStorage.getItem('crm_session_conflict_banner') === 'true';
+        if (hasConflictBanner) {
+          // Tab was signed out due to a cross-tab session conflict.
+          // Do not silently restore the newly logged-in account from cookies!
+          setStaffAccessToken(null);
+          setPlatformAccessToken(null);
+          setStaffUserWithStorage(null);
+          setPlatformUserWithStorage(null);
+          clearTabSessionUser();
+          setIsLoading(false);
+          return;
+        }
+
+        if (isPlatformRoute) {
+          // On platform routes, restore strictly platform session
           try {
             const { data } = await platformAuthApi.refresh();
             if (isMounted && data) {
               lastActivityRef.current = Date.now();
+              try {
+                sessionStorage.setItem('crm_portal', 'platform');
+              } catch {}
               setPlatformAccessToken(data.accessToken);
               if (data.refreshToken) {
                 setStoredRefreshToken(data.refreshToken, true);
               }
               if (data.user) {
                 setPlatformUserWithStorage(data.user);
-                setCurrentTabUserId(data.user.id);
-              }
-              if (!isPlatformRoute && typeof window !== 'undefined') {
-                window.location.replace('/platform/companies');
-                return;
+                setCurrentTabUserId(data.user.id, true);
               }
             }
           } catch (err: any) {
@@ -566,24 +589,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setPlatformUserWithStorage(null);
             }
           }
-        } else if (savedPortal === 'staff') {
-          // Restore ONLY staff session
+        } else {
+          // On staff/company routes, restore strictly staff session
           try {
             const { data } = await authApi.refresh();
             if (isMounted && data) {
               lastActivityRef.current = Date.now();
+              try {
+                sessionStorage.setItem('crm_portal', 'staff');
+              } catch {}
               setStaffAccessToken(data.accessToken);
               if (data.refreshToken) {
                 setStoredRefreshToken(data.refreshToken, false);
               }
               if (data.user) {
                 setStaffUserWithStorage(data.user);
-                setCurrentTabUserId(data.user.id);
+                setCurrentTabUserId(data.user.id, false);
               } else {
                 const meRes = await authApi.me();
                 if (isMounted && meRes.data) {
                   setStaffUserWithStorage(meRes.data);
-                  if (meRes.data.id) setCurrentTabUserId(meRes.data.id);
+                  if (meRes.data.id) setCurrentTabUserId(meRes.data.id, false);
                 }
               }
             }
@@ -591,89 +617,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (isMounted && err?.response?.status === 401) {
               setStaffAccessToken(null);
               setStaffUserWithStorage(null);
-            }
-          }
-        } else {
-          // savedPortal not explicitly set
-          if (isPlatformRoute) {
-            try {
-              const { data } = await platformAuthApi.refresh();
-              if (isMounted && data) {
-                try {
-                  sessionStorage.setItem('crm_portal', 'platform');
-                  localStorage.setItem('crm_portal', 'platform');
-                } catch {}
-                lastActivityRef.current = Date.now();
-                setPlatformAccessToken(data.accessToken);
-                if (data.refreshToken) {
-                  setStoredRefreshToken(data.refreshToken, true);
-                }
-                if (data.user) {
-                  setPlatformUserWithStorage(data.user);
-                  setCurrentTabUserId(data.user.id);
-                }
-              }
-            } catch (err: any) {
-              if (isMounted && err?.response?.status === 401) {
-                setPlatformAccessToken(null);
-                setPlatformUserWithStorage(null);
-              }
-            }
-          } else {
-            try {
-              const { data } = await authApi.refresh();
-              if (isMounted && data) {
-                try {
-                  sessionStorage.setItem('crm_portal', 'staff');
-                  localStorage.setItem('crm_portal', 'staff');
-                } catch {}
-                lastActivityRef.current = Date.now();
-                setStaffAccessToken(data.accessToken);
-                if (data.refreshToken) {
-                  setStoredRefreshToken(data.refreshToken, false);
-                }
-                if (data.user) {
-                  setStaffUserWithStorage(data.user);
-                  setCurrentTabUserId(data.user.id);
-                } else {
-                  const meRes = await authApi.me();
-                  if (isMounted && meRes.data) {
-                    setStaffUserWithStorage(meRes.data);
-                    if (meRes.data.id) setCurrentTabUserId(meRes.data.id);
-                  }
-                }
-              }
-            } catch {
-              // Staff refresh failed; try platform refresh fallback
-              try {
-                const { data: platData } = await platformAuthApi.refresh();
-                if (isMounted && platData) {
-                  try {
-                    sessionStorage.setItem('crm_portal', 'platform');
-                    localStorage.setItem('crm_portal', 'platform');
-                  } catch {}
-                  lastActivityRef.current = Date.now();
-                  setPlatformAccessToken(platData.accessToken);
-                  if (platData.refreshToken) {
-                    setStoredRefreshToken(platData.refreshToken, true);
-                  }
-                  if (platData.user) {
-                    setPlatformUserWithStorage(platData.user);
-                    setCurrentTabUserId(platData.user.id);
-                  }
-                  if (typeof window !== 'undefined') {
-                    window.location.replace('/platform/companies');
-                    return;
-                  }
-                }
-              } catch (err: any) {
-                if (isMounted && (err?.response?.status === 401 || err?.response?.status === 403)) {
-                  setStaffAccessToken(null);
-                  setStaffUserWithStorage(null);
-                  setPlatformAccessToken(null);
-                  setPlatformUserWithStorage(null);
-                }
-              }
             }
           }
         }
@@ -689,65 +632,155 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Cross-tab sync: react immediately to logins, logouts, or session changes in other tabs
+  // Cross-tab sync: react safely to logins, logouts, or session changes in other tabs
   useEffect(() => {
-    const handleReloadNotice = () => {
+    const handleReloadNotice = (e: any) => {
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      if (isPublicPath(currentPath)) {
+        clearStaleTabKeys();
+        return;
+      }
+      const isPlatform = currentPath.startsWith('/platform');
+      const isImpersonating = typeof window !== 'undefined' && sessionStorage.getItem('crm_tab_impersonating') === 'true';
+      if (isImpersonating) return;
+
+      const reqId = e?.detail?.requestId || Date.now().toString(36);
+      console.warn('[AUTH_SYNC] Safe session termination: session conflict received.', {
+        requestId: reqId,
+        portal: isPlatform ? 'platform' : 'staff',
+        timestamp: Date.now(),
+      });
+
       setStaffAccessToken(null);
       setPlatformAccessToken(null);
       setStaffUserWithStorage(null);
       setPlatformUserWithStorage(null);
-      clearTabSessionUser();
+      clearTabSessionUser(isPlatform ? 'platform' : 'staff');
+      clearStaleTabKeys();
       if (timerRef.current) clearInterval(timerRef.current);
-      setSessionChangedNotice(true);
+
+      try {
+        sessionStorage.setItem('crm_session_conflict_banner', 'true');
+      } catch {}
+      setSessionConflictBanner(true);
+
+      const targetLogin = isPlatform ? '/platform/login' : '/login';
+      if (typeof window !== 'undefined' && window.location.pathname !== targetLogin) {
+        window.location.href = targetLogin;
+      }
     };
 
     window.addEventListener('crm:session-conflict-reload', handleReloadNotice);
 
     const unsubscribe = subscribeCrossTabAuth((event) => {
-      if (event.type === 'signed_in') {
-        const currentId = getCurrentTabUserId();
-        const lastKnownId = typeof window !== 'undefined' ? sessionStorage.getItem('crm_last_active_user_id') : null;
-        const isImpersonating = typeof window !== 'undefined' && sessionStorage.getItem('crm_tab_impersonating') === 'true';
-        if (isImpersonating) return;
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      const isPlatform = currentPath.startsWith('/platform');
+      const currentPortal: 'platform' | 'staff' = isPlatform ? 'platform' : 'staff';
 
-        // Only trigger session_changed modal if THIS tab had an active or recently-active user session that differed from the newly signed-in user
+      // 1. Cross-portal isolation: platform vs staff are independent sessions with separate cookies
+      if (event.portal && event.portal !== currentPortal) {
+        return;
+      }
+
+      // 2. Impersonation: do not raise conflict in impersonating tab
+      const isImpersonating = typeof window !== 'undefined' && sessionStorage.getItem('crm_tab_impersonating') === 'true';
+      if (isImpersonating) {
+        return;
+      }
+
+      if (event.type === 'signed_in') {
+        const currentId = getCurrentTabUserId(isPlatform);
+        const lastKnownId = typeof window !== 'undefined'
+          ? sessionStorage.getItem(isPlatform ? 'crm_last_active_platform_user_id' : 'crm_last_active_user_id')
+          : null;
+        const currentTenantId = !isPlatform ? sessionStorage.getItem('crm_tab_tenant_id') : undefined;
+
+        // Never trigger conflict on public pages (/login, etc.)
+        if (isPublicPath(currentPath)) {
+          clearStaleTabKeys();
+          return;
+        }
+
+        // Only trigger if THIS tab had an active or recently-active user session
         const tabUserToCheck = currentId || lastKnownId;
-        if (tabUserToCheck && tabUserToCheck !== event.userId) {
-          setStaffAccessToken(null);
-          setPlatformAccessToken(null);
-          setStaffUserWithStorage(null);
-          setPlatformUserWithStorage(null);
-          clearTabSessionUser();
-          if (typeof window !== 'undefined') {
-            sessionStorage.removeItem('crm_last_active_user_id');
-          }
-          if (timerRef.current) clearInterval(timerRef.current);
-          setSessionChangedNotice(true);
+        if (!tabUserToCheck && !staffUser && !platformUser) {
+          return;
+        }
+
+        // Same user check: signing in again as the SAME user in another tab must NEVER raise conflict
+        const isSameUser = tabUserToCheck === event.userId && (
+          !event.tenantId || !currentTenantId || event.tenantId === currentTenantId
+        );
+        if (isSameUser) {
+          return;
+        }
+
+        // Identity really changed: safe handling
+        console.warn('[AUTH_SYNC] Safe session termination: identity changed in another tab.', {
+          previousUser: tabUserToCheck,
+          newUser: event.userId,
+          portal: currentPortal,
+          timestamp: Date.now(),
+        });
+
+        setStaffAccessToken(null);
+        setPlatformAccessToken(null);
+        setStaffUserWithStorage(null);
+        setPlatformUserWithStorage(null);
+        clearTabSessionUser(currentPortal);
+        clearStaleTabKeys();
+        if (timerRef.current) clearInterval(timerRef.current);
+
+        try {
+          sessionStorage.setItem('crm_session_conflict_banner', 'true');
+        } catch {}
+        setSessionConflictBanner(true);
+
+        const targetLogin = isPlatform ? '/platform/login' : '/login';
+        if (typeof window !== 'undefined' && window.location.pathname !== targetLogin) {
+          window.location.href = targetLogin;
         }
       } else if (event.type === 'signed_out') {
-        const prevId = getCurrentTabUserId();
+        const prevId = getCurrentTabUserId(isPlatform);
         if (prevId && typeof window !== 'undefined') {
-          sessionStorage.setItem('crm_last_active_user_id', prevId);
+          sessionStorage.setItem(isPlatform ? 'crm_last_active_platform_user_id' : 'crm_last_active_user_id', prevId);
         }
         setStaffAccessToken(null);
         setPlatformAccessToken(null);
         setStaffUserWithStorage(null);
         setPlatformUserWithStorage(null);
-        clearTabSessionUser();
+        clearTabSessionUser(currentPortal);
+        clearStaleTabKeys();
         if (timerRef.current) clearInterval(timerRef.current);
-        const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
         if (!isPublicPath(currentPath)) {
-          window.history.replaceState(null, '', '/login');
-          window.location.href = '/login';
+          window.location.href = isPlatform ? '/platform/login' : '/login';
         }
       } else if (event.type === 'session_changed') {
+        if (isPublicPath(currentPath)) {
+          clearStaleTabKeys();
+          return;
+        }
+        const currentId = getCurrentTabUserId(isPlatform);
+        if (event.userId && currentId === event.userId) {
+          return;
+        }
         setStaffAccessToken(null);
         setPlatformAccessToken(null);
         setStaffUserWithStorage(null);
         setPlatformUserWithStorage(null);
-        clearTabSessionUser();
+        clearTabSessionUser(currentPortal);
+        clearStaleTabKeys();
         if (timerRef.current) clearInterval(timerRef.current);
-        setSessionChangedNotice(true);
+
+        try {
+          sessionStorage.setItem('crm_session_conflict_banner', 'true');
+        } catch {}
+        setSessionConflictBanner(true);
+
+        const targetLogin = isPlatform ? '/platform/login' : '/login';
+        if (typeof window !== 'undefined' && window.location.pathname !== targetLogin) {
+          window.location.href = targetLogin;
+        }
       }
     });
 
@@ -755,7 +788,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('crm:session-conflict-reload', handleReloadNotice);
       unsubscribe();
     };
-  }, [setStaffUserWithStorage, setPlatformUserWithStorage]);
+  }, [setStaffUserWithStorage, setPlatformUserWithStorage, staffUser, platformUser]);
 
   // 2. Inactivity Tracking: exactly 15 minutes of inactivity triggers logout; 1-minute warning
   const resetInactivityTimer = useCallback(() => {
@@ -943,6 +976,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     lastActivityRef.current = Date.now();
+    dismissSessionConflictBanner();
     try {
       sessionStorage.setItem('crm_portal', 'staff');
     } catch {}
@@ -956,8 +990,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionStorage.removeItem('app_branding');
       } catch {}
       setStaffUserWithStorage(data.user);
-      setCurrentTabUserId(data.user.id);
-      broadcastSignIn(data.user.id, 'staff');
+      setCurrentTabUserId(data.user.id, false);
+      broadcastSignIn(data.user.id, 'staff', data.user.tenantId);
       if (data.user.role === 'platform_super_admin') {
         setPlatformAccessToken(data.accessToken);
         setPlatformUserWithStorage(data.user);
@@ -994,6 +1028,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     lastActivityRef.current = Date.now();
+    dismissSessionConflictBanner();
     try {
       sessionStorage.setItem('crm_portal', 'platform');
     } catch {}
@@ -1005,7 +1040,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data.user) {
       setPlatformUserWithStorage(data.user);
       setStaffUserWithStorage(data.user);
-      setCurrentTabUserId(data.user.id);
+      setCurrentTabUserId(data.user.id, true);
       broadcastSignIn(data.user.id, 'platform');
     }
     return {
@@ -1094,6 +1129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ): Promise<User & { redirectPath?: string }> => {
     const { data } = await platformAuthApi.verifyTwoFactor({ loginTicket, code, trustDevice });
     lastActivityRef.current = Date.now();
+    dismissSessionConflictBanner();
     try {
       sessionStorage.setItem('crm_portal', 'platform');
     } catch {}
@@ -1105,7 +1141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data.user) {
       setPlatformUserWithStorage(data.user);
       setStaffUserWithStorage(data.user);
-      setCurrentTabUserId(data.user.id);
+      setCurrentTabUserId(data.user.id, true);
       broadcastSignIn(data.user.id, 'platform');
     }
     return {
@@ -1131,6 +1167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const completeForcedSetup = useCallback(
     (authResult: { accessToken?: string; refreshToken?: string; user?: any }, portalType: 'company' | 'platform') => {
       clearSetupPass();
+      dismissSessionConflictBanner();
       lastActivityRef.current = Date.now();
       if (authResult.accessToken) {
         if (portalType === 'platform') {
@@ -1145,7 +1182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (authResult.user) {
             setPlatformUserWithStorage(authResult.user);
             setStaffUserWithStorage(authResult.user);
-            setCurrentTabUserId(authResult.user.id);
+            setCurrentTabUserId(authResult.user.id, true);
             broadcastSignIn(authResult.user.id, 'platform');
           }
         } else {
@@ -1158,8 +1195,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           if (authResult.user) {
             setStaffUserWithStorage(authResult.user);
-            setCurrentTabUserId(authResult.user.id);
-            broadcastSignIn(authResult.user.id, 'staff');
+            setCurrentTabUserId(authResult.user.id, false);
+            broadcastSignIn(authResult.user.id, 'staff', authResult.user.tenantId);
             if (authResult.user.role === 'platform_super_admin') {
               setPlatformAccessToken(authResult.accessToken);
               setPlatformUserWithStorage(authResult.user);
@@ -1168,15 +1205,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [clearSetupPass]
+    [clearSetupPass, dismissSessionConflictBanner]
   );
 
   const applyLoginSession = useCallback((data: { user: User; accessToken: string; refreshToken?: string; redirectPath?: string }) => {
     const isPlatform = data.user?.role === 'platform_super_admin' && !data.user?.tenantId;
+    dismissSessionConflictBanner();
     lastActivityRef.current = Date.now();
     try {
       sessionStorage.setItem('crm_portal', isPlatform ? 'platform' : 'staff');
-      localStorage.setItem('crm_portal', isPlatform ? 'platform' : 'staff');
+      localStorage.removeItem('crm_portal');
     } catch {}
     setStaffAccessToken(data.accessToken);
     if (isPlatform) {
@@ -1193,10 +1231,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('app_branding');
         sessionStorage.removeItem('app_branding');
       } catch {}
-      setCurrentTabUserId(data.user.id);
-      broadcastSignIn(data.user.id, isPlatform ? 'platform' : 'staff');
+      setCurrentTabUserId(data.user.id, isPlatform);
+      broadcastSignIn(data.user.id, isPlatform ? 'platform' : 'staff', data.user.tenantId);
     }
-  }, [setStaffUserWithStorage, setPlatformUserWithStorage]);
+  }, [setStaffUserWithStorage, setPlatformUserWithStorage, dismissSessionConflictBanner]);
 
   return (
     <AuthContext.Provider
@@ -1264,33 +1302,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {/* Session Changed Across Tabs Modal */}
-      {sessionChangedNotice && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl text-center space-y-5">
-            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
-              <AlertCircle className="w-7 h-7" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                Session Changed
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">
-                You signed in with another account in a different tab.
-              </p>
-            </div>
+      {/* Non-blocking Session Conflict Banner */}
+      {sessionConflictBanner && (
+        <div
+          data-testid="session-conflict-banner"
+          role="alert"
+          className="fixed top-0 inset-x-0 z-[99999] bg-amber-500 dark:bg-amber-600 text-slate-950 font-medium px-4 py-2.5 shadow-md flex items-center justify-between text-xs sm:text-sm animate-in slide-in-from-top duration-200"
+        >
+          <div className="flex items-center gap-2 max-w-4xl mx-auto flex-1 justify-center sm:justify-start">
+            <AlertCircle className="w-4 h-4 text-slate-950 shrink-0" aria-hidden="true" />
+            <span>Another account signed in on this browser. This tab was signed out for your safety. To use multiple accounts simultaneously, open a separate browser profile.</span>
             <button
               type="button"
               onClick={() => {
+                dismissSessionConflictBanner();
                 if (typeof window !== 'undefined') {
-                  window.location.reload();
+                  const input = document.querySelector('input[name="username"]') as HTMLInputElement | null;
+                  if (input) {
+                    input.focus();
+                    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  } else {
+                    const isPlat = window.location.pathname.startsWith('/platform');
+                    window.location.href = isPlat ? '/platform/login' : '/login';
+                  }
                 }
               }}
-              className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-all shadow-md active:scale-[0.98]"
+              className="ml-2 px-2.5 py-1 rounded-md bg-slate-950 text-white hover:bg-slate-800 text-xs font-semibold transition-colors shadow-xs"
             >
-              Reload
+              Sign in again
             </button>
           </div>
+          <button
+            type="button"
+            onClick={dismissSessionConflictBanner}
+            aria-label="Dismiss notice"
+            className="p-1 hover:bg-black/10 rounded-md transition-colors shrink-0 text-slate-950 font-bold"
+          >
+            ✕
+          </button>
         </div>
       )}
 

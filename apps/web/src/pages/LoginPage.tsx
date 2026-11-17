@@ -5,24 +5,35 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import AuthLayout from '../components/layout/AuthLayout';
 import AuthLoginForm from '../components/auth/AuthLoginForm';
 import { useAuth } from '../contexts/AuthContext';
 import { isPlatformOwner, getRoleRedirectPath } from '../utils/roles';
+import { clearStaleTabKeys } from '../utils/sessionSync';
 
 export { getRoleRedirectPath };
 
 export default function LoginPage() {
   const { isAuthenticated, user, isLoading } = useAuth();
 
+  // Clear stale tab keys when login page loads so stale cross-tab markers never block sign-in
+  useEffect(() => {
+    clearStaleTabKeys();
+  }, []);
+
   // If already authenticated, redirect directly to user workspace
   if (!isLoading && isAuthenticated && user) {
-    const dest = (isPlatformOwner(user) || user.role === 'platform_super_admin') && !user.tenantId
-      ? '/platform/companies'
-      : getRoleRedirectPath(user);
-    return <Navigate to={dest} replace />;
+    const hasConflictBanner =
+      typeof window !== 'undefined' && sessionStorage.getItem('crm_session_conflict_banner') === 'true';
+    if (!hasConflictBanner) {
+      const dest =
+        (isPlatformOwner(user) || user.role === 'platform_super_admin') && !user.tenantId
+          ? '/platform/companies'
+          : getRoleRedirectPath(user);
+      return <Navigate to={dest} replace />;
+    }
   }
 
   return (

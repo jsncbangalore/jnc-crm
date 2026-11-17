@@ -6,9 +6,9 @@
  * ----------------------------------------------------- */
 
 export type CrossTabAuthEvent =
-  | { type: 'signed_in'; userId: string; portal?: 'staff' | 'platform'; timestamp: number }
-  | { type: 'signed_out'; timestamp: number }
-  | { type: 'session_changed'; userId?: string; timestamp: number }
+  | { type: 'signed_in'; userId: string; tenantId?: string; portal?: 'staff' | 'platform'; timestamp: number }
+  | { type: 'signed_out'; portal?: 'staff' | 'platform'; timestamp: number }
+  | { type: 'session_changed'; userId?: string; tenantId?: string; portal?: 'staff' | 'platform'; timestamp: number }
   | { type: 'token_refreshed'; portal: 'staff' | 'platform'; accessToken: string; userId: string; timestamp: number };
 
 const CHANNEL_NAME = 'crm_auth_channel';
@@ -63,6 +63,7 @@ export function broadcastCrossTabEvent(event: CrossTabAuthEvent): void {
     const safePayload = {
       type: event.type,
       userId: 'userId' in event ? event.userId : undefined,
+      tenantId: 'tenantId' in event ? event.tenantId : undefined,
       portal: 'portal' in event ? event.portal : undefined,
       timestamp: event.timestamp,
       _t: Date.now(),
@@ -73,26 +74,30 @@ export function broadcastCrossTabEvent(event: CrossTabAuthEvent): void {
   }
 }
 
-export function broadcastSignIn(userId: string, portal?: 'staff' | 'platform'): void {
+export function broadcastSignIn(userId: string, portal?: 'staff' | 'platform', tenantId?: string): void {
   broadcastCrossTabEvent({
     type: 'signed_in',
     userId,
+    tenantId,
     portal,
     timestamp: Date.now(),
   });
 }
 
-export function broadcastSignOut(): void {
+export function broadcastSignOut(portal?: 'staff' | 'platform'): void {
   broadcastCrossTabEvent({
     type: 'signed_out',
+    portal,
     timestamp: Date.now(),
   });
 }
 
-export function broadcastSessionChanged(userId?: string): void {
+export function broadcastSessionChanged(userId?: string, tenantId?: string, portal?: 'staff' | 'platform'): void {
   broadcastCrossTabEvent({
     type: 'session_changed',
     userId,
+    tenantId,
+    portal,
     timestamp: Date.now(),
   });
 }

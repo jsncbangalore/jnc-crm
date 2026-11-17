@@ -9,16 +9,14 @@ import axios from 'axios';
 import { acquireCrossTabRefreshLock, broadcastSessionChanged } from '../utils/crossTabSync';
 import { clearTabSessionUser } from '../utils/sessionSync';
 
-export const RENDER_DIRECT_BACKUP_URL = 'https://jnc-crm-backend.onrender.com/api/v1';
-
 export const getApiBaseUrl = () => {
   if (typeof window !== 'undefined') {
-    // 1. Runtime window global override (e.g. window.__CRM_API_URL__ in index.html for custom backend URL)
+    // 1. Runtime window global override (e.g. window.__CRM_API_URL__ in test harness)
     if ((window as any).__CRM_API_URL__) {
       const url = String((window as any).__CRM_API_URL__).trim().replace(/\/+$/, '');
       if (url) return url.endsWith('/api/v1') ? url : `${url}/api/v1`;
     }
-    // 2. Runtime localStorage override
+    // 2. Runtime localStorage override (for tests and local debugging)
     try {
       const stored = localStorage.getItem('crm_api_base_url');
       if (stored && stored.trim().startsWith('http')) {
@@ -26,12 +24,6 @@ export const getApiBaseUrl = () => {
         return url.endsWith('/api/v1') ? url : `${url}/api/v1`;
       }
     } catch {}
-
-    // 3. Dynamic subdomain resolution: admin.<domain> -> api.<domain>
-    if (window.location.hostname.startsWith('admin.')) {
-      const apiHost = window.location.hostname.replace(/^admin\./, 'api.');
-      return `${window.location.protocol}//${apiHost}/api/v1`;
-    }
 
     const isTestTwoOrigin =
       window.location.port === '4173' &&
@@ -41,13 +33,20 @@ export const getApiBaseUrl = () => {
       return `${window.location.protocol}//${window.location.hostname}:3333/api/v1`;
     }
   }
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL as string;
+
+  // 3. Build-time environment variable (single source of truth for production)
+  const envUrl = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL) as string | undefined;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
+    const clean = envUrl.trim().replace(/\/+$/, '');
+    return clean.endsWith('/api/v1') ? clean : `${clean}/api/v1`;
   }
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL as string;
+
+  // 4. In development mode only, fallback to relative /api/v1
+  if (import.meta.env.DEV) {
+    return '/api/v1';
   }
-  return '/api/v1';
+
+  throw new Error('[API CONFIG ERROR] Missing VITE_API_URL. In production, VITE_API_URL must be configured.');
 };
 
 /**
@@ -222,26 +221,50 @@ let _inMemoryStaffToken: string | null = null;
 let _inMemoryPlatformToken: string | null = null;
 let _currentTabUserId: string | null =
   typeof window !== 'undefined'
-    ? sessionStorage.getItem('crm_tab_user_id') || localStorage.getItem('crm_tab_user_id')
+    ? sessionStorage.getItem('crm_tab_user_id')
+    : null;
+let _currentTabPlatformUserId: string | null =
+  typeof window !== 'undefined'
+    ? sessionStorage.getItem('crm_tab_platform_user_id')
     : null;
 
-export const setCurrentTabUserId = (id: string | null) => {
-  _currentTabUserId = id;
-  if (typeof window !== 'undefined') {
-    if (id) {
-      sessionStorage.setItem('crm_tab_user_id', id);
-      localStorage.setItem('crm_tab_user_id', id);
-    } else {
-      sessionStorage.removeItem('crm_tab_user_id');
+export const setCurrentTabUserId = (id: string | null, forcePlatform?: boolean) => {
+  const isPlatform = forcePlatform !== undefined ? forcePlatform : isPlatformPath();
+  if (isPlatform) {
+    _currentTabPlatformUserId = id;
+    if (typeof window !== 'undefined') {
+      if (id) {
+        sessionStorage.setItem('crm_tab_platform_user_id', id);
+      } else {
+        sessionStorage.removeItem('crm_tab_platform_user_id');
+      }
+      localStorage.removeItem('crm_tab_platform_user_id');
+    }
+  } else {
+    _currentTabUserId = id;
+    if (typeof window !== 'undefined') {
+      if (id) {
+        sessionStorage.setItem('crm_tab_user_id', id);
+      } else {
+        sessionStorage.removeItem('crm_tab_user_id');
+      }
       localStorage.removeItem('crm_tab_user_id');
     }
   }
 };
 
-export const getCurrentTabUserId = (): string | null => {
+export const getCurrentTabUserId = (forcePlatform?: boolean): string | null => {
+  const isPlatform = forcePlatform !== undefined ? forcePlatform : isPlatformPath();
+  if (isPlatform) {
+    if (_currentTabPlatformUserId) return _currentTabPlatformUserId;
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('crm_tab_platform_user_id');
+    }
+    return null;
+  }
   if (_currentTabUserId) return _currentTabUserId;
   if (typeof window !== 'undefined') {
-    return sessionStorage.getItem('crm_tab_user_id') || localStorage.getItem('crm_tab_user_id');
+    return sessionStorage.getItem('crm_tab_user_id');
   }
   return null;
 };
@@ -263,6 +286,8 @@ export const isPublicRoute = (pathname?: string): boolean => {
     p === '/platform/login' ||
     p === '/forgot-password' ||
     p.startsWith('/reset-password') ||
+    p === '/2fa' ||
+    p.startsWith('/2fa') ||
     p === '/inquiry' ||
     p === '/quote-request' ||
     p === '/shared-cart' ||
@@ -652,20 +677,30 @@ const executeResilientRefresh = async (isPlatform: boolean): Promise<any> => {
       const data = res?.data;
       if (typeof window !== 'undefined' && data?.user) {
         if (expectedUserId && expectedUserId !== data.user.id) {
-          if (isPlatform) {
-            setPlatformAccessToken(null);
-          } else {
-            setStaffAccessToken(null);
+          const currentPath = window.location.pathname;
+          if (!isPublicRoute(currentPath)) {
+            if (isPlatform) {
+              setPlatformAccessToken(null);
+            } else {
+              setStaffAccessToken(null);
+            }
+            clearTabSessionUser(isPlatform ? 'platform' : 'staff');
+            const reqId = res?.headers?.['x-request-id'] || res?.config?.headers?.['X-Request-Id'] || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
+            window.dispatchEvent(
+              new CustomEvent('crm:session-conflict-reload', {
+                detail: {
+                  message: 'You signed in with another account in a different tab',
+                  requestId: reqId,
+                  expectedUserId,
+                  incomingUserId: data.user.id,
+                  portal: isPlatform ? 'platform' : 'staff',
+                },
+              })
+            );
+            const err = new Error('SESSION_CHANGED');
+            (err as any).response = { status: 409, data: { code: 'SESSION_CHANGED', requestId: reqId } };
+            throw err;
           }
-          clearTabSessionUser();
-          window.dispatchEvent(
-            new CustomEvent('crm:session-conflict-reload', {
-              detail: { message: 'You signed in with another account in a different tab' },
-            })
-          );
-          const err = new Error('SESSION_CHANGED');
-          (err as any).response = { status: 409, data: { code: 'SESSION_CHANGED' } };
-          throw err;
         }
       }
 
@@ -679,8 +714,8 @@ const executeResilientRefresh = async (isPlatform: boolean): Promise<any> => {
       if (data?.refreshToken) {
         setStoredRefreshToken(data.refreshToken, isPlatform);
       }
-      if (typeof window !== 'undefined' && data?.user && !getCurrentTabUserId()) {
-        setCurrentTabUserId(data.user.id);
+      if (typeof window !== 'undefined' && data?.user && !getCurrentTabUserId(isPlatform)) {
+        setCurrentTabUserId(data.user.id, isPlatform);
         if (isPlatform) {
           sessionStorage.setItem('crm_tab_platform_user_id', data.user.id);
           sessionStorage.setItem('crm_tab_platform_user_email', data.user.email);
@@ -708,13 +743,21 @@ const executeResilientRefresh = async (isPlatform: boolean): Promise<any> => {
         } else {
           setStaffAccessToken(null);
         }
-        clearTabSessionUser();
+        clearTabSessionUser(isPlatform ? 'platform' : 'staff');
         if (typeof window !== 'undefined') {
-          window.dispatchEvent(
-            new CustomEvent('crm:session-conflict-reload', {
-              detail: { message: 'You signed in with another account in a different tab' },
-            })
-          );
+          const currentPath = window.location.pathname;
+          if (!isPublicRoute(currentPath)) {
+            const reqId = err?.response?.data?.requestId || err?.response?.headers?.['x-request-id'] || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
+            window.dispatchEvent(
+              new CustomEvent('crm:session-conflict-reload', {
+                detail: {
+                  message: 'You signed in with another account in a different tab',
+                  requestId: reqId,
+                  portal: isPlatform ? 'platform' : 'staff',
+                },
+              })
+            );
+          }
         }
         throw err;
       }
@@ -891,17 +934,33 @@ api.interceptors.response.use(
     // Requirement 5: No silent identity change anywhere: if /auth/me or any API response returns a user id different from the one stored for this tab, treat it as SESSION_CHANGED.
     const incomingUser = res?.data?.user;
     if (incomingUser && incomingUser.id) {
-      const currentTabId = getCurrentTabUserId();
-      if (currentTabId && currentTabId !== incomingUser.id) {
-        setStaffAccessToken(null);
-        setPlatformAccessToken(null);
-        clearTabSessionUser();
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(
-            new CustomEvent('crm:session-conflict-reload', {
-              detail: { message: 'You signed in with another account in a different tab' },
-            })
-          );
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      if (!isPublicRoute(currentPath)) {
+        const isImpersonating = typeof window !== 'undefined' && (
+          sessionStorage.getItem('crm_tab_impersonating') === 'true' ||
+          getImpersonationAccessToken() !== null ||
+          String(res.config?.url || '').includes('/impersonate')
+        );
+        if (!isImpersonating) {
+          const currentTabId = getCurrentTabUserId();
+          if (currentTabId && currentTabId !== incomingUser.id) {
+            setStaffAccessToken(null);
+            setPlatformAccessToken(null);
+            clearTabSessionUser();
+            const reqId = res.headers?.['x-request-id'] || res.config?.headers?.['X-Request-Id'] || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(
+                new CustomEvent('crm:session-conflict-reload', {
+                  detail: {
+                    message: 'You signed in with another account in a different tab',
+                    requestId: reqId,
+                    expectedUserId: currentTabId,
+                    incomingUserId: incomingUser.id,
+                  },
+                })
+              );
+            }
+          }
         }
       }
     }
@@ -918,15 +977,6 @@ api.interceptors.response.use(
     }
 
     const original = err.config;
-    if (!err?.response && typeof window !== 'undefined' && (!api.defaults.baseURL || api.defaults.baseURL.includes('api.jsnc.co.in'))) {
-      api.defaults.baseURL = RENDER_DIRECT_BACKUP_URL;
-      try { localStorage.setItem('crm_api_base_url', RENDER_DIRECT_BACKUP_URL); } catch {}
-      if (original && !original._failoverRetry) {
-        original._failoverRetry = true;
-        original.baseURL = RENDER_DIRECT_BACKUP_URL;
-        return api(original);
-      }
-    }
     const url: string = original?.url || '';
     const status = err.response?.status;
 
@@ -935,10 +985,15 @@ api.interceptors.response.use(
       setStaffAccessToken(null);
       setPlatformAccessToken(null);
       clearTabSessionUser();
-      if (typeof window !== 'undefined') {
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      if (typeof window !== 'undefined' && !isPublicRoute(currentPath)) {
+        const reqId = err.response?.data?.requestId || err.response?.headers?.['x-request-id'] || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
         window.dispatchEvent(
           new CustomEvent('crm:session-conflict-reload', {
-            detail: { message: 'You signed in with another account in a different tab' },
+            detail: {
+              message: 'You signed in with another account in a different tab',
+              requestId: reqId,
+            },
           })
         );
       }
@@ -1118,10 +1173,6 @@ export async function requestWithColdStartRetry<T>(
         [502, 503, 504].includes(err.response?.status);
 
       if (isNetworkOrTimeout && attempt < retries) {
-        if (typeof window !== 'undefined' && (!api.defaults.baseURL || api.defaults.baseURL.includes('api.jsnc.co.in'))) {
-          api.defaults.baseURL = RENDER_DIRECT_BACKUP_URL;
-          try { localStorage.setItem('crm_api_base_url', RENDER_DIRECT_BACKUP_URL); } catch {}
-        }
         await new Promise((r) => setTimeout(r, 1500));
         continue;
       }
@@ -1974,6 +2025,7 @@ export const ledgerApi = {
 // ─── Single Payment Service & Document Chain ───────────────────────────────
 export const paymentsApi = {
   record: (data: any, config?: any) => api.post("/payments", data, config),
+  allocate: (id: string, data: { invoiceId: string; amount?: number }) => api.post(`/payments/${id}/allocate`, data),
   reverse: (id: string, reason: string) => api.post("/payments/" + id + "/reverse", { reason }),
   getRelated: (type: string, id: string) => api.get("/documents/" + type + "/" + id + "/related"),
   getCustomerAccountSummary: (customerId: string) => api.get("/customers/" + customerId + "/account-summary"),

@@ -757,6 +757,11 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
           </Link>
         </div>
       )}
+
+      {/* Concurrent accounts instruction */}
+      <div className="pt-1.5 text-center text-[11px] text-slate-400 dark:text-slate-500">
+        To run two accounts simultaneously, please open a separate browser profile.
+      </div>
     </div>
   );
 }
