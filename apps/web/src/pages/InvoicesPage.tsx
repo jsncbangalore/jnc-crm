@@ -202,7 +202,7 @@ export default function InvoicesPage() {
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean; referenceId?: string; code?: string } | null>(null);
   const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('invoiceNumber') || '');
   const [docTypeFilter, setDocTypeFilter] = useState<string>(() => {
     if (searchParams.get('filter') === 'lut') return 'sez_invoice';
@@ -404,8 +404,11 @@ export default function InvoicesPage() {
   const issuedInvoices = invoices.filter(
     (inv) =>
       !inv.isVoided &&
-      inv.docType !== 'delivery_challan' &&
-      inv.docType !== 'proforma_invoice' &&
+      (inv.docType as string) !== 'delivery_challan' &&
+      !String(inv.docType || '').includes('challan') &&
+      (inv.docType as string) !== 'proforma_invoice' &&
+      (inv.docType as string) !== 'proforma' &&
+      !String(inv.docType || '').includes('proforma') &&
       inv.docType !== 'purchase_order' &&
       inv.docType !== 'credit_note'
   );
@@ -525,6 +528,7 @@ export default function InvoicesPage() {
           message={error.message}
           status={error.status}
           isNetworkError={error.isNetworkError}
+          referenceId={error.referenceId}
           onRetry={fetchInvoices}
         />
       </div>

@@ -181,9 +181,14 @@ export default function QuotationsPage() {
         <div class="header" style="display: flex; justify-content: space-between; border-bottom: 2px solid #2E5EFF; padding-bottom: 12px; margin-bottom: 16px;">
           <div>
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-              ${(q.tenant?.logoUrl || branding?.companyLogoUrl) ? `
-                <img src="${q.tenant?.logoUrl || branding?.companyLogoUrl}" alt="Logo" style="max-height: 32px !important; max-width: 140px !important; width: auto !important; height: auto !important; object-fit: contain !important;" />
-              ` : ''}
+              ${(() => {
+                const rawQLogo = q.tenant?.logoUrl || branding?.companyLogoUrl;
+                const isProdLogo = typeof rawQLogo === 'string' && (rawQLogo === '/logo.png' || rawQLogo === 'logo.png' || rawQLogo.endsWith('/logo.png'));
+                if (rawQLogo && !isProdLogo) {
+                  return `<img src="${rawQLogo}" alt="Logo" style="max-height: 32px !important; max-width: 140px !important; width: auto !important; height: auto !important; object-fit: contain !important;" />`;
+                }
+                return '';
+              })()}
               <h1 style="font-size: 18px; font-weight: 900; color: #2E5EFF; margin: 0;">${(q.tenant?.name || branding?.companyDisplayName || BRAND_CONFIG.displayName).toUpperCase()}</h1>
             </div>
             ${(q.tenant?.email || q.tenant?.website) ? `

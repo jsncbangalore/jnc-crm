@@ -157,7 +157,7 @@ export function calculateGst(
  * Indian Currency Number to Words Converter (Lakhs, Crores, Thousands, Paise)
  */
 export function numberToIndianWords(amount: number): string {
-  if (!amount || isNaN(amount)) return 'Rupees Zero Only';
+  if (!amount || isNaN(amount)) return 'Indian Rupees Zero Only';
 
   const single = [
     '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
@@ -203,5 +203,5 @@ export function numberToIndianWords(amount: number): string {
   if (decimalPart > 0) {
     words += ' and ' + convertChunk(decimalPart).trim() + ' Paise';
   }
-  return 'Rupees ' + words + ' Only';
+  return 'Indian Rupees ' + words + ' Only';
 }

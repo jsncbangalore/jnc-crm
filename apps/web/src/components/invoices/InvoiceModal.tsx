@@ -121,7 +121,8 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
 
   const profile = companyProfile || invoice?.companyProfile;
   const rawLogo = profile?.logoUrl || branding?.companyLogoUrl;
-  const hasDocumentLogo = !!(rawLogo && typeof rawLogo === 'string' && rawLogo.trim() !== '');
+  const isProductLogo = typeof rawLogo === 'string' && (rawLogo === '/logo.png' || rawLogo === 'logo.png' || rawLogo.endsWith('/logo.png'));
+  const hasDocumentLogo = !!(rawLogo && typeof rawLogo === 'string' && rawLogo.trim() !== '' && !isProductLogo);
   const invoiceLogo = hasDocumentLogo ? resolveFileUrl(rawLogo) : '';
 
   const handleDownloadPdf = async () => {
