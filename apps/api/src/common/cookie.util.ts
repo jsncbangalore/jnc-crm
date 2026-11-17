@@ -43,6 +43,9 @@ export function isCrossSiteDeployment(req?: any): boolean {
           if (cookieDomain && originHost.endsWith(cookieDomain) && reqHost.endsWith(cookieDomain)) {
             return false;
           }
+          if (originHost.endsWith('jsnc.co.in') && reqHost.endsWith('jsnc.co.in')) {
+            return false;
+          }
           if (originHost !== reqHost) {
             return true;
           }

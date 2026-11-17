@@ -250,6 +250,7 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
       response.setHeader('Access-Control-Allow-Origin', reqOrigin);
       response.setHeader('Access-Control-Allow-Credentials', 'true');
     }
+    response.setHeader('x-request-id', requestId);
 
     return response.status(status).json(errorBody);
   }

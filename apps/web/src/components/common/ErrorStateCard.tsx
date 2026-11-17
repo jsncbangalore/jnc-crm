@@ -128,8 +128,11 @@ export function parseApiError(err: any): {
   const referenceId =
     data?.requestId ||
     err?.requestId ||
-    (err?.response?.headers ? err.response.headers['x-request-id'] : null) ||
-    'N/A';
+    err?.response?.headers?.['x-request-id'] ||
+    err?.response?.headers?.['X-Request-Id'] ||
+    err?.config?.headers?.['x-request-id'] ||
+    err?.config?.headers?.['X-Request-Id'] ||
+    (typeof crypto !== 'undefined' && crypto.randomUUID ? `req_${crypto.randomUUID().slice(0, 8)}` : `req_${Date.now()}`);
 
   let message = 'An unexpected error occurred.';
   if (isNetworkError) {
@@ -137,12 +140,18 @@ export function parseApiError(err: any): {
   } else if (code === 'SCHEMA_OUT_OF_DATE' || status === 503) {
     message = `The system needs an update. Nothing was lost. Ask your administrator (reference ${referenceId}).`;
   } else if (status === 403) {
-    const dataMsg = data?.message || data?.error;
-    message = Array.isArray(dataMsg)
-      ? dataMsg.join(', ')
-      : typeof dataMsg === 'string' && dataMsg.trim()
-      ? dataMsg
-      : 'Access forbidden. You do not have permission to view this resource.';
+    let dataMsg = data?.message || data?.error;
+    if (Array.isArray(dataMsg)) dataMsg = dataMsg.join(', ');
+    if (typeof dataMsg === 'string') {
+      if (dataMsg.includes('Required roles') || dataMsg.includes('Access denied')) {
+        const pageKey = data?.pageKey;
+        const pageLabel = pageKey ? (pageKey.charAt(0).toUpperCase() + pageKey.slice(1)) : 'Shipments';
+        dataMsg = `You do not have permission to use ${pageLabel}. Ask your administrator.`;
+      }
+      message = dataMsg.trim();
+    } else {
+      message = 'You do not have permission to use this resource. Ask your administrator.';
+    }
   } else {
     const dataMsg = data?.message || data?.error;
     message = Array.isArray(dataMsg)

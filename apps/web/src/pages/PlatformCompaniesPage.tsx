@@ -350,6 +350,10 @@ export default function PlatformCompaniesPage() {
       `Switch to ${tenant.name} (${tenant.code}) workspace? You will be logged in as an administrator to help configure settings. You can return to Master Console at any time.`,
       async () => {
         try {
+          // Explicitly mark this tab as impersonating before calling API to prevent false session-conflict trigger
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('crm_tab_impersonating', 'true');
+          }
           const { data } = await platformApi.impersonateTenant(tenant.id);
           setImpersonationAccessToken(data.accessToken);
           setAccessToken(data.accessToken);
@@ -361,6 +365,9 @@ export default function PlatformCompaniesPage() {
           }
           navigate('/');
         } catch (err: any) {
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('crm_tab_impersonating');
+          }
           showAlert('Impersonation Failed', err?.response?.data?.message || 'Could not enter company workspace', 'error');
         }
       },

@@ -63,11 +63,15 @@ export function UnifiedErrorComponent({
   const code = propCode || errData?.code || 'ERROR';
   const field = propField || errData?.field || (errData?.fieldErrors?.[0]?.field);
   const referenceId =
-    propReferenceId ||
-    errData?.requestId ||
-    error?.requestId ||
-    (error?.response?.headers ? error.response.headers['x-request-id'] : null) ||
-    'N/A';
+    propReferenceId && propReferenceId !== 'N/A'
+      ? propReferenceId
+      : errData?.requestId ||
+        error?.requestId ||
+        error?.response?.headers?.['x-request-id'] ||
+        error?.response?.headers?.['X-Request-Id'] ||
+        error?.config?.headers?.['x-request-id'] ||
+        error?.config?.headers?.['X-Request-Id'] ||
+        (typeof crypto !== 'undefined' && crypto.randomUUID ? `req_${crypto.randomUUID().slice(0, 8)}` : `req_${Date.now()}`);
 
   const isAdmin =
     user?.role === 'admin' ||
