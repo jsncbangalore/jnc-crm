@@ -30,10 +30,62 @@ export interface InvoiceDocumentTemplateProps {
   includeSignatory?: boolean;
 }
 
+// ─── Indian GST State Codes ──────────────────────────────────────────────
+export const STATE_TO_CODE_MAP: Record<string, string> = {
+  'jammu and kashmir': '01',
+  'himachal pradesh': '02',
+  'punjab': '03',
+  'chandigarh': '04',
+  'uttarakhand': '05',
+  'haryana': '06',
+  'delhi': '07',
+  'rajasthan': '08',
+  'uttar pradesh': '09',
+  'bihar': '10',
+  'sikkim': '11',
+  'arunachal pradesh': '12',
+  'nagaland': '13',
+  'manipur': '14',
+  'mizoram': '15',
+  'tripura': '16',
+  'meghalaya': '17',
+  'assam': '18',
+  'west bengal': '19',
+  'jharkhand': '20',
+  'odisha': '21',
+  'chhattisgarh': '22',
+  'madhya pradesh': '23',
+  'gujarat': '24',
+  'daman and diu': '25',
+  'dadra and nagar haveli': '26',
+  'maharashtra': '27',
+  'andhra pradesh': '37',
+  'karnataka': '29',
+  'goa': '30',
+  'lakshadweep': '31',
+  'kerala': '32',
+  'tamil nadu': '33',
+  'puducherry': '34',
+  'andaman and nicobar islands': '35',
+  'telangana': '36',
+  'ladakh': '38',
+  'other territory': '97',
+  'centre jurisdiction': '99',
+};
+
+export function getIndianStateCode(stateName?: string, gstin?: string): string {
+  if (gstin && gstin.trim().length >= 2 && /^\d{2}/.test(gstin.trim())) {
+    return gstin.trim().slice(0, 2);
+  }
+  if (!stateName) return '29';
+  const norm = stateName.trim().toLowerCase();
+  return STATE_TO_CODE_MAP[norm] || (norm === 'ka' ? '29' : '');
+}
+
 // ─── Indian Currency Number to Words Converter ─────────────────────────────
 export function numberToIndianWords(amount: number): string {
   const num = Number(amount);
-  if (!num || isNaN(num)) return 'Zero Only';
+  if (!num || isNaN(num)) return 'Indian Rupees Zero Only';
 
   const single = [
     '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
@@ -44,7 +96,7 @@ export function numberToIndianWords(amount: number): string {
   const convertChunk = (n: number): string => {
     let str = '';
     if (n >= 100) {
-      str += single[Math.floor(n / 100)] + ' hundred ';
+      str += single[Math.floor(n / 100)] + ' Hundred ';
       n %= 100;
     }
     if (n >= 20) {
@@ -68,7 +120,7 @@ export function numberToIndianWords(amount: number): string {
   let words = '';
   if (crore > 0) words += convertChunk(crore) + 'Crore ';
   if (lakh > 0) words += convertChunk(lakh) + 'Lakh ';
-  if (thousand > 0) words += convertChunk(thousand) + 'thousand ';
+  if (thousand > 0) words += convertChunk(thousand) + 'Thousand ';
   if (hundreds > 0) words += convertChunk(hundreds);
 
   words = words.trim();
@@ -79,7 +131,7 @@ export function numberToIndianWords(amount: number): string {
   if (decimalPart > 0) {
     words += ' and ' + convertChunk(decimalPart).trim() + ' Paise';
   }
-  return words + ' Only';
+  return 'Indian Rupees ' + words + ' Only';
 }
 
 export const formatDateDMY = (dateStr?: string) => {
@@ -122,12 +174,20 @@ export default function InvoiceDocumentTemplate({
   const effectiveCompanyName = effectiveSignatory?.companyName || profile?.companyName || BRAND_CONFIG.displayName;
 
   // Resolve document logo
-  const resolvedLogo =
-    invoiceLogo && typeof invoiceLogo === 'string' && invoiceLogo.trim() !== ''
-      ? resolveFileUrl(invoiceLogo)
-      : profile?.logoUrl && typeof profile.logoUrl === 'string' && profile.logoUrl.trim() !== ''
-      ? resolveFileUrl(profile.logoUrl)
+  const isProductLogoUrl = (url?: string | null) => {
+    if (!url || typeof url !== 'string') return true;
+    const lower = url.trim().toLowerCase();
+    return lower === '/logo.png' || lower === 'logo.png' || lower.endsWith('/logo.png') || lower.includes('default-logo');
+  };
+
+  const rawCandidate =
+    invoiceLogo && typeof invoiceLogo === 'string' && invoiceLogo.trim() !== '' && !isProductLogoUrl(invoiceLogo)
+      ? invoiceLogo
+      : profile?.logoUrl && typeof profile.logoUrl === 'string' && profile.logoUrl.trim() !== '' && !isProductLogoUrl(profile.logoUrl)
+      ? profile.logoUrl
       : '';
+
+  const resolvedLogo = rawCandidate ? (resolveFileUrl(rawCandidate) || '') : '';
 
   const [logoFailed, setLogoFailed] = React.useState(false);
 
@@ -149,6 +209,9 @@ export default function InvoiceDocumentTemplate({
   const advanceAmount = invoice.advanceAmount || Number(((effectiveTotal * advancePercent) / 100).toFixed(2));
 
   const hasAdvanceAdjusted = !isProforma && !isDC && !isCreditNote && Number(invoice.advanceAdjusted || 0) > 0;
+  const showRoundOff = invoice.roundOff !== undefined && invoice.roundOff !== null && Number(invoice.roundOff) !== 0;
+  const resolvedCompanyStateCode = profile?.stateCode || getIndianStateCode(profile?.state, profile?.gstin);
+
   let totalsRowCount = 1; // Sub Total row
   if (isSEZ || isInterState) {
     totalsRowCount += 1;
@@ -158,7 +221,9 @@ export default function InvoiceDocumentTemplate({
   if (isProforma) {
     totalsRowCount += 2; // Advance + Balance
   }
-  totalsRowCount += 1; // Round off
+  if (showRoundOff) {
+    totalsRowCount += 1; // Round off
+  }
   totalsRowCount += 1; // Total
   if (hasAdvanceAdjusted) {
     totalsRowCount += 2; // Less Advance + Net Balance Due
@@ -286,12 +351,12 @@ export default function InvoiceDocumentTemplate({
                 <tr key={line.id || idx} className="border-b border-black/30 align-top">
                   <td className="py-1 px-1 text-center border-r border-black">{idx + 1}</td>
                   <td className="py-1 px-2 border-r border-black font-medium">{line.description}</td>
-                  <td className="py-1 px-2 text-center font-mono border-r border-black">{line.hsnCode || '8504'}</td>
+                  <td className="py-1 px-2 text-center font-sans tabular-nums border-r border-black">{line.hsnCode || '8504'}</td>
                   <td className="py-1 px-2 text-center border-r border-black font-semibold">{line.quantity} {line.unit || 'Nos'}</td>
-                  <td className="py-1 px-2 text-right font-mono border-r border-black">
+                  <td className="py-1 px-2 text-right font-sans tabular-nums border-r border-black">
                     {Number(line.unitPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
-                  <td className="py-1 px-3 text-right font-mono font-semibold">
+                  <td className="py-1 px-3 text-right font-sans tabular-nums font-semibold">
                     {((line.quantity || 0) * (line.unitPrice || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
@@ -300,7 +365,7 @@ export default function InvoiceDocumentTemplate({
                 <td colSpan={5} className="py-1 px-3 text-right border-r border-black text-black">
                   Total
                 </td>
-                <td className="py-1 px-3 text-right font-mono font-bold text-black">
+                <td className="py-1 px-3 text-right font-sans tabular-nums font-bold text-black">
                   {(effectiveSubtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </td>
               </tr>
@@ -308,7 +373,7 @@ export default function InvoiceDocumentTemplate({
                 <td colSpan={5} className="py-1 px-3 text-right border-r border-black text-black">
                   GST @ 18%
                 </td>
-                <td className="py-1 px-3 text-right font-mono font-bold text-black">
+                <td className="py-1 px-3 text-right font-sans tabular-nums font-bold text-black">
                   {(invoice.igstAmount || (invoice.cgstAmount + invoice.sgstAmount) || Math.round((effectiveSubtotal * 18) / 100)).toLocaleString('en-IN', { minimumFractionDigits: 0 })}
                 </td>
               </tr>
@@ -316,7 +381,7 @@ export default function InvoiceDocumentTemplate({
                 <td colSpan={5} className="py-1.5 px-3 text-right border-r border-black text-black">
                   Total Amount (INR) Inc GST
                 </td>
-                <td className="py-1.5 px-3 text-right font-mono font-black text-black">
+                <td className="py-1.5 px-3 text-right font-sans tabular-nums font-black text-black">
                   {(effectiveTotal || (effectiveSubtotal + Math.round((effectiveSubtotal * 18) / 100))).toLocaleString('en-IN', { minimumFractionDigits: 0 })}
                 </td>
               </tr>
@@ -428,12 +493,24 @@ export default function InvoiceDocumentTemplate({
                   ) : null}
 
                   <p className="font-bold text-xs text-black leading-tight">{effectiveCompanyName}</p>
-                  <p className="text-black font-medium leading-tight">{profile?.addressLine1 || profile?.address || ''}</p>
-                  <p className="text-black font-medium leading-tight">{profile ? `${profile.addressLine2 || ''} ${profile.city || ''} ${profile.pincode || ''}`.trim() : ''}</p>
-                  <p className="font-bold text-black leading-tight">GST IN : {profile?.gstin || ''}.</p>
-                  <p className="text-black font-medium leading-tight">MSME UDYAM Reg No: {profile?.msmeUdyamNo || ''}.</p>
-                  <p className="text-black font-medium leading-tight">State Name : {profile?.state || ''}, Code - {profile?.stateCode || ''}</p>
-                  <p className="text-black font-medium leading-tight">Email : {profile?.email || ''}</p>
+                  {(profile?.addressLine1 || profile?.address) ? (
+                    <p className="text-black font-medium leading-tight">{profile.addressLine1 || profile.address}</p>
+                  ) : null}
+                  {profile && (profile.city || profile.pincode || profile.addressLine2) ? (
+                    <p className="text-black font-medium leading-tight">{`${profile.addressLine2 || ''} ${profile.city || ''} ${profile.pincode || ''}`.trim()}</p>
+                  ) : null}
+                  {profile?.gstin ? (
+                    <p className="font-bold text-black leading-tight">GST IN : {profile.gstin}</p>
+                  ) : null}
+                  {profile?.msmeUdyamNo ? (
+                    <p className="text-black font-medium leading-tight">MSME UDYAM Reg No: {profile.msmeUdyamNo}</p>
+                  ) : null}
+                  {(profile?.state || resolvedCompanyStateCode) ? (
+                    <p className="text-black font-medium leading-tight">State Name : {profile?.state || 'Karnataka'}, Code - {resolvedCompanyStateCode || '29'}</p>
+                  ) : null}
+                  {profile?.email ? (
+                    <p className="text-black font-medium leading-tight">Email : {profile.email}</p>
+                  ) : null}
                 </td>
 
                 {/* Right Half (50%): Invoice / DC Metadata Table */}
@@ -561,24 +638,24 @@ export default function InvoiceDocumentTemplate({
                     <td className="py-2 px-3 text-left border-r border-black font-medium whitespace-pre-line leading-relaxed text-black">
                       {line.description}
                       {isDC && (
-                        <div className="text-[9.5px] text-black font-mono">HSN/SAC: {line.hsnCode || '8504'}</div>
+                        <div className="text-[9.5px] text-black font-sans tabular-nums">HSN/SAC: {line.hsnCode || '8504'}</div>
                       )}
                     </td>
                     {!isDC && (
-                      <td className="py-2 px-2 text-center border-r border-black font-mono text-black">
+                      <td className="py-2 px-2 text-center border-r border-black font-sans tabular-nums text-black">
                         {line.hsnCode || (idx === lines.length - 1 && line.description?.toLowerCase().includes('transport') ? '9965' : '8504')}
                       </td>
                     )}
                     <td className="py-2 px-2 text-center border-r border-black text-black">{line.unit || (isDC ? 'No' : "No's")}</td>
                     {!isDC && (
-                      <td className="py-2 px-2 text-right border-r border-black font-mono text-black">
+                      <td className="py-2 px-2 text-right border-r border-black font-sans tabular-nums text-black">
                         {Math.round(line.unitPrice || 0).toLocaleString('en-IN')}
                       </td>
                     )}
                     <td className="py-2 px-2 text-center border-r border-black font-semibold text-black">
                       {line.quantity || 0}
                     </td>
-                    <td className="py-2 px-3 text-right font-mono font-semibold text-black">
+                    <td className="py-2 px-3 text-right font-sans tabular-nums font-semibold text-black">
                       {lineTaxable.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                     </td>
                   </tr>
@@ -603,13 +680,13 @@ export default function InvoiceDocumentTemplate({
                   <td colSpan={2} className="py-2 px-3 text-right font-bold border-r border-black text-black">
                     Total Quantity:
                   </td>
-                  <td className="py-2 px-2 text-center border-r border-black font-mono text-black">
+                  <td className="py-2 px-2 text-center border-r border-black font-sans tabular-nums text-black">
                     -
                   </td>
-                  <td className="py-2 px-2 text-center font-mono font-bold border-r border-black text-black">
+                  <td className="py-2 px-2 text-center font-sans tabular-nums font-bold border-r border-black text-black">
                     {totalQty}
                   </td>
-                  <td className="py-2 px-2 text-center font-mono text-black">
+                  <td className="py-2 px-2 text-center font-sans tabular-nums text-black">
                     -
                   </td>
                 </tr>
@@ -623,10 +700,10 @@ export default function InvoiceDocumentTemplate({
                     <td colSpan={3} className="py-1 px-3 text-right font-bold border-r border-black text-black">
                       Sub Total
                     </td>
-                    <td className="py-1 px-2 text-center font-mono font-semibold border-r border-black text-black">
+                    <td className="py-1 px-2 text-center font-sans tabular-nums font-semibold border-r border-black text-black">
                       {totalQty}
                     </td>
-                    <td className="py-1 px-2 text-right font-mono font-bold text-black">
+                    <td className="py-1 px-2 text-right font-sans tabular-nums font-bold text-black">
                       {(effectiveSubtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                     </td>
                   </tr>
@@ -637,7 +714,7 @@ export default function InvoiceDocumentTemplate({
                       <td colSpan={4} className="py-1 px-3 text-right font-bold border-t border-r border-black italic text-[10px] text-black">
                         Nill - IGST 18% Tax by LUT
                       </td>
-                      <td className="py-1 px-2 text-right font-mono font-bold border-t border-black text-black">
+                      <td className="py-1 px-2 text-right font-sans tabular-nums font-bold border-t border-black text-black">
                         -
                       </td>
                     </tr>
@@ -646,7 +723,7 @@ export default function InvoiceDocumentTemplate({
                       <td colSpan={4} className="py-1 px-3 text-right font-bold border-t border-r border-black text-black">
                         IGST 18%
                       </td>
-                      <td className="py-1 px-2 text-right font-mono font-bold border-t border-black text-black">
+                      <td className="py-1 px-2 text-right font-sans tabular-nums font-bold border-t border-black text-black">
                         {(invoice.igstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                       </td>
                     </tr>
@@ -656,7 +733,7 @@ export default function InvoiceDocumentTemplate({
                         <td colSpan={4} className="py-0.5 px-3 text-right font-bold border-t border-r border-black text-black">
                           CGST 9%
                         </td>
-                        <td className="py-0.5 px-2 text-right font-mono font-bold border-t border-black text-black">
+                        <td className="py-0.5 px-2 text-right font-sans tabular-nums font-bold border-t border-black text-black">
                           {(invoice.cgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
@@ -664,7 +741,7 @@ export default function InvoiceDocumentTemplate({
                         <td colSpan={4} className="py-0.5 px-3 text-right font-bold border-t border-r border-black text-black">
                           SGST 9%
                         </td>
-                        <td className="py-0.5 px-2 text-right font-mono font-bold border-t border-black text-black">
+                        <td className="py-0.5 px-2 text-right font-sans tabular-nums font-bold border-t border-black text-black">
                           {(invoice.sgstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
@@ -678,7 +755,7 @@ export default function InvoiceDocumentTemplate({
                         <td colSpan={4} className="py-1 px-3 text-right font-bold border-t border-r border-black text-emerald-900">
                           Advance {advancePercent}% with PO
                         </td>
-                        <td className="py-1 px-2 text-right font-mono font-bold border-t border-black text-emerald-900">
+                        <td className="py-1 px-2 text-right font-sans tabular-nums font-bold border-t border-black text-emerald-900">
                           {advanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
@@ -686,7 +763,7 @@ export default function InvoiceDocumentTemplate({
                         <td colSpan={4} className="py-0.5 px-3 text-right font-bold border-t border-r border-black text-slate-700 italic text-[10px]">
                           Balance {100 - advancePercent}% on Dispatch / Delivery
                         </td>
-                        <td className="py-0.5 px-2 text-right font-mono font-semibold border-t border-black text-slate-700">
+                        <td className="py-0.5 px-2 text-right font-sans tabular-nums font-semibold border-t border-black text-slate-700">
                           {(effectiveTotal - advanceAmount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
@@ -694,24 +771,26 @@ export default function InvoiceDocumentTemplate({
                   )}
 
                   {/* Round off row */}
-                  <tr className="bg-white">
-                    <td colSpan={4} className="py-0.5 px-3 text-right font-bold border-t border-r border-black text-black">
-                      Round off
-                    </td>
-                    <td className="py-0.5 px-2 text-right font-mono font-bold border-t border-black text-black">
-                      {(invoice.roundOff !== undefined && invoice.roundOff !== 0 ? (invoice.roundOff > 0 ? `+${invoice.roundOff.toFixed(2)}` : invoice.roundOff.toFixed(2)) : '-')}
-                    </td>
-                  </tr>
+                  {showRoundOff && (
+                    <tr className="bg-white">
+                      <td colSpan={4} className="py-0.5 px-3 text-right font-bold border-t border-r border-black text-black">
+                        Round off
+                      </td>
+                      <td className="py-0.5 px-2 text-right font-sans tabular-nums font-bold border-t border-black text-black">
+                        {invoice.roundOff! > 0 ? `+${Number(invoice.roundOff).toFixed(2)}` : Number(invoice.roundOff).toFixed(2)}
+                      </td>
+                    </tr>
+                  )}
 
                   {/* Grand Total Row */}
                   <tr className="font-bold text-xs bg-gray-100 print:bg-transparent">
                     <td colSpan={3} className="py-1.5 px-3 text-right border-t border-r border-black font-bold text-black">
                       Total
                     </td>
-                    <td className="py-1.5 px-2 text-center font-mono font-bold border-t border-r border-black text-black">
+                    <td className="py-1.5 px-2 text-center font-sans tabular-nums font-bold border-t border-r border-black text-black">
                       {totalQty}
                     </td>
-                    <td className="py-1.5 px-2 text-right font-mono font-black text-xs text-black border-t border-black">
+                    <td className="py-1.5 px-2 text-right font-sans tabular-nums font-black text-xs text-black border-t border-black">
                       {Math.round(effectiveTotal).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                     </td>
                   </tr>
@@ -723,7 +802,7 @@ export default function InvoiceDocumentTemplate({
                         <td colSpan={4} className="py-1 px-3 text-right font-bold border-t border-r border-black text-emerald-900">
                           Less: Advance Received {invoice.transactionRef ? `(${invoice.transactionRef})` : ''}
                         </td>
-                        <td className="py-1 px-2 text-right font-mono font-bold border-t border-black text-emerald-900">
+                        <td className="py-1 px-2 text-right font-sans tabular-nums font-bold border-t border-black text-emerald-900">
                           - {(invoice.advanceAdjusted || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
@@ -731,7 +810,7 @@ export default function InvoiceDocumentTemplate({
                         <td colSpan={4} className="py-1.5 px-3 text-right border-t border-r border-black font-bold text-black">
                           Net Balance Payable / Due
                         </td>
-                        <td className="py-1.5 px-2 text-right font-mono font-black text-xs text-black border-t border-black">
+                        <td className="py-1.5 px-2 text-right font-sans tabular-nums font-black text-xs text-black border-t border-black">
                           {(invoice.balanceDue ?? Math.max(0, effectiveTotal - (invoice.advanceAdjusted || 0))).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
@@ -765,18 +844,18 @@ export default function InvoiceDocumentTemplate({
               </thead>
               <tbody className="bg-white">
                 <tr className="border-b border-black">
-                  <td className="py-1 px-1.5 border-r border-black text-center font-mono text-black">{distinctHsns}</td>
-                  <td className="py-1 px-1.5 border-r border-black text-right font-mono text-black">{(effectiveSubtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
-                  <td className="py-1 px-1.5 border-r border-black text-center font-mono text-black">18%</td>
-                  <td className="py-1 px-1.5 border-r border-black text-right font-mono text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                  <td className="py-1 px-1.5 text-right font-mono font-bold text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="py-1 px-1.5 border-r border-black text-center font-sans tabular-nums text-black">{distinctHsns}</td>
+                  <td className="py-1 px-1.5 border-r border-black text-right font-sans tabular-nums text-black">{(effectiveSubtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                  <td className="py-1 px-1.5 border-r border-black text-center font-sans tabular-nums text-black">18%</td>
+                  <td className="py-1 px-1.5 border-r border-black text-right font-sans tabular-nums text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="py-1 px-1.5 text-right font-sans tabular-nums font-bold text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                 </tr>
                 <tr className="font-bold bg-gray-50">
                   <td className="py-1 px-1.5 border-r border-black text-right text-black">Total</td>
-                  <td className="py-1 px-1.5 border-r border-black text-right font-mono text-black">{(effectiveSubtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+                  <td className="py-1 px-1.5 border-r border-black text-right font-sans tabular-nums text-black">{(effectiveSubtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
                   <td className="py-1 px-1.5 border-r border-black"></td>
-                  <td className="py-1 px-1.5 border-r border-black text-right font-mono text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                  <td className="py-1 px-1.5 text-right font-mono font-bold text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="py-1 px-1.5 border-r border-black text-right font-sans tabular-nums text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="py-1 px-1.5 text-right font-sans tabular-nums font-bold text-black">{theoreticalIgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                 </tr>
               </tbody>
             </table>

@@ -284,7 +284,15 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         }
       }
 
-      if (!resolvedLogo && candidateLogo) {
+      const isProductLogoCandidate =
+        typeof candidateLogo === 'string' &&
+        (candidateLogo === '/logo.png' ||
+          candidateLogo === 'logo.png' ||
+          candidateLogo.endsWith('/logo.png') ||
+          candidateLogo.includes('Syntra') ||
+          candidateLogo.includes('default-logo'));
+
+      if (!resolvedLogo && candidateLogo && !isProductLogoCandidate) {
         if (typeof candidateLogo === 'string' && candidateLogo.startsWith('data:image/')) {
           try {
             const b64 = candidateLogo.split(',')[1];
@@ -295,7 +303,8 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
             resolvedLogo = candidateLogo;
           } else {
             const relPath = path.resolve(process.cwd(), candidateLogo);
-            if (fs.existsSync(relPath)) {
+            const isProductAsset = relPath.toLowerCase().includes('assets') || relPath.endsWith('logo.png');
+            if (!isProductAsset && fs.existsSync(relPath)) {
               resolvedLogo = relPath;
             }
           }
@@ -689,7 +698,9 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
           } else {
             totalsBlockH += 28; // CGST + SGST lines
           }
-          totalsBlockH += 14; // Round off
+          if (Math.abs(Number(invoice.roundOff || 0)) > 0.001) {
+            totalsBlockH += 14; // Round off
+          }
           if (invoice.advanceAdjusted && Number(invoice.advanceAdjusted) > 0) {
             totalsBlockH += 28; // Advance + Net balance due
           }
@@ -981,28 +992,30 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
             currentY += taxRowH;
           }
 
-          // Round Off Row
-          const roundOffH = 14;
-          doc.rect(startX, currentY, pageWidth, roundOffH).stroke('#000000');
-          doc.moveTo(totalValX, currentY).lineTo(totalValX, currentY + roundOffH).stroke('#000000');
-
+          // Round Off Row (only when non-zero)
           const roundOffVal = Number(invoice.roundOff || 0);
-          doc
-            .font(fontRegular)
-            .fontSize(7)
-            .text('Round off :', startX + 6, currentY + 3.5, {
-              width: totalLabelsW,
-              align: 'right',
-            });
-          doc
-            .font(fontRegular)
-            .fontSize(7.5)
-            .text(roundOffVal !== 0 ? formatIndianCurrency(roundOffVal) : '0.00', totalValX + 4, currentY + 3.5, {
-              width: lastColW - 8,
-              align: 'right',
-            });
+          if (Math.abs(roundOffVal) > 0.001) {
+            const roundOffH = 14;
+            doc.rect(startX, currentY, pageWidth, roundOffH).stroke('#000000');
+            doc.moveTo(totalValX, currentY).lineTo(totalValX, currentY + roundOffH).stroke('#000000');
 
-          currentY += roundOffH;
+            doc
+              .font(fontRegular)
+              .fontSize(7)
+              .text('Round off :', startX + 6, currentY + 3.5, {
+                width: totalLabelsW,
+                align: 'right',
+              });
+            doc
+              .font(fontRegular)
+              .fontSize(7.5)
+              .text(formatIndianCurrency(roundOffVal), totalValX + 4, currentY + 3.5, {
+                width: lastColW - 8,
+                align: 'right',
+              });
+
+            currentY += roundOffH;
+          }
 
           // Advance adjustment if recorded
           if (invoice.advanceAdjusted && Number(invoice.advanceAdjusted) > 0) {

@@ -15,6 +15,12 @@ import InvoiceDocumentTemplate, { numberToIndianWords } from '../components/invo
 import { downloadDocumentPdf } from '../utils/printHelper';
 import { DocumentType } from '../types';
 
+const isValidDocLogo = (url?: string | null): boolean => {
+  if (!url || typeof url !== 'string' || url.trim() === '') return false;
+  const lower = url.trim().toLowerCase();
+  return lower !== '/logo.png' && lower !== 'logo.png' && !lower.endsWith('/logo.png');
+};
+
 export default function DedicatedPrintPage() {
   const { docType = 'invoice', id } = useParams<{ docType: string; id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -424,7 +430,7 @@ export default function DedicatedPrintPage() {
             >
               <div className="border-b-2 border-black pb-3 mb-4 flex justify-between items-start">
                 <div>
-                  {(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) ? (
+                  {isValidDocLogo(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) ? (
                     <img
                       src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl}
                       alt="Company Logo"
@@ -552,7 +558,7 @@ export default function DedicatedPrintPage() {
             >
               <div className="border-b-2 border-black pb-3 mb-4 flex justify-between items-start">
                 <div>
-                  {(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) ? (
+                  {isValidDocLogo(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) ? (
                     <img
                       src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl}
                       alt="Company Logo"
@@ -744,7 +750,7 @@ export default function DedicatedPrintPage() {
               {/* Header with Company Logo & Details */}
               <div className="border-b-2 border-black pb-3 mb-4 flex justify-between items-start">
                 <div>
-                  {(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl) ? (
+                  {isValidDocLogo(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl) ? (
                     <img
                       src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl}
                       alt="Company Logo"
