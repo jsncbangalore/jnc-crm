@@ -145,7 +145,7 @@ export default function OrdersPage() {
   const [searchParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean; referenceId?: string; code?: string } | null>(null);
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState(() => {
     const f = searchParams.get('filter');
@@ -234,6 +234,7 @@ export default function OrdersPage() {
           message={error.message}
           status={error.status}
           isNetworkError={error.isNetworkError}
+          referenceId={error.referenceId}
           onRetry={fetchOrders}
         />
       </div>

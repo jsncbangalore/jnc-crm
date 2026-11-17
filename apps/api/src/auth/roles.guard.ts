@@ -12,6 +12,30 @@ import { PAGE_ACCESS_KEY, IS_PUBLIC_KEY, AUTH_ONLY_KEY } from './page-access.dec
 import { PrismaService } from '../prisma/prisma.service';
 import { getEffectivePagesForUser } from './effective-page-access';
 
+const PAGE_LABEL_MAP: Record<string, string> = {
+  shipments: 'Shipments',
+  orders: 'Orders',
+  invoices: 'Invoices',
+  quotations: 'Quotations',
+  inventory: 'Inventory',
+  suppliers: 'Suppliers',
+  bills: 'Bills',
+  purchase_bills: 'Bills',
+  ledger: 'Ledger',
+  leads: 'Leads',
+  lead_flow: 'Lead Flow',
+  lead_setup: 'Lead Setup',
+  daily_activities: 'Daily Activities',
+  notifications: 'Notifications',
+  custom_objects: 'Custom Objects',
+  automation: 'Workflow Automation',
+  audit_logs: 'Audit Logs',
+  users: 'Users',
+  teams: 'Teams',
+  branding: 'Branding',
+  mail_settings: 'Mail Settings',
+};
+
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector, private prisma: PrismaService) {}
@@ -74,15 +98,41 @@ export class RolesGuard implements CanActivate {
       );
     }
 
-    // Check Role Hierarchy
+    // 1. Check Page Access (Dynamic Per-User & Per-Team Page Access from database, no stale cache)
+    let userEffectivePages: string[] | null = null;
+    let hasPageAccess = true;
+
+    if (requiredPage) {
+      userEffectivePages = await getEffectivePagesForUser(this.prisma, {
+        id: user.sub || user.id,
+        role: user.role,
+        tenantId: user.tenantId,
+      });
+
+      const requiredKeys = Array.isArray(requiredPage) ? requiredPage : [requiredPage];
+      hasPageAccess = requiredKeys.some((k) => userEffectivePages!.includes(k));
+
+      if (!hasPageAccess) {
+        const rejectedKey = requiredKeys[0];
+        const pageLabel = PAGE_LABEL_MAP[rejectedKey] || rejectedKey.charAt(0).toUpperCase() + rejectedKey.slice(1);
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'FORBIDDEN',
+          message: `You do not have permission to use ${pageLabel}. Ask your administrator.`,
+          pageKey: rejectedKey,
+        });
+      }
+    }
+
+    // 2. Check Role Hierarchy / Admin Restrictions
     if (requiredRoles && requiredRoles.length > 0) {
       let isAuthorized = requiredRoles.includes(user.role);
 
       if (!isAuthorized) {
         // tenant_admin (Client Super Admin) has full control over all tenant operational features
-        if (user.role === 'tenant_admin' || user.role === 'platform_admin') {
+        if (user.role === 'tenant_admin' || user.role === 'platform_admin' || user.role === 'platform_super_admin') {
           const isPlatformOnly = requiredRoles.every((r) => r === 'platform_super_admin');
-          if (!isPlatformOnly) {
+          if (!isPlatformOnly || user.role === 'platform_super_admin') {
             isAuthorized = true;
           }
         } else if (user.role === 'admin') {
@@ -97,26 +147,17 @@ export class RolesGuard implements CanActivate {
       }
 
       if (!isAuthorized) {
-        throw new ForbiddenException(`Access denied. Required roles: [${requiredRoles.join(', ')}]`);
-      }
-    }
+        const pageKey = requiredPage ? (Array.isArray(requiredPage) ? requiredPage[0] : requiredPage) : null;
+        const pageLabel = pageKey ? (PAGE_LABEL_MAP[pageKey] || pageKey.charAt(0).toUpperCase() + pageKey.slice(1)) : null;
+        const message = pageLabel
+          ? `You do not have permission to use ${pageLabel}. Ask your administrator.`
+          : 'You do not have permission to perform this action. Ask your administrator.';
 
-    // Check Page Access (Dynamic Per-User & Per-Team Page Access from database, no stale cache)
-    if (requiredPage) {
-      const effectivePages = await getEffectivePagesForUser(this.prisma, {
-        id: user.sub || user.id,
-        role: user.role,
-        tenantId: user.tenantId,
-      });
-
-      const requiredKeys = Array.isArray(requiredPage) ? requiredPage : [requiredPage];
-      const hasAccess = requiredKeys.some((k) => effectivePages.includes(k));
-
-      if (!hasAccess) {
-        const rejectedKey = requiredKeys[0];
         throw new ForbiddenException({
-          message: 'You do not have access to this page',
-          pageKey: rejectedKey,
+          statusCode: 403,
+          code: 'FORBIDDEN',
+          message,
+          ...(pageKey ? { pageKey } : {}),
         });
       }
     }

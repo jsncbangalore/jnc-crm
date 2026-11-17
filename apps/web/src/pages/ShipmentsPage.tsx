@@ -25,7 +25,7 @@ export default function ShipmentsPage() {
   const [shipments, setShipments] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean; referenceId?: string; code?: string } | null>(null);
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState(() => {
     const f = searchParams.get('filter');
@@ -496,6 +496,7 @@ export default function ShipmentsPage() {
               message={error.message}
               status={error.status}
               isNetworkError={error.isNetworkError}
+              referenceId={error.referenceId}
               onRetry={fetchShipments}
             />
           </div>

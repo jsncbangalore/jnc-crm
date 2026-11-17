@@ -27,7 +27,6 @@ export class LeadsController {
   constructor(private leadsService: LeadsService) {}
 
   @Post()
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   async createLead(@Body() dto: CreateLeadDto, @CurrentUser() user: ScopedUser) {
     return this.leadsService.createLead(dto, user);
   }
@@ -92,7 +91,6 @@ export class LeadsController {
   }
 
   @Patch(':id')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   async updateLead(
     @Param('id') id: string,
     @Body() dto: UpdateLeadDto,
@@ -120,7 +118,6 @@ export class LeadsController {
   }
 
   @Post(':id/share')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   async shareLead(
     @Param('id') id: string,
     @Body() dto: ShareLeadDto,

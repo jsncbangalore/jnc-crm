@@ -15,6 +15,7 @@ import { RecordPaymentDto } from './dto/payment.dto';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 import { AuthGuard } from '@nestjs/passport';
 
 @Controller()
@@ -55,6 +56,7 @@ export class PaymentsController {
   }
 
   @Post('payments/:id/reverse')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'finance', 'accountant')
   @HttpCode(HttpStatus.OK)
   async reversePayment(
     @Param('id') id: string,
@@ -62,6 +64,16 @@ export class PaymentsController {
     @CurrentUser() user: ScopedUser,
   ) {
     return this.paymentsService.reverse(id, reason || 'User requested reversal', user);
+  }
+
+  @Post('payments/:id/allocate')
+  @HttpCode(HttpStatus.OK)
+  async allocatePayment(
+    @Param('id') id: string,
+    @Body() dto: { invoiceId: string; amount?: number },
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.paymentsService.allocatePayment(id, dto, user);
   }
 
   @Get('documents/:type/:id/related')

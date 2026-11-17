@@ -31,7 +31,6 @@ export class OrdersController {
   constructor(private ordersService: OrdersService) {}
 
   @Post()
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   create(@Body() dto: CreateOrderDto, @CurrentUser() user: ScopedUser) {
     return this.ordersService.createOrder(dto, user);
   }
@@ -53,7 +52,6 @@ export class OrdersController {
   }
 
   @Patch(':id')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   updateOrder(
     @Param('id') id: string,
     @Body() dto: UpdateOrderDto,
@@ -63,7 +61,6 @@ export class OrdersController {
   }
 
   @Post(':id/payments')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   recordPayment(
     @Param('id') id: string,
     @Body() body: RecordOrderPaymentDto,
@@ -73,7 +70,7 @@ export class OrdersController {
   }
 
   @Patch(':id/status')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
@@ -84,7 +81,6 @@ export class OrdersController {
 
   @Get('shipments/list')
   @PageAccess('shipments')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   listShipments(
     @CurrentUser() user: ScopedUser,
     @Query('status') status?: string,
@@ -97,14 +93,12 @@ export class OrdersController {
 
   @Post('shipments')
   @PageAccess('shipments')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   createShipment(@Body() dto: CreateShipmentDto, @CurrentUser() user: ScopedUser) {
     return this.ordersService.createShipment(dto, user);
   }
 
   @Patch('shipments/:id')
   @PageAccess('shipments')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   updateShipment(
     @Param('id') id: string,
     @Body() dto: UpdateShipmentDto,
@@ -115,7 +109,7 @@ export class OrdersController {
 
   @Patch('shipments/:id/status')
   @PageAccess('shipments')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   updateShipmentStatus(
     @Param('id') id: string,
     @Body() body: UpdateShipmentStatusDto,
@@ -126,21 +120,18 @@ export class OrdersController {
 
   @Post('shipments/verify-live-url')
   @PageAccess('shipments')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   verifyLiveTrackingUrl(@Body() dto: VerifyLiveTrackingUrlDto) {
     return this.ordersService.verifyLiveTrackingUrl(dto);
   }
 
   @Post('shipments/:id/sync-tracking')
   @PageAccess('shipments')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   syncShipmentTracking(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.ordersService.syncShipmentTracking(id, user);
   }
 
   @Get('shipments/:id/live-timeline')
   @PageAccess('shipments')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   getShipmentLiveTimeline(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.ordersService.getShipmentLiveTimeline(id, user);
   }

@@ -951,7 +951,7 @@ export class PaymentsService {
 
     // Permission check: limited to accountant, finance, and admin
     const userRole = (user.role || '').toLowerCase();
-    const allowedRoles = ['accountant', 'finance', 'admin', 'tenant_admin', 'platform_super_admin'];
+    const allowedRoles = ['accountant', 'finance', 'admin', 'sub_admin', 'tenant_admin', 'platform_super_admin'];
     if (!allowedRoles.includes(userRole)) {
       throw new ForbiddenException('Payment reversal is restricted to accountants, finance staff, and administrators.');
     }
@@ -1198,6 +1198,116 @@ export class PaymentsService {
   }
 
   /**
+   * Allocates an existing customer payment or advance to a specific invoice
+   */
+  async allocatePayment(
+    paymentId: string,
+    dto: { invoiceId: string; amount?: number },
+    user: ScopedUser,
+  ) {
+    const tenantId = requireTenantId(user);
+    const payment = await this.prisma.paymentRecord.findFirst({
+      where: { id: paymentId, tenantId },
+      include: { allocations: true },
+    });
+
+    if (!payment) {
+      throw new NotFoundException('Payment record not found');
+    }
+
+    const totalAllocated = payment.allocations.reduce(
+      (sum, a) => sum + Number(a.amount || 0),
+      0
+    );
+    const unallocated = Number(payment.amount) - totalAllocated;
+    if (unallocated <= 0.01) {
+      throw new BadRequestException('This payment has already been fully allocated.');
+    }
+
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: dto.invoiceId, tenantId, isVoided: false },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found or is voided');
+    }
+
+    const invoiceDue = Number(invoice.balanceDue ?? invoice.totalAmount ?? 0);
+    if (invoiceDue <= 0.01) {
+      throw new BadRequestException('This invoice is already fully paid.');
+    }
+
+    const requestedAmount = dto.amount ? Number(dto.amount) : unallocated;
+    const allocAmount = Number(Math.min(unallocated, invoiceDue, requestedAmount).toFixed(2));
+
+    if (allocAmount <= 0) {
+      throw new BadRequestException('Allocation amount must be greater than 0.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Create allocation record
+      const allocation = await tx.paymentAllocation.create({
+        data: {
+          tenantId,
+          paymentType: 'customer_receipt',
+          paymentRecordId: payment.id,
+          invoiceId: invoice.id,
+          amount: new Prisma.Decimal(allocAmount.toFixed(2)),
+        },
+      });
+
+      // Update invoice advanceAdjusted, balanceDue, and paymentStatus
+      const currentAdjusted = Number(invoice.advanceAdjusted || 0);
+      const newAdjusted = Number((currentAdjusted + allocAmount).toFixed(2));
+      const newBalanceDue = Math.max(0, Number((Number(invoice.totalAmount) - newAdjusted).toFixed(2)));
+      const newStatus = newBalanceDue <= 0.01 ? 'paid' : 'partial';
+
+      const updatedInvoice = await tx.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          advanceAdjusted: newAdjusted,
+          balanceDue: newBalanceDue,
+          paymentStatus: newStatus,
+        },
+      });
+
+      // If invoice is linked to an order, update order paid amount and payment status
+      if (invoice.orderId) {
+        const order = await tx.order.findUnique({
+          where: { id: invoice.orderId },
+        });
+        if (order) {
+          const orderTotal = Number(order.totalAmount || 0);
+          const orderPaid = Number((Number(order.paidAmount || 0) + allocAmount).toFixed(2));
+          const orderBal = Math.max(0, Number((orderTotal - orderPaid).toFixed(2)));
+          const orderPmtStatus = orderBal <= 0.01 ? 'paid' : orderPaid > 0 ? 'partial' : 'pending';
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              paidAmount: orderPaid,
+              balanceAmount: orderBal,
+              paymentStatus: orderPmtStatus,
+            },
+          });
+        }
+      }
+
+      return {
+        success: true,
+        message: `Successfully allocated ₹${allocAmount} to Invoice #${invoice.invoiceNumber}.`,
+        allocation,
+        invoice: {
+          id: updatedInvoice.id,
+          invoiceNumber: updatedInvoice.invoiceNumber,
+          advanceAdjusted: updatedInvoice.advanceAdjusted,
+          balanceDue: updatedInvoice.balanceDue,
+          paymentStatus: updatedInvoice.paymentStatus,
+        },
+      };
+    });
+  }
+
+  /**
    * Retrieves related documents across the sales and payment chain,
    * strictly omitting documents from modules where the user lacks page access.
    */
@@ -1218,7 +1328,7 @@ export class PaymentsService {
     if (type === 'quotation') {
       const q = await this.prisma.quotation.findFirst({
         where: { id, tenantId },
-        select: { id: true, orderId: true, customerId: true },
+        select: { id: true, orderId: true, customerId: true, leadId: true },
       });
       if (q) {
         quoteId = q.id;
@@ -1253,12 +1363,22 @@ export class PaymentsService {
           quoteId = ord?.quotationId || null;
         }
       }
+    } else if (type === 'lead') {
+      const q = await this.prisma.quotation.findFirst({
+        where: { leadId: id, tenantId },
+        select: { id: true, orderId: true, customerId: true },
+      });
+      if (q) {
+        quoteId = q.id;
+        orderId = q.orderId;
+        customerId = q.customerId;
+      }
     }
 
     // 1. Fetch Quotation
     let quotation: any = null;
     if (canSeeQuotations && quoteId) {
-      quotation = await this.prisma.quotation.findFirst({
+      const q = await this.prisma.quotation.findFirst({
         where: { id: quoteId, tenantId },
         select: {
           id: true,
@@ -1268,6 +1388,13 @@ export class PaymentsService {
           createdAt: true,
         },
       });
+      if (q) {
+        quotation = {
+          ...q,
+          quotationNumber: q.quoteNumber,
+          quoteNumber: q.quoteNumber,
+        };
+      }
     }
 
     // 2. Fetch Order
@@ -1321,7 +1448,7 @@ export class PaymentsService {
     let payments: any[] = [];
     if (orderId || invoiceId || (invoices.length > 0)) {
       const invoiceIds = invoices.map((i) => i.id);
-      payments = await this.prisma.paymentRecord.findMany({
+      const rawPayments = await this.prisma.paymentRecord.findMany({
         where: {
           tenantId,
           OR: [
@@ -1333,15 +1460,34 @@ export class PaymentsService {
               : undefined,
           ].filter(Boolean) as any,
         },
-        select: {
-          id: true,
-          amount: true,
-          paymentType: true,
-          paymentMethod: true,
-          transactionRef: true,
-          paymentDate: true,
+        include: {
+          allocations: true,
         },
         orderBy: { paymentDate: 'desc' },
+      });
+
+      payments = rawPayments.map((p) => {
+        const totalAllocated = p.allocations
+          ? p.allocations.reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0)
+          : 0;
+        const unallocatedAmount = Math.max(0, Number(p.amount) - totalAllocated);
+        const isAdvance = p.paymentType === 'advance';
+        const isAllocated = totalAllocated >= (Number(p.amount) - 0.01);
+        const isUnallocated = unallocatedAmount > 0.01;
+        return {
+          id: p.id,
+          amount: Number(p.amount),
+          paymentType: p.paymentType,
+          paymentMethod: p.paymentMethod,
+          transactionRef: p.transactionRef,
+          receiptNumber: p.transactionRef || `REC-${p.id.slice(0, 8).toUpperCase()}`,
+          paymentDate: p.paymentDate,
+          isAdvance,
+          totalAllocated,
+          unallocatedAmount,
+          isAllocated,
+          isUnallocated,
+        };
       });
     }
 

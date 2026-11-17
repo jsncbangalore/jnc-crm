@@ -21,7 +21,6 @@ export class QuotationsController {
   constructor(private quotationsService: QuotationsService) {}
 
   @Post()
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
   create(@Body() dto: CreateQuotationDto, @CurrentUser() user: ScopedUser) {
     return this.quotationsService.create(dto, user);
   }
@@ -43,7 +42,7 @@ export class QuotationsController {
   }
 
   @Patch(':id/status')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   updateStatus(
     @Param('id') id: string,
     @Body() body: UpdateQuotationStatusDto,
@@ -53,7 +52,7 @@ export class QuotationsController {
   }
 
   @Post(':id/convert-to-order')
-  @Roles('tenant_admin', 'admin', 'sub_admin', 'employee')
+  @Roles('tenant_admin', 'admin', 'sub_admin')
   convertToOrder(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.quotationsService.convertToOrder(id, user);
   }

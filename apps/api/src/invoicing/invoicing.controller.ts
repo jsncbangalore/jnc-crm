@@ -52,13 +52,11 @@ export class InvoicingController {
   }
 
   @Get('series-audit')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin')
   async getSeriesAudit(@CurrentUser() user: ScopedUser) {
     return this.invoicingService.getInvoiceSeriesAudit(user);
   }
 
   @Get('generate-number')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async getNextNumber(
     @CurrentUser() user: ScopedUser,
     @Query('docType') docType?: string,
@@ -69,7 +67,6 @@ export class InvoicingController {
   }
 
   @Post('create-direct')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async createDirect(
     @Body() body: CreateDirectInvoiceDto,
     @CurrentUser() user: ScopedUser,
@@ -190,7 +187,6 @@ export class InvoicingController {
   }
 
   @Post(':id/print-direct')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async printDirect(
     @Param('id') id: string,
     @Body() body: DirectPrintDto,
@@ -200,7 +196,6 @@ export class InvoicingController {
   }
 
   @Post('order/:orderId/generate')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async generateFromOrder(
     @Param('orderId') orderId: string,
     @Body() body: GenerateFromOrderDto,
@@ -210,7 +205,6 @@ export class InvoicingController {
   }
 
   @Patch(':id')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async updateInvoice(
     @Param('id') id: string,
     @Body() body: UpdateInvoiceDto,
@@ -220,7 +214,7 @@ export class InvoicingController {
   }
 
   @Patch(':id/void')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
+  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'finance', 'accountant')
   async voidInvoice(
     @Param('id') id: string,
     @Body() body: VoidInvoiceDto,
@@ -230,7 +224,6 @@ export class InvoicingController {
   }
 
   @Post(':id/payments')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async recordPayment(
     @Param('id') id: string,
     @Body() body: RecordInvoicePaymentDto,
@@ -240,7 +233,6 @@ export class InvoicingController {
   }
 
   @Post('bulk-link-customer')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async bulkLinkCustomer(
     @Body('invoiceIds') invoiceIds: string[],
     @Body('customerId') customerId: string,
@@ -250,7 +242,6 @@ export class InvoicingController {
   }
 
   @Patch(':id/link-customer')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   async linkCustomer(
     @Param('id') id: string,
     @Body('customerId') customerId: string,
@@ -269,7 +260,6 @@ export class InvoicingController {
   }
 
   @Post('documents')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'employee')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 10 * 1024 * 1024 }, // 10MB

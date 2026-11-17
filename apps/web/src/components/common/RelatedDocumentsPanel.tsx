@@ -116,7 +116,7 @@ export default function RelatedDocumentsPanel({ type, id, className = '' }: Rela
             title="Quotation"
           >
             <FileText className="w-3.5 h-3.5 text-amber-500" />
-            <span>{data.quotation.quotationNumber}</span>
+            <span>{data.quotation.quotationNumber || data.quotation.quoteNumber || 'Quotation'}</span>
             <span className="text-slate-400">({formatCurrency(data.quotation.totalAmount)})</span>
             <span className="px-1.5 py-0.2 rounded text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 uppercase">
               {data.quotation.status}
@@ -148,55 +148,112 @@ export default function RelatedDocumentsPanel({ type, id, className = '' }: Rela
         )}
 
         {/* Invoices */}
-        {hasInvoices && data.invoices.map((inv: any) => (
-          <React.Fragment key={inv.id}>
-            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-            <div
-              onClick={() => hasPage('invoices') && navigate('/invoices')}
-              className={`group inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                type === 'invoice' && inv.id === id
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-semibold'
-                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-emerald-400 cursor-pointer shadow-sm'
-              }`}
-              title={`${inv.docType}: ${inv.invoiceNumber}`}
-            >
-              <Receipt className="w-3.5 h-3.5 text-emerald-500" />
-              <span>{inv.invoiceNumber}</span>
-              <span className="text-slate-400">({formatCurrency(inv.totalAmount)})</span>
-              <span className={`px-1.5 py-0.2 rounded text-[10px] uppercase font-semibold ${
-                inv.paymentStatus === 'paid' 
-                  ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
-                  : inv.paymentStatus === 'partial'
-                  ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
-                  : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
-              }`}>
-                {inv.paymentStatus || 'unpaid'}
-              </span>
-            </div>
-          </React.Fragment>
-        ))}
+        {hasInvoices && data.invoices.map((inv: any) => {
+          const isDC = inv.docType === 'delivery_challan' || inv.docType?.includes('challan');
+          const isProforma = inv.docType === 'proforma_invoice' || inv.docType === 'proforma' || inv.docType?.includes('proforma');
+          const isSez = inv.docType === 'sez_invoice' || inv.isSez;
+
+          return (
+            <React.Fragment key={inv.id}>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+              <div
+                onClick={() => hasPage('invoices') && navigate('/invoices')}
+                className={`group inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                  type === 'invoice' && inv.id === id
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-semibold'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-emerald-400 cursor-pointer shadow-sm'
+                }`}
+                title={`${inv.docType}: ${inv.invoiceNumber || inv.id}`}
+              >
+                <Receipt className="w-3.5 h-3.5 text-emerald-500" />
+                <span>{inv.invoiceNumber || `INV-${inv.id.slice(0, 8).toUpperCase()}`}</span>
+                <span className="text-slate-400">({formatCurrency(inv.totalAmount)})</span>
+                {isDC ? (
+                  <span className="px-1.5 py-0.2 rounded text-[10px] uppercase font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                    Dispatch copy
+                  </span>
+                ) : isProforma ? (
+                  <span className="px-1.5 py-0.2 rounded text-[10px] uppercase font-semibold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                    Proforma
+                  </span>
+                ) : isSez ? (
+                  <span className="px-1.5 py-0.2 rounded text-[10px] uppercase font-semibold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
+                    {inv.paymentStatus === 'paid' ? 'PAID' : inv.paymentStatus === 'partial' ? 'PARTIALLY PAID' : 'SEZ / LUT'}
+                  </span>
+                ) : (
+                  <span className={`px-1.5 py-0.2 rounded text-[10px] uppercase font-semibold ${
+                    inv.paymentStatus === 'paid' 
+                      ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                      : inv.paymentStatus === 'partial'
+                      ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                      : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
+                  }`}>
+                    {inv.paymentStatus === 'partial' ? 'PARTIALLY PAID' : (inv.paymentStatus || 'unpaid')}
+                  </span>
+                )}
+              </div>
+            </React.Fragment>
+          );
+        })}
 
         {/* Payments / Receipts */}
-        {hasPayments && data.payments.map((pmt: any) => (
-          <React.Fragment key={pmt.id}>
-            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-            <div
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800/50 bg-purple-50/60 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 text-xs font-medium shadow-sm"
-              title={`Payment: ${pmt.receiptNumber}`}
-            >
-              <CreditCard className="w-3.5 h-3.5 text-purple-500" />
-              <span>{pmt.receiptNumber}</span>
-              <span className="font-semibold text-purple-900 dark:text-purple-200">
-                +{formatCurrency(pmt.amount)}
-              </span>
-              {pmt.isAdvance && (
-                <span className="px-1.5 py-0.2 rounded text-[10px] bg-purple-200 dark:bg-purple-800 text-purple-900 dark:text-purple-100">
-                  ADVANCE
+        {hasPayments && data.payments.map((pmt: any) => {
+          const isAdvance = pmt.isAdvance || pmt.paymentType === 'advance';
+          const isUnallocated = pmt.isUnallocated || (pmt.unallocatedAmount && pmt.unallocatedAmount > 0.01);
+
+          return (
+            <React.Fragment key={pmt.id}>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+              <div
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800/50 bg-purple-50/60 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 text-xs font-medium shadow-sm"
+                title={`Payment: ${pmt.receiptNumber || pmt.transactionRef || pmt.id}`}
+              >
+                <CreditCard className="w-3.5 h-3.5 text-purple-500" />
+                <span>{pmt.receiptNumber || pmt.transactionRef || `PAY-${pmt.id.slice(0, 8).toUpperCase()}`}</span>
+                <span className="font-semibold text-purple-900 dark:text-purple-200">
+                  +{formatCurrency(pmt.amount)}
                 </span>
-              )}
-            </div>
-          </React.Fragment>
-        ))}
+                {isAdvance && isUnallocated ? (
+                  <div className="inline-flex items-center gap-1">
+                    <span className="px-1.5 py-0.2 rounded text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 font-semibold">
+                      Advance, not allocated
+                    </span>
+                    {hasPage('invoices') && (
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const targetInv = data.invoices?.find(
+                            (i: any) => i.paymentStatus !== 'paid' && (i.docType === 'tax_invoice' || i.docType === 'sez_invoice')
+                          );
+                          if (targetInv) {
+                            try {
+                              await paymentsApi.allocate(pmt.id, { invoiceId: targetInv.id });
+                              const res = await paymentsApi.getRelated(type, id);
+                              setData(res.data);
+                            } catch {
+                              navigate('/invoices');
+                            }
+                          } else {
+                            navigate('/invoices');
+                          }
+                        }}
+                        className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-purple-600 text-white hover:bg-purple-700 transition cursor-pointer"
+                        title="Allocate payment to invoice"
+                      >
+                        Allocate
+                      </button>
+                    )}
+                  </div>
+                ) : isAdvance ? (
+                  <span className="px-1.5 py-0.2 rounded text-[10px] bg-purple-200 dark:bg-purple-800 text-purple-900 dark:text-purple-100 font-semibold">
+                    ADVANCE
+                  </span>
+                ) : null}
+              </div>
+            </React.Fragment>
+          );
+        })}
 
         {/* Ledger */}
         {hasLedger && (

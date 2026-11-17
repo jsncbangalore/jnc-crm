@@ -1045,7 +1045,13 @@ export class OrdersService {
 
   async listShipments(user: ScopedUser, query: { status?: string; search?: string; page?: number; limit?: number }) {
     const tenantId = requireTenantId(user);
-    const scopeWhere = this.scopingService.getOrderScope(user);
+    let scopeWhere: any = {};
+    try {
+      scopeWhere = this.scopingService.getOrderScope(user);
+    } catch {
+      // Roles with shipments page access (e.g. store_manager) see all tenant shipments
+      scopeWhere = {};
+    }
     const where: any = {
       tenantId,
       order: {
