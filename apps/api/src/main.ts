@@ -8,6 +8,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+// Prevent unhandled EPIPE/UNKNOWN console stream write errors on Windows when piped
+process.stdout?.on('error', (err: any) => {
+  if (err?.code === 'EPIPE' || err?.code === 'UNKNOWN' || err?.errno === -4094) return;
+});
+process.stderr?.on('error', (err: any) => {
+  if (err?.code === 'EPIPE' || err?.code === 'UNKNOWN' || err?.errno === -4094) return;
+});
+
 // Load .env variables strictly from application root directory only (NEVER traverse into parent directories)
 try {
   const isDev = process.env.NODE_ENV !== 'production';

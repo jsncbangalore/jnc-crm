@@ -365,6 +365,48 @@ export function validateEnvironment(
     }
   }
 
+  // ─── STARTUP GUARD: FIXED VERIFICATION CODE RESTRICTION ─────────────────
+  // A fixed verification code or fixed OTP bypass is strictly prohibited in production mode.
+  // In development, fixed verification codes are forbidden unless all guards hold:
+  // NODE_ENV === 'development', DEV_DEMO_LOGIN === 'true', localhost database starting with 'jnc_crm_dev'.
+  const fixedOtpKeys = ['DEV_FIXED_OTP', 'FIXED_OTP', 'DEV_VERIFICATION_CODE', 'MOCK_OTP'];
+  for (const k of fixedOtpKeys) {
+    if (env[k] && String(env[k]).trim()) {
+      if (isProduction) {
+        invalidVariables.push(
+          `${k} cannot be configured in production mode (NODE_ENV=production). Fixed verification codes are strictly prohibited in production.`
+        );
+      }
+      if (env.DEV_DEMO_LOGIN !== 'true') {
+        invalidVariables.push(
+          `${k} cannot be configured unless DEV_DEMO_LOGIN is 'true'.`
+        );
+      }
+      if (env.DATABASE_URL) {
+        try {
+          const parsedDb = new URL(env.DATABASE_URL.trim());
+          const dbHost = parsedDb.hostname.toLowerCase();
+          const localHosts = ['localhost', '127.0.0.1', '::1'];
+          if (!localHosts.includes(dbHost)) {
+            invalidVariables.push(
+              `${k} cannot be enabled when DATABASE_URL host is '${dbHost}'. Database host must be localhost (127.0.0.1, ::1).`
+            );
+          }
+          const dbName = parsedDb.pathname.replace(/^\//, '');
+          if (!dbName.startsWith('jnc_crm_dev')) {
+            invalidVariables.push(
+              `${k} cannot be enabled when DATABASE_URL database name is '${dbName}'. Database name must start with 'jnc_crm_dev'.`
+            );
+          }
+        } catch {
+          invalidVariables.push(`DATABASE_URL is not a valid URL format for ${k} check.`);
+        }
+      } else {
+        invalidVariables.push(`DATABASE_URL is required when ${k} is enabled.`);
+      }
+    }
+  }
+
   if (env.ENCRYPTION_KEY) {
     const key = env.ENCRYPTION_KEY;
     try {

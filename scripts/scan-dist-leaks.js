@@ -25,6 +25,8 @@ const WEB_BANNED_PATTERNS = [
   ...COMMON_BANNED_PATTERNS,
   { name: 'dev-demo-login', regex: /dev-demo-login/i },
   { name: 'dev-credentials-box', regex: /dev-credentials-box/i },
+  { name: 'Fixed OTP / Verification Code Bypass flag', regex: /(?:DEV_FIXED_OTP|FIXED_OTP|DEV_VERIFICATION_CODE|dev-fixed-otp)/i },
+  { name: 'Fixed verification bypass string', regex: /(?:dev-fixed-code|bypass-verification-code|fixed-verification-code)/i },
 ];
 
 const API_BANNED_PATTERNS = [

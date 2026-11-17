@@ -50,3 +50,5 @@ scripts/set-dev-password.js
 scripts/inspect-db.js
 
 test-results/
+
+tools/

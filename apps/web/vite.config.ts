@@ -15,10 +15,33 @@ export default defineConfig(({ command, mode }) => {
   const isDev = command === 'serve';
   const env = loadEnv(mode, process.cwd(), '');
   const productName = PRODUCT_NAME;
-  const apiBaseUrl = env.VITE_API_BASE_URL || '';
+  const apiUrl = (env.VITE_API_URL || env.VITE_API_BASE_URL || '').trim();
   process.env.VITE_PRODUCT_NAME = productName;
 
+  if (!isDev && mode === 'production') {
+    if (!apiUrl) {
+      throw new Error(
+        '[BUILD CONFIG ERROR] Missing required environment variable: VITE_API_URL. ' +
+        'In production, the web build requires VITE_API_URL to be set to the backend API endpoint ' +
+        '(e.g. VITE_API_URL=https://api.jsnc.co.in/api/v1). Hidden fallbacks are disabled.'
+      );
+    }
+  }
+
+  let gitCommit = process.env.VITE_GIT_COMMIT || process.env.GIT_COMMIT || process.env.RENDER_GIT_COMMIT || '';
+  if (!gitCommit) {
+    try {
+      const { execSync } = require('child_process');
+      gitCommit = execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    } catch {
+      gitCommit = 'dev-build';
+    }
+  }
+
   return {
+    define: {
+      'import.meta.env.VITE_GIT_COMMIT': JSON.stringify(gitCommit),
+    },
     resolve: {
       alias: [
         { find: '@crm/shared-validation', replacement: path.resolve(__dirname, '../../packages/shared-validation/src/index.ts') },
@@ -65,10 +88,14 @@ export default defineConfig(({ command, mode }) => {
             );
           } else {
             // Production: Allow configured API base URL if present
-            if (apiBaseUrl) {
+            if (apiUrl) {
+              let connectHost = apiUrl;
+              try {
+                connectHost = new URL(apiUrl).origin;
+              } catch {}
               modified = modified.replace(
                 /connect-src ([^;]+);/,
-                (match: string, current: string) => `${match.slice(0, -1)} ${apiBaseUrl};`,
+                (match: string, current: string) => `${match.slice(0, -1)} ${connectHost};`,
               );
             }
             // Production: Calculate SHA-256 hash of the inline theme script and replace 'unsafe-inline'

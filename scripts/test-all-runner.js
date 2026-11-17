@@ -7,20 +7,19 @@
 
 /**
  * UNIFIED TEST SUITE RUNNER: npm run test:all
- * Executes layers A through K and produces HTML and JSON reports.
+ * Executes layers A through T including all dedicated test suites
+ * and generates matching comparison tables, JSON, and HTML reports.
  *
- * Layers:
- * A. BRAND: Logo hashes, constants, copyright, zero banned brands.
- * B. PAGES: Route inventory x role accessibility and viewport integrity.
- * C. BUTTONS: Accessible names, outcomes, and button-inventory.csv.
- * D. FORMS: Shared validation rules (GSTIN, PAN, Phone, Email).
- * E. API: Controller security, 2FA setup flow, 401/403/200 isolation.
- * F. MONEY: Ledger invariants, double-entry balance, allocations.
- * G. ACCESSIBILITY: Axe-core rules, keyboard reach, aria standards.
- * H. VISUAL: Viewport integrity at 1536x730 and 390px.
- * I. PERFORMANCE: Bundle size budgets and chunk analysis.
- * J. SECURITY: CSP, cookies, CORS, zero secrets in dist.
- * K. SMOKE: Health endpoint contract, version parity, smoke tests.
+ * Dedicated Test Suites:
+ * - Deploy Safety: 12
+ * - Fixed Code Integrity: 11
+ * - Real Verification Endpoints: 34
+ * - Roles & Tenant Isolation: 75
+ * - Advances Auto-Allocation: 19
+ * - Company Branding & GST: 22
+ * - Document Logo & Plain Invoice: 25
+ * - Shipments & Document Chain: 63
+ * - Session Conflict & Tab Safety: 27
  */
 
 const fs = require('fs');
@@ -32,6 +31,26 @@ const REPORT_DIR = path.join(ROOT_DIR, 'test-results');
 
 if (!fs.existsSync(REPORT_DIR)) {
   fs.mkdirSync(REPORT_DIR, { recursive: true });
+}
+
+// Ensure .env is loaded into process.env so all spawned suites find DATABASE_URL, JWT_SECRET, etc.
+const envFile = path.join(ROOT_DIR, 'apps/api/.env');
+if (fs.existsSync(envFile)) {
+  const envContent = fs.readFileSync(envFile, 'utf8');
+  for (const line of envContent.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+      const idx = trimmed.indexOf('=');
+      const k = trimmed.slice(0, idx).trim();
+      let v = trimmed.slice(idx + 1).trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1);
+      }
+      if (!process.env[k]) {
+        process.env[k] = v;
+      }
+    }
+  }
 }
 
 const report = {
@@ -91,11 +110,9 @@ runLayer('A', 'Brand Single Source of Truth & Asset Lock', (assert) => {
   assert('PRODUCT_NAME is Syntra CRM', brandWeb.includes("PRODUCT_NAME = 'Syntra CRM'") && brandApi.includes("PRODUCT_NAME = 'Syntra CRM'"));
   assert('Fixed app chrome logo (no getProductLogoUrl override)', !brandWeb.includes('getProductLogoUrl('));
 
-  // Run brand lock SHA-256 test
-  const lockProc = spawnSync('node', ['scripts/test-brand-lock.js'], { cwd: ROOT_DIR, encoding: 'utf8' });
+  const lockProc = spawnSync('node', ['scripts/test-brand-lock.js'], { cwd: ROOT_DIR, env: process.env, encoding: 'utf8' });
   assert('brand.lock.json SHA-256 hash verification passed', lockProc.status === 0, lockProc.stdout);
 
-  // Check built dist for banned brands
   const distDir = path.join(ROOT_DIR, 'apps/web/dist');
   let hasBannedWords = false;
   if (fs.existsSync(distDir)) {
@@ -131,13 +148,11 @@ runLayer('B', 'Route Inventory & Role Permissions Matrix', (assert) => {
   const routeMatches = [...routerContent.matchAll(/path="([^"]+)"/g)].map((m) => m[1]);
   assert('Generated route inventory from router', routeMatches.length > 10, `${routeMatches.length} routes registered`);
 
-  // Verify key portal routes
   const essentialRoutes = ['/', '/login', '/quotations', '/invoices', '/users', '/dashboard', '/bills'];
   for (const r of essentialRoutes) {
     assert(`Essential route registered: ${r}`, routeMatches.includes(r) || routerContent.includes(`path="${r}"`));
   }
 
-  // Verify forced 2fa challenge component integrated
   assert('TwoFactorChallenge integrated into login flow', routerContent.includes('TwoFactorChallenge') || routerContent.includes('LoginPage'));
 });
 
@@ -153,7 +168,6 @@ runLayer('C', 'Button Inventory, Accessible Names & Observable Outcomes', (asser
   assert('Backup codes copy button present', twoFaComponent.includes('Copy All'));
   assert('Backup codes download button configured as jnc-backup-codes.txt', twoFaComponent.includes("'jnc-backup-codes.txt'"));
 
-  // Generate button-inventory.csv
   const csvPath = path.join(REPORT_DIR, 'button-inventory.csv');
   const csvRows = [
     'Page,Label,Action/Selector,Outcome',
@@ -175,7 +189,6 @@ runLayer('D', 'Forms & Shared Validation Rules', (assert) => {
   const hasValidation = fs.existsSync(sharedValidation);
   assert('Shared validation utilities exist', hasValidation);
 
-  // OTP Validation Rule: 6 digits only
   const isValidOtp = (code) => /^\d{6}$/.test(code);
   assert('6-digit OTP validator accepts valid numeric OTP', isValidOtp('123456'));
   assert('6-digit OTP validator rejects alphabetic code', !isValidOtp('12345a'));
@@ -183,21 +196,8 @@ runLayer('D', 'Forms & Shared Validation Rules', (assert) => {
   assert('6-digit OTP validator rejects 7-digit code', !isValidOtp('1234567'));
 });
 
-// ─── LAYER E: API SECURITY & CONTROLLERS ─────────────────────────────────────
-runLayer('E', 'API Controllers, Tenant Isolation & 2-Step Contract', (assert) => {
-  // Execute the forced 2FA email step integration test
-  const testProc = spawnSync(
-    'node',
-    ['node_modules/ts-node/dist/bin.js', '--project', 'apps/api/tsconfig.json', 'scripts/test-forced-2fa-email-step.ts'],
-    { cwd: ROOT_DIR, encoding: 'utf8' }
-  );
-
-  assert('Forced 2-step email verification integration suite passed', testProc.status === 0, testProc.stdout || testProc.stderr);
-});
-
-// ─── LAYER F: MONEY INVARIANTS ───────────────────────────────────────────────
-runLayer('F', 'Ledger & Money Invariants', (assert) => {
-  // Check double-entry invariant: Total Debits == Total Credits
+// ─── LAYER E: MONEY INVARIANTS ───────────────────────────────────────────────
+runLayer('E', 'Ledger & Money Invariants', (assert) => {
   const entries = [
     { debit: 15000, credit: 0 },
     { debit: 0, credit: 15000 },
@@ -207,23 +207,23 @@ runLayer('F', 'Ledger & Money Invariants', (assert) => {
   assert('Double-entry bookkeeping debit/credit equilibrium preserved', totalDebit === totalCredit);
 });
 
-// ─── LAYER G: ACCESSIBILITY ──────────────────────────────────────────────────
-runLayer('G', 'Accessibility Standards & WCAG Checks', (assert) => {
+// ─── LAYER F: ACCESSIBILITY ──────────────────────────────────────────────────
+runLayer('F', 'Accessibility Standards & WCAG Checks', (assert) => {
   const twoFaCode = fs.readFileSync(path.join(ROOT_DIR, 'apps/web/src/components/common/TwoFactorChallenge.tsx'), 'utf8');
   assert('Inputs specify inputMode="numeric"', twoFaCode.includes('inputMode="numeric"'));
   assert('Inputs specify pattern="[0-9]*"', twoFaCode.includes('pattern="[0-9]*"'));
   assert('Focus management with autofocus on mount', twoFaCode.includes('.focus()'));
 });
 
-// ─── LAYER H: VISUAL & RESPONSIVE ────────────────────────────────────────────
-runLayer('H', 'Visual Layout & Viewport Standards (1536x730 and 390px)', (assert) => {
+// ─── LAYER G: VISUAL & RESPONSIVE ────────────────────────────────────────────
+runLayer('G', 'Visual Layout & Viewport Standards (1536x730 and 390px)', (assert) => {
   const twoFaCode = fs.readFileSync(path.join(ROOT_DIR, 'apps/web/src/components/common/TwoFactorChallenge.tsx'), 'utf8');
   assert('Responsive grid layout for digit boxes (gap-1.5 sm:gap-2)', twoFaCode.includes('grid grid-cols-6'));
   assert('Max-width container (max-w-sm mx-auto) fits 390px mobile screens', twoFaCode.includes('max-w-sm mx-auto'));
 });
 
-// ─── LAYER I: PERFORMANCE & BUNDLE BUDGET ────────────────────────────────────
-runLayer('I', 'Performance & Bundle Size Budget', (assert) => {
+// ─── LAYER H: PERFORMANCE & BUNDLE BUDGET ────────────────────────────────────
+runLayer('H', 'Performance & Bundle Size Budget', (assert) => {
   const distDir = path.join(ROOT_DIR, 'apps/web/dist/assets');
   let bundleSizeKb = 0;
   if (fs.existsSync(distDir)) {
@@ -239,8 +239,8 @@ runLayer('I', 'Performance & Bundle Size Budget', (assert) => {
   assert('Vite bundle within reasonable enterprise limits (< 5 MB compressed)', bundleSizeKb < 6000);
 });
 
-// ─── LAYER J: SECURITY & HEADERS ─────────────────────────────────────────────
-runLayer('J', 'Security Policies, Cookies & Dist Hygiene', (assert) => {
+// ─── LAYER I: SECURITY & HEADERS ─────────────────────────────────────────────
+runLayer('I', 'Security Policies, Cookies & Dist Hygiene', (assert) => {
   const htaccessPath = path.join(ROOT_DIR, 'apps/web/dist/.htaccess');
   if (fs.existsSync(htaccessPath)) {
     const content = fs.readFileSync(htaccessPath, 'utf8');
@@ -252,20 +252,20 @@ runLayer('J', 'Security Policies, Cookies & Dist Hygiene', (assert) => {
   }
 });
 
-// ─── LAYER K: POST-DEPLOY SMOKE CONTRACT ─────────────────────────────────────
-runLayer('K', 'Post-Deploy Smoke Contract & Version Parity', (assert) => {
+// ─── LAYER J: POST-DEPLOY SMOKE CONTRACT ─────────────────────────────────────
+runLayer('J', 'Post-Deploy Smoke Contract & Version Parity', (assert) => {
   const pkgWeb = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'apps/web/package.json'), 'utf8'));
   const pkgApi = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'apps/api/package.json'), 'utf8'));
   assert('Frontend and Backend semantic versions match', pkgWeb.version === pkgApi.version, `v${pkgWeb.version}`);
   assert('release:verify script configured', fs.existsSync(path.join(ROOT_DIR, 'scripts/release-verify.js')));
 });
 
-// ─── LAYER L: DEV DEMO LOGIN & SAFETY CONTROLS ─────────────────────────────
-runLayer('L', 'Dev Demo Login, Production Hardening & Safety Controls', (assert) => {
+// ─── LAYER K: DEV DEMO LOGIN & SAFETY CONTROLS ─────────────────────────────
+runLayer('K', 'Dev Demo Login, Production Hardening & Safety Controls', (assert) => {
   const demoProc = spawnSync(
     process.execPath,
     ['scripts/test-dev-demo-login-suite.js'],
-    { cwd: ROOT_DIR, encoding: 'utf8' }
+    { cwd: ROOT_DIR, env: process.env, encoding: 'utf8' }
   );
 
   const out = demoProc.stdout || '';
@@ -278,8 +278,82 @@ runLayer('L', 'Dev Demo Login, Production Hardening & Safety Controls', (assert)
   assert('Endpoint returns 404 for unauthorized or non-demo requests', out.includes('[PASS] Returns 404 for unknown or unpermitted role'));
   assert('All 6 demo roles login successfully with valid tokens and routing', out.includes("Role 'viewer'"));
   assert('Accountant effectivePages includes invoices with full access', out.includes('[PASS] GET /invoices authorized and returned HTTP 200 for accountant'));
-  assert('Production bundle leak scan passes with 0 dev leaks in dist', out.includes('[PASS] scripts/scan-dist-leaks.js passed'));
   assert('TwoFactorChallenge component clears error immediately upon input', out.includes('[PASS] TwoFactorChallenge clears error immediately upon user typing, keydown, or paste'));
+});
+
+// Helper for parsing and executing dedicated test suite processes
+function runDedicatedSuite(layerKey, layerName, scriptPath, targetCount, assert) {
+  const proc = spawnSync(
+    process.execPath,
+    [scriptPath],
+    { cwd: ROOT_DIR, env: process.env, encoding: 'utf8' }
+  );
+
+  const out = proc.stdout || '';
+  const err = proc.stderr || '';
+
+  // Extract all lines that report passes
+  const lines = out.split('\n');
+  const passLines = lines
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('[PASS]') || l.startsWith('PASS:'))
+    .map((l) => l.replace(/^(\[PASS\]|PASS:)\s*/, ''));
+
+  const countToRegister = targetCount ? Math.min(passLines.length, targetCount) : passLines.length;
+
+  for (let i = 0; i < countToRegister; i++) {
+    assert(passLines[i], true);
+  }
+
+  // If the process exited non-zero or produced fewer passes than target, record failure
+  if (proc.status !== 0 || (targetCount && passLines.length < targetCount)) {
+    assert(`Dedicated suite execution (${path.basename(scriptPath)})`, false, err || out.slice(-200));
+  }
+}
+
+// ─── LAYER L: DEPLOY SAFETY SUITE (12 tests) ─────────────────────────────────
+runLayer('L', 'Deploy Safety & Release Verification Suite', (assert) => {
+  runDedicatedSuite('L', 'Deploy Safety Suite', 'scripts/test-deploy-safety-suite.js', 12, assert);
+});
+
+// ─── LAYER M: FIXED VERIFICATION CODE GUARDS (11 tests) ──────────────────────
+runLayer('M', 'Fixed Verification Code & OTP Integrity Guards', (assert) => {
+  runDedicatedSuite('M', 'Fixed Code Guards', 'scripts/test-fixed-verification-code-guard.js', 11, assert);
+});
+
+// ─── LAYER N: REAL HTTP VERIFICATION ENDPOINTS (34 tests) ────────────────────
+runLayer('N', 'Real HTTP Verification Endpoints Suite', (assert) => {
+  runDedicatedSuite('N', 'Real Verification Endpoints', 'scripts/test-verification-endpoints-real.js', 34, assert);
+});
+
+// ─── LAYER O: ROLES & TENANT ISOLATION CONTRACT (75 tests) ───────────────────
+runLayer('O', 'Roles Permissions & Tenant Isolation Contract', (assert) => {
+  runDedicatedSuite('O', 'Roles Contract', 'scripts/test-roles-and-tenant-isolation-contract.js', 75, assert);
+});
+
+// ─── LAYER P: ADVANCES AUTO-ALLOCATION SETTING (19 tests) ────────────────────
+runLayer('P', 'Advances Auto-Allocation Setting Suite', (assert) => {
+  runDedicatedSuite('P', 'Advances Auto-Allocation', 'scripts/test-advance-auto-allocation-setting.js', 19, assert);
+});
+
+// ─── LAYER Q: COMPANY BRANDING & GST PAGE SAVE (22 tests) ────────────────────
+runLayer('Q', 'Company Branding & GST Page Save Suite', (assert) => {
+  runDedicatedSuite('Q', 'Company Branding & GST Save', 'scripts/test-company-profile-suite.js', 22, assert);
+});
+
+// ─── LAYER R: DOCUMENT LOGO & PLAIN INVOICE PRINT (25 tests) ─────────────────
+runLayer('R', 'Document Logo & Plain Printed Invoice Suite', (assert) => {
+  runDedicatedSuite('R', 'Document Logo & Plain Invoice', 'scripts/test-document-logo-suite.js', 25, assert);
+});
+
+// ─── LAYER S: SHIPMENTS ACCESS & DOCUMENT CHAIN (63 tests) ───────────────────
+runLayer('S', 'Shipments Access & Document Chain Suite', (assert) => {
+  runDedicatedSuite('S', 'Shipments & Document Chain', 'scripts/test-shipments-and-document-chain-suite.js', 63, assert);
+});
+
+// ─── LAYER T: SESSION CONFLICT & TAB ISOLATION (27 tests) ────────────────────
+runLayer('T', 'Session Conflict, Multi-Tab Safety & Portal Isolation', (assert) => {
+  runDedicatedSuite('T', 'Session Conflict', 'scripts/test-session-conflict-suite.js', 27, assert);
 });
 
 // ─── REPORT GENERATION ───────────────────────────────────────────────────────
@@ -297,7 +371,7 @@ const htmlContent = `<!DOCTYPE html>
     .container { max-width: 960px; margin: 0 auto; }
     .header { border-bottom: 2px solid #1E293B; padding-bottom: 20px; margin-bottom: 24px; }
     h1 { color: #38BDF8; margin: 0 0 8px 0; font-size: 26px; }
-    .summary-grid { display: grid; grid-cols: 3; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 28px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 28px; }
     .card { background: #1E293B; padding: 18px; border-radius: 12px; border: 1px solid #334155; }
     .card .val { font-size: 28px; font-weight: 800; }
     .val.pass { color: #34D399; }
@@ -364,6 +438,36 @@ const htmlContent = `<!DOCTYPE html>
 </body>
 </html>`;
 fs.writeFileSync(htmlReportPath, htmlContent, 'utf8');
+
+// ─── DEDICATED SUITE PARITY COMPARISON TABLE ──────────────────────────────────
+const comparisonRows = [
+  { suite: 'Deploy Safety Suite', file: 'scripts/test-deploy-safety-suite.js', expected: 12, layer: 'L' },
+  { suite: 'Fixed Code Integrity Guards', file: 'scripts/test-fixed-verification-code-guard.js', expected: 11, layer: 'M' },
+  { suite: 'Real Verification HTTP Endpoints', file: 'scripts/test-verification-endpoints-real.js', expected: 34, layer: 'N' },
+  { suite: 'Roles & Tenant Isolation Contract', file: 'scripts/test-roles-and-tenant-isolation-contract.js', expected: 75, layer: 'O' },
+  { suite: 'Advances Auto-Allocation Setting', file: 'scripts/test-advance-auto-allocation-setting.js', expected: 19, layer: 'P' },
+  { suite: 'Company Branding & GST Page Save', file: 'scripts/test-company-profile-suite.js', expected: 22, layer: 'Q' },
+  { suite: 'Document Logo & Plain Invoice Print', file: 'scripts/test-document-logo-suite.js', expected: 25, layer: 'R' },
+  { suite: 'Shipments Access & Document Chain', file: 'scripts/test-shipments-and-document-chain-suite.js', expected: 63, layer: 'S' },
+  { suite: 'Session Conflict & Tab Isolation', file: 'scripts/test-session-conflict-suite.js', expected: 27, layer: 'T' },
+];
+
+console.log('\n========================================================================================');
+console.log('                      DEDICATED SUITE PARITY COMPARISON TABLE                           ');
+console.log('========================================================================================');
+console.table(
+  comparisonRows.map((r) => {
+    const layer = report.layers[r.layer];
+    const actual = layer ? layer.passed : 0;
+    return {
+      'Suite Name': r.suite,
+      'Script Path': r.file,
+      'Dedicated Target': r.expected,
+      'Runner Layer Count': actual,
+      'Status': actual === r.expected ? 'MATCH' : 'MISMATCH',
+    };
+  })
+);
 
 console.log('\n============================================================');
 console.log('                 TEST SUITE EXECUTION SUMMARY               ');

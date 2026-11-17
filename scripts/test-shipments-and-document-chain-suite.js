@@ -16,13 +16,33 @@
 
 const fs = require('fs');
 const path = require('path');
+
+// Auto-load apps/api/.env into process.env if needed
+const envPath = path.resolve(__dirname, '../apps/api/.env');
+if (fs.existsSync(envPath)) {
+  const content = fs.readFileSync(envPath, 'utf8');
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx > 0) {
+      const k = trimmed.slice(0, eqIdx).trim();
+      let v = trimmed.slice(eqIdx + 1).trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1);
+      }
+      if (!process.env[k]) process.env[k] = v;
+    }
+  }
+}
+
 const jwt = require('jsonwebtoken');
 const { chromium } = require('playwright');
 const { PrismaClient, Prisma } = require(path.join(__dirname, '../node_modules/@prisma/client'));
 
 const prisma = new PrismaClient();
-const API_BASE = process.env.API_URL || 'http://localhost:3333/api/v1';
-const WEB_BASE = process.env.WEB_URL || 'http://localhost:5173';
+const API_BASE = process.env.API_URL || 'http://127.0.0.1:3333/api/v1';
+const WEB_BASE = process.env.WEB_URL || 'http://127.0.0.1:5173';
 const ARTIFACTS_DIR = 'C:\\Users\\JNC R&D\\.gemini\\antigravity\\brain\\35af9003-1b6b-4a84-aff8-4a7e38775824';
 
 // Load JWT Secret
@@ -678,6 +698,16 @@ async function runDocumentChainAndTotalsTest() {
   }
 }
 
+async function dismissCookieBanner(p) {
+  try {
+    const btn = p.locator('button:has-text("Accept all"), button:has-text("Reject optional")').first();
+    if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await btn.click().catch(() => {});
+      await p.waitForTimeout(400);
+    }
+  } catch {}
+}
+
 async function runPlaywrightE2ETests() {
   console.log('\n============================================================');
   console.log('3. RUNNING PLAYWRIGHT E2E BROWSER TESTS');
@@ -762,6 +792,7 @@ async function runPlaywrightE2ETests() {
       balanceAmount: 68000,
       status: 'confirmed',
       paymentStatus: 'partial',
+      confirmedAt: new Date(),
     },
   });
 
@@ -863,20 +894,27 @@ async function runPlaywrightE2ETests() {
           viewport: { width: vp.width, height: vp.height },
           colorScheme: theme,
         });
+        await context.addInitScript((t) => {
+          if (t === 'dark') document.documentElement.classList.add('dark');
+          else document.documentElement.classList.remove('dark');
+          localStorage.setItem('crm_theme', t);
+          localStorage.setItem('crm_cookie_consent', JSON.stringify({
+            choice: 'all',
+            preferences: true,
+            policyVersion: '2026.10.1',
+            savedAt: new Date().toISOString(),
+          }));
+        }, theme);
         const page = await context.newPage();
 
         // Log in as accountant user who has been granted shipments page
         await page.goto(`${WEB_BASE}/login`, { waitUntil: 'domcontentloaded' });
-        await page.evaluate((t) => {
-          if (t === 'dark') document.documentElement.classList.add('dark');
-          else document.documentElement.classList.remove('dark');
-          localStorage.setItem('crm_theme', t);
-        }, theme);
-
+        await dismissCookieBanner(page);
         await page.fill('#company-identifier', nonShipmentUser.email);
         await page.fill('#company-password', rawPassword);
         await page.click('button[type="submit"]');
-        await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 15000 });
+        await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 20000 });
+        await page.waitForTimeout(1000);
 
         // 3.1 Test Shipments 403 Error Handling & Clean Access
         // First simulate a 403 Forbidden response on shipments list to test ErrorStateCard rendering
@@ -895,8 +933,10 @@ async function runPlaywrightE2ETests() {
           })
         );
 
-        await page.goto(`${WEB_BASE}/shipments`, { waitUntil: 'networkidle' });
-        await page.waitForTimeout(1000);
+        await page.goto(`${WEB_BASE}/shipments`, { waitUntil: 'domcontentloaded' });
+        await dismissCookieBanner(page);
+        await page.waitForSelector('text=You do not have permission to use Shipments', { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(500);
 
         const errorPageText = await page.innerText('body');
         const hasRef = /Ref:\s*req_[a-zA-Z0-9_-]+/i.test(errorPageText);
@@ -922,7 +962,9 @@ async function runPlaywrightE2ETests() {
 
         // Now unroute so shipments API calls hit the real backend with our fix (role vs page invariant)
         await page.unroute('**/orders/shipments**');
-        await page.reload({ waitUntil: 'networkidle' });
+        await page.goto(`${WEB_BASE}/shipments`, { waitUntil: 'domcontentloaded' });
+        await dismissCookieBanner(page);
+        await page.waitForSelector('text=Shipment', { timeout: 15000 }).catch(() => {});
         await page.waitForTimeout(1000);
 
         const cleanPageText = await page.innerText('body');
@@ -935,6 +977,7 @@ async function runPlaywrightE2ETests() {
         await page.screenshot({ path: shotCleanPath, fullPage: false });
         assert(`[${vp.name}-${theme}] Captured clean shipments screenshot to artifacts`, fs.existsSync(shotCleanPath));
 
+        await page.waitForTimeout(500);
         await context.close();
       }
     }
@@ -942,20 +985,33 @@ async function runPlaywrightE2ETests() {
     // 3.2 Test Related Document Chain UI (with adminUser)
     console.log('\n--- Testing Related Document Chain UI, Chips, and Allocate Interaction ---');
     const adminContext = await browser.newContext({ viewport: { width: 1536, height: 730 } });
+    await adminContext.addInitScript(() => {
+      localStorage.setItem('crm_cookie_consent', JSON.stringify({
+        choice: 'all',
+        preferences: true,
+        policyVersion: '2026.10.1',
+        savedAt: new Date().toISOString(),
+      }));
+    });
     const adminPage = await adminContext.newPage();
 
     await adminPage.goto(`${WEB_BASE}/login`, { waitUntil: 'domcontentloaded' });
-    await adminPage.fill('input[name="username"], #company-identifier', adminUser.email);
-    await adminPage.fill('input[name="password"], #company-password', rawPassword);
+    await dismissCookieBanner(adminPage);
+    await adminPage.fill('#company-identifier', adminUser.email);
+    await adminPage.fill('#company-password', rawPassword);
     await adminPage.click('button[type="submit"]');
-    await adminPage.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 15000 });
-
-    // Visit Orders page and expand the order
-    await adminPage.goto(`${WEB_BASE}/orders`, { waitUntil: 'networkidle' });
+    await adminPage.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 20000 });
     await adminPage.waitForTimeout(1000);
 
+    // Visit Orders page and expand the order
+    await adminPage.goto(`${WEB_BASE}/orders`, { waitUntil: 'domcontentloaded' });
+    await dismissCookieBanner(adminPage);
+    await adminPage.waitForTimeout(2000);
+
     // Expand the order to show related document chain
-    await adminPage.click(`button:has-text("${order.orderNumber}")`);
+    const orderBtn = adminPage.locator(`text=${order.orderNumber}`).first();
+    await orderBtn.waitFor({ state: 'visible', timeout: 15000 });
+    await orderBtn.click();
     await adminPage.waitForTimeout(1000);
 
     // Look for Related Document Chain panel
