@@ -16,6 +16,24 @@ const bcrypt = require('bcryptjs');
 const { chromium } = require('playwright');
 const { PrismaClient } = require(path.join(__dirname, '../node_modules/@prisma/client'));
 
+// Ensure DATABASE_URL is set
+const envFile = path.join(__dirname, '../apps/api/.env');
+if (fs.existsSync(envFile)) {
+  const content = fs.readFileSync(envFile, 'utf8');
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const idx = trimmed.indexOf('=');
+      if (idx > 0) {
+        const k = trimmed.substring(0, idx).trim();
+        let v = trimmed.substring(idx + 1).trim();
+        v = v.replace(/^["']|["']$/g, '');
+        if (!process.env[k]) process.env[k] = v;
+      }
+    }
+  }
+}
+
 const prisma = new PrismaClient();
 const API_BASE = process.env.API_URL || 'http://localhost:3333/api/v1';
 const WEB_BASE = process.env.WEB_URL || 'http://localhost:5173';
@@ -86,7 +104,7 @@ async function createTestTenantAndUser(label, role = 'tenant_admin') {
       data: {
         tenant: { connect: { id: tenant.id } },
         user: { connect: { id: user.id } },
-        pages: JSON.stringify(['dashboard', 'invoices', 'quotations', 'branding', 'companies']),
+        pages: JSON.stringify(['dashboard', 'invoices', 'quotations', 'branding', 'companies', 'leads']),
       },
     });
   }
@@ -449,6 +467,109 @@ async function main() {
       await context.close();
     }
 
+    // -------------------------------------------------------------
+    // TEST 8: TRIGGER 3 - INCOMING API RESPONSE WITH DIFFERENT USER ID
+    // -------------------------------------------------------------
+    console.log('\n[TEST 8] Trigger 3: Incoming API response containing different user ID triggers safe signout with banner once');
+    {
+      const u1 = await createTestTenantAndUser('T8_U1');
+      const u2 = await createTestTenantAndUser('T8_U2');
+
+      const context = await browser.newContext({ viewport: { width: 1536, height: 730 } });
+      const tabA = await context.newPage();
+      await performLogin(tabA, u1.email, u1.password);
+      await tabA.goto(`${WEB_BASE}/invoices`, { waitUntil: 'domcontentloaded' });
+      await tabA.waitForTimeout(1000);
+
+      // Route /api/v1/test-user-conflict to return User 2's ID
+      await tabA.route('**/api/v1/test-user-conflict', (route) => {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, userId: u2.user.id }),
+        });
+      });
+
+      // Call endpoint via window.api
+      await tabA.evaluate(async () => {
+        try {
+          await window.api.get('/test-user-conflict');
+        } catch {}
+      });
+
+      await tabA.waitForTimeout(2000);
+
+      // Verify Tab A was safely redirected to /login
+      assert(tabA.url().includes('/login'), 'Tab A safely redirected to /login on Trigger 3');
+
+      // Verify NO blocking modal
+      const hasModal = await tabA.evaluate(() => document.body.innerText.includes('Session Changed') && document.body.innerText.includes('Reload'));
+      assert(!hasModal, 'Tab A does NOT show blocking modal on Trigger 3');
+
+      // Verify Non-blocking Banner appears
+      const banner = await tabA.waitForSelector('[data-testid="session-conflict-banner"]', { timeout: 5000 });
+      assert(banner !== null, 'Non-blocking banner appears on /login after Trigger 3');
+      const bannerText = await banner.textContent();
+      assert(bannerText.includes('Another account signed in on this browser. This tab was signed out for your safety.'), 'Banner displays correct notice');
+
+      // Verify no data from User 2
+      const bodyText = await tabA.evaluate(() => document.body.innerText);
+      assert(!bodyText.includes(u2.tenant.name), 'No tenant data from User 2 is shown');
+      assert(!bodyText.includes(u2.email), 'No user data from User 2 is shown');
+
+      await context.close();
+    }
+
+    // -------------------------------------------------------------
+    // TEST 9: TRIGGER 4 - 409 CONFLICT ON NORMAL API CALL
+    // -------------------------------------------------------------
+    console.log('\n[TEST 9] Trigger 4: Normal API call returning 409 Conflict triggers safe signout with banner once');
+    {
+      const u1 = await createTestTenantAndUser('T9_U1');
+
+      const context = await browser.newContext({ viewport: { width: 1536, height: 730 } });
+      const tabA = await context.newPage();
+      await performLogin(tabA, u1.email, u1.password);
+      await tabA.goto(`${WEB_BASE}/invoices`, { waitUntil: 'domcontentloaded' });
+      await tabA.waitForTimeout(1000);
+
+      // Route /api/v1/invoices/test-409 to return 409 Conflict
+      await tabA.route('**/api/v1/invoices/test-409', (route) => {
+        route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            statusCode: 409,
+            code: 'SESSION_CHANGED',
+            message: 'Session conflict detected: account was switched in another tab',
+          }),
+        });
+      });
+
+      // Call endpoint via window.api
+      await tabA.evaluate(async () => {
+        try {
+          await window.api.get('/invoices/test-409');
+        } catch {}
+      });
+
+      await tabA.waitForTimeout(2000);
+
+      // Verify Tab A was redirected to /login
+      assert(tabA.url().includes('/login'), 'Tab A safely redirected to /login on Trigger 4 (409 Conflict)');
+
+      // Verify NO blocking modal
+      const hasModal = await tabA.evaluate(() => document.body.innerText.includes('Session Changed') && document.body.innerText.includes('Reload'));
+      assert(!hasModal, 'Tab A does NOT show blocking modal on Trigger 4');
+
+      // Verify banner appears
+      const banner = await tabA.waitForSelector('[data-testid="session-conflict-banner"]', { timeout: 5000 });
+      assert(banner !== null, 'Non-blocking banner appears on /login after Trigger 4');
+
+      await context.close();
+    }
+
+    // -------------------------------------------------------------
     console.log('\n================================================================');
     console.log(`SESSION CONFLICT SUITE COMPLETE: ${passedTests}/${totalTests} PASSED`);
     console.log('================================================================\n');

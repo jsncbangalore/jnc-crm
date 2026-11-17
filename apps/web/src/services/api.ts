@@ -931,9 +931,11 @@ api.interceptors.response.use(
       notifyUserActivity();
     }
 
-    // Requirement 5: No silent identity change anywhere: if /auth/me or any API response returns a user id different from the one stored for this tab, treat it as SESSION_CHANGED.
-    const incomingUser = res?.data?.user;
-    if (incomingUser && incomingUser.id) {
+    // Trigger 3: No silent identity change anywhere: if /auth/me or any API response returns a user id different from the one stored for this tab, treat it as SESSION_CHANGED.
+    const incomingUser = res?.data?.user || (res?.config?.url?.includes('/auth/me') ? res?.data : null);
+    const incomingUserId = incomingUser?.id || (res?.data && typeof res.data === 'object' && res.data.userId ? res.data.userId : null);
+
+    if (incomingUserId) {
       const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
       if (!isPublicRoute(currentPath)) {
         const isImpersonating = typeof window !== 'undefined' && (
@@ -943,7 +945,7 @@ api.interceptors.response.use(
         );
         if (!isImpersonating) {
           const currentTabId = getCurrentTabUserId();
-          if (currentTabId && currentTabId !== incomingUser.id) {
+          if (currentTabId && currentTabId !== incomingUserId) {
             setStaffAccessToken(null);
             setPlatformAccessToken(null);
             clearTabSessionUser();
@@ -955,7 +957,7 @@ api.interceptors.response.use(
                     message: 'You signed in with another account in a different tab',
                     requestId: reqId,
                     expectedUserId: currentTabId,
-                    incomingUserId: incomingUser.id,
+                    incomingUserId: incomingUserId,
                   },
                 })
               );
@@ -980,8 +982,13 @@ api.interceptors.response.use(
     const url: string = original?.url || '';
     const status = err.response?.status;
 
-    // Handle 409 SESSION_CHANGED: tab identity mismatch. Do NOT wipe server cookies!
-    if (status === 409 && (err.response?.data?.code === 'SESSION_CHANGED' || err.response?.data?.message?.includes('Session changed'))) {
+    // Trigger 4: Handle 409 Conflict: tab identity mismatch or session conflict on a normal API call. Do NOT wipe server cookies!
+    if (status === 409 && (
+      err.response?.data?.code === 'SESSION_CHANGED' ||
+      err.response?.data?.code === 'CONFLICT' ||
+      err.response?.data?.message?.includes('Session changed') ||
+      err.response?.data?.message?.includes('conflict')
+    )) {
       setStaffAccessToken(null);
       setPlatformAccessToken(null);
       clearTabSessionUser();
