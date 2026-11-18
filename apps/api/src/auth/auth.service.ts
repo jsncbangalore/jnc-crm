@@ -440,13 +440,14 @@ export class AuthService {
     }
 
     // ── Password check across all candidates ───────────────────────────────────
-    const matched: any[] = [];
-    for (const candidate of candidates) {
-      if (candidate.passwordHash && loginDto.password) {
+    const matchResults = await Promise.all(
+      candidates.map(async (candidate) => {
+        if (!candidate.passwordHash || !loginDto.password) return null;
         const ok = await bcrypt.compare(loginDto.password, candidate.passwordHash);
-        if (ok) matched.push(candidate);
-      }
-    }
+        return ok ? candidate : null;
+      }),
+    );
+    const matched = matchResults.filter((c): c is NonNullable<typeof c> => c !== null);
 
     if (matched.length === 0) {
       // Record failure against first candidate (or key-only)

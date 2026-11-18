@@ -24,6 +24,8 @@ import {
 import { authApi, platformAuthApi } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { drawQrToCanvas } from '../../utils/qr';
+import { getRoleRedirectPath } from '../../utils/roles';
+import VerificationCodeForm from './VerificationCodeForm';
 
 interface TwoFactorChallengeProps {
   loginTicket: string;
@@ -138,7 +140,7 @@ export default function TwoFactorChallenge({
   const [mode, setMode] = useState<'code' | 'backup' | 'setup'>(forcedSetup ? 'setup' : 'code');
   const [codeDigits, setCodeDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [backupCode, setBackupCode] = useState('');
-  const [trustDevice, setTrustDevice] = useState(true);
+  const [trustDevice, setTrustDevice] = useState(false);
   const [activeMethod, setActiveMethod] = useState<'totp' | 'email'>(
     allowedMethods.includes('totp') ? 'totp' : 'email'
   );
@@ -563,7 +565,7 @@ export default function TwoFactorChallenge({
     try {
       const verifyFn = portal === 'platform' ? verifyPlatformTwoFactor : verifyTwoFactor;
       const user = await verifyFn(loginTicket, finalCode, trustDevice);
-      const destination = (user as any).redirectPath || (portal === 'platform' ? '/platform/companies' : '/');
+      const destination = (user as any).redirectPath || (portal === 'platform' ? '/platform/companies' : getRoleRedirectPath(user));
       onSuccess(destination);
     } catch (err: any) {
       setError(mapTwoFactorError(err));
@@ -575,9 +577,8 @@ export default function TwoFactorChallenge({
   };
 
   // ── Submit Backup Code ───────────────────────────────────────────────────────
-  const handleSubmitBackupCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = backupCode.trim().replace(/\s+/g, '');
+  const handleSubmitBackupCodeDirect = async (providedCode: string) => {
+    const clean = providedCode.trim().replace(/\s+/g, '');
     if (!clean) {
       setError('Please enter a backup code.');
       return;
@@ -589,7 +590,7 @@ export default function TwoFactorChallenge({
     try {
       const verifyFn = portal === 'platform' ? verifyPlatformTwoFactor : verifyTwoFactor;
       const user = await verifyFn(loginTicket, clean, trustDevice);
-      const destination = (user as any).redirectPath || (portal === 'platform' ? '/platform/companies' : '/');
+      const destination = (user as any).redirectPath || (portal === 'platform' ? '/platform/companies' : getRoleRedirectPath(user));
       onSuccess(destination);
     } catch (err: any) {
       setError(mapTwoFactorError(err));
@@ -597,6 +598,11 @@ export default function TwoFactorChallenge({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmitBackupCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await handleSubmitBackupCodeDirect(backupCode);
   };
 
   // ── Send Email OTP ───────────────────────────────────────────────────────────
@@ -648,7 +654,7 @@ export default function TwoFactorChallenge({
         setCompletionAuthData(data);
       } else {
         completeForcedSetup(data, portal);
-        onSuccess(portal === 'platform' ? '/platform/companies' : '/');
+        onSuccess(portal === 'platform' ? '/platform/companies' : getRoleRedirectPath(data.user));
       }
     } catch (err: any) {
       setError(mapTwoFactorError(err));
@@ -664,7 +670,7 @@ export default function TwoFactorChallenge({
     if (completionAuthData) {
       completeForcedSetup(completionAuthData, portal);
     }
-    const destination = completionAuthData?.redirectPath || (portal === 'platform' ? '/platform/companies' : '/');
+    const destination = completionAuthData?.redirectPath || (portal === 'platform' ? '/platform/companies' : getRoleRedirectPath(completionAuthData?.user));
     onSuccess(destination);
   };
 
@@ -705,7 +711,7 @@ export default function TwoFactorChallenge({
     // If backup codes are generated, show completion view
     if (generatedBackupCodes) {
       return (
-        <div className="space-y-4 max-w-sm mx-auto">
+        <div className="space-y-4 w-full">
           <div className="text-center space-y-1.5">
             <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center mx-auto">
               <CheckCircle2 size={24} />
@@ -798,7 +804,7 @@ export default function TwoFactorChallenge({
       error === 'This setup link is not valid. Please sign in again.';
 
     return (
-      <div className="space-y-4 max-w-sm mx-auto">
+      <div className="space-y-4 w-full">
         <div className="flex items-center justify-between">
           <button
             type="button"
@@ -1072,37 +1078,10 @@ export default function TwoFactorChallenge({
 
   // ─── NORMAL 2FA CHALLENGE SCREEN ───────────────────────────────────────────
   return (
-    <div className="space-y-5 max-w-sm mx-auto">
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-[13px] font-medium text-[#2563EB] hover:underline mb-2 transition-colors cursor-pointer"
-      >
-        <ArrowLeft size={14} />
-        Back to password
-      </button>
-
-      <div>
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50 flex items-center justify-center">
-            {mode === 'backup' ? <KeyRound size={22} /> : activeMethod === 'email' ? <Mail size={22} /> : <Smartphone size={22} />}
-          </div>
-          <h2 className="text-[26px] sm:text-[28px] font-bold text-slate-900 dark:text-white leading-tight">
-            2-Step Verification
-          </h2>
-        </div>
-        <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
-          {mode === 'backup'
-            ? 'Enter one of your 8-character backup recovery codes.'
-            : activeMethod === 'email'
-            ? 'Enter the 6-digit code sent to your registered email address.'
-            : 'Enter the 6-digit verification code from your authenticator app.'}
-        </p>
-      </div>
-
+    <div className="w-full max-w-sm mx-auto space-y-4">
       {/* Grace period banner if user has not yet enforced TOTP but is in grace period */}
       {twoFactorGracePeriod?.active && twoFactorGracePeriod.daysRemaining > 0 && (
-        <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 dark:bg-blue-950/40 dark:border-blue-900/60 dark:text-blue-200 text-xs flex items-center gap-2">
+        <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 dark:bg-blue-950/40 dark:border-blue-900/60 dark:text-blue-200 text-xs flex items-center gap-2">
           <Clock size={16} className="shrink-0 text-blue-600" />
           <span>
             Mandatory enrollment required in {twoFactorGracePeriod.daysRemaining} day(s).
@@ -1110,177 +1089,84 @@ export default function TwoFactorChallenge({
         </div>
       )}
 
-      {error && (
-        <div className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300 text-[13px] font-medium flex items-center gap-2">
-          <AlertCircle size={16} className="shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
       {emailStatus.message && (
         <div
-          className={`p-3 rounded-xl border text-[13px] font-medium flex items-center gap-2 ${
+          className={`p-3.5 rounded-[10px] border text-[14px] font-medium flex items-start gap-2.5 ${
             emailStatus.isError
-              ? 'bg-[#FEF2F2] border-[#FECACA] text-[#B91C1C] dark:bg-red-950/40 dark:border-red-900/60 dark:text-red-300'
+              ? 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-900/60 dark:text-rose-300'
               : 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-900 dark:text-emerald-300'
           }`}
         >
-          {emailStatus.isError ? <AlertCircle size={16} className="shrink-0" /> : <CheckCircle2 size={16} className="shrink-0" />}
+          {emailStatus.isError ? (
+            <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+          ) : (
+            <CheckCircle2 size={18} className="shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
+          )}
           <span>{emailStatus.message}</span>
         </div>
       )}
 
-      {mode === 'code' ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-6 gap-1.5 sm:gap-2.5 w-full">
-            {codeDigits.map((digit, idx) => (
-              <input
-                key={idx}
-                ref={(el) => (inputRefs.current[idx] = el)}
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={1}
-                value={digit}
-                onChange={(e) => handleDigitChange(idx, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(idx, e)}
-                onPaste={handlePaste}
-                disabled={loading}
-                className="w-full h-12 sm:h-14 text-center text-xl font-bold bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#243049] rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-[#2563EB] focus:ring-[3px] focus:ring-[#2563EB]/25 transition-all"
-              />
-            ))}
-          </div>
-
-          <div className="pt-0.5">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={trustDevice}
-                onChange={(e) => setTrustDevice(e.target.checked)}
-                className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-              />
-              <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                Trust this device for 30 days
-              </span>
-            </label>
-          </div>
-
-          <button
-            type="button"
-            disabled={loading || codeDigits.join('').length !== 6}
-            onClick={() => handleSubmitCode()}
-            className="w-full h-11 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 text-white text-[15px] font-semibold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
-          >
-            {loading ? <RefreshCw size={16} className="animate-spin" /> : <ShieldCheck size={18} />}
-            <span>Verify code</span>
-          </button>
-        </div>
-      ) : (
-        <form onSubmit={handleSubmitBackupCode} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Backup Recovery Code
-            </label>
-            <input
-              type="text"
-              autoFocus
-              value={backupCode}
-              onChange={(e) => setBackupCode(e.target.value)}
-              placeholder="e.g. A1B2C3D4"
-              className="w-full h-11 px-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0F172A] font-mono uppercase tracking-widest text-center text-base font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div className="pt-0.5">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={trustDevice}
-                onChange={(e) => setTrustDevice(e.target.checked)}
-                className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-              />
-              <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                Trust this device for 30 days
-              </span>
-            </label>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading || !backupCode.trim()}
-            className="w-full h-11 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 text-white text-[15px] font-semibold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
-          >
-            {loading ? <RefreshCw size={16} className="animate-spin" /> : <KeyRound size={18} />}
-            <span>Verify backup code</span>
-          </button>
-        </form>
-      )}
-
-      {/* Alternative verification methods switch */}
-      <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2 text-center text-xs">
-        {mode === 'code' && allowedMethods.includes('email') && activeMethod === 'totp' && (
-          <button
-            type="button"
-            onClick={handleSendEmailOtp}
-            disabled={emailStatus.loading}
-            className="text-blue-600 hover:underline dark:text-blue-400 font-medium cursor-pointer block mx-auto"
-          >
-            {emailStatus.loading ? 'Sending email code...' : 'Send verification code via email instead'}
-          </button>
-        )}
-
-        {mode === 'code' && activeMethod === 'email' && allowedMethods.includes('totp') && (
-          <button
-            type="button"
-            onClick={() => {
-              setActiveMethod('totp');
-              setCodeDigits(['', '', '', '', '', '']);
-              inputRefs.current[0]?.focus();
-            }}
-            className="text-blue-600 hover:underline dark:text-blue-400 font-medium cursor-pointer block mx-auto"
-          >
-            Use authenticator app code instead
-          </button>
-        )}
-
-        {mode === 'code' ? (
-          <div className="space-y-2 pt-1 text-center">
-            <div>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('backup');
-                  setError('');
-                }}
-                className="text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400 cursor-pointer inline-block"
-              >
-                Use a backup code
-              </button>
-            </div>
-            <div>
-              <button
-                type="button"
-                onClick={handleSendEmailOtp}
-                disabled={emailStatus.loading}
-                className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-medium cursor-pointer inline-block"
-              >
-                {emailStatus.loading ? 'Sending code...' : 'Lost your authenticator? Receive code by email'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              setMode('code');
-              setError('');
-            }}
-            className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-medium cursor-pointer block mx-auto"
-          >
-            Back to authenticator app code
-          </button>
-        )}
-      </div>
+      <VerificationCodeForm
+        method={mode === 'backup' ? 'backup' : activeMethod === 'email' ? 'email' : 'authenticator'}
+        recipientMasked={emailMasked}
+        loading={loading}
+        error={error}
+        onErrorClear={() => setError('')}
+        onSubmit={(code) => {
+          if (mode === 'backup') {
+            return handleSubmitBackupCodeDirect(code);
+          }
+          return handleSubmitCode(code);
+        }}
+        onResend={activeMethod === 'email' ? handleSendEmailOtp : undefined}
+        resendCooldown={emailResendCooldown}
+        trustDevice={{
+          checked: trustDevice,
+          onChange: setTrustDevice,
+          label: 'Trust this device for 30 days (Only on your own device)',
+        }}
+        onBack={mode === 'backup' ? () => { setMode('code'); setError(''); } : onBack}
+        backLabel={mode === 'backup' ? 'Back to authenticator app code' : 'Back to password'}
+        alternativeMethods={
+          mode === 'code'
+            ? [
+                ...(allowedMethods.includes('email') && activeMethod === 'totp'
+                  ? [{
+                      method: 'email' as const,
+                      label: 'Send verification code via email instead',
+                      onClick: handleSendEmailOtp,
+                    }]
+                  : []),
+                ...(allowedMethods.includes('totp') && activeMethod === 'email'
+                  ? [{
+                      method: 'authenticator' as const,
+                      label: 'Use authenticator app code instead',
+                      onClick: () => {
+                        setActiveMethod('totp');
+                        setError('');
+                      },
+                    }]
+                  : []),
+                {
+                  method: 'backup' as const,
+                  label: 'Use a backup code',
+                  onClick: () => {
+                    setMode('backup');
+                    setError('');
+                  },
+                },
+              ]
+            : undefined
+        }
+        onLostAuthenticator={
+          mode === 'code'
+            ? () => {
+                handleSendEmailOtp();
+              }
+            : undefined
+        }
+        lostAuthenticatorLabel="Lost your authenticator? Receive code by email"
+      />
     </div>
   );
 }

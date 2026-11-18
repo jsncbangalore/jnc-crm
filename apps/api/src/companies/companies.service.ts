@@ -146,6 +146,31 @@ export class CreateCompanyDto {
   @IsOptional()
   @IsValidPan()
   pan?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  contactPerson?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  billingAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  shippingAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  deliveryAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  paymentTerms?: string;
 }
 
 export class UpdateCompanyDto {
@@ -203,6 +228,31 @@ export class UpdateCompanyDto {
   @IsOptional()
   @IsValidPan()
   pan?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  contactPerson?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  billingAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  shippingAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(300)
+  deliveryAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  paymentTerms?: string;
 }
 
 export class CreateContactDto {
@@ -267,13 +317,16 @@ export class CompaniesService {
       }
     }
 
+    const resolvedAddress = (dto.address || dto.billingAddress)?.trim() || null;
+    const contactName = dto.contactPerson?.trim() || dto.name.trim();
+
     const company = await this.prisma.company.create({
       data: {
         tenantId,
         name: trimmedName,
         gstin,
         industry: dto.industry?.trim() || null,
-        address: dto.address?.trim() || null,
+        address: resolvedAddress,
         city: dto.city?.trim() || null,
         state: dto.state?.trim() || 'Karnataka',
         website: dto.website?.trim() || null,
@@ -282,12 +335,12 @@ export class CompaniesService {
       },
     });
 
-    if (phone || email) {
+    if (phone || email || dto.contactPerson?.trim()) {
       await this.prisma.contact.create({
         data: {
           tenantId,
           companyId: company.id,
-          name: dto.name.trim(),
+          name: contactName,
           phone: phone || '-',
           email: email,
           isPrimary: true,
@@ -299,7 +352,8 @@ export class CompaniesService {
     return {
       ...company,
       phone,
-      email: company.billingEmail,
+      email,
+      contactPerson: dto.contactPerson?.trim() || null,
     };
   }
 

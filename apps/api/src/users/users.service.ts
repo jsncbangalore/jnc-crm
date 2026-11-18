@@ -1482,15 +1482,33 @@ export class UsersService {
     // Send email notification: 'Your 2-step verification was reset by an administrator'
     if (targetUser.email) {
       const adminLabel = actor.employeeCode || (actor as any).name || 'Company Administrator';
+      const outboxSubject = 'Your 2-step verification was reset by an administrator';
+      const outboxText = `Hello ${targetUser.name || 'User'},\n\nYour 2-step verification has been reset by an administrator (${adminLabel}).\nAll active sessions and trusted devices have been signed out.\nYou will be asked to set up 2-step verification again upon your next sign-in.`;
+      const outboxHtml = `<div style="font-family: Arial, sans-serif; max-width: 520px; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+        <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">2-Step Verification Reset</h2>
+        <p style="color: #475569; font-size: 14px;">Your 2-step verification has been reset by an administrator (${adminLabel}).</p>
+        <p style="color: #475569; font-size: 13px;">All existing sessions and trusted devices have been signed out. On your next sign-in, you will be prompted to enroll your authenticator app again.</p>
+      </div>`;
+
+      try {
+        await this.prisma.emailOutbox.create({
+          data: {
+            to: targetUser.email.toLowerCase(),
+            subject: outboxSubject,
+            text: outboxText,
+            html: outboxHtml,
+            status: 'pending',
+            tenantId: targetUser.tenantId || null,
+            maxAttempts: 8,
+          },
+        });
+      } catch {}
+
       void this.notificationsService.sendEmail({
         to: targetUser.email,
-        subject: 'Your 2-step verification was reset by an administrator',
-        text: `Hello ${targetUser.name || 'User'},\n\nYour 2-step verification has been reset by an administrator (${adminLabel}).\nAll active sessions and trusted devices have been signed out.\nYou will be asked to set up 2-step verification again upon your next sign-in.`,
-        html: `<div style="font-family: Arial, sans-serif; max-width: 520px; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
-          <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">2-Step Verification Reset</h2>
-          <p style="color: #475569; font-size: 14px;">Your 2-step verification has been reset by an administrator (${adminLabel}).</p>
-          <p style="color: #475569; font-size: 13px;">All existing sessions and trusted devices have been signed out. On your next sign-in, you will be prompted to enroll your authenticator app again.</p>
-        </div>`,
+        subject: outboxSubject,
+        text: outboxText,
+        html: outboxHtml,
         purpose: 'security_alert',
         throwOnError: false,
       }).catch(() => {});

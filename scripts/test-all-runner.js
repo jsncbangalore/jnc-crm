@@ -25,6 +25,8 @@
  * - Real-Page Playwright Dependency Matrix: 70
  * - Walkthrough Live Audit Comprehensive: 35
  * - Tax Invoice & Document Management: 33
+ * - Authentication Reliability & Security: 30
+ * - Verification Consistency & Sleep Resilience: 20
  */
 
 const fs = require('fs');
@@ -383,6 +385,16 @@ runLayer('Y', 'Tax Invoice & Document Management Verification Suite', (assert) =
   runDedicatedSuite('Y', 'Tax Invoice & Document Management', 'scripts/test-invoice-tax-fixes-suite.js', 33, assert);
 });
 
+// ─── LAYER Z: AUTHENTICATION RELIABILITY & SECURITY SUITE (30 tests) ──────────
+runLayer('Z', 'Authentication Reliability & Security Verification Suite', (assert) => {
+  runDedicatedSuite('Z', 'Authentication Reliability & Security', 'scripts/test-auth-reliability-suite.js', 30, assert);
+});
+
+// ─── LAYER AA: VERIFICATION CONSISTENCY & SERVER SLEEP RESILIENCE SUITE (20 tests) ─
+runLayer('AA', 'Verification Consistency & Server Sleep Resilience Suite', (assert) => {
+  runDedicatedSuite('AA', 'Verification Consistency & Sleep Resilience', 'scripts/test-verification-consistency-suite.js', 20, assert);
+});
+
 // ─── REPORT GENERATION ───────────────────────────────────────────────────────
 const jsonReportPath = path.join(REPORT_DIR, 'test-all-report.json');
 fs.writeFileSync(jsonReportPath, JSON.stringify(report, null, 2), 'utf8');
@@ -482,6 +494,8 @@ const comparisonRows = [
   { suite: 'Real-Page Playwright Dependency Matrix', file: 'scripts/test-page-dependency-matrix.js', expected: 70, layer: 'W' },
   { suite: 'Walkthrough Live Audit Comprehensive', file: 'scripts/test-walkthrough-fixes-suite.js', expected: 35, layer: 'X' },
   { suite: 'Tax Invoice & Document Management', file: 'scripts/test-invoice-tax-fixes-suite.js', expected: 33, layer: 'Y' },
+  { suite: 'Authentication Reliability & Security', file: 'scripts/test-auth-reliability-suite.js', expected: 30, layer: 'Z' },
+  { suite: 'Verification Consistency & Sleep Resilience', file: 'scripts/test-verification-consistency-suite.js', expected: 20, layer: 'AA' },
 ];
 
 console.log('\n========================================================================================');

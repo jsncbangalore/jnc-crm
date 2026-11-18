@@ -40,6 +40,30 @@ const PAYMENT_TERMS_OPTIONS = [
   'Against Delivery / COD',
 ];
 
+export const calculateDueDateFromTerms = (terms: string, docDate: string): string => {
+  if (!docDate || !terms) return '';
+  const dateObj = new Date(docDate);
+  if (isNaN(dateObj.getTime())) return '';
+  const cleanTerms = terms.trim().toLowerCase();
+  let daysToAdd: number | null = null;
+  if (cleanTerms.includes('immediate') || cleanTerms.includes('due on receipt') || cleanTerms.includes('cod') || cleanTerms.includes('against delivery')) {
+    daysToAdd = 0;
+  } else if (cleanTerms.includes('15')) {
+    daysToAdd = 15;
+  } else if (cleanTerms.includes('30')) {
+    daysToAdd = 30;
+  } else if (cleanTerms.includes('45')) {
+    daysToAdd = 45;
+  } else if (cleanTerms.includes('60')) {
+    daysToAdd = 60;
+  } else if (cleanTerms.includes('90')) {
+    daysToAdd = 90;
+  }
+  if (daysToAdd === null) return '';
+  const due = new Date(dateObj.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+  return due.toISOString().split('T')[0];
+};
+
 interface CreateDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -409,12 +433,14 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
   const appliedAdvanceAmount = applyAdvance ? Math.min(customerAdvance, grandTotal) : 0;
   const payNowVal = recordPaymentNow ? (Number(payNowAmount) || 0) : 0;
   const advanceAmount = isProforma ? Number(((grandTotal * (advancePercent || 50)) / 100).toFixed(2)) : 0;
-  const balanceDue = Math.max(0, Number((grandTotal - appliedAdvanceAmount - payNowVal - (advanceAdjusted || 0)).toFixed(2)));
-  const derivedPaymentStatus: 'unpaid' | 'paid' | 'partial' = grandTotal <= 0
-    ? 'unpaid'
-    : balanceDue <= 0.01
+  const totalSettled = Number(((recordPaymentNow ? payNowVal : 0) + (applyAdvance ? appliedAdvanceAmount : 0) + (advanceAdjusted || 0)).toFixed(2));
+  const balanceDue = Math.max(0, Number((grandTotal - totalSettled).toFixed(2)));
+  const derivedPaymentStatus: 'unpaid' | 'paid' | 'partial' =
+    grandTotal > 0 && totalSettled >= (grandTotal - 0.01)
       ? 'paid'
-      : ((appliedAdvanceAmount + payNowVal + (advanceAdjusted || 0)) > 0 ? 'partial' : 'unpaid');
+      : totalSettled > 0.01
+        ? 'partial'
+        : 'unpaid';
   const amountWords = grandTotal > 0 ? numberToIndianWords(grandTotal) : '';
   const scrollAndFocusGstin = () => {
     setTimeout(() => {
@@ -886,7 +912,13 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 required
                 name="doc_date"
                 value={invoiceDate}
-                onChange={(val) => setInvoiceDate(val)}
+                onChange={(val) => {
+                  setInvoiceDate(val);
+                  if (paymentTerms) {
+                    const computedDue = calculateDueDateFromTerms(paymentTerms, val);
+                    if (computedDue) setDueDate(computedDue);
+                  }
+                }}
                 placeholder="YYYY-MM-DD"
                 minYear={1990}
                 maxYear={3000}
@@ -899,26 +931,22 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                     <span>Payment Status</span>
                     <span
                       className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
-                        grandTotal <= 0
-                          ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-300 dark:border-slate-700'
-                          : derivedPaymentStatus === 'paid'
+                        derivedPaymentStatus === 'paid'
                           ? 'bg-emerald-50 text-emerald-700 dark:bg-green-500/15 dark:text-green-400 border-emerald-300 dark:border-green-500/30'
                           : derivedPaymentStatus === 'partial'
                           ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 border-amber-300 dark:border-amber-500/30'
-                          : 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-400 border-slate-300 dark:border-slate-500/30'
+                          : 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400 border-blue-300 dark:border-blue-500/30'
                       }`}
                     >
-                      {grandTotal <= 0 ? 'Not calculated yet' : derivedPaymentStatus}
+                      {derivedPaymentStatus}
                     </span>
                   </label>
                   <div className="input text-xs font-bold bg-slate-50 dark:bg-[#141722] text-slate-700 dark:text-slate-300 flex items-center justify-between pointer-events-none">
                     <span>
-                      {grandTotal <= 0
-                        ? 'Not calculated yet (Draft)'
-                        : derivedPaymentStatus === 'paid'
+                      {derivedPaymentStatus === 'paid'
                         ? 'Paid (Fully Settled)'
                         : derivedPaymentStatus === 'partial'
-                        ? 'Partial (Partly Paid)'
+                        ? `Partial (₹${totalSettled.toLocaleString('en-IN', { minimumFractionDigits: 2 })} Settled)`
                         : 'Unpaid (Pending)'}
                     </span>
                     <span className="text-[10px] font-normal text-slate-400">Derived</span>
@@ -935,7 +963,12 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                   aria-label="Payment Terms"
                   className="input text-xs font-semibold cursor-pointer w-full"
                   value={paymentTerms}
-                  onChange={(e) => setPaymentTerms(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPaymentTerms(val);
+                    const computedDue = calculateDueDateFromTerms(val, invoiceDate);
+                    if (computedDue) setDueDate(computedDue);
+                  }}
                 >
                   <option value="">Select payment terms</option>
                   {PAYMENT_TERMS_OPTIONS.map((opt) => (
@@ -1169,14 +1202,17 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                   selectedCustomerId={customerId}
                   onSelectCustomer={(c: CustomerData) => {
                     setCustomerId(c.id);
-                    setCustomerName(c.name);
+                    setCustomerName(c.name || '');
                     if (c.phone) setCustomerPhone(c.phone);
                     if (c.email) setCustomerEmail(c.email);
                     if (c.gstin) setCustomerGstin(c.gstin);
                     if (c.state) setCustomerState(c.state);
-                    if (c.address) {
-                      setBillingAddress(c.address);
-                      setDeliveryAddress(c.address);
+                    if (c.address) setBillingAddress(c.address);
+                    if (c.deliveryAddress || c.address) setDeliveryAddress(c.deliveryAddress || c.address || '');
+                    if (c.paymentTerms) {
+                      setPaymentTerms(c.paymentTerms);
+                      const computedDue = calculateDueDateFromTerms(c.paymentTerms, invoiceDate);
+                      if (computedDue) setDueDate(computedDue);
                     }
                   }}
                   required={false}

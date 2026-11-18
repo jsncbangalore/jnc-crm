@@ -21,7 +21,11 @@ export interface CustomerData {
   email?: string;
   gstin?: string;
   address?: string;
+  city?: string;
   state?: string;
+  contactPerson?: string;
+  deliveryAddress?: string;
+  paymentTerms?: string;
 }
 
 interface CustomerSelectProps {
@@ -75,11 +79,15 @@ export default function CustomerSelectWithModal({
       const list = (res.data?.items || res.data || []).map((c: any) => ({
         id: c.id,
         name: c.name,
+        contactPerson: c.contacts?.[0]?.name || c.contactPerson || '',
         phone: c.phone || (c.contacts && c.contacts[0]?.phone) || '',
         email: c.billingEmail || c.email || (c.contacts && c.contacts[0]?.email) || '',
         gstin: c.gstin || '',
         address: c.address || '',
+        city: c.city || '',
         state: c.state || 'Karnataka',
+        deliveryAddress: c.deliveryAddress || c.shippingAddress || c.address || '',
+        paymentTerms: c.paymentTerms || '',
       }));
       setCustomers(list);
     } catch (err) {
@@ -335,6 +343,7 @@ function CreateCustomerModal({
     try {
       const res = await companiesApi.create({
         name: name.trim(),
+        contactPerson: contactPerson.trim() || undefined,
         gstin: gstin.trim().toUpperCase() || undefined,
         billingEmail: email.trim() || undefined,
         phone: phone.trim() || undefined,
@@ -347,11 +356,14 @@ function CreateCustomerModal({
       onCreated({
         id: created.id,
         name: created.name,
+        contactPerson: contactPerson.trim() || created.contactPerson || undefined,
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
         gstin: gstin.trim().toUpperCase() || undefined,
         address: address.trim() || undefined,
+        city: city.trim() || undefined,
         state,
+        deliveryAddress: address.trim() || undefined,
       });
     } catch (err: any) {
       console.error('Customer creation error:', err);
@@ -373,15 +385,19 @@ function CreateCustomerModal({
       if (Array.isArray(data?.message)) {
         for (const msg of data.message) {
           const text = toPlainText(msg);
-          if (/phone/i.test(text) && !inlineErrors.phone) inlineErrors.phone = text;
+          if (/contact/i.test(text) && !inlineErrors.contactPerson) inlineErrors.contactPerson = text;
+          else if (/phone/i.test(text) && !inlineErrors.phone) inlineErrors.phone = text;
           else if (/gstin/i.test(text) && !inlineErrors.gstin) inlineErrors.gstin = text;
           else if (/name/i.test(text) && !inlineErrors.name) inlineErrors.name = text;
           else if (/email/i.test(text) && !inlineErrors.email) inlineErrors.email = text;
+          else if (/address/i.test(text) && !inlineErrors.address) inlineErrors.address = text;
         }
       }
 
-      const formMsg =
-        toPlainText(data?.message || err?.message || 'Failed to create customer record.');
+      let formMsg = toPlainText(data?.message || err?.message || 'Failed to create customer record.');
+      if (data?.unknownFields && Array.isArray(data.unknownFields) && data.unknownFields.length > 0) {
+        formMsg = `Unrecognized parameter(s): ${data.unknownFields.join(', ')}.`;
+      }
 
       setErrors({
         ...(formMsg && Object.keys(inlineErrors).length === 0 ? { form: formMsg } : {}),
@@ -469,14 +485,17 @@ function CreateCustomerModal({
 
           {/* Contact Person (Shared NameField) & Mobile (Shared PhoneField) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <NameField
-              id="cust-contact-person"
-              label="Contact Person"
-              value={contactPerson}
-              onChange={(val) => setContactPerson(val)}
-              placeholder="e.g. Rahul Sharma"
-              maxLength={60}
-            />
+            <div>
+              <NameField
+                id="cust-contact-person"
+                label="Contact Person"
+                value={contactPerson}
+                onChange={(val) => setContactPerson(val)}
+                placeholder="e.g. Rahul Sharma"
+                maxLength={60}
+              />
+              {errors.contactPerson && <p className="text-rose-500 text-[10px] mt-0.5">{toPlainText(errors.contactPerson)}</p>}
+            </div>
 
             <PhoneField
               id="cust-phone-field"

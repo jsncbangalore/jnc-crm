@@ -87,36 +87,56 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
 
   useEffect(() => {
     let interval: any = null;
-    let pollInterval: any = null;
+    let pollTimeout: any = null;
+    let active = true;
+
     if (isWakingUp) {
       interval = setInterval(() => {
-        setWakingSeconds((s) => s + 1);
-      }, 1000);
-
-      // Poll health endpoint every 2.5 seconds
-      pollInterval = setInterval(async () => {
-        try {
-          const res = await fetch(`${getApiBaseUrl()}/health`, { signal: AbortSignal.timeout(3000) });
-          if (res.ok) {
+        setWakingSeconds((s) => {
+          const next = s + 1;
+          if (next >= 15) {
+            setPassword('');
+          }
+          if (next >= 90) {
+            const reqId = 'req-' + Math.random().toString(36).substring(2, 10);
+            setError(`The server took too long to wake up. Please try again. (Request ID: ${reqId})`);
             setIsWakingUp(false);
           }
-        } catch {
-          // Still booting
+          return next;
+        });
+      }, 1000);
+
+      // Auto-retry with backoff against /api/v1/health/live
+      let delay = 2000;
+      const poll = async () => {
+        if (!active) return;
+        try {
+          const res = await fetch(`${getApiBaseUrl()}/health/live`, { signal: AbortSignal.timeout(3000) });
+          if (res.ok) {
+            setIsWakingUp(false);
+            return;
+          }
+        } catch {}
+        delay = Math.min(delay * 1.5, 8000);
+        if (active) {
+          pollTimeout = setTimeout(poll, delay);
         }
-      }, 2500);
+      };
+      pollTimeout = setTimeout(poll, delay);
     } else {
       setWakingSeconds(0);
     }
     return () => {
+      active = false;
       if (interval) clearInterval(interval);
-      if (pollInterval) clearInterval(pollInterval);
+      if (pollTimeout) clearTimeout(pollTimeout);
     };
   }, [isWakingUp]);
 
   const handleRetryWakeup = async () => {
     setRetryingWakeup(true);
     try {
-      const res = await fetch('/api/v1/health', { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(`${getApiBaseUrl()}/health/live`, { signal: AbortSignal.timeout(3000) });
       if (res.ok) {
         setIsWakingUp(false);
       }
@@ -296,6 +316,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       const destination = user.redirectPath || (isPlatform ? '/platform/companies' : getRoleRedirectPath(user));
       navigate(destination, { replace: true });
     } catch (err: any) {
+      setPassword('');
       setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
@@ -346,6 +367,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       const destination = user.redirectPath || (isPlatform ? '/platform/companies' : getRoleRedirectPath(user));
       navigate(destination, { replace: true });
     } catch (err: any) {
+      setPassword('');
       setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
@@ -537,7 +559,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Clock size={16} className="shrink-0 text-amber-600 animate-spin" style={{ animationDuration: '3s' }} />
-              <span className="font-semibold text-xs tracking-tight">The server is waking up, this can take up to a minute</span>
+              <span className="font-semibold text-xs tracking-tight">Waking up the server, this can take up to a minute</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="font-mono text-[11px] font-semibold text-amber-700 dark:text-amber-300">
@@ -554,6 +576,12 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
                 <span>Retry</span>
               </button>
             </div>
+          </div>
+          <div className="w-full bg-amber-200/60 dark:bg-amber-900/40 h-1.5 rounded-full overflow-hidden mt-2.5">
+            <div
+              className="bg-amber-500 h-full transition-all duration-1000"
+              style={{ width: `${Math.min(100, Math.max(5, (wakingSeconds / 60) * 100))}%` }}
+            />
           </div>
         </div>
       )}
@@ -579,7 +607,26 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
             role="alert"
           >
             <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
-            <span>{error}</span>
+            <div className="flex-1">
+              <span>{error}</span>
+              {/* Step 5: Wrong Portal Help */}
+              {isPlatform && error.toLowerCase().includes('invalid credentials') && (
+                <div className="mt-1 text-[12px] text-slate-700 dark:text-slate-300">
+                  Using a company account?{' '}
+                  <Link to="/login" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                    Go to company sign in
+                  </Link>
+                </div>
+              )}
+              {!isPlatform && error.toLowerCase().includes('invalid credentials') && (
+                <div className="mt-1 text-[12px] text-slate-700 dark:text-slate-300">
+                  Platform administrator?{' '}
+                  <Link to="/platform/login" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                    Use the platform sign in
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         )}
         {/* Company Code Field (Company Portal Only) - Kept in DOM, hidden by default */}

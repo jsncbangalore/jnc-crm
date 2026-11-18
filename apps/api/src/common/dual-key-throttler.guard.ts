@@ -21,7 +21,17 @@ export class DualKeyThrottlerGuard extends ThrottlerGuard {
 
     // Extract identifier if present in request body (e.g. login, reset, forgot-password)
     const body = req.body || {};
-    const rawId = (body.email || body.identifier || body.username || body.employeeCode || '').toString().trim().toLowerCase();
+    const rawId = (
+      body.email ||
+      body.identifier ||
+      body.username ||
+      body.employeeCode ||
+      body.lookup ||
+      body.resetTicket ||
+      body.flowId ||
+      body.loginTicket ||
+      ''
+    ).toString().trim().toLowerCase();
 
     if (rawId) {
       const idHash = crypto.createHash('sha256').update(rawId).digest('hex').slice(0, 16);

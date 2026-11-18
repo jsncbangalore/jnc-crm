@@ -345,7 +345,7 @@ const KNOWN_WEB_PAYLOADS: Array<{
     clientCall: 'companiesApi.create (select modal)',
     formFile: 'apps/web/src/components/common/CustomerSelectWithModal.tsx',
     expectedDto: 'CreateCompanyDto',
-    payloadKeys: ['name', 'gstin', 'billingEmail', 'phone', 'address', 'state', 'city'],
+    payloadKeys: ['name', 'gstin', 'billingEmail', 'phone', 'address', 'state', 'city', 'contactPerson'],
   },
   {
     endpointMatch: /^\/companies\/[^/]+$/,

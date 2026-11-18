@@ -344,6 +344,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
             if (c.phone) setCustomerPhone(c.phone);
             if (c.email) setCustomerEmail(c.email);
             if (c.state) setDeliveryState(c.state);
+            if (c.city) setDeliveryCity(c.city);
             setCompanyName(c.name);
             setErrors((prev) => {
               const next = { ...prev };

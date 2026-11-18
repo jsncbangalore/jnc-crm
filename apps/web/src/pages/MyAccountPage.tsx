@@ -46,6 +46,7 @@ import {
 } from 'lucide-react';
 import { drawQrToCanvas } from '../utils/qr';
 import { openCookiePreferencesPanel } from '../utils/cookieConsent';
+import VerificationCodeForm from '../components/common/VerificationCodeForm';
 
 interface SessionItem {
   id: string;
@@ -429,9 +430,9 @@ export default function MyAccountPage() {
     }
   };
 
-  const handleConfirmSetup = async (e?: React.FormEvent) => {
+  const handleConfirmSetup = async (e?: React.FormEvent, overrideCode?: string) => {
     if (e) e.preventDefault();
-    const code = setupCodeDigits.join('').trim();
+    const code = (overrideCode || setupCodeDigits.join('')).trim();
     if (code.length !== 6) {
       setSetupError('Please enter all 6 digits.');
       return;
@@ -581,8 +582,8 @@ export default function MyAccountPage() {
   };
 
   // ─── Email Change OTP Handlers ──────────────────────────────────────────────
-  const handleRequestEmailOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleRequestEmailOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!currentPasswordForEmail) {
       setEmailOtpError('Please enter your current password to change your email address.');
       return;
@@ -605,16 +606,17 @@ export default function MyAccountPage() {
     }
   };
 
-  const handleVerifyEmailOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (emailOtpCode.trim().length !== 6) {
+  const handleVerifyEmailOtp = async (e?: React.FormEvent, overrideCode?: string) => {
+    if (e) e.preventDefault();
+    const finalCode = (overrideCode || emailOtpCode).trim();
+    if (finalCode.length !== 6) {
       setEmailOtpError('Please enter the 6-digit code.');
       return;
     }
     setEmailOtpError('');
     setEmailOtpLoading(true);
     try {
-      await authApi.verifyEmailChangeOtp(newEmail.trim(), emailOtpCode.trim());
+      await authApi.verifyEmailChangeOtp(newEmail.trim(), finalCode);
       setEmailModalOpen(false);
       setEmailOtpStep(1);
       setEmailOtpCode('');
@@ -649,8 +651,8 @@ export default function MyAccountPage() {
     setPhoneOtpError('');
   };
 
-  const handleRequestPhoneOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleRequestPhoneOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!currentPasswordForPhone) {
       setPhoneOtpError('Please enter your current password.');
       return;
@@ -681,9 +683,10 @@ export default function MyAccountPage() {
     }
   };
 
-  const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (phoneOtpCode.trim().length !== 6) {
+  const handleVerifyPhoneOtp = async (e?: React.FormEvent, overrideCode?: string) => {
+    if (e) e.preventDefault();
+    const finalCode = (overrideCode || phoneOtpCode).trim();
+    if (finalCode.length !== 6) {
       setPhoneOtpError('Please enter the 6-digit verification code.');
       return;
     }
@@ -692,10 +695,10 @@ export default function MyAccountPage() {
     try {
       let res;
       if (phoneModalMode === 'verify_existing') {
-        res = await authApi.verifyExistingPhoneOtp(phoneOtpCode.trim());
+        res = await authApi.verifyExistingPhoneOtp(finalCode);
         setPhoneVerified(true);
       } else {
-        res = await authApi.verifyPhoneChangeOtp(newPhone.trim(), phoneOtpCode.trim());
+        res = await authApi.verifyPhoneChangeOtp(newPhone.trim(), finalCode);
         setPhone(res.data?.phone || newPhone);
         setPhoneVerified(true);
       }
@@ -1965,46 +1968,26 @@ export default function MyAccountPage() {
                   </div>
                 </form>
               ) : (
-                <form onSubmit={handleVerifyEmailOtp} className="space-y-4">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Enter the 6-digit verification code sent to <strong>{newEmail}</strong>.
-                  </p>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Verification Code
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      required
-                      value={emailOtpCode}
-                      onChange={(e) => setEmailOtpCode(e.target.value.replace(/\D/g, ''))}
-                      placeholder="123456"
-                      className="w-full h-12 px-3 text-center font-mono text-2xl font-bold tracking-widest bg-white dark:bg-[#0F172A] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
-                      autoFocus
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-slate-500">
-                    <button
-                      type="button"
-                      onClick={() => setEmailOtpStep(1)}
-                      className="hover:underline cursor-pointer"
-                    >
-                      Change email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleRequestEmailOtp}
-                      disabled={emailOtpCooldown > 0 || emailOtpLoading}
-                      className="font-medium text-blue-600 hover:underline disabled:opacity-50 cursor-pointer"
-                    >
-                      {emailOtpCooldown > 0 ? `Resend in ${emailOtpCooldown}s` : 'Resend code'}
-                    </button>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2">
+                <div className="pt-2">
+                  <VerificationCodeForm
+                    method="email"
+                    recipientMasked={newEmail}
+                    title="Enter the code"
+                    subtitle={`Enter the 6-digit code we sent to ${newEmail}.`}
+                    loading={emailOtpLoading}
+                    error={emailOtpError}
+                    onErrorClear={() => setEmailOtpError('')}
+                    onSubmit={(code) => {
+                      setEmailOtpCode(code);
+                      return handleVerifyEmailOtp(undefined, code);
+                    }}
+                    onResend={handleRequestEmailOtp}
+                    resendCooldown={emailOtpCooldown}
+                    onBack={() => setEmailOtpStep(1)}
+                    backLabel="Change email"
+                    submitLabel="Confirm & Update"
+                  />
+                  <div className="flex justify-end pt-2">
                     <button
                       type="button"
                       onClick={() => setEmailModalOpen(false)}
@@ -2012,16 +1995,8 @@ export default function MyAccountPage() {
                     >
                       Cancel
                     </button>
-                    <button
-                      type="submit"
-                      disabled={emailOtpLoading || emailOtpCode.length < 6}
-                      className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                    >
-                      {emailOtpLoading ? <RefreshCw size={13} className="animate-spin" /> : null}
-                      <span>Confirm & Update</span>
-                    </button>
                   </div>
-                </form>
+                </div>
               )}
             </motion.div>
           </div>
@@ -2129,48 +2104,26 @@ export default function MyAccountPage() {
                   </div>
                 </form>
               ) : (
-                <form onSubmit={handleVerifyPhoneOtp} className="space-y-4">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Enter the 6-digit verification code sent to your registered email <strong>{user?.email}</strong>.
-                  </p>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Verification Code
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={6}
-                      required
-                      value={phoneOtpCode}
-                      onChange={(e) => setPhoneOtpCode(e.target.value.replace(/\D/g, ''))}
-                      placeholder="123456"
-                      className="w-full h-12 px-3 text-center font-mono text-2xl font-bold tracking-widest bg-white dark:bg-[#0F172A] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
-                      autoFocus
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-slate-500">
-                    <button
-                      type="button"
-                      onClick={() => setPhoneOtpStep(1)}
-                      className="hover:underline cursor-pointer"
-                    >
-                      {phoneModalMode === 'change' ? 'Change number' : 'Back'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleRequestPhoneOtp}
-                      disabled={phoneOtpCooldown > 0 || phoneOtpLoading}
-                      className="font-medium text-blue-600 hover:underline disabled:opacity-50 cursor-pointer"
-                    >
-                      {phoneOtpCooldown > 0 ? `Resend in ${phoneOtpCooldown}s` : 'Resend code'}
-                    </button>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2">
+                <div className="pt-2">
+                  <VerificationCodeForm
+                    method="email"
+                    recipientMasked={user?.email}
+                    title="Enter the code"
+                    subtitle={`Enter the 6-digit code we sent to ${user?.email || 'your registered email'}.`}
+                    loading={phoneOtpLoading}
+                    error={phoneOtpError}
+                    onErrorClear={() => setPhoneOtpError('')}
+                    onSubmit={(code) => {
+                      setPhoneOtpCode(code);
+                      return handleVerifyPhoneOtp(undefined, code);
+                    }}
+                    onResend={handleRequestPhoneOtp}
+                    resendCooldown={phoneOtpCooldown}
+                    onBack={() => setPhoneOtpStep(1)}
+                    backLabel={phoneModalMode === 'change' ? 'Change number' : 'Back'}
+                    submitLabel={phoneModalMode === 'verify_existing' ? 'Confirm & Verify' : 'Confirm & Update'}
+                  />
+                  <div className="flex justify-end pt-2">
                     <button
                       type="button"
                       onClick={() => setPhoneModalOpen(false)}
@@ -2178,16 +2131,8 @@ export default function MyAccountPage() {
                     >
                       Cancel
                     </button>
-                    <button
-                      type="submit"
-                      disabled={phoneOtpLoading || phoneOtpCode.length < 6}
-                      className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                    >
-                      {phoneOtpLoading ? <RefreshCw size={13} className="animate-spin" /> : null}
-                      <span>{phoneModalMode === 'verify_existing' ? 'Confirm & Verify' : 'Confirm & Update'}</span>
-                    </button>
                   </div>
-                </form>
+                </div>
               )}
             </motion.div>
           </div>
@@ -2477,77 +2422,31 @@ export default function MyAccountPage() {
                         </div>
                       </div>
 
-                      {/* 6 Digit Confirmation */}
-                      <div className="space-y-2">
-                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 text-center">
-                          Enter the 6-digit verification code from your authenticator:
-                        </label>
-                        <div className="flex items-center justify-center gap-2">
-                          {setupCodeDigits.map((digit, idx) => (
-                            <input
-                              key={idx}
-                              ref={(el) => (setupInputRefs.current[idx] = el)}
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              maxLength={1}
-                              value={digit}
-                              onChange={(e) => {
-                                const clean = e.target.value.replace(/\D/g, '');
-                                const newDigits = [...setupCodeDigits];
-                                if (!clean) {
-                                  newDigits[idx] = '';
-                                  setSetupCodeDigits(newDigits);
-                                  return;
-                                }
-                                newDigits[idx] = clean.slice(-1);
-                                setSetupCodeDigits(newDigits);
-                                if (idx < 5) {
-                                  setupInputRefs.current[idx + 1]?.focus();
-                                }
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Backspace' && !setupCodeDigits[idx] && idx > 0) {
-                                  setupInputRefs.current[idx - 1]?.focus();
-                                }
-                              }}
-                              onPaste={(e) => {
-                                e.preventDefault();
-                                const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-                                if (!pasted) return;
-                                const newDigits = [...setupCodeDigits];
-                                for (let i = 0; i < pasted.length; i++) {
-                                  newDigits[i] = pasted[i];
-                                }
-                                setSetupCodeDigits(newDigits);
-                                const nextIdx = Math.min(pasted.length, 5);
-                                setupInputRefs.current[nextIdx]?.focus();
-                              }}
-                              disabled={setupLoading}
-                              className="w-10 h-11 text-center text-lg font-bold bg-white dark:bg-[#0F172A] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
-                            />
-                          ))}
+                      {/* VerificationCodeForm for 2FA Setup Confirmation */}
+                      <div className="pt-2">
+                        <VerificationCodeForm
+                          method="authenticator"
+                          title="Verify code from app"
+                          subtitle="Enter the 6-digit verification code from your authenticator app."
+                          loading={setupLoading}
+                          error={setupError}
+                          onErrorClear={() => setSetupError('')}
+                          onSubmit={(code) => {
+                            setSetupCodeDigits(code.split(''));
+                            return handleConfirmSetup(undefined, code);
+                          }}
+                          submitLabel="Confirm & Enable"
+                        />
+                        <div className="flex justify-end pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setSetupModalOpen(false)}
+                            disabled={setupLoading}
+                            className="h-9 px-4 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
                         </div>
-                      </div>
-
-                      <div className="flex justify-end gap-2 pt-2">
-                        <button
-                          type="button"
-                          onClick={() => setSetupModalOpen(false)}
-                          disabled={setupLoading}
-                          className="h-9 px-4 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleConfirmSetup()}
-                          disabled={setupLoading || setupCodeDigits.join('').length !== 6}
-                          className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                        >
-                          {setupLoading ? <RefreshCw size={13} className="animate-spin" /> : <ShieldCheck size={14} />}
-                          <span>Confirm & Enable</span>
-                        </button>
                       </div>
                     </>
                   )}

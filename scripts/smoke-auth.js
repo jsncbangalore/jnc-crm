@@ -62,7 +62,7 @@ function startMailCatcher(port = CATCHER_PORT) {
               socket.write('221 2.0.0 Bye\r\n');
               socket.end();
             } else if (line === '.') {
-              caughtMails.push(socket.__mailData || '');
+              caughtMails.push({ timestamp: Date.now(), data: socket.__mailData || '' });
               socket.__mailData = '';
               socket.write('250 2.0.0 Ok: queued\r\n');
             } else {
@@ -94,16 +94,19 @@ function wait(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function waitForMailOrOutbox(toEmail, filterFn, timeoutMs = 8000) {
+async function waitForMailOrOutbox(toEmail, filterFn, timeoutMs = 8000, since = Date.now()) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    for (const raw of caughtMails) {
-      if (filterFn(raw)) return { source: 'smtp', raw };
+    for (const item of caughtMails) {
+      const text = item.data || '';
+      if (item.timestamp >= since - 300 && filterFn(text)) {
+        return { source: 'smtp', raw: text };
+      }
     }
     const outboxItem = await prisma.emailOutbox.findFirst({
       where: {
         to: toEmail,
-        createdAt: { gte: new Date(start - 2000) },
+        createdAt: { gte: new Date(since - 1000) },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -230,6 +233,12 @@ async function runSmokeAuth() {
 
   // 2. Setup 2-Step Email Verification
   console.log('\n--- Scenario 2: 2-Step Login with Email Verification Code ---');
+  await prisma.otpChallenge.deleteMany({
+    where: { emailNormalized: testEmail.toLowerCase() },
+  });
+  await prisma.emailOutbox.deleteMany({
+    where: { to: testEmail.toLowerCase() },
+  });
   await prisma.userTwoFactor.upsert({
     where: { userId: user.id },
     update: { method: 'email', enabledAt: new Date(), isPending: false },
@@ -301,7 +310,14 @@ async function runSmokeAuth() {
 
   // 3. Single Forgot-Password Flow
   console.log('\n--- Scenario 3: Single Forgot-Password Flow & Password Reset ---');
+  await prisma.otpChallenge.deleteMany({
+    where: { emailNormalized: testEmail.toLowerCase() },
+  });
+  await prisma.emailOutbox.deleteMany({
+    where: { to: testEmail.toLowerCase() },
+  });
   caughtMails.length = 0;
+  const scenario3Start = Date.now();
 
   const forgotStartRes = await post('/auth/forgot-password/start', {
     lookup: testEmail,
@@ -316,7 +332,7 @@ async function runSmokeAuth() {
   const flowId = forgotStartRes.data.flowId;
   console.log(`[PASS] forgot-password/start returned anti-enumeration response (Flow: ${flowId ? 'issued' : 'none'})`);
 
-  const resetMailResult = await waitForMailOrOutbox(testEmail, (m) => m.includes('verification code'));
+  const resetMailResult = await waitForMailOrOutbox(testEmail, (m) => m.includes('verification code'), 8000, scenario3Start);
   if (!resetMailResult) {
     console.error('[FAIL] Did not receive password reset verification email within timeout');
     process.exit(1);

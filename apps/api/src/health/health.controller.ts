@@ -35,6 +35,17 @@ export class HealthController {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  @Get('live')
+  @Public()
+  getLive() {
+    return {
+      status: 'ok',
+      version: API_VERSION,
+      timestamp: new Date().toISOString(),
+      uptime: Math.round(process.uptime()),
+    };
+  }
+
   @Get()
   @Public()
   async getHealth() {

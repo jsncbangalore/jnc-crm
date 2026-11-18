@@ -26,6 +26,7 @@ import {
   Lock,
 } from 'lucide-react';
 import AuthLayout from '../components/layout/AuthLayout';
+import VerificationCodeForm from '../components/common/VerificationCodeForm';
 
 interface PasswordRule {
   id: string;
@@ -471,9 +472,60 @@ export default function ForgotPasswordPage() {
         transition={{ duration: 0.2 }}
         className="w-full"
       >
-        {/* Navigation Breadcrumb & Step X of 3 Header */}
+        {/* Real Step Names Progress Indicator */}
         {step !== 'success' && (
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              {[
+                { key: 'lookup', name: 'Find your account' },
+                { key: 'otp', name: 'Verify it is you' },
+                { key: 'new-password', name: 'Set a new password' },
+              ].map((s, idx) => {
+                const currentIdx = step === 'lookup' ? 0 : step === 'otp' || step === 'phone' ? 1 : 2;
+                return (
+                  <div key={s.key} className="flex-1 text-center">
+                    <div className="flex items-center">
+                      <div
+                        className={`w-7 h-7 mx-auto rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                          idx < currentIdx
+                            ? 'bg-emerald-600 text-white'
+                            : idx === currentIdx
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                        }`}
+                      >
+                        {idx < currentIdx ? <Check size={14} /> : idx + 1}
+                      </div>
+                    </div>
+                    <span
+                      className={`block text-[11px] mt-1 font-medium truncate ${
+                        idx === currentIdx
+                          ? 'text-blue-600 dark:text-blue-400 font-bold'
+                          : idx < currentIdx
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-slate-400 dark:text-slate-500'
+                      }`}
+                    >
+                      {s.name}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <div
+                className="bg-blue-600 h-full transition-all duration-300"
+                style={{
+                  width: `${(((step === 'lookup' ? 0 : step === 'otp' || step === 'phone' ? 1 : 2) + 1) / 3) * 100}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Back Link for lookup & new-password (otp handles its own back) */}
+        {step !== 'success' && step !== 'otp' && (
+          <div className="mb-4">
             {step === 'lookup' ? (
               <Link
                 to={fromPlatform ? '/platform/login' : '/login'}
@@ -490,25 +542,18 @@ export default function ForgotPasswordPage() {
                 <ArrowLeft size={14} /> Back
               </button>
             )}
-
-            {/* Step Counter Indicator */}
-            <div className="text-[12px] font-semibold text-slate-400 dark:text-slate-500">
-              Step {stepNumber} of 3
-            </div>
           </div>
         )}
 
-        {/* Page Title & Subtitle */}
-        {step !== 'success' && (
+        {/* Page Title & Subtitle for lookup & new-password */}
+        {step !== 'success' && step !== 'otp' && (
           <div className="mb-6">
             <h1 className="text-[28px] font-bold text-slate-900 dark:text-white leading-tight">
-              {step === 'lookup' && 'Reset password'}
-              {step === 'otp' && 'Enter the code'}
-              {step === 'new-password' && 'Create new password'}
+              {step === 'lookup' && 'Find your account'}
+              {step === 'new-password' && 'Set a new password'}
             </h1>
             <p className="text-[16px] text-slate-600 dark:text-slate-400 mt-2">
               {step === 'lookup' && 'Enter your registered email address or user ID to locate your account.'}
-              {step === 'otp' && `Enter the 6-digit code sent to ${maskedEmail || 'your registered email address'}.`}
               {step === 'new-password' && 'Choose a strong, unique password for your account.'}
             </p>
           </div>
@@ -728,105 +773,33 @@ export default function ForgotPasswordPage() {
             </motion.form>
           )}
 
-          {/* ────────────────── STEP 3 OF 4: ENTER THE CODE ────────────────── */}
+          {/* ────────────────── STEP 2 OF 3: VERIFY IT IS YOU ────────────────── */}
           {step === 'otp' && (
-            <motion.form
+            <motion.div
               key="otp"
-              onSubmit={handleVerifyOtp}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
-              className="space-y-5"
             >
-              {/* Green 'Mobile verified' badge shown ONLY after server confirmed match */}
-              {mobileVerified && (
-                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 flex items-center gap-2 text-emerald-800 dark:text-emerald-300 text-[13px] font-medium">
-                  <CheckCircle2 size={16} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  <span>Mobile verified</span>
-                </div>
-              )}
-
-              {/* 6 Digit Input Boxes with Paste Support */}
-              <div className="grid grid-cols-6 gap-2 sm:gap-2.5 my-3 w-full">
-                {codeDigits.map((digit, idx) => (
-                  <input
-                    key={idx}
-                    ref={(el) => (codeInputsRef.current[idx] = el)}
-                    type="text"
-                    disabled={loading || isMaintenanceMode}
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    pattern="[0-9]*"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleDigitChange(idx, e.target.value)}
-                    onKeyDown={(e) => handleDigitKeyDown(idx, e)}
-                    onPaste={handleDigitPaste}
-                    aria-label={`Digit ${idx + 1} of 6`}
-                    className="w-full h-12 sm:h-14 text-center text-[20px] sm:text-[24px] font-bold font-mono bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-blue-600 dark:focus:border-blue-500 focus:ring-[3px] focus:ring-blue-500/25 transition-all shadow-xs disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
-                    autoFocus={idx === 0}
-                  />
-                ))}
-              </div>
-
-              {/* Expiry Hint & Spam Warning */}
-              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-900 dark:text-amber-200 text-xs space-y-1">
-                <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
-                  <Clock size={14} />
-                  <span>Code expires in {Math.floor(codeExpiresIn / 60)}:{(codeExpiresIn % 60).toString().padStart(2, '0')}</span>
-                </div>
-                <p className="text-[12px] text-slate-600 dark:text-slate-300">
-                  Check your spam or junk folder. Codes arrive within 60 seconds. Never share this code with anyone.
-                </p>
-              </div>
-
-              {/* Error Alert */}
-              {!isMaintenanceMode && error && (
-                <div
-                  role="alert"
-                  className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-900/60 dark:text-rose-300 text-[13px] font-medium flex items-center gap-2"
-                >
-                  <AlertCircle size={16} className="shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {/* Verify Code Button */}
-              <button
-                type="submit"
-                disabled={loading || isMaintenanceMode || codeDigits.join('').length < 6}
-                aria-busy={loading}
-                className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 text-white text-[16px] font-semibold shadow-xs transition-colors flex items-center justify-center gap-2 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
-              >
-                {loading ? (
-                  <>
-                    <RefreshCw size={18} className="animate-spin" aria-hidden />
-                    <span>Verifying code...</span>
-                  </>
-                ) : (
-                  <span>Verify code</span>
-                )}
-              </button>
-
-              {/* Resend and Email Switcher */}
-              <div className="flex items-center justify-between text-xs pt-1 text-slate-500 dark:text-slate-400">
-                <button
-                  type="button"
-                  onClick={handleResendOtp}
-                  disabled={cooldown > 0 || loading}
-                  className="font-medium text-blue-600 hover:underline disabled:opacity-50 cursor-pointer"
-                >
-                  {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleUseDifferentEmail}
-                  className="hover:underline text-slate-600 dark:text-slate-300 cursor-pointer font-medium"
-                >
-                  Use a different email
-                </button>
-              </div>
-            </motion.form>
+              <VerificationCodeForm
+                method="email"
+                recipientMasked={maskedEmail}
+                title="Verify it is you"
+                subtitle={`Enter the 6-digit code we sent to ${maskedEmail || 'your registered email'}.`}
+                loading={loading}
+                error={error}
+                onErrorClear={() => setError('')}
+                onSubmit={(code) => handleVerifyOtp(undefined, code)}
+                onResend={handleResendOtp}
+                resendCooldown={cooldown}
+                expiresInSeconds={codeExpiresIn}
+                onBack={() => {
+                  setStep('lookup');
+                  setError('');
+                }}
+                backLabel="Back to find account"
+              />
+            </motion.div>
           )}
 
           {/* ────────────────── STEP 4 OF 4: CREATE NEW PASSWORD ────────────────── */}
@@ -1005,15 +978,12 @@ export default function ForgotPasswordPage() {
                 <CheckCircle2 size={32} />
               </div>
               <div>
-                <h3 className="text-[20px] font-bold text-slate-900 dark:text-white">
-                  Password reset successfully!
+                <h3 className="text-[22px] font-bold text-slate-900 dark:text-white">
+                  Password changed.
                 </h3>
-                <p className="text-[13px] text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
-                  Your new password is now active. All previous sessions across all devices have been signed out for your security.
-                </p>
-                <div className="mt-2 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 text-[13px] font-medium text-blue-700 dark:text-blue-300 text-center">
+                <p className="text-[14px] text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">
                   Next, you will be asked for your 2-step code.
-                </div>
+                </p>
               </div>
 
               <div className="pt-2 space-y-2.5">
@@ -1021,7 +991,7 @@ export default function ForgotPasswordPage() {
                   to={fromPlatform ? '/platform/login' : '/login'}
                   className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[14px] font-semibold flex items-center justify-center transition-colors shadow-xs"
                 >
-                  Back to Sign In
+                  Sign in
                 </Link>
                 <div className="text-center">
                   <Link
