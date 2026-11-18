@@ -331,7 +331,7 @@ window.addEventListener('message', function(e) {
     try {
       parsed = new URL(raw);
     } catch {
-      setOriginError('Please enter a valid website origin starting with https:// (e.g. https://client.example.com).');
+      setOriginError('Please enter a valid website origin starting with https:// (e.g. https://client.company.com).');
       return;
     }
 
@@ -342,7 +342,7 @@ window.addEventListener('message', function(e) {
     }
 
     if (parsed.pathname && parsed.pathname !== '/') {
-      setOriginError(`Paths are not permitted (${parsed.pathname}). Specify only the website origin (e.g. https://client.example.com).`);
+      setOriginError(`Paths are not permitted (${parsed.pathname}). Specify only the website origin (e.g. https://client.company.com).`);
       return;
     }
 
@@ -1185,7 +1185,7 @@ window.addEventListener('message', function(e) {
                   setNewDomain(e.target.value);
                   if (originError) setOriginError(null);
                 }}
-                placeholder="e.g. https://client.example.com"
+                placeholder="e.g. https://client.company.com"
                 className="flex-1 text-xs bg-white dark:bg-[#171D2B] border border-slate-200 dark:border-[#2A3042] rounded-xl px-3.5 py-2 text-slate-800 dark:text-slate-200 outline-none"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -1208,7 +1208,7 @@ window.addEventListener('message', function(e) {
               </p>
             )}
             <p className="text-[11px] text-slate-400">
-              Must include <code className="text-slate-600 dark:text-slate-300 font-mono">https://</code> with no wildcards or paths (e.g. <code className="text-slate-600 dark:text-slate-300 font-mono">https://example.com</code>).
+              Must include <code className="text-slate-600 dark:text-slate-300 font-mono">https://</code> with no wildcards or paths (e.g. <code className="text-slate-600 dark:text-slate-300 font-mono">https://company.com</code>).
             </p>
           </div>
 

@@ -85,7 +85,7 @@ export function getIndianStateCode(stateName?: string, gstin?: string): string {
 // ─── Indian Currency Number to Words Converter ─────────────────────────────
 export function numberToIndianWords(amount: number): string {
   const num = Number(amount);
-  if (!num || isNaN(num)) return 'Indian Rupees Zero Only';
+  if (!num || isNaN(num) || num <= 0) return '';
 
   const single = [
     '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
@@ -549,12 +549,12 @@ export default function InvoiceDocumentTemplate({
                         </td>
                       </tr>
 
-                      {/* LUT / Bond Box for SEZ or Credit Note */}
-                      {(isSEZ || isCreditNote) && (
+                      {/* LUT / Bond Box for SEZ */}
+                      {isSEZ && (
                         <tr>
                           <td colSpan={2} className="p-1.5 bg-gray-50 text-black">
-                            <p className="font-bold text-black">LUT/Bond No : <span className="font-mono font-bold text-black">{invoice.lutBondNo || (isSEZ ? (profile?.lutBondNo || '') : '')}</span></p>
-                            {isSEZ && <p className="text-black font-semibold">{invoice.lutValidity || profile?.lutValidity || ''}</p>}
+                            <p className="font-bold text-black">LUT/Bond No : <span className="font-mono font-bold text-black">{invoice.lutBondNo || profile?.lutBondNo || ''}</span></p>
+                            <p className="text-black font-semibold">{invoice.lutValidity || profile?.lutValidity || ''}</p>
                           </td>
                         </tr>
                       )}

@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import PublicLayout from '../components/layout/PublicLayout';
 import { PRODUCT_NAME, COMPANY_NAME } from '../config/brand';
+import { PUBLIC_CONTACT } from '../config/publicContact';
+import { api, getApiErrorMessage } from '../services/api';
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({
@@ -28,21 +30,35 @@ export default function ContactPage() {
     message: '',
   });
 
+  const [honeypot, setHoneypot] = useState('');
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.email.trim() || !formData.message.trim()) {
       return;
     }
 
     setIsSubmitting(true);
-    // Simulate API request turnaround
-    setTimeout(() => {
-      setIsSubmitting(false);
+    setSubmitError(null);
+    try {
+      await api.post('/public/inquiries', {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        company: formData.company.trim() || undefined,
+        topic: formData.topic,
+        message: formData.message.trim(),
+        website_hp: honeypot || undefined,
+      });
       setSubmitted(true);
-    }, 600);
+    } catch (err: any) {
+      console.error('Failed to submit contact inquiry:', err);
+      setSubmitError(getApiErrorMessage(err) || 'Failed to submit inquiry. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -85,10 +101,10 @@ export default function ContactPage() {
                       New subscriptions, volume discounts & platform walkthroughs
                     </p>
                     <a
-                      href="mailto:sales@example.com"
+                      href={`mailto:${PUBLIC_CONTACT.salesEmail}`}
                       className="inline-block mt-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
                     >
-                      sales@example.com
+                      {PUBLIC_CONTACT.salesEmail}
                     </a>
                   </div>
                 </div>
@@ -105,10 +121,10 @@ export default function ContactPage() {
                       Technical questions, account settings & feature guidance
                     </p>
                     <a
-                      href="mailto:support@example.com"
+                      href={`mailto:${PUBLIC_CONTACT.supportEmail}`}
                       className="inline-block mt-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
                     >
-                      support@example.com
+                      {PUBLIC_CONTACT.supportEmail}
                     </a>
                   </div>
                 </div>
@@ -122,10 +138,10 @@ export default function ContactPage() {
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Operating Hours</h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      Monday through Friday, 9:00 AM – 6:00 PM IST
+                      {PUBLIC_CONTACT.hours}
                     </p>
                     <p className="mt-1 text-[11px] text-slate-400">
-                      Standard ticket response turnaround: &lt; 4 business hours
+                      {PUBLIC_CONTACT.turnaround}
                     </p>
                   </div>
                 </div>
@@ -159,6 +175,25 @@ export default function ContactPage() {
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-4">
+                  {/* Honeypot trap field (hidden from real users) */}
+                  <input
+                    type="text"
+                    name="website_hp"
+                    value={honeypot}
+                    onChange={(e) => setHoneypot(e.target.value)}
+                    style={{ display: 'none' }}
+                    tabIndex={-1}
+                    autoComplete="off"
+                    aria-hidden="true"
+                  />
+
+                  {submitError && (
+                    <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400 text-xs flex items-center gap-2">
+                      <AlertCircle size={16} className="shrink-0" />
+                      <span>{submitError}</span>
+                    </div>
+                  )}
+
                   <div>
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white">Send Us a Message</h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -190,7 +225,7 @@ export default function ContactPage() {
                         required
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        placeholder="name@example.com"
+                        placeholder="name@company.com"
                         className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#181B26] px-3.5 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>

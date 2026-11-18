@@ -380,7 +380,7 @@ export default function ObjectManagerPage() {
             </Link>
 
             {!selectedObject.isStandard && (
-              <button
+              <button type="button"
                 onClick={handleOpenNewFieldModal}
                 className="btn-primary text-xs gap-1.5 shadow-glow-blue"
               >
@@ -427,7 +427,7 @@ export default function ObjectManagerPage() {
               >
                 <Database size={13} /> View & Manage Records
               </Link>
-              <button
+              <button type="button"
                 onClick={() => {
                   setEditingObject(selectedObject);
                   setObjectForm({
@@ -471,7 +471,7 @@ export default function ObjectManagerPage() {
               </label>
             )}
 
-            <button
+            <button type="button"
               onClick={() => fetchObjectDetail(selectedObject.id)}
               className="btn-ghost text-xs gap-1.5"
             >
@@ -600,14 +600,14 @@ export default function ObjectManagerPage() {
                         <div className="inline-flex items-center gap-1">
                           {!isArchived ? (
                             <>
-                              <button
+                              <button type="button"
                                 onClick={() => handleOpenEditFieldModal(field)}
                                 className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-crm-blue transition-colors"
                                 title="Edit Field"
                               >
                                 <Edit3 size={13} />
                               </button>
-                              <button
+                              <button type="button"
                                 onClick={() => handleSoftDeleteField(field.id)}
                                 className="p-1.5 rounded hover:bg-red-500/20 text-slate-400 hover:text-crm-coral transition-colors"
                                 title="Archive Field (Soft Delete)"
@@ -616,7 +616,7 @@ export default function ObjectManagerPage() {
                               </button>
                             </>
                           ) : (
-                            <button
+                            <button type="button"
                               onClick={() => handleRestoreField(field.id)}
                               className="btn bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30 text-xs px-2 py-1 gap-1"
                               title="Restore Archived Field"
@@ -658,7 +658,7 @@ export default function ObjectManagerPage() {
                       </p>
                     </div>
                   </div>
-                  <button
+                  <button type="button"
                     onClick={() => setShowFieldModal(false)}
                     className="p-2 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                   >
@@ -899,7 +899,7 @@ export default function ObjectManagerPage() {
         </div>
 
         <div className="flex items-center gap-2.5">
-          <button
+          <button type="button"
             onClick={handleOpenNewObjectModal}
             className="btn-primary text-xs gap-1.5 shadow-glow-blue"
           >
@@ -964,7 +964,7 @@ export default function ObjectManagerPage() {
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 bg-slate-50 dark:bg-[#1E2230] p-1 rounded-lg border border-slate-200 dark:border-[#2A3042]">
             {(['all', 'custom', 'standard'] as const).map((tab) => (
-              <button
+              <button type="button"
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-all ${
@@ -978,7 +978,7 @@ export default function ObjectManagerPage() {
             ))}
           </div>
 
-          <button onClick={fetchAllObjects} className="btn-ghost text-xs gap-1.5" title="Refresh">
+          <button type="button" onClick={fetchAllObjects} className="btn-ghost text-xs gap-1.5" title="Refresh">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
         </div>
@@ -1062,7 +1062,7 @@ export default function ObjectManagerPage() {
 
                       {!obj.isStandard && (
                         <>
-                          <button
+                          <button type="button"
                             onClick={() => {
                               setEditingObject(obj);
                               setObjectForm({
@@ -1079,7 +1079,7 @@ export default function ObjectManagerPage() {
                             <Edit3 size={14} />
                           </button>
 
-                          <button
+                          <button type="button"
                             onClick={() => handleDeleteObject(obj.id, obj.label)}
                             className="p-1.5 rounded hover:bg-red-500/20 text-slate-400 hover:text-crm-coral transition-colors"
                             title="Delete Custom Object"
@@ -1121,7 +1121,7 @@ export default function ObjectManagerPage() {
                     </p>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setShowObjectModal(false)}
                   className="p-2 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                 >

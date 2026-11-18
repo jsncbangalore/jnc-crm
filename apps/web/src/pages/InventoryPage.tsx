@@ -650,7 +650,7 @@ export default function InventoryPage() {
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 dark:border-[#2A3042] pb-3 flex-wrap">
         <div className="w-full sm:w-auto overflow-x-auto scrollbar-none flex items-center gap-1.5 bg-slate-100 dark:bg-[#141722] p-1.5 rounded-2xl border border-slate-200 dark:border-[#2A3042]">
           {/* Tab 1: Master Stock */}
-          <button
+          <button type="button"
             onClick={() => setActiveTab('master_stock')}
             className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${
               activeTab === 'master_stock'
@@ -663,7 +663,7 @@ export default function InventoryPage() {
           </button>
 
           {/* Tab 2: Procurement Buy List */}
-          <button
+          <button type="button"
             onClick={() => setActiveTab('buy_list')}
             className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${
               activeTab === 'buy_list'
@@ -692,7 +692,7 @@ export default function InventoryPage() {
 
         <div className="flex items-center gap-2">
           {activeTab === 'master_stock' && (
-            <button
+            <button type="button"
               onClick={toggleStockKpis}
               className={`btn text-xs py-1.5 px-2.5 gap-1.5 shadow-sm border transition-all ${
                 showStockKpis
@@ -707,7 +707,7 @@ export default function InventoryPage() {
           )}
 
           {activeTab === 'buy_list' && (
-            <button
+            <button type="button"
               onClick={toggleBuyListKpis}
               className={`btn text-xs py-1.5 px-2.5 gap-1.5 shadow-sm border transition-all ${
                 showBuyListKpis
@@ -723,7 +723,7 @@ export default function InventoryPage() {
 
           {/* Quick Shortage Alert Link */}
           {totalShortagesCount > 0 && activeTab === 'master_stock' && (
-            <button
+            <button type="button"
               onClick={handleAddAllShortagesToBuyList}
               className="btn bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 text-xs px-3.5 py-1.5 font-bold gap-1.5 shadow-sm"
             >
@@ -835,7 +835,7 @@ export default function InventoryPage() {
               </div>
 
               {/* Quick Remove / Dismiss button */}
-              <button
+              <button type="button"
                 onClick={toggleStockKpis}
                 className="absolute -top-2.5 -right-2 w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 dark:bg-[#2A3042] dark:hover:bg-[#343B52] text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] shadow-sm transition-all border border-slate-300 dark:border-slate-600"
                 title="Remove summary cards"
@@ -898,21 +898,21 @@ export default function InventoryPage() {
             <div className="flex items-center gap-2 flex-wrap">
               {canManage && (
                 <>
-                  <button
+                  <button type="button"
                     onClick={() => setShowAddComponentModal(true)}
                     className="btn-primary text-xs font-bold gap-1.5 px-4 py-2 shadow-glow-blue"
                   >
                     <Plus size={14} /> Add Component
                   </button>
 
-                  <button
+                  <button type="button"
                     onClick={() => setShowBulkImportModal(true)}
                     className="btn bg-white dark:bg-[#1E2230] hover:bg-slate-100 dark:hover:bg-[#202534] text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-[#2A3042] text-xs gap-1.5 font-bold px-3.5 py-2 shadow-sm"
                   >
                     <FileSpreadsheet size={14} className="text-emerald-600 dark:text-emerald-400" /> Bulk Import
                   </button>
 
-                  <button
+                  <button type="button"
                     onClick={() => {
                       if (selectedIds.length === 0) {
                         setSelectedIds(filteredList.map((it) => it.id));
@@ -933,7 +933,7 @@ export default function InventoryPage() {
               )}
 
               {user?.role === 'tenant_admin' && (
-                <button
+                <button type="button"
                   onClick={() => {
                     setWipeConfirmText('');
                     setShowClearModal(true);
@@ -958,28 +958,28 @@ export default function InventoryPage() {
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {canManage && (
-                  <button
+                  <button type="button"
                     onClick={() => setShowBulkEditModal(true)}
                     className="btn bg-crm-violet hover:bg-crm-violet-light text-white text-xs px-3.5 py-1.5 font-bold gap-1.5 shadow-sm"
                   >
                     <Edit3 size={13} /> Bulk Edit ({selectedIds.length})
                   </button>
                 )}
-                <button
+                <button type="button"
                   onClick={handleAddSelectedToBuyList}
                   className="btn bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3.5 py-1.5 font-bold gap-1.5 shadow-sm"
                 >
                   <ShoppingCart size={13} /> Add {selectedIds.length} to Buy List
                 </button>
                 {canDelete && (
-                  <button
+                  <button type="button"
                     onClick={handleBulkDelete}
                     className="btn bg-crm-coral hover:bg-crm-coral-hover text-white text-xs px-3 py-1.5 font-bold gap-1.5 shadow-sm"
                   >
                     <Trash2 size={13} /> Delete {selectedIds.length}
                   </button>
                 )}
-                <button
+                <button type="button"
                   onClick={() => setSelectedIds([])}
                   className="btn-ghost text-xs text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white font-bold px-2.5 py-1"
                 >
@@ -1138,7 +1138,7 @@ export default function InventoryPage() {
                           {/* GST Invoice Document */}
                           <td className={`text-center border-r border-slate-200 dark:border-[#2A3042]/30 ${density === 'compact' ? 'px-2 py-1.5' : 'px-3 py-2'}`}>
                             {item.documentUrl ? (
-                              <button
+                              <button type="button"
                                 onClick={() => handleViewDocument(item.documentUrl!, item.name)}
                                 disabled={loadingDoc}
                                 className="px-2 py-1 rounded bg-crm-blue/15 hover:bg-crm-blue/25 text-crm-blue border border-crm-blue/30 text-[11px] font-bold inline-flex items-center gap-1 shadow-sm transition-all disabled:opacity-50"
@@ -1155,7 +1155,7 @@ export default function InventoryPage() {
                             <div className="flex items-center justify-end gap-1.5 min-w-[200px]">
                               {/* Restock / Add Batch Button */}
                               {canManage && (
-                                <button
+                                <button type="button"
                                   onClick={() => {
                                     setRestockItem(item);
                                     setShowRestockModal(true);
@@ -1169,7 +1169,7 @@ export default function InventoryPage() {
                               )}
 
                               {/* + Add List / In List Toggle Button */}
-                              <button
+                              <button type="button"
                                 onClick={() => handleToggleBuyList(item)}
                                 className={`group w-[84px] h-[26px] rounded-lg text-[11px] font-bold inline-flex items-center justify-center gap-1 transition-all cursor-pointer shrink-0 ${
                                   isInBuyList
@@ -1195,7 +1195,7 @@ export default function InventoryPage() {
 
                               {/* Edit Button */}
                               {canManage && (
-                                <button
+                                <button type="button"
                                   onClick={() => setEditingItem(item)}
                                   className="w-6 h-6 rounded-lg flex items-center justify-center hover:bg-blue-50 dark:hover:bg-crm-blue/20 text-slate-500 dark:text-slate-400 hover:text-crm-blue transition-colors shrink-0"
                                   title="Edit component details"
@@ -1206,7 +1206,7 @@ export default function InventoryPage() {
 
                               {/* Delete Button */}
                               {canDelete && (
-                                <button
+                                <button type="button"
                                   onClick={() => {
                                     setConfirmModal({
                                       isOpen: true,
@@ -1345,7 +1345,7 @@ export default function InventoryPage() {
               </div>
 
               {/* Quick Remove / Dismiss button */}
-              <button
+              <button type="button"
                 onClick={toggleBuyListKpis}
                 className="absolute -top-2.5 -right-2 w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 dark:bg-[#2A3042] dark:hover:bg-[#343B52] text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] shadow-sm transition-all border border-slate-300 dark:border-slate-600"
                 title="Remove summary cards"
@@ -1451,7 +1451,7 @@ export default function InventoryPage() {
                         <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                           Go to "Stock Master" and click "+ Add List" next to items you need to restock.
                         </p>
-                        <button
+                        <button type="button"
                           onClick={() => setActiveTab('master_stock')}
                           className="btn-primary text-xs px-4 py-2 mt-4 inline-flex items-center gap-1.5 shadow-sm font-bold"
                         >
@@ -1559,7 +1559,7 @@ export default function InventoryPage() {
                           {/* Inward Purchase & Upload GST Bill */}
                           <td className={`text-right whitespace-nowrap ${density === 'compact' ? 'px-2 py-1.5' : 'px-3 py-2'}`}>
                             <div className="flex items-center justify-end gap-1.5">
-                              <button
+                              <button type="button"
                                 onClick={() => {
                                   if (item.rawPosition) {
                                     setPurchaseItem(item.rawPosition);
@@ -1572,7 +1572,7 @@ export default function InventoryPage() {
                               >
                                 <Receipt size={12} /> Inward & Bill
                               </button>
-                              <button
+                              <button type="button"
                                 onClick={() => handleRemoveFromBuyList(idx)}
                                 className="p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/20 text-slate-400 hover:text-red-600 transition-colors"
                                 title="Remove item"
@@ -1683,7 +1683,7 @@ export default function InventoryPage() {
                   <Receipt size={18} className="text-crm-blue" />
                   <h3 className="text-sm font-bold text-slate-950 dark:text-white truncate">{previewDocTitle}</h3>
                 </div>
-                <button
+                <button type="button"
                   onClick={handleClosePreview}
                   className="p-1 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                 >
@@ -1715,7 +1715,7 @@ export default function InventoryPage() {
                 >
                   <Download size={13} /> Download Bill
                 </a>
-                <button
+                <button type="button"
                   onClick={handleClosePreview}
                   className="btn-ghost text-xs px-4 py-1.5"
                 >
@@ -1894,7 +1894,7 @@ export default function InventoryPage() {
                     </p>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setShowShareCartModal(false)}
                   className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
                 >
@@ -1924,7 +1924,7 @@ export default function InventoryPage() {
                     onFocus={(e) => e.target.select()}
                     className="flex-1 px-3 py-2 text-xs font-mono rounded-xl border border-slate-300 dark:border-[#2A3042] bg-slate-50 dark:bg-[#141722] text-slate-800 dark:text-slate-200 select-all focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                  <button
+                  <button type="button"
                     onClick={() => {
                       navigator.clipboard.writeText(shareCartUrl);
                       setCartCopied(true);
@@ -1969,7 +1969,7 @@ export default function InventoryPage() {
                     <ExternalLink size={13} />
                     <span>Open Live View</span>
                   </a>
-                  <button
+                  <button type="button"
                     onClick={() => setShowShareCartModal(false)}
                     className="px-4 py-1.5 rounded-xl bg-slate-200 dark:bg-[#2A3042] text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-[#343B52] transition-colors cursor-pointer"
                   >

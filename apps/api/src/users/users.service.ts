@@ -28,6 +28,7 @@ import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { decryptAtRest } from '../common/encryption.util';
 import { verifyTotpToken } from '../common/totp.util';
+import { PRODUCT_NAME } from '../common/brand';
 
 export { CreateUserDto, UpdateUserDto };
 
@@ -592,6 +593,29 @@ export class UsersService {
     });
 
     return { items: mappedItems, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  /**
+   * Minimal active user list for assigning leads, tasks, and activities.
+   * Returns ONLY id, name, email, role. Does not expose phone, passwords, sessions, or settings.
+   */
+  async getAssignees(creator: ScopedUser) {
+    const tenantId = requireTenantId(creator);
+    const users = await this.prisma.user.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+    return users;
   }
 
   async findOne(id: string, creator: ScopedUser) {
@@ -1349,7 +1373,58 @@ export class UsersService {
     return { success: true, message: 'User account has been unlocked.' };
   }
 
-  async resetTwoFactor(targetUserId: string, actor: ScopedUser, clientIp?: string) {
+  async resetTwoFactor(
+    targetUserId: string,
+    actor: ScopedUser,
+    clientIp?: string,
+    adminPassword?: string,
+    adminTotp?: string,
+  ) {
+    const isPlatform = isPlatformOwner(actor);
+
+    // Step-up verification: require admin password or admin TOTP for non-platform requests
+    if (!isPlatform) {
+      if (!adminPassword && !adminTotp) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'ADMIN_CREDENTIAL_REQUIRED',
+          message: 'Admin password or 2-step verification code required to reset 2-step verification.',
+        });
+      }
+
+      const actorUser = await this.prisma.user.findUnique({
+        where: { id: actor.id },
+        include: { twoFactor: true },
+      });
+      if (!actorUser) throw new ForbiddenException('Acting admin not found.');
+
+      let credentialVerified = false;
+      if (adminTotp && actorUser.twoFactor?.secretEnc) {
+        const plainSecret = decryptAtRest(actorUser.twoFactor.secretEnc);
+        if (plainSecret) {
+          const totpRes = verifyTotpToken(adminTotp, plainSecret, actorUser.twoFactor.lastUsedStep ?? undefined);
+          if (totpRes.valid) {
+            credentialVerified = true;
+          }
+        }
+      }
+
+      if (!credentialVerified && adminPassword && actorUser.passwordHash) {
+        const passMatch = await bcrypt.compare(adminPassword, actorUser.passwordHash);
+        if (passMatch) {
+          credentialVerified = true;
+        }
+      }
+
+      if (!credentialVerified) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'ADMIN_CREDENTIAL_REQUIRED',
+          message: 'Admin password or 2-step verification code required to reset 2-step verification.',
+        });
+      }
+    }
+
     const targetUser = await this.prisma.user.findUnique({
       where: { id: targetUserId },
       include: { tenant: true },
@@ -1360,7 +1435,6 @@ export class UsersService {
       throw new ForbiddenException('Platform administrator 2-step verification cannot be reset via web console.');
     }
 
-    const isPlatform = isPlatformOwner(actor);
     if (!isPlatform && actor.tenantId !== targetUser.tenantId) {
       throw new ForbiddenException('Cannot reset 2-step verification for users in another company.');
     }
@@ -1404,6 +1478,23 @@ export class UsersService {
         ipAddress: clientIp,
       },
     });
+
+    // Send email notification: 'Your 2-step verification was reset by an administrator'
+    if (targetUser.email) {
+      const adminLabel = actor.employeeCode || (actor as any).name || 'Company Administrator';
+      void this.notificationsService.sendEmail({
+        to: targetUser.email,
+        subject: 'Your 2-step verification was reset by an administrator',
+        text: `Hello ${targetUser.name || 'User'},\n\nYour 2-step verification has been reset by an administrator (${adminLabel}).\nAll active sessions and trusted devices have been signed out.\nYou will be asked to set up 2-step verification again upon your next sign-in.`,
+        html: `<div style="font-family: Arial, sans-serif; max-width: 520px; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+          <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">2-Step Verification Reset</h2>
+          <p style="color: #475569; font-size: 14px;">Your 2-step verification has been reset by an administrator (${adminLabel}).</p>
+          <p style="color: #475569; font-size: 13px;">All existing sessions and trusted devices have been signed out. On your next sign-in, you will be prompted to enroll your authenticator app again.</p>
+        </div>`,
+        purpose: 'security_alert',
+        throwOnError: false,
+      }).catch(() => {});
+    }
 
     return {
       success: true,

@@ -91,7 +91,7 @@ export default function InvoiceSequencesSection({
             autoComplete="one-time-code"
             data-testid="input-lut-bond-no"
             className="input text-xs font-mono"
-            placeholder="e.g. AD290525013648T"
+            placeholder="e.g. AD290326000000T"
             value={lutBondNo}
             onChange={(e) => setLutBondNo(e.target.value)}
           />
@@ -106,7 +106,7 @@ export default function InvoiceSequencesSection({
             autoComplete="one-time-code"
             data-testid="input-lut-validity"
             className="input text-xs font-mono"
-            placeholder="e.g. From: 10/05/2025 To: 09/05/2026"
+            placeholder="e.g. From: 01/04/2026 To: 31/03/2027"
             value={lutValidity}
             onChange={(e) => setLutValidity(e.target.value)}
           />

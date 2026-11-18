@@ -208,6 +208,26 @@ export default function MyAccountPage() {
   const [regenError, setRegenError] = useState('');
   const [newBackupCodes, setNewBackupCodes] = useState<string[] | null>(null);
 
+  // Automatically hide passwords after 10s or when window/tab loses focus
+  useEffect(() => {
+    if (!showCurrentPass && !showNewPass && !showConfirmPass) return;
+    const timer = setTimeout(() => {
+      setShowCurrentPass(false);
+      setShowNewPass(false);
+      setShowConfirmPass(false);
+    }, 10000);
+    const handleBlur = () => {
+      setShowCurrentPass(false);
+      setShowNewPass(false);
+      setShowConfirmPass(false);
+    };
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [showCurrentPass, showNewPass, showConfirmPass]);
+
   // Disable 2FA Modal
   const [disableModalOpen, setDisableModalOpen] = useState(false);
   const [disablePassword, setDisablePassword] = useState('');
@@ -739,6 +759,9 @@ export default function MyAccountPage() {
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    setShowCurrentPass(false);
+    setShowNewPass(false);
+    setShowConfirmPass(false);
     if (!currentPass) {
       setSecurityMessage({ type: 'error', text: 'Current password is required.' });
       return;
@@ -834,7 +857,7 @@ export default function MyAccountPage() {
 
       {/* Tabs Bar */}
       <div className="flex border-b border-slate-200 dark:border-slate-800 gap-2 overflow-x-auto">
-        <button
+        <button type="button"
           onClick={() => setActiveTab('profile')}
           className={`flex items-center gap-2 py-3 px-4 border-b-2 text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'profile'
@@ -846,7 +869,7 @@ export default function MyAccountPage() {
           <span>Profile</span>
         </button>
 
-        <button
+        <button type="button"
           onClick={() => setActiveTab('security')}
           className={`flex items-center gap-2 py-3 px-4 border-b-2 text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'security'
@@ -858,7 +881,7 @@ export default function MyAccountPage() {
           <span>Security</span>
         </button>
 
-        <button
+        <button type="button"
           onClick={() => setActiveTab('devices')}
           className={`flex items-center gap-2 py-3 px-4 border-b-2 text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'devices'
@@ -870,7 +893,7 @@ export default function MyAccountPage() {
           <span>Devices & Sessions</span>
         </button>
 
-        <button
+        <button type="button"
           onClick={() => setActiveTab('activity')}
           className={`flex items-center gap-2 py-3 px-4 border-b-2 text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'activity'
@@ -882,7 +905,7 @@ export default function MyAccountPage() {
           <span>Sign-In Activity</span>
         </button>
 
-        <button
+        <button type="button"
           onClick={() => setActiveTab('privacy')}
           className={`flex items-center gap-2 py-3 px-4 border-b-2 text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'privacy'
@@ -1012,7 +1035,7 @@ export default function MyAccountPage() {
                       type="url"
                       value={photoUrl}
                       onChange={(e) => setPhotoUrl(e.target.value)}
-                      placeholder="https://example.com/avatar.jpg"
+                      placeholder="https://company.com/avatar.jpg"
                       className="w-full h-10 px-3 text-sm bg-white dark:bg-[#0F172A] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
                     />
                   </div>
@@ -1918,7 +1941,7 @@ export default function MyAccountPage() {
                       required
                       value={newEmail}
                       onChange={(e) => setNewEmail(e.target.value)}
-                      placeholder="e.g. name@example.com"
+                      placeholder="e.g. name@company.com"
                       className="w-full h-10 px-3 text-sm bg-white dark:bg-[#0F172A] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
                     />
                   </div>

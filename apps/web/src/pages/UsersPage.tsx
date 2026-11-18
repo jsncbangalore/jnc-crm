@@ -1359,7 +1359,7 @@ export default function UsersPage() {
 
         <div className="flex items-center gap-2">
           {activeTab === 'users' && (isPlatform || isTenantAdmin) && (
-            <button
+            <button type="button"
               onClick={handleForceResetAll}
               disabled={actionLoadingId === 'all'}
               className="px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-crm-amber text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
@@ -1370,7 +1370,7 @@ export default function UsersPage() {
           )}
 
           {activeTab === 'users' && (
-            <button
+            <button type="button"
               onClick={() => setShowCreateModal(true)}
               className="btn-primary text-xs gap-1.5 shadow-glow-blue"
             >
@@ -1389,7 +1389,7 @@ export default function UsersPage() {
               {runningDryRun ? 'Simulating...' : 'Migration Dry Run'}
             </button>
           )}
-          <button onClick={fetchUsers} className="btn-ghost text-xs gap-1.5" title="Refresh user list">
+          <button type="button" onClick={fetchUsers} className="btn-ghost text-xs gap-1.5" title="Refresh user list">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
         </div>
@@ -1397,7 +1397,7 @@ export default function UsersPage() {
 
       {/* Navigation Sub-Tabs (Users vs Teams vs Templates vs Recent Sign-ins) */}
       <div className="flex border-b border-slate-200 dark:border-[#2A3042] gap-4">
-        <button
+        <button type="button"
           onClick={() => setActiveTab('users')}
           className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${
             activeTab === 'users'
@@ -1407,7 +1407,7 @@ export default function UsersPage() {
         >
           <Users size={16} /> All Active Employees ({visibleUsers.length})
         </button>
-        <button
+        <button type="button"
           onClick={() => setActiveTab('teams')}
           className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${
             activeTab === 'teams'
@@ -1418,7 +1418,7 @@ export default function UsersPage() {
           <Shield size={16} /> Module Access Teams ({teams.length})
         </button>
         {(isPlatform || isTenantAdmin || isAdmin) && (
-          <button
+          <button type="button"
             onClick={() => setActiveTab('templates')}
             className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${
               activeTab === 'templates'
@@ -1430,7 +1430,7 @@ export default function UsersPage() {
           </button>
         )}
         {(isPlatform || isTenantAdmin || isAdmin) && (
-          <button
+          <button type="button"
             onClick={() => setActiveTab('signins')}
             className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${
               activeTab === 'signins'
@@ -1456,7 +1456,7 @@ export default function UsersPage() {
                 Standard permission presets for company job roles. Apply templates in one click when configuring user page access.
               </p>
             </div>
-            <button
+            <button type="button"
               onClick={() =>
                 setEditingTemplate({
                   name: '',
@@ -1482,7 +1482,7 @@ export default function UsersPage() {
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
                 Create reusable page bundles (e.g., "Sales Rep", "Accountant", "Logistics Executive") to quickly provision team members.
               </p>
-              <button
+              <button type="button"
                 onClick={() =>
                   setEditingTemplate({
                     name: '',
@@ -1530,7 +1530,7 @@ export default function UsersPage() {
                   </div>
 
                   <div className="flex items-center justify-end gap-2 pt-3 mt-3 border-t border-slate-100 dark:border-[#2A3042]">
-                    <button
+                    <button type="button"
                       onClick={() =>
                         setEditingTemplate({
                           id: tpl.id,
@@ -1543,7 +1543,7 @@ export default function UsersPage() {
                     >
                       <Edit3 size={13} /> Edit
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => handleDeleteTemplate(tpl)}
                       className="p-1.5 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-500 transition-colors text-xs flex items-center gap-1"
                     >
@@ -1572,7 +1572,7 @@ export default function UsersPage() {
               >
                 <ShieldCheck size={13} /> Full Security Dashboard
               </button>
-              <button
+              <button type="button"
                 onClick={fetchRecentSignIns}
                 disabled={loadingSignIns}
                 className="btn-ghost text-xs gap-1.5 shrink-0"
@@ -1935,7 +1935,7 @@ export default function UsersPage() {
                       <td className="text-right">
                         <div className="inline-flex items-center gap-1">
                           {/* Send OTP Reset Code Action */}
-                          <button
+                          <button type="button"
                             onClick={() => handleSendResetCode(u)}
                             disabled={actionLoadingId === u.id || !canActOnUser}
                             className="p-1.5 rounded hover:bg-blue-500/10 dark:hover:bg-blue-500/20 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1946,7 +1946,7 @@ export default function UsersPage() {
 
                           {/* Sign Out User Everywhere */}
                           {!isCurrentUser && (
-                            <button
+                            <button type="button"
                               onClick={() => handleRevokeUserSessions(u)}
                               disabled={actionLoadingId === u.id || !canActOnUser}
                               className="p-1.5 rounded hover:bg-orange-500/10 dark:hover:bg-orange-500/20 text-slate-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1958,7 +1958,7 @@ export default function UsersPage() {
 
                           {/* Reset 2-Step Verification Action */}
                           {u.twoFactor?.enabledAt && !isCurrentUser && (
-                            <button
+                            <button type="button"
                               onClick={() => handleResetUserTwoFactor(u)}
                               disabled={actionLoadingId === u.id || !canActOnUser}
                               className="p-1.5 rounded hover:bg-purple-500/10 dark:hover:bg-purple-500/20 text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1970,7 +1970,7 @@ export default function UsersPage() {
 
                           {/* Extend 2-Step Grace Period Action */}
                           {!isCurrentUser && (isPlatform || currentUser?.role === 'tenant_admin') && (
-                            <button
+                            <button type="button"
                               onClick={() => handleOpenExtendGraceModal(u)}
                               disabled={actionLoadingId === u.id || !canActOnUser}
                               className="p-1.5 rounded hover:bg-amber-500/10 dark:hover:bg-amber-500/20 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1983,7 +1983,7 @@ export default function UsersPage() {
 
                           {/* Unlock Account Action */}
                           {!isCurrentUser && (
-                            <button
+                            <button type="button"
                               onClick={() => handleUnlockUser(u)}
                               disabled={actionLoadingId === u.id || !canActOnUser}
                               className="p-1.5 rounded hover:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1994,7 +1994,7 @@ export default function UsersPage() {
                           )}
 
                           {/* Reset Credentials Action */}
-                          <button
+                          <button type="button"
                             onClick={() => handleResetCredentials(u)}
                             disabled={actionLoadingId === u.id || !canActOnUser}
                             className="p-1.5 rounded hover:bg-amber-500/10 dark:hover:bg-crm-amber/20 text-slate-400 hover:text-amber-600 dark:hover:text-crm-amber transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -2004,7 +2004,7 @@ export default function UsersPage() {
                           </button>
 
                           {/* Granular Page Access Action */}
-                          <button
+                          <button type="button"
                             onClick={() => handleOpenAccessModal(u)}
                             disabled={actionLoadingId === u.id || !canEditUser}
                             className="p-1.5 rounded hover:bg-crm-blue/10 dark:hover:bg-crm-blue/20 text-slate-400 hover:text-crm-blue dark:hover:text-crm-blue-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -2014,7 +2014,7 @@ export default function UsersPage() {
                           </button>
 
                           {/* Edit User Action */}
-                          <button
+                          <button type="button"
                             onClick={() => handleOpenEditModal(u)}
                             disabled={!canEditUser}
                             className="p-1.5 rounded hover:bg-crm-blue/10 dark:hover:bg-crm-blue/20 text-slate-400 hover:text-crm-blue transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -2025,7 +2025,7 @@ export default function UsersPage() {
 
                           {/* Deactivate / Reactivate Action */}
                           {!isCurrentUser && (
-                            <button
+                            <button type="button"
                               onClick={() => handleToggleActive(u)}
                               disabled={actionLoadingId === u.id || !canActOnUser}
                               className={`p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
@@ -2041,7 +2041,7 @@ export default function UsersPage() {
 
                           {/* Delete User Action */}
                           {canDeleteUser && (
-                            <button
+                            <button type="button"
                               onClick={() => handleDeleteUser(u)}
                               disabled={actionLoadingId === u.id}
                               className="p-1.5 rounded hover:bg-red-500/10 dark:hover:bg-red-500/20 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -2075,7 +2075,7 @@ export default function UsersPage() {
                 <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <UserPlus size={18} className="text-crm-blue" /> Create New CRM User
                 </h2>
-                <button
+                <button type="button"
                   onClick={() => setShowCreateModal(false)}
                   className="w-7 h-7 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
                 >
@@ -2099,7 +2099,7 @@ export default function UsersPage() {
                     <input
                       type="email"
                       className="input text-xs"
-                      placeholder="user@example.com"
+                      placeholder="user@company.com"
                       value={createForm.email}
                       onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
                       required
@@ -2300,14 +2300,14 @@ export default function UsersPage() {
                 </div>
 
                 <div className="flex gap-2 pt-2">
-                  <button
+                  <button type="button"
                     onClick={handleCopyCredentials}
                     className="btn bg-slate-100 dark:bg-[#1E2230] hover:bg-slate-200 dark:hover:bg-[#2A3042] text-slate-800 dark:text-white text-xs flex-1 gap-1.5 justify-center py-2.5"
                   >
                     {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                     {copied ? 'Copied to Clipboard!' : 'Copy Credentials'}
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => setCreatedCredentialModal(null)}
                     className="btn-primary text-xs px-6"
                   >
@@ -2334,7 +2334,7 @@ export default function UsersPage() {
                 <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Edit3 size={18} className="text-crm-blue" /> Edit User: {editingUser.employeeCode}
                 </h2>
-                <button
+                <button type="button"
                   onClick={() => setEditingUser(null)}
                   className="w-7 h-7 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
                 >
@@ -2733,7 +2733,7 @@ export default function UsersPage() {
                 <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Upload size={18} className="text-crm-blue" /> Bulk Onboard Client Users
                 </h2>
-                <button
+                <button type="button"
                   onClick={() => setShowImportModal(false)}
                   className="w-7 h-7 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
                 >
@@ -2944,7 +2944,7 @@ export default function UsersPage() {
                   <FolderKey size={18} className="text-crm-teal" />
                   {editingTemplate.id ? 'Edit Access Template' : 'Create Access Template'}
                 </h2>
-                <button
+                <button type="button"
                   onClick={() => setEditingTemplate(null)}
                   className="w-7 h-7 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
                 >
@@ -3143,7 +3143,7 @@ export default function UsersPage() {
                     </span>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setAccessUser(null)}
                   className="w-7 h-7 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
                 >

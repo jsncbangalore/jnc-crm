@@ -169,7 +169,7 @@ export default function PlatformAdminsPage() {
           </p>
         </div>
 
-        <button
+        <button type="button"
           onClick={() => {
             setForm({ name: '', email: '', phone: '', role: 'platform_super_admin' });
             setShowCreateModal(true);
@@ -193,7 +193,7 @@ export default function PlatformAdminsPage() {
           />
         </div>
 
-        <button
+        <button type="button"
           onClick={fetchAdmins}
           className="btn btn-secondary text-xs flex items-center gap-1.5"
           title="Refresh administrators list"
@@ -288,7 +288,7 @@ export default function PlatformAdminsPage() {
 
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        <button
+                        <button type="button"
                           onClick={() => handleResetCredentials(admin)}
                           className="btn px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 border border-indigo-500/30 flex items-center gap-1 shadow-sm"
                           title="Reset administrator password"
@@ -297,7 +297,7 @@ export default function PlatformAdminsPage() {
                           <span>Reset Password</span>
                         </button>
 
-                        <button
+                        <button type="button"
                           onClick={() => handleToggleActive(admin)}
                           className={`btn p-1.5 rounded-lg text-xs font-semibold ${
                             admin.isActive
@@ -309,7 +309,7 @@ export default function PlatformAdminsPage() {
                           <Power size={14} />
                         </button>
 
-                        <button
+                        <button type="button"
                           onClick={() => handleDeleteAdmin(admin)}
                           className="btn p-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20"
                           title="Delete platform administrator"
@@ -340,7 +340,7 @@ export default function PlatformAdminsPage() {
                 <h2 className="font-bold text-slate-900 dark:text-white text-base">
                   Add Platform Administrator
                 </h2>
-                <button
+                <button type="button"
                   onClick={() => setShowCreateModal(false)}
                   className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                   title="Close"
@@ -367,7 +367,7 @@ export default function PlatformAdminsPage() {
                   <input
                     type="email"
                     className="input text-xs font-mono"
-                    placeholder="admin@example.com"
+                    placeholder="admin@company.com"
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                     required
@@ -483,7 +483,7 @@ export default function PlatformAdminsPage() {
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
-                <button
+                <button type="button"
                   onClick={() => {
                     const text = [
                       `--- Platform Admin Credentials ---`,
@@ -502,7 +502,7 @@ export default function PlatformAdminsPage() {
                   {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                   <span>{copied ? 'Copied' : 'Copy'}</span>
                 </button>
-                <button
+                <button type="button"
                   onClick={() => setCreatedResult(null)}
                   className="btn btn-primary text-xs"
                 >

@@ -31,7 +31,7 @@ export default function LoginPage() {
       const dest =
         (isPlatformOwner(user) || user.role === 'platform_super_admin') && !user.tenantId
           ? '/platform/companies'
-          : getRoleRedirectPath(user);
+          : ((user as any).redirectPath || getRoleRedirectPath(user));
       return <Navigate to={dest} replace />;
     }
   }

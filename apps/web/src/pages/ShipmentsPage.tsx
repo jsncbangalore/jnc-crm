@@ -24,6 +24,7 @@ export default function ShipmentsPage() {
   const [searchParams] = useSearchParams();
   const [shipments, setShipments] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean; referenceId?: string; code?: string } | null>(null);
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
@@ -124,10 +125,12 @@ export default function ShipmentsPage() {
 
   const fetchConfirmedOrders = async () => {
     try {
-      const { data } = await ordersApi.list({ limit: 100 });
+      setOrdersError(null);
+      const { data } = await ordersApi.getDispatchable();
       setOrders(data.items || []);
-    } catch (err) {
-      console.error('Failed to load orders', err);
+    } catch (err: any) {
+      console.error('Failed to load dispatchable orders', err);
+      setOrdersError(err?.response?.data?.message || 'Could not load orders for dispatch');
     }
   };
 
@@ -317,7 +320,7 @@ export default function ShipmentsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={handleOpenCreateModal}
             className="btn bg-crm-teal hover:bg-crm-teal-hover text-black font-bold text-xs gap-1.5 shadow-glow-teal"
           >
@@ -346,7 +349,7 @@ export default function ShipmentsPage() {
             { id: 'in_transit', label: 'In Transit' },
             { id: 'delivered', label: 'Delivered' },
           ].map((tab) => (
-            <button
+            <button type="button"
               key={tab.id}
               onClick={() => setStatusFilter(tab.id)}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
@@ -557,7 +560,7 @@ export default function ShipmentsPage() {
                       <ExternalLink size={12} />
                     </a>
                   )}
-                  <button
+                  <button type="button"
                     onClick={() => setViewingShipment(null)}
                     className="w-8 h-8 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition"
                   >
@@ -586,7 +589,7 @@ export default function ShipmentsPage() {
 
                 <div className="flex items-center gap-2 flex-wrap">
                   {/* Read / Sync from courier link */}
-                  <button
+                  <button type="button"
                     onClick={() => handleSyncTracking(viewingShipment.id)}
                     disabled={isSyncingTracking}
                     className="btn bg-blue-50 hover:bg-blue-100 dark:bg-crm-blue/20 dark:hover:bg-crm-blue/30 text-blue-800 dark:text-crm-blue-light border border-blue-300 dark:border-crm-blue/40 text-xs py-1.5 px-3 font-bold gap-1.5 shadow-sm disabled:opacity-50"
@@ -598,7 +601,7 @@ export default function ShipmentsPage() {
 
                   {/* Quick Status Buttons */}
                   <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#1E2230] p-1 rounded-xl border border-slate-200 dark:border-[#2A3042]">
-                    <button
+                    <button type="button"
                       onClick={() => handleUpdateStatus(viewingShipment.id, 'dispatched')}
                       className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
                         viewingShipment.status === 'dispatched'
@@ -608,7 +611,7 @@ export default function ShipmentsPage() {
                     >
                       Dispatched
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => handleUpdateStatus(viewingShipment.id, 'in_transit')}
                       className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
                         viewingShipment.status === 'in_transit'
@@ -618,7 +621,7 @@ export default function ShipmentsPage() {
                     >
                       In Transit
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => handleUpdateStatus(viewingShipment.id, 'delivered')}
                       className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
                         viewingShipment.status === 'delivered'
@@ -648,7 +651,7 @@ export default function ShipmentsPage() {
 
                 <div className="flex items-center gap-2 shrink-0">
                   {viewingShipment.trackingUrl && (
-                    <button
+                    <button type="button"
                       onClick={() => handleCopyAwb(viewingShipment.trackingUrl)}
                       className="btn-ghost text-xs py-1 px-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white gap-1 font-bold"
                       title="Copy link"
@@ -656,7 +659,7 @@ export default function ShipmentsPage() {
                       <Copy size={11} /> Copy
                     </button>
                   )}
-                  <button
+                  <button type="button"
                     onClick={() => {
                       const cur = viewingShipment;
                       setViewingShipment(null);
@@ -689,7 +692,7 @@ export default function ShipmentsPage() {
                     <p className="text-xs text-slate-400 mt-1 max-w-sm">
                       Click &quot;+ Add Tracking Link Now&quot; to paste the tracking link from {viewingShipment.courierName}.
                     </p>
-                    <button
+                    <button type="button"
                       onClick={() => {
                         const cur = viewingShipment;
                         setViewingShipment(null);
@@ -731,7 +734,7 @@ export default function ShipmentsPage() {
                     </p>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setEditingShipment(null)}
                   className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white flex items-center justify-center"
                 >
@@ -818,7 +821,7 @@ export default function ShipmentsPage() {
                     <p className="text-xs text-slate-400">Attach courier & tracking information to an order</p>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setShowCreateModal(false)}
                   className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white flex items-center justify-center"
                 >
@@ -843,10 +846,22 @@ export default function ShipmentsPage() {
                     <option value="">-- Choose Order to Dispatch --</option>
                     {orders.map((o) => (
                       <option key={o.id} value={o.id}>
-                        {o.orderNumber} - {o.customerName} (₹{o.totalAmount.toLocaleString('en-IN')})
+                        {o.orderNumber} - {o.customerName}{o.destination ? ` (${o.destination})` : ''}
                       </option>
                     ))}
                   </select>
+                  {ordersError && (
+                    <div className="mt-1.5 flex items-center justify-between text-xs text-rose-500 bg-rose-50 dark:bg-rose-950/30 px-2 py-1 rounded">
+                      <span>{ordersError}</span>
+                      <button
+                        type="button"
+                        onClick={fetchConfirmedOrders}
+                        className="underline hover:text-rose-600 font-semibold ml-2"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

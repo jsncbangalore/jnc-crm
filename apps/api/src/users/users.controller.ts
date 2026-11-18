@@ -56,6 +56,12 @@ export class UsersController {
     return this.usersService.findAll(user, { search, role, isActive, tenantId });
   }
 
+  @Get('assignees')
+  @PageAccess('leads', 'orders', 'quotations', 'daily_activities', 'users')
+  async getAssignees(@CurrentUser() user: ScopedUser) {
+    return this.usersService.getAssignees(user);
+  }
+
   @Get('template-csv')
   @Roles('tenant_admin', 'admin', 'platform_super_admin')
   downloadTemplate(@Res() res: Response) {
@@ -187,10 +193,11 @@ export class UsersController {
   async resetTwoFactor(
     @CurrentUser() user: ScopedUser,
     @Param('id') id: string,
+    @Body() body: { adminPassword?: string; adminTotp?: string },
     @Req() req: Request,
   ) {
     const ip = req.ip || req.socket?.remoteAddress;
-    return this.usersService.resetTwoFactor(id, user, ip);
+    return this.usersService.resetTwoFactor(id, user, ip, body?.adminPassword, body?.adminTotp);
   }
 
   @Post(':id/extend-2fa-grace')

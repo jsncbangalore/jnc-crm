@@ -225,7 +225,7 @@ export default function EditOrderModal({
                 </p>
               </div>
             </div>
-            <button
+            <button type="button"
               onClick={onClose}
               className="w-8 h-8 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white flex items-center justify-center"
             >
@@ -285,7 +285,7 @@ export default function EditOrderModal({
                     <input
                       type="email"
                       className="input pl-9 text-xs font-mono"
-                      placeholder="billing@example.com"
+                      placeholder="billing@company.com"
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
                     />

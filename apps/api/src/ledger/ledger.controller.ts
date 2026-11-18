@@ -55,6 +55,7 @@ export class LedgerController {
    * Unlinked Invoices endpoint for reconciliation and linking
    */
   @Get('unlinked-invoices')
+  @PageAccess('ledger', 'invoices')
   async getUnlinkedInvoices(@CurrentUser() user: ScopedUser) {
     const tenantId = requireTenantId(user);
     return this.ledgerService.getUnlinkedInvoices(tenantId);
@@ -64,6 +65,7 @@ export class LedgerController {
    * All-years open documents endpoint for payment recording & allocation
    */
   @Get('open-documents')
+  @PageAccess('ledger', 'invoices')
   async getOpenDocuments(
     @CurrentUser() user: ScopedUser,
     @Query('partyType') partyType: 'customer' | 'supplier',

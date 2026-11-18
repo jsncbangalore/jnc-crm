@@ -5,7 +5,7 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { authApi, setStaffAccessToken, setPlatformAccessToken } from '../services/api';
 import { Lock, Eye, EyeOff, ShieldAlert, LogOut, CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
@@ -30,8 +30,30 @@ export default function ForcePasswordResetPage() {
     }
   };
 
+  useEffect(() => {
+    if (!showCurrent && !showNew && !showConfirm) return;
+    const timer = setTimeout(() => {
+      setShowCurrent(false);
+      setShowNew(false);
+      setShowConfirm(false);
+    }, 10000);
+    const handleBlur = () => {
+      setShowCurrent(false);
+      setShowNew(false);
+      setShowConfirm(false);
+    };
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [showCurrent, showNew, showConfirm]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setShowCurrent(false);
+    setShowNew(false);
+    setShowConfirm(false);
     setError(null);
 
     if (!currentPass) {

@@ -6,11 +6,12 @@
  * ----------------------------------------------------- */
 
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, RefreshCw, KeyRound, Lock, Power, Settings,
-  CheckCircle2, X, Copy, Check, Users, Send, Trash2
+  CheckCircle2, X, Copy, Check, Users, Send, Trash2,
+  ShieldAlert, AlertTriangle, ExternalLink
 } from 'lucide-react';
 import { platformApi, setAccessToken, getAccessToken, setImpersonationAccessToken, setCurrentTabUserId } from '../services/api';
 import { Tenant } from '../types';
@@ -27,6 +28,8 @@ export default function PlatformCompaniesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showDeactivated, setShowDeactivated] = useState(false);
+  const [dangerousLogs, setDangerousLogs] = useState<any[]>([]);
+  const [showDangerousBanner, setShowDangerousBanner] = useState(true);
 
   // Permanent Delete Modal State
   const [permanentDeleteTenant, setPermanentDeleteTenant] = useState<Tenant | null>(null);
@@ -262,8 +265,25 @@ export default function PlatformCompaniesPage() {
     }
   };
 
+  const fetchDangerousLogs = async () => {
+    try {
+      const { data } = await platformApi.listAuditLogs({ limit: 20 });
+      const dangerousList = [
+        'DELETE_TENANT', 'PERMANENT_DELETE_TENANT', 'DELETE_TENANT_USER',
+        'IMPERSONATION_START', 'RESET_TENANT_ADMIN_PASSWORD', 'SUSPEND_TENANT'
+      ];
+      const filtered = (data?.logs || []).filter((l: any) =>
+        dangerousList.includes(l.action) || l.severity === 'critical'
+      ).slice(0, 10);
+      setDangerousLogs(filtered);
+    } catch {
+      // ignore if audit logs not yet available
+    }
+  };
+
   useEffect(() => {
     fetchTenants();
+    fetchDangerousLogs();
   }, [showDeactivated]);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -410,7 +430,7 @@ export default function PlatformCompaniesPage() {
         setResetAdminDetail({
           employeeCode: fallbackCode,
           name: `${tenant.name} Admin`,
-          email: targetEmail || 'admin@example.com',
+          email: targetEmail || 'admin@company.com',
           role: 'tenant_admin',
         });
       }
@@ -419,7 +439,7 @@ export default function PlatformCompaniesPage() {
       setResetAdminDetail({
         employeeCode: fallbackCode,
         name: `${tenant.name} Admin`,
-        email: tenant.email || 'admin@example.com',
+        email: tenant.email || 'admin@company.com',
         role: 'tenant_admin',
       });
       setResetAdminEmail(tenant.email || '');
@@ -521,7 +541,7 @@ export default function PlatformCompaniesPage() {
           </p>
         </div>
 
-        <button
+        <button type="button"
           onClick={() => {
             setForm({
               code: '',
@@ -546,6 +566,54 @@ export default function PlatformCompaniesPage() {
           <span>Provision New Company</span>
         </button>
       </div>
+
+      {/* Dangerous Action Alerts Banner (Last 10) */}
+      {showDangerousBanner && dangerousLogs.length > 0 && (
+        <div className="rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300 font-semibold text-sm">
+              <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
+              <span>Security Alert: Recent High-Risk Actions ({dangerousLogs.length})</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link
+                to="/platform/audit-logs"
+                className="text-xs font-medium text-rose-700 dark:text-rose-400 hover:underline flex items-center gap-1"
+              >
+                <span>View All in Audit Log</span>
+                <ExternalLink size={12} />
+              </Link>
+              <button type="button"
+                onClick={() => setShowDangerousBanner(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg"
+                title="Dismiss"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+            {dangerousLogs.map((log: any) => (
+              <div
+                key={log.id}
+                className="flex items-center justify-between p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-rose-100 dark:border-rose-900/40"
+              >
+                <div className="flex items-center gap-2 truncate">
+                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 font-bold shrink-0">
+                    {log.action}
+                  </span>
+                  <span className="text-slate-700 dark:text-slate-300 truncate" title={log.summary}>
+                    {log.summary || `${log.action} by ${log.actorEmail || 'platform admin'}`}
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400 shrink-0 ml-2">
+                  {format(new Date(log.timestamp || log.createdAt || Date.now()), 'MMM d, HH:mm')}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 4 Stat Cards - Plain Text Numbers & Labels Only (No Decorative Icons) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -605,7 +673,7 @@ export default function PlatformCompaniesPage() {
           </label>
         </div>
 
-        <button
+        <button type="button"
           onClick={fetchTenants}
           className="btn btn-secondary text-xs flex items-center justify-center gap-1.5"
           title="Refresh companies list"
@@ -641,7 +709,7 @@ export default function PlatformCompaniesPage() {
                 <tr>
                   <td colSpan={6} className="py-12 text-center">
                     <p className="text-rose-500 font-medium text-xs mb-3">{loadError}</p>
-                    <button
+                    <button type="button"
                       onClick={fetchTenants}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-crm-blue text-white rounded-lg hover:bg-crm-blue/90"
                     >
@@ -656,7 +724,7 @@ export default function PlatformCompaniesPage() {
                     <p className="text-slate-500 dark:text-slate-400 font-medium text-sm">
                       No client companies yet
                     </p>
-                    <button
+                    <button type="button"
                       onClick={() => {
                         setForm({
                           code: '',
@@ -734,7 +802,7 @@ export default function PlatformCompaniesPage() {
 
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                        <button
+                        <button type="button"
                           onClick={() => handleImpersonate(tenant)}
                           className="btn px-2.5 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 border border-amber-500/30 flex items-center gap-1 shadow-sm"
                           title="Login as administrator into this workspace"
@@ -743,7 +811,7 @@ export default function PlatformCompaniesPage() {
                           <span>Login As</span>
                         </button>
 
-                        <button
+                        <button type="button"
                           onClick={() => handleOpenResetPasswordModal(tenant)}
                           className="btn px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 border border-indigo-500/30 flex items-center gap-1 shadow-sm"
                           title="Reset tenant admin password and send email"
@@ -752,7 +820,7 @@ export default function PlatformCompaniesPage() {
                           <span>Reset Password</span>
                         </button>
 
-                        <button
+                        <button type="button"
                           onClick={() => handleViewTenantUsers(tenant.id)}
                           className="btn p-1.5 rounded-lg text-xs font-semibold bg-purple-50 text-purple-600 hover:bg-purple-100 dark:bg-purple-900/20"
                           title="View company members"
@@ -760,7 +828,7 @@ export default function PlatformCompaniesPage() {
                           <Users size={14} />
                         </button>
 
-                        <button
+                        <button type="button"
                           onClick={() => handleOpenEditTenant(tenant)}
                           className="btn p-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20"
                           title="Edit company settings"
@@ -768,7 +836,7 @@ export default function PlatformCompaniesPage() {
                           <Settings size={14} />
                         </button>
 
-                        <button
+                        <button type="button"
                           onClick={() => handleToggleStatus(tenant)}
                           className={`btn p-1.5 rounded-lg text-xs font-semibold ${
                             tenant.status === 'active'
@@ -781,7 +849,7 @@ export default function PlatformCompaniesPage() {
                         </button>
 
                         {!tenant.isInternal && !tenant.deletedAt && (
-                          <button
+                          <button type="button"
                             onClick={() => handleDeleteTenant(tenant)}
                             className="btn p-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20"
                             title="Deactivate client company workspace"
@@ -791,7 +859,7 @@ export default function PlatformCompaniesPage() {
                         )}
 
                         {!tenant.isInternal && (tenant.deletedAt || tenant.status === 'suspended') && (
-                          <button
+                          <button type="button"
                             onClick={() => handleOpenPermanentDelete(tenant)}
                             className="btn px-2.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 flex items-center gap-1 shadow-sm"
                             title="Permanently and irreversibly delete this company workspace and all its data"
@@ -824,7 +892,7 @@ export default function PlatformCompaniesPage() {
                 <h2 className="font-bold text-slate-900 dark:text-white text-base">
                   Provision New Client Company
                 </h2>
-                <button
+                <button type="button"
                   onClick={() => setShowCreateModal(false)}
                   className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-white/5"
                   title="Close"
@@ -915,7 +983,7 @@ export default function PlatformCompaniesPage() {
                       <input
                         type="email"
                         className="input text-xs"
-                        placeholder="admin@example.com"
+                        placeholder="admin@company.com"
                         value={form.adminEmail}
                         onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
                         required
@@ -1093,7 +1161,7 @@ export default function PlatformCompaniesPage() {
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
-                <button
+                <button type="button"
                   onClick={() => {
                     const loginUrl = `${window.location.origin}/login`;
                     const text = [
@@ -1115,7 +1183,7 @@ export default function PlatformCompaniesPage() {
                   <span>{copied ? 'Copied to Clipboard' : 'Copy Credentials'}</span>
                 </button>
 
-                <button
+                <button type="button"
                   onClick={() => setCreatedResult(null)}
                   className="btn btn-primary text-xs"
                 >
@@ -1146,7 +1214,7 @@ export default function PlatformCompaniesPage() {
                     Code: <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{viewingTenant.code}</span> • Plan: <span className="capitalize font-semibold">{viewingTenant.planTier}</span>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setViewingTenant(null)}
                   className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-white/5"
                   title="Close"
@@ -1161,7 +1229,7 @@ export default function PlatformCompaniesPage() {
                     <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
                       Company Users ({viewingTenant.users?.length || 0} / {viewingTenant.maxUsers})
                     </h3>
-                    <button
+                    <button type="button"
                       onClick={() => setShowAddEmpModal(!showAddEmpModal)}
                       className="btn px-2.5 py-1 text-xs font-bold bg-primary text-white hover:bg-primary/90 rounded-lg flex items-center gap-1 shadow-sm"
                     >
@@ -1195,7 +1263,7 @@ export default function PlatformCompaniesPage() {
                           <input
                             type="email"
                             className="input text-xs font-mono"
-                            placeholder="employee@example.com"
+                            placeholder="employee@company.com"
                             value={empForm.email}
                             onChange={(e) => setEmpForm({ ...empForm, email: e.target.value })}
                             required
@@ -1265,7 +1333,7 @@ export default function PlatformCompaniesPage() {
 
                           <div className="flex items-center gap-2">
                             {(u.role === 'tenant_admin' || u.role === 'admin') && (
-                              <button
+                              <button type="button"
                                 onClick={() => {
                                   setViewingTenant(null);
                                   handleOpenResetPasswordModal(viewingTenant);
@@ -1281,7 +1349,7 @@ export default function PlatformCompaniesPage() {
                               {u.role.replace('_', ' ')}
                             </span>
                             <span className={`w-2 h-2 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} title={u.isActive ? 'Active' : 'Inactive'} />
-                            <button
+                            <button type="button"
                               onClick={() => handleDeleteEmp(viewingTenant.id, u)}
                               className="p-1 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
                               title="Remove user from company"
@@ -1297,7 +1365,7 @@ export default function PlatformCompaniesPage() {
               </div>
 
               <div className="p-3 border-t border-slate-200 dark:border-[#2A3042] flex items-center justify-end">
-                <button
+                <button type="button"
                   onClick={() => setViewingTenant(null)}
                   className="btn btn-secondary text-xs"
                 >
@@ -1326,7 +1394,7 @@ export default function PlatformCompaniesPage() {
                   </h2>
                   <div className="text-[11px] text-slate-500">Company Code: {editingTenant.code}</div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setEditingTenant(null)}
                   className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-white/5"
                   title="Close"
@@ -1456,7 +1524,7 @@ export default function PlatformCompaniesPage() {
                     Workspace: <span className="font-semibold text-slate-800 dark:text-slate-200">{resetModalTenant.name}</span> ({resetModalTenant.code})
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => {
                     setResetModalTenant(null);
                     setResetSuccessResult(null);
@@ -1549,14 +1617,14 @@ export default function PlatformCompaniesPage() {
                   </div>
 
                   <div className="flex items-center gap-2 pt-2">
-                    <button
+                    <button type="button"
                       onClick={handleCopyResetCredentials}
                       className="btn flex-1 bg-slate-900 dark:bg-slate-800 text-white hover:bg-slate-800 flex items-center justify-center gap-1.5 text-xs py-2.5"
                     >
                       {copiedReset ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                       <span>{copiedReset ? 'Credentials Copied' : 'Copy All Details'}</span>
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => {
                         setResetModalTenant(null);
                         setResetSuccessResult(null);
@@ -1584,7 +1652,7 @@ export default function PlatformCompaniesPage() {
                       <input
                         type="email"
                         className="input text-xs font-mono"
-                        placeholder="e.g. admin@example.com"
+                        placeholder="e.g. admin@company.com"
                         value={resetAdminEmail}
                         onChange={(e) => setResetAdminEmail(e.target.value)}
                         required
@@ -1717,7 +1785,7 @@ export default function PlatformCompaniesPage() {
                   <Trash2 size={18} />
                   <span>Permanently Delete Company Workspace</span>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setPermanentDeleteTenant(null)}
                   className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white"
                 >

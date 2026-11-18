@@ -1057,6 +1057,7 @@ export class WebhooksService {
 
     // 3. Honeypot check: silently drop bot submissions
     const honeypotValues = [
+      payload.website_hp,
       payload._hp_company_trap,
       payload.website_url_hp,
       payload.hp_fax,
@@ -1160,6 +1161,35 @@ export class WebhooksService {
     }
 
     return { isBot: false, isDuplicate, lead };
+  }
+
+  async createPublicInquiryLead(data: {
+    tenantId: string;
+    name: string;
+    email: string;
+    phone: string;
+    company?: string;
+    topic?: string;
+    message: string;
+  }) {
+    const lead = await this.leadsService.createLead(
+      {
+        customerName: data.name,
+        customerEmail: data.email,
+        customerPhone: data.phone,
+        companyName: data.company || undefined,
+        productCategory: `Public Inquiry (${data.topic || 'sales'})`,
+        queryMessage: data.message,
+        source: 'web',
+        rawPayload: JSON.stringify({
+          source: 'public_contact_form',
+          topic: data.topic,
+          capturedAt: new Date().toISOString(),
+        }),
+      },
+      { tenantId: data.tenantId, role: 'admin', employeeCode: 'WEB_CONTACT' } as any,
+    );
+    return lead;
   }
 
   /**

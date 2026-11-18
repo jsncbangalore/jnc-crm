@@ -363,7 +363,7 @@ export default function MailAccountsPage() {
                 Connect your business email (Google Workspace, Microsoft 365, GoDaddy, or custom SMTP) to send invoices, quotes, and alerts directly from your company domain.
               </p>
             </div>
-            <button
+            <button type="button"
               onClick={openAddModal}
               className="btn-primary text-xs inline-flex items-center gap-2 px-4 py-2"
             >
@@ -411,13 +411,13 @@ export default function MailAccountsPage() {
                     </div>
 
                     <div className="flex items-center gap-2 self-end sm:self-auto">
-                      <button
+                      <button type="button"
                         onClick={() => openEditModal(acc)}
                         className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1"
                       >
                         <Edit3 size={12} /> Edit
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => handleDeleteAccount(acc.id, acc.email)}
                         className="btn-ghost text-xs px-2.5 py-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
                         title="Delete Mail Account"
@@ -593,7 +593,7 @@ export default function MailAccountsPage() {
                     </p>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setShowModal(false)}
                   className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center"
                 >
@@ -620,7 +620,7 @@ export default function MailAccountsPage() {
                       <input
                         type="email"
                         className="input text-xs pl-8 font-mono"
-                        placeholder="e.g. sales@example.com or billing@example.com"
+                        placeholder="e.g. sales@company.com or billing@company.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         autoFocus

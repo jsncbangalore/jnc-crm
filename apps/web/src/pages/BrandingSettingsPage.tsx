@@ -655,7 +655,7 @@ export default function BrandingSettingsPage() {
         <p className="text-xs text-slate-500">
           Only Super Administrators and Administrators have permission to modify central company branding settings.
         </p>
-        <button onClick={() => navigate('/')} className="btn-secondary text-xs inline-flex items-center gap-2 cursor-pointer">
+        <button type="button" onClick={() => navigate('/')} className="btn-secondary text-xs inline-flex items-center gap-2 cursor-pointer">
           <ArrowLeft size={14} /> Back to Dashboard
         </button>
       </div>

@@ -191,7 +191,7 @@ export default function TaxProfileSection({
             autoComplete="email"
             data-testid="input-email"
             className={getInputClass('email')}
-            placeholder="billing@example.com"
+            placeholder="billing@company.com"
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
@@ -217,7 +217,7 @@ export default function TaxProfileSection({
             autoComplete="url"
             data-testid="input-website"
             className={getInputClass('website')}
-            placeholder="https://example.com"
+            placeholder="https://company.com"
             value={website}
             onChange={(e) => {
               setWebsite(e.target.value);

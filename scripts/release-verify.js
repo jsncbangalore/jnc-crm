@@ -438,7 +438,20 @@ async function run() {
       console.log(` [2FA PRE-DEPLOY] ${forcedCount} user(s) will be forced to complete 2-step setup at next login.`);
     }
 
-    // 7. Execute full unified test runner (Layers A through K)
+    // 7. Execute authentication & 2-step verification smoke test
+    console.log(' [VERIFY] Executing authentication & verification smoke test (npm run smoke:auth)...');
+    const smokeProc = spawnSync('npm', ['run', 'smoke:auth'], {
+      cwd: path.resolve(__dirname, '..'),
+      encoding: 'utf8',
+      shell: true,
+      stdio: 'inherit',
+    });
+    if (smokeProc.status !== 0) {
+      console.error(' [FAIL] npm run smoke:auth reported test failures.');
+      process.exit(1);
+    }
+
+    // 8. Execute full unified test runner (Layers A through Z)
     console.log(' [VERIFY] Executing comprehensive test suite (npm run test:all)...');
     const testProc = spawnSync('npm', ['run', 'test:all'], {
       cwd: path.resolve(__dirname, '..'),

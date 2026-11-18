@@ -162,7 +162,7 @@ export default function StartSetupPage() {
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
-              <button
+              <button type="button"
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 title={isSidebarCollapsed ? `${tab.label} — ${tab.sublabel}` : undefined}

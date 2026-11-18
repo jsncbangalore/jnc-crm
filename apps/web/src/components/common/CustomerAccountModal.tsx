@@ -180,7 +180,7 @@ export default function CustomerAccountModal({
             )}
           </div>
 
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
@@ -204,7 +204,7 @@ export default function CustomerAccountModal({
               {reversalSuccess && (
                 <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 font-medium flex items-center justify-between">
                   <span>{reversalSuccess}</span>
-                  <button onClick={() => setReversalSuccess(null)} className="text-emerald-500 hover:text-emerald-700">
+                  <button type="button" onClick={() => setReversalSuccess(null)} className="text-emerald-500 hover:text-emerald-700">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -247,7 +247,7 @@ export default function CustomerAccountModal({
               {/* Tabs */}
               <div className="border-b border-slate-200 dark:border-slate-800 flex gap-2">
                 {hasPage('quotations') && (
-                  <button
+                  <button type="button"
                     onClick={() => setActiveTab('quotes')}
                     className={`flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border-b-2 transition-all ${
                       activeTab === 'quotes'
@@ -260,7 +260,7 @@ export default function CustomerAccountModal({
                   </button>
                 )}
                 {hasPage('orders') && (
-                  <button
+                  <button type="button"
                     onClick={() => setActiveTab('orders')}
                     className={`flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border-b-2 transition-all ${
                       activeTab === 'orders'
@@ -273,7 +273,7 @@ export default function CustomerAccountModal({
                   </button>
                 )}
                 {hasPage('invoices') && (
-                  <button
+                  <button type="button"
                     onClick={() => setActiveTab('invoices')}
                     className={`flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border-b-2 transition-all ${
                       activeTab === 'invoices'
@@ -285,7 +285,7 @@ export default function CustomerAccountModal({
                     Invoices ({data?.invoices?.length || 0})
                   </button>
                 )}
-                <button
+                <button type="button"
                   onClick={() => setActiveTab('payments')}
                   className={`flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border-b-2 transition-all ${
                     activeTab === 'payments'
@@ -297,7 +297,7 @@ export default function CustomerAccountModal({
                   Payments ({data?.payments?.length || 0})
                 </button>
                 {hasPage('ledger') && (
-                  <button
+                  <button type="button"
                     onClick={() => setActiveTab('ledger')}
                     className={`flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border-b-2 transition-all ${
                       activeTab === 'ledger'
@@ -502,7 +502,7 @@ export default function CustomerAccountModal({
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-slate-500">Official statement from party ledger</p>
-                      <button
+                      <button type="button"
                         onClick={() => {
                           onClose();
                           navigate('/ledger?tab=customers');
@@ -559,7 +559,7 @@ export default function CustomerAccountModal({
 
         {/* Modal Footer */}
         <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex justify-end">
-          <button
+          <button type="button"
             onClick={onClose}
             className="px-4 py-2 rounded-xl text-sm font-semibold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
           >

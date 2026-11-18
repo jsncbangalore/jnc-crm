@@ -361,7 +361,7 @@ export class QuotationsService {
       throw new BadRequestException(amountLimitCheck.error);
     }
     if (amountLimitCheck.needsConfirmation) {
-      throw new BadRequestException(`${amountLimitCheck.warning} (Provide confirmedHighAmount: true to proceed).`);
+      throw new BadRequestException(amountLimitCheck.warning);
     }
 
     const validUntil = dto.validUntil ? new Date(dto.validUntil) : new Date(Date.now() + 30 * 86_400_000); // 30 days validity

@@ -423,7 +423,7 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
             value={form.customerEmail}
             onChange={(e) => setForm((prev) => ({ ...prev, customerEmail: e.target.value }))}
             error={touched.customerEmail ? errors.customerEmail : null}
-            placeholder="contact@example.com"
+            placeholder="contact@company.com"
             maxLength={254}
           />
         </div>

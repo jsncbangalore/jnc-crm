@@ -7,7 +7,7 @@
 
 /**
  * UNIFIED TEST SUITE RUNNER: npm run test:all
- * Executes layers A through T including all dedicated test suites
+ * Executes layers A through X including all dedicated test suites
  * and generates matching comparison tables, JSON, and HTML reports.
  *
  * Dedicated Test Suites:
@@ -19,7 +19,12 @@
  * - Company Branding & GST: 22
  * - Document Logo & Plain Invoice: 25
  * - Shipments & Document Chain: 63
- * - Session Conflict & Tab Safety: 27
+ * - Session Conflict & Tab Safety: 46
+ * - Portal Marker Tab Isolation: 16
+ * - Platform Security & Audit Logs: 51
+ * - Real-Page Playwright Dependency Matrix: 70
+ * - Walkthrough Live Audit Comprehensive: 35
+ * - Tax Invoice & Document Management: 33
  */
 
 const fs = require('fs');
@@ -358,6 +363,26 @@ runLayer('U', 'Portal Marker Per-Tab Isolation (SessionStorage Strictness)', (as
   runDedicatedSuite('U', 'Portal Marker Isolation', 'scripts/test-portal-marker-isolation.js', 16, assert);
 });
 
+// ─── LAYER V: PLATFORM SECURITY & AUDIT LOGS (51 tests) ──────────────────────
+runLayer('V', 'Platform Security & Audit Logs Suite', (assert) => {
+  runDedicatedSuite('V', 'Platform Audit Logs', 'scripts/test-platform-audit-logs.js', 51, assert);
+});
+
+// ─── LAYER W: REAL-PAGE PLAYWRIGHT CROSS-PAGE DEPENDENCY MATRIX (70 tests) ────
+runLayer('W', 'Real-Page Playwright Cross-Page Dependency Matrix Suite', (assert) => {
+  runDedicatedSuite('W', 'Real-Page Playwright Dependency Matrix', 'scripts/test-page-dependency-matrix.js', 70, assert);
+});
+
+// ─── LAYER X: WALKTHROUGH LIVE AUDIT FIXES SUITE (35 tests) ───────────────────
+runLayer('X', 'Walkthrough Live Audit Comprehensive Suite', (assert) => {
+  runDedicatedSuite('X', 'Walkthrough Live Audit Fixes', 'scripts/test-walkthrough-fixes-suite.js', 35, assert);
+});
+
+// ─── LAYER Y: TAX INVOICE & DOCUMENT MANAGEMENT SUITE (33 tests) ──────────────
+runLayer('Y', 'Tax Invoice & Document Management Verification Suite', (assert) => {
+  runDedicatedSuite('Y', 'Tax Invoice & Document Management', 'scripts/test-invoice-tax-fixes-suite.js', 33, assert);
+});
+
 // ─── REPORT GENERATION ───────────────────────────────────────────────────────
 const jsonReportPath = path.join(REPORT_DIR, 'test-all-report.json');
 fs.writeFileSync(jsonReportPath, JSON.stringify(report, null, 2), 'utf8');
@@ -453,6 +478,10 @@ const comparisonRows = [
   { suite: 'Shipments Access & Document Chain', file: 'scripts/test-shipments-and-document-chain-suite.js', expected: 63, layer: 'S' },
   { suite: 'Session Conflict & Tab Isolation', file: 'scripts/test-session-conflict-suite.js', expected: 46, layer: 'T' },
   { suite: 'Portal Marker Tab Isolation', file: 'scripts/test-portal-marker-isolation.js', expected: 16, layer: 'U' },
+  { suite: 'Platform Security & Audit Logs', file: 'scripts/test-platform-audit-logs.js', expected: 51, layer: 'V' },
+  { suite: 'Real-Page Playwright Dependency Matrix', file: 'scripts/test-page-dependency-matrix.js', expected: 70, layer: 'W' },
+  { suite: 'Walkthrough Live Audit Comprehensive', file: 'scripts/test-walkthrough-fixes-suite.js', expected: 35, layer: 'X' },
+  { suite: 'Tax Invoice & Document Management', file: 'scripts/test-invoice-tax-fixes-suite.js', expected: 33, layer: 'Y' },
 ];
 
 console.log('\n========================================================================================');

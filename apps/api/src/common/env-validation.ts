@@ -6,6 +6,7 @@
  * ----------------------------------------------------- */
 
 import { Logger } from '@nestjs/common';
+import { isInternalHostname } from './ssrf.util';
 
 export type EnvCategory = 'REQUIRED' | 'FEATURE-GATED' | 'OPTIONAL';
 
@@ -177,8 +178,12 @@ export function validateEnvironment(
     'EMAIL_FROM',
   ];
 
-  if (mailProvider === 'smtp') {
-    requiredKeys.push('SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS');
+  const isProduction = env.NODE_ENV?.toLowerCase() === 'production';
+
+  if (isProduction || mailProvider === 'smtp') {
+    for (const key of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS']) {
+      if (!requiredKeys.includes(key)) requiredKeys.push(key);
+    }
   } else if (mailProvider === 'resend') {
     requiredKeys.push('RESEND_API_KEY');
   } else if (mailProvider === 'brevo') {
@@ -200,7 +205,40 @@ export function validateEnvironment(
     invalidVariables.push(`NODE_ENV must be exactly one of [${validEnvs.join(', ')}], received '${env.NODE_ENV}'.`);
   }
 
-  const isProduction = env.NODE_ENV?.toLowerCase() === 'production';
+  // Strict SMTP verification in production: refuses start if missing or invalid
+  if (isProduction) {
+    const smtpHost = (env.SMTP_HOST || '').trim();
+    if (!smtpHost) {
+      invalidVariables.push('SMTP_HOST is required and cannot be empty in production.');
+    } else if (
+      smtpHost.toLowerCase() === 'localhost' ||
+      smtpHost === '127.0.0.1' ||
+      smtpHost === '::1' ||
+      isInternalHostname(smtpHost)
+    ) {
+      invalidVariables.push(`SMTP_HOST cannot be localhost or an internal address in production mode (received '${smtpHost}').`);
+    }
+
+    const smtpPort = parseInt(env.SMTP_PORT || '', 10);
+    if (!env.SMTP_PORT || isNaN(smtpPort) || smtpPort <= 0 || smtpPort > 65535) {
+      invalidVariables.push(`SMTP_PORT must be a valid port number in production (e.g. 587, 465, or 2525), received '${env.SMTP_PORT}'.`);
+    }
+
+    const smtpUser = (env.SMTP_USER || '').trim();
+    if (!smtpUser || KNOWN_DEFAULT_SECRETS.includes(smtpUser.toLowerCase())) {
+      invalidVariables.push('SMTP_USER is required and cannot be a placeholder in production.');
+    }
+
+    const smtpPass = (env.SMTP_PASS || '').trim();
+    if (!smtpPass || KNOWN_DEFAULT_SECRETS.includes(smtpPass.toLowerCase())) {
+      invalidVariables.push('SMTP_PASS is required and cannot be a default or placeholder in production.');
+    }
+
+    const fromEmail = (env.EMAIL_FROM || '').trim();
+    if (!fromEmail || !fromEmail.includes('@') || !fromEmail.includes('.')) {
+      invalidVariables.push(`EMAIL_FROM must be a valid email address in production, received '${fromEmail}'.`);
+    }
+  }
 
   // Mail provider validation and warnings
   const isRender = !!(env.RENDER || process.env.RENDER);

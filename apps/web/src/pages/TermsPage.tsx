@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { FileText, Shield, ArrowLeft, Mail, CheckCircle2 } from 'lucide-react';
 import PublicLayout from '../components/layout/PublicLayout';
 import { PRODUCT_NAME, COMPANY_NAME } from '../config/brand';
+import { PUBLIC_CONTACT } from '../config/publicContact';
 
 export default function TermsPage() {
   const lastUpdated = 'October 24, 2026';
@@ -138,8 +139,8 @@ export default function TermsPage() {
               <p className="font-semibold text-slate-900 dark:text-white">{COMPANY_NAME} Legal Operations</p>
               <p className="text-slate-600 dark:text-slate-400">
                 Email:{' '}
-                <a href="mailto:legal@example.com" className="text-blue-600 dark:text-blue-400 hover:underline">
-                  legal@example.com
+                <a href={`mailto:${PUBLIC_CONTACT.legalEmail}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                  {PUBLIC_CONTACT.legalEmail}
                 </a>
               </p>
             </div>

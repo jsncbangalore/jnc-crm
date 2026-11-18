@@ -741,7 +741,7 @@ export default function PublicInquiryPage() {
                     <input
                       type="email"
                       required
-                      placeholder="rahul@company.example.com"
+                      placeholder="rahul@company.company.com"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       className="w-full text-xs bg-white dark:bg-[#181B26] border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-900 dark:text-white outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition"

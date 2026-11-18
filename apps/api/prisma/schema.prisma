@@ -1275,6 +1275,34 @@ model AuditLog {
   @@index([tenantId])
 }
 
+model PlatformAuditLog {
+  id               String    @id @default(uuid())
+  timestamp        DateTime  @default(now())
+  actorId          String?
+  actorName        String?
+  actorRole        String?
+  action           String
+  targetType       String?
+  targetId         String?
+  targetTenantId   String?
+  targetTenantCode String?
+  summary          String
+  details          String?
+  outcome          String    @default("success")
+  ipAddress        String?
+  userAgent        String?
+  requestId        String?
+  prevHash         String?
+  hash             String
+
+  @@index([timestamp])
+  @@index([action])
+  @@index([targetTenantId])
+  @@index([targetTenantCode])
+  @@index([actorId])
+  @@index([outcome])
+}
+
 model PaymentRecord {
   id              String    @id @default(uuid())
   tenantId        String    @default("default-tenant-id")

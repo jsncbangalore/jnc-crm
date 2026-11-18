@@ -591,6 +591,15 @@ export default function Navbar() {
                     <ShieldCheck size={13} className="text-purple-600 shrink-0" />
                     <span>Platform Admins</span>
                   </NavLink>
+                  <NavLink
+                    role="menuitem"
+                    to="/platform/audit-logs"
+                    onClick={() => setProfileOpen(false)}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                  >
+                    <FileText size={13} className="text-amber-600 shrink-0" />
+                    <span>Security & Audit Logs</span>
+                  </NavLink>
                 </div>
               ) : (
                 <div className="space-y-0.5 mb-1 pb-1 border-b border-slate-100 dark:border-white/5">

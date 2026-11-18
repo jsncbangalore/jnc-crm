@@ -25,6 +25,7 @@ import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PlatformAuditService } from '../platform/platform-audit.service';
 import {
   LoginDto,
   SelectCompanyDto,
@@ -184,6 +185,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     @Inject(forwardRef(() => NotificationsService)) private notificationsService: NotificationsService,
+    @Optional() private auditService?: PlatformAuditService,
   ) {
     // Periodic background cleanup of expired password reset flows
     const cleanupTimer = setInterval(() => {
@@ -274,6 +276,22 @@ export class AuthService {
       });
 
       if (isLocked) {
+        if (this.auditService && (user.role === 'platform_super_admin' || !user.tenantId)) {
+          await this.auditService.recordLog(null, {
+            actor: { id: user.id, name: user.name, email: user.email, role: 'platform_super_admin' },
+            action: 'PLATFORM_ACCOUNT_LOCKED',
+            targetType: 'PlatformAuth',
+            targetId: user.id,
+            summary: `Platform super admin account locked after 5 consecutive failed attempts (${maskIdentifier(user.email || user.name)})`,
+            details: {
+              consecutiveFailedAttempts: currentAttempts,
+              lockExpiresAt: lockedUntil?.toISOString(),
+            },
+            outcome: 'denied',
+            ipAddress,
+          }).catch(() => {});
+        }
+
         await this.prisma.auditLog
           .create({
             data: {
@@ -345,6 +363,7 @@ export class AuthService {
     return this.prisma.user.findMany({
       include: {
         teamRef: { select: { id: true, name: true, allowedPages: true } },
+        twoFactor: true,
         tenant: {
           select: {
             id: true,
@@ -728,15 +747,20 @@ export class AuthService {
         });
       } else {
         const attempts = item.attempts + 1;
+        const maxAttempts = item.maxAttempts || 8;
+        const isExhausted = attempts >= maxAttempts;
+        const backoffSeconds = [10, 30, 120, 600, 1800, 3600, 10800];
+        const nextDelaySec = backoffSeconds[attempts - 1] ?? 10800;
+
         // Log ONLY failure reason, NEVER the verification code!
-        this.logger.error(`[EMAIL_OUTBOX] Outbox item ${item.id} delivery attempt ${attempts} failed: ${deliveryError}`);
+        this.logger.error(`[EMAIL_OUTBOX] Outbox item ${item.id} delivery attempt ${attempts}/${maxAttempts} failed: ${deliveryError}`);
         await this.prisma.emailOutbox.update({
           where: { id: item.id },
           data: {
             attempts,
             lastError: deliveryError,
-            status: attempts >= (item.maxAttempts || 3) ? 'failed' : 'pending',
-            nextAttemptAt: new Date(Date.now() + attempts * 5000),
+            status: isExhausted ? 'failed' : 'pending',
+            nextAttemptAt: isExhausted ? item.nextAttemptAt : new Date(Date.now() + nextDelaySec * 1000),
           },
         });
       }
@@ -949,16 +973,14 @@ export class AuthService {
 
     const lookupHash = crypto.createHmac('sha256', secret).update(emailLower).digest('hex');
 
-    // 3. Unknown email handler: Return stable fake digits so attackers cannot enumerate accounts
+    // 3. Unknown email handler: Anti-enumeration response with fake signed flowId
     if (users.length === 0) {
-      const fakeNum = parseInt(lookupHash.slice(0, 8), 16) % 10000;
-      const fakeLast4 = fakeNum.toString().padStart(4, '7');
       const flowId = crypto.randomUUID();
       const fakeFlow = {
         id: flowId,
         accountId: null,
         lookupHash,
-        stage: 'start',
+        stage: 'code_sent',
         phoneAttempts: 0,
         emailAttempts: 0,
         expiresAt: new Date(Date.now() + 15 * 60 * 1000),
@@ -968,44 +990,121 @@ export class AuthService {
       await this.createPasswordResetFlow(fakeFlow, clientKey);
 
       return {
+        success: true,
         flowId: this.signFlowToken(flowId),
-        hasPhone: true,
-        last4: fakeLast4,
-        maskedPhone: `•••••• ${fakeLast4}`,
-        stage: 'start',
+        hasPhone: false,
+        stage: 'code_sent',
+        maskedEmail: this._maskEmail(emailLower),
+        resendAfterSeconds: 60,
+        message: 'If this account exists, we sent a code.',
       };
     }
 
-    // 4. Real User Flow
+    // 4. Real User Flow - Single forgot-password flow:
+    // Generate 6-digit code, save OTP challenge, and queue email immediately
     const user = users[0];
-    const adminRoles = ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin'];
-    const isAdmin = adminRoles.includes(user.role);
-    const normPhone = this.normalizePhone10Digits(user.phone || '');
-    const hasPhone = normPhone.length >= 4;
-    const last4 = hasPhone ? normPhone.slice(-4) : '';
-
-    // Check account lockout from failed phone checks (30 min block after 5 failed attempts)
-    const blockedUntil = AuthService.inMemoryPhoneAttemptBlocks.get(user.id);
-    if (blockedUntil && blockedUntil > Date.now()) {
-      throw new BadRequestException('Too many failed attempts. This account is temporarily locked for 30 minutes.');
-    }
+    const targetEmail = user.email.toLowerCase();
+    const now = new Date();
 
     const flowId = crypto.randomUUID();
-    // Accounts with no mobile continue directly to the email code step ('phone_ok'); accounts with mobile start at 'start' for mobile verification
-    const initialStage = hasPhone ? 'start' : 'phone_ok';
-
     const realFlow = {
       id: flowId,
       accountId: user.id,
       lookupHash,
-      stage: initialStage,
+      stage: 'code_sent',
       phoneAttempts: 0,
       emailAttempts: 0,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000),
       ipHash: maskIp(clientKey),
-      createdAt: new Date(),
+      createdAt: now,
     };
     await this.createPasswordResetFlow(realFlow, clientKey);
+
+    // Generate 6-digit verification code
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const challengeId = crypto.randomUUID();
+    const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'crm-otp-secret-key-2026';
+    const codeHash = crypto
+      .createHmac('sha256', otpSecret + challengeId)
+      .update(code)
+      .digest('hex');
+
+    // Invalidate older open challenges for password_reset
+    try {
+      await this.prisma.otpChallenge.updateMany({
+        where: { emailNormalized: targetEmail, purpose: 'password_reset', usedAt: null },
+        data: { usedAt: now },
+      });
+    } catch {}
+
+    for (const mem of AuthService.inMemoryOtpChallenges.values()) {
+      if (mem.emailNormalized === targetEmail && !mem.usedAt) {
+        mem.usedAt = now;
+      }
+    }
+
+    const challengeRecord = {
+      id: challengeId,
+      emailNormalized: targetEmail,
+      purpose: 'password_reset',
+      codeHash,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      resendAfter: new Date(Date.now() + 60 * 1000),
+      attempts: 0,
+      usedAt: null,
+      createdAt: now,
+      requestIp: maskIp(clientKey),
+      requestUserAgent: userAgent ? userAgent.substring(0, 500) : 'unknown',
+    };
+
+    try {
+      await this.prisma.otpChallenge.create({ data: challengeRecord });
+    } catch {
+      AuthService.inMemoryOtpChallenges.set(challengeId, challengeRecord);
+    }
+
+    // Queue email outbox item with exact subject format and maxAttempts: 8
+    const requestTime = new Date().toUTCString();
+    const browserLabel = parseDeviceLabel(userAgent);
+    const appName = getProductName();
+    const outboxSubject = `${code} is your ${appName} verification code`;
+    const outboxText = `Hello,\n\nYour ${appName} verification code is: ${code}\n\nThis code expires in 10 minutes.\nTime: ${requestTime}\nBrowser: ${browserLabel}`;
+    const outboxHtml = `<div style="font-family: Arial, sans-serif; max-width: 520px; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+      <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">Password Reset Code</h2>
+      <p style="color: #475569; font-size: 14px;">Use the 6-digit verification code below to reset your ${appName} password:</p>
+      <div style="background-color: #f1f5f9; border-radius: 10px; padding: 18px; text-align: center; margin: 24px 0;">
+        <span style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #2563eb; font-family: monospace;">${code}</span>
+      </div>
+      <p style="color: #475569; font-size: 13px;">This code expires in <strong>10 minutes</strong>. For your security, <strong>never share this code with anyone</strong>.</p>
+    </div>`;
+
+    try {
+      const outbox = await this.prisma.emailOutbox.create({
+        data: {
+          to: targetEmail,
+          subject: outboxSubject,
+          text: outboxText,
+          html: outboxHtml,
+          status: 'pending',
+          tenantId: user.tenantId || null,
+          maxAttempts: 8,
+        },
+      });
+      setImmediate(() => {
+        void this.dispatchOutboxItem(outbox.id);
+      });
+    } catch {
+      if (this.notificationsService) {
+        void this.notificationsService.sendEmail({
+          to: targetEmail,
+          subject: outboxSubject,
+          text: outboxText,
+          html: outboxHtml,
+          tenantId: user.tenantId || undefined,
+          purpose: 'password_reset_code',
+        }).catch(() => {});
+      }
+    }
 
     let tId = user.tenantId;
     if (!tId) {
@@ -1022,18 +1121,19 @@ export class AuthService {
           entityName: 'User',
           entityId: user.id,
           ipAddress: maskIp(clientKey),
-          afterState: `Password reset flow started (stage: ${initialStage}, hasPhone: ${hasPhone})`,
+          afterState: 'Password reset flow started; verification code dispatched',
         },
       }).catch(() => {});
     }
 
     return {
+      success: true,
       flowId: this.signFlowToken(flowId),
-      hasPhone,
-      last4: last4 || undefined,
-      maskedPhone: hasPhone ? `•••••• ${last4}` : undefined,
-      stage: initialStage,
+      hasPhone: false,
+      stage: 'code_sent',
       maskedEmail: this._maskEmail(user.email),
+      resendAfterSeconds: 60,
+      message: 'If this account exists, we sent a code.',
     };
   }
 
@@ -1364,7 +1464,7 @@ export class AuthService {
       };
     }
 
-    // 2. Hourly rate limit: 3 codes per hour
+    // 2. Hourly rate limit: 5 codes per hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     let countLastHour = 0;
     try {
@@ -1387,7 +1487,7 @@ export class AuthService {
       }
     }
 
-    if (countLastHour >= 3) {
+    if (countLastHour >= 5) {
       return {
         message: 'If this account exists, we sent a code.',
         resendAfterSeconds: 60,
@@ -4514,11 +4614,13 @@ export class AuthService {
     let gracePeriodInfo: { twoFactorGracePeriod?: { active: boolean; daysRemaining: number; banner?: string | null } } = {};
 
     if (!bypass2Fa) {
-      // 1. Fetch fresh user state including twoFactor and tenant configuration
-      const freshUser = await this.prisma.user.findUnique({
-        where: { id: resolvedUser.id },
-        include: { twoFactor: true, tenant: true },
-      });
+      // 1. Fetch fresh user state if not already loaded with twoFactor and tenant configuration
+      const freshUser = (user.twoFactor !== undefined && user.tenant !== undefined)
+        ? user
+        : await this.prisma.user.findUnique({
+            where: { id: resolvedUser.id },
+            include: { twoFactor: true, tenant: true },
+          });
 
       if (freshUser?.twoFactor?.enabledAt) {
         // User has 2FA enabled: check for valid trusted device cookie
@@ -4599,54 +4701,6 @@ export class AuthService {
       }
     }
 
-    await this.prisma.user
-      .update({ where: { id: resolvedUser.id }, data: { lastLoginAt: new Date() } })
-      .catch(() => {});
-
-    // Transparent password rehashing if cost < 12
-    if (passwordHash && rawPasswordToRehash && needsRehash(passwordHash)) {
-      const newHash = await bcrypt.hash(rawPasswordToRehash, 12);
-      await this.prisma.user.update({
-        where: { id: resolvedUser.id },
-        data: { passwordHash: newHash },
-      }).catch(() => {});
-    }
-
-    // Check if new device before recording this session (only alert on a really new device)
-    if (this.prisma.refreshSession && resolvedUser.email) {
-      try {
-        const deviceLabel = parseDeviceLabel(userAgent);
-        const priorSession = await this.prisma.refreshSession.findFirst({
-          where: {
-            userId: resolvedUser.id,
-            OR: [
-              { userAgent: userAgent ? userAgent.substring(0, 500) : null },
-              { deviceLabel },
-            ],
-          },
-        });
-        const trustedDevice = (this.prisma as any).trustedDevice ? await (this.prisma as any).trustedDevice.findFirst({
-          where: {
-            userId: resolvedUser.id,
-            OR: [
-              { deviceLabel },
-              ...(userAgent ? [{ userAgent: userAgent.substring(0, 500) }] : []),
-            ],
-          },
-        }).catch(() => null) : null;
-
-        if (!priorSession && !trustedDevice) {
-          void this.sendSecurityNotification(resolvedUser.id, 'new_device_login', {
-            userAgent,
-            ipAddress,
-            time: new Date(),
-          });
-        }
-      } catch {
-        // Safe fallback if pre-migration
-      }
-    }
-
     const isPlatform = portal === 'platform' || resolvedUser.role === 'platform_super_admin';
     const effectiveKeepSignedIn = isPlatform ? false : keepSignedIn;
     const tokens = this.generateTokens(resolvedUser, undefined, effectiveKeepSignedIn);
@@ -4660,51 +4714,99 @@ export class AuthService {
             : 12 * 60 * 60 * 1000)
     );
 
-    if (this.prisma.refreshSession) {
-      const deviceLabel = parseDeviceLabel(userAgent);
-      const maskedIp = maskIp(ipAddress || '127.0.0.1');
-      await this.prisma.refreshSession.create({
-        data: {
-          userId: resolvedUser.id,
-          tokenHash,
-          familyId: tokens.familyId,
-          expiresAt,
-          isRevoked: false,
-          userAgent: userAgent ? userAgent.substring(0, 500) : null,
-          ipAddress: maskedIp,
-          lastUsedAt: new Date(),
-          deviceLabel,
-        },
-      }).catch(() => {});
-    }
-
+    const deviceLabel = parseDeviceLabel(userAgent);
+    const maskedIp = maskIp(ipAddress || '127.0.0.1');
     const maskedId = maskIdentifier(resolvedUser.email || resolvedUser.employeeCode || resolvedUser.name);
     const maskedIpAddress = maskIp(ipAddress || '127.0.0.1');
 
-    await this.prisma.auditLog
-      .create({
-        data: {
-          tenantId: resolvedUser.tenantId || 'default-tenant-id',
-          actorId: resolvedUser.id,
-          actorName: resolvedUser.name || maskedId,
-          action: 'LOGIN_SUCCESS',
-          entityName: portal === 'platform' ? 'PlatformAuth' : 'User',
-          entityId: resolvedUser.id,
-          afterState: JSON.stringify({
-            maskedIdentifier: maskedId,
-            ipMasked: maskedIpAddress,
-            userAgent: userAgent || 'unknown',
-            reasonCode: 'SUCCESS',
-            portal,
-            keepSignedIn: Boolean(effectiveKeepSignedIn),
-          }),
-          ipAddress: maskedIpAddress,
-        },
-      })
-      .catch(() => {});
+    // Run session creation, lastLoginAt update, audit logging, and effective page resolution in parallel
+    const [effectivePages, homePage] = await Promise.all([
+      this.getEffectivePages(resolvedUser),
+      this.getHomePage(resolvedUser),
+      this.prisma.refreshSession
+        ? this.prisma.refreshSession.create({
+            data: {
+              userId: resolvedUser.id,
+              tokenHash,
+              familyId: tokens.familyId,
+              expiresAt,
+              isRevoked: false,
+              userAgent: userAgent ? userAgent.substring(0, 500) : null,
+              ipAddress: maskedIp,
+              lastUsedAt: new Date(),
+              deviceLabel,
+            },
+          }).catch(() => null)
+        : Promise.resolve(null),
+      this.prisma.user
+        .update({ where: { id: resolvedUser.id }, data: { lastLoginAt: new Date() } })
+        .catch(() => null),
+      this.prisma.auditLog
+        .create({
+          data: {
+            tenantId: resolvedUser.tenantId || 'default-tenant-id',
+            actorId: resolvedUser.id,
+            actorName: resolvedUser.name || maskedId,
+            action: 'LOGIN_SUCCESS',
+            entityName: portal === 'platform' ? 'PlatformAuth' : 'User',
+            entityId: resolvedUser.id,
+            afterState: JSON.stringify({
+              maskedIdentifier: maskedId,
+              ipMasked: maskedIpAddress,
+              userAgent: userAgent || 'unknown',
+              reasonCode: 'SUCCESS',
+              portal,
+              keepSignedIn: Boolean(effectiveKeepSignedIn),
+            }),
+            ipAddress: maskedIpAddress,
+          },
+        })
+        .catch(() => null),
+    ]);
 
-    const effectivePages = await this.getEffectivePages(resolvedUser);
-    const homePage = await this.getHomePage(resolvedUser);
+    // Transparent password rehashing in background if cost < 12
+    if (passwordHash && rawPasswordToRehash && needsRehash(passwordHash)) {
+      void bcrypt.hash(rawPasswordToRehash, 12).then((newHash) => {
+        return this.prisma.user.update({
+          where: { id: resolvedUser.id },
+          data: { passwordHash: newHash },
+        });
+      }).catch(() => {});
+    }
+
+    // Check if new device before recording this session (asynchronous background notification)
+    if (this.prisma.refreshSession && resolvedUser.email) {
+      void (async () => {
+        try {
+          const priorSession = await this.prisma.refreshSession.findFirst({
+            where: {
+              userId: resolvedUser.id,
+              OR: [
+                { userAgent: userAgent ? userAgent.substring(0, 500) : null },
+                { deviceLabel },
+              ],
+            },
+          });
+          const trustedDevice = (this.prisma as any).trustedDevice ? await (this.prisma as any).trustedDevice.findFirst({
+            where: {
+              userId: resolvedUser.id,
+              OR: [
+                { deviceLabel },
+                ...(userAgent ? [{ userAgent: userAgent.substring(0, 500) }] : []),
+              ],
+            },
+          }).catch(() => null) : null;
+
+          if (!priorSession && !trustedDevice) {
+            void this.sendSecurityNotification(resolvedUser.id, 'new_device_login', {
+              userAgent,
+              ipAddress,
+              time: new Date(),
+            });
+          }
+        } catch {}
+      })();
+    }
 
     return {
       user: formatAuthUser(resolvedUser, effectivePages, homePage),
@@ -5184,28 +5286,25 @@ export class AuthService {
       } catch {}
     }
 
-    // 3. Try Email OTP (allowed ONLY for users whose chosen method is 'email')
-    if (twoFactor.method === 'email' && !codeValid && cleanCode.length === 6 && /^\d{6}$/.test(cleanCode)) {
-      const isAdmin = user.role === 'platform_super_admin' || user.role === 'tenant_admin';
-      if (!isAdmin && user.email) {
-        const challenge = await this.prisma.otpChallenge.findFirst({
-          where: {
-            emailNormalized: user.email.toLowerCase(),
-            purpose: 'login_2fa',
-            usedAt: null,
-            expiresAt: { gt: now },
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-        if (challenge) {
-          const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'crm-otp-secret-key-2026';
-          const expectedHash = crypto.createHmac('sha256', otpSecret + challenge.id).update(cleanCode).digest('hex');
-          const a = Buffer.from(challenge.codeHash, 'hex');
-          const b = Buffer.from(expectedHash, 'hex');
-          if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
-            codeValid = true;
-            usedMethod = 'email';
-          }
+    // 3. Try Email OTP (allowed for email method or as fallback for authenticator users)
+    if (!codeValid && cleanCode.length === 6 && /^\d{6}$/.test(cleanCode) && user.email) {
+      const challenge = await this.prisma.otpChallenge.findFirst({
+        where: {
+          emailNormalized: user.email.toLowerCase(),
+          purpose: 'login_2fa',
+          usedAt: null,
+          expiresAt: { gt: now },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (challenge) {
+        const otpSecret = process.env.OTP_SECRET || process.env.JWT_SECRET || 'crm-otp-secret-key-2026';
+        const expectedHash = crypto.createHmac('sha256', otpSecret + challenge.id).update(cleanCode).digest('hex');
+        const a = Buffer.from(challenge.codeHash, 'hex');
+        const b = Buffer.from(expectedHash, 'hex');
+        if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+          codeValid = true;
+          usedMethod = 'email';
         }
       }
     }
@@ -5317,14 +5416,6 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired verification session.');
     }
     const user = ticket.user;
-    if (user.role === 'platform_super_admin' || user.role === 'tenant_admin') {
-      throw new ForbiddenException('Administrators must use an authenticator app (TOTP) for 2-step verification.');
-    }
-    if (user.twoFactor && user.twoFactor.method !== 'email') {
-      throw new ForbiddenException(
-        'Email verification codes are only available for accounts configured with email 2-step verification. Authenticator app users must use their app or a backup code.',
-      );
-    }
     if (!user.email) {
       throw new BadRequestException('No email address associated with this account.');
     }
@@ -5394,7 +5485,7 @@ export class AuthService {
     const requestTime = new Date().toUTCString();
     const browserLabel = parseDeviceLabel(userAgent);
     const appName = getProductName();
-    const outboxSubject = `${code} is your ${appName} 2-step verification code`;
+    const outboxSubject = `${code} is your ${appName} verification code`;
     const outboxText = `Hello,\n\nYour 2-step verification code is: ${code}\n\nThis code expires in 5 minutes.\n\nRequest details:\n- Time: ${requestTime}\n- Browser: ${browserLabel}\n- IP: ${clientIp || 'Unknown'}\n\nNever share this code with anyone.`;
     const outboxHtml = `<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
       <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">2-Step Verification Code</h2>
@@ -5412,6 +5503,7 @@ export class AuthService {
         text: outboxText,
         html: outboxHtml,
         status: 'pending',
+        maxAttempts: 8,
         isDecoy: false,
         tenantId: user.tenantId || null,
       },

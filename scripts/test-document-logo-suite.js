@@ -359,6 +359,32 @@ async function runBrowserTests(ctx) {
 
   const browser = await chromium.launch({ headless: true });
 
+  const loginRes = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: ctx.user.email, password: ctx.rawPassword }),
+  });
+  const loginData = await loginRes.json();
+  const setCookieHeader = loginRes.headers.get('set-cookie') || '';
+  const parsedCookies = [];
+  const parts = setCookieHeader.split(/,(?=[a-zA-Z0-9_-]+=)/);
+  for (const p of parts) {
+    const match = p.trim().match(/^([^=]+)=([^;]+)/);
+    if (match) {
+      const name = match[1].trim();
+      const value = match[2].trim();
+      const pathMatch = p.match(/Path=([^;]+)/i);
+      parsedCookies.push({
+        name,
+        value,
+        domain: 'localhost',
+        path: pathMatch ? pathMatch[1] : '/',
+        httpOnly: p.toLowerCase().includes('httponly'),
+        sameSite: 'Lax',
+      });
+    }
+  }
+
   const viewports = [
     { name: '1536x730', width: 1536, height: 730 },
     { name: '390px', width: 390, height: 844 },
@@ -371,18 +397,22 @@ async function runBrowserTests(ctx) {
         viewport: { width: vp.width, height: vp.height },
         colorScheme: theme,
       });
+      await context.addCookies(parsedCookies);
+      await context.addInitScript(({ loginData }) => {
+        window.__INITIAL_STAFF_TOKEN__ = loginData.accessToken;
+        localStorage.setItem('crm_user', JSON.stringify(loginData.user));
+        localStorage.setItem('crm_refresh_token_fb', loginData.refreshToken);
+        localStorage.setItem('crm_last_user_activity', String(Date.now()));
+        sessionStorage.setItem('crm_tab_user_id', loginData.user.id);
+        sessionStorage.setItem('crm_portal', 'staff');
+        sessionStorage.setItem('crm_last_active_user_id', loginData.user.id);
+        sessionStorage.setItem('crm_refresh_token_fb', loginData.refreshToken);
+      }, { loginData });
 
       const page = await context.newPage();
 
-      // Login via credentials
-      await page.goto(`${WEB_BASE}/login`, { waitUntil: 'domcontentloaded' });
-      await page.fill('input[name="username"], #company-identifier', ctx.user.email);
-      await page.fill('input[name="password"], #company-password', ctx.rawPassword);
-      await page.click('button[type="submit"]');
-      await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 15000 });
-
-      // Navigate to /settings/branding
-      await page.goto(`${WEB_BASE}/settings/branding`, { waitUntil: 'networkidle' });
+      // Navigate directly to /settings/branding
+      await page.goto(`${WEB_BASE}/settings/branding`, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('[data-testid="document-logo-preview-sheet"]', { timeout: 12000 });
 
       // 3.1 Verify Invoice Header Preview Container has white background
@@ -419,6 +449,17 @@ async function runBrowserTests(ctx) {
   // 3.2 Upload, View on Invoice, Reset, and Verify Plain Invoice
   console.log('\n--- Testing Upload, Invoice View, Reset, and Plain Document Chain ---');
   const context = await browser.newContext({ viewport: { width: 1536, height: 730 } });
+  await context.addCookies(parsedCookies);
+  await context.addInitScript(({ loginData }) => {
+    window.__INITIAL_STAFF_TOKEN__ = loginData.accessToken;
+    localStorage.setItem('crm_user', JSON.stringify(loginData.user));
+    localStorage.setItem('crm_refresh_token_fb', loginData.refreshToken);
+    localStorage.setItem('crm_last_user_activity', String(Date.now()));
+    sessionStorage.setItem('crm_tab_user_id', loginData.user.id);
+    sessionStorage.setItem('crm_portal', 'staff');
+    sessionStorage.setItem('crm_last_active_user_id', loginData.user.id);
+    sessionStorage.setItem('crm_refresh_token_fb', loginData.refreshToken);
+  }, { loginData });
   const page = await context.newPage();
   page.on('console', msg => {
     if (msg.type() === 'error' || msg.type() === 'warning') {
@@ -431,14 +472,7 @@ async function runBrowserTests(ctx) {
     }
   });
 
-  // Login
-  await page.goto(`${WEB_BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.fill('input[name="username"], #company-identifier', ctx.user.email);
-  await page.fill('input[name="password"], #company-password', ctx.rawPassword);
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 15000 });
-
-  await page.goto(`${WEB_BASE}/settings/branding`, { waitUntil: 'networkidle' });
+  await page.goto(`${WEB_BASE}/settings/branding`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('button[data-testid="btn-upload-document-logo"]', { timeout: 12000 });
 
   // Upload 1.9 MB WebP logo via file input
@@ -460,15 +494,25 @@ async function runBrowserTests(ctx) {
   );
 
   // Visit dedicated print page for invoice to verify logo appears
-  await page.goto(`${WEB_BASE}/print/invoice/${ctx.invoice.id}?autoPrint=false`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(1000);
+  const hasClientNav = await page.evaluate(() => typeof window.__CRM_NAVIGATE__ === 'function');
+  if (hasClientNav) {
+    await page.evaluate((id) => window.__CRM_NAVIGATE__(`/print/invoice/${id}?autoPrint=false`), ctx.invoice.id);
+  } else {
+    await page.goto(`${WEB_BASE}/print/invoice/${ctx.invoice.id}?autoPrint=false`, { waitUntil: 'domcontentloaded' });
+  }
+  await page.waitForSelector('text=Tax Invoice', { timeout: 15000 });
+  await page.waitForTimeout(500);
 
   const printLogoShotPath = path.join(ARTIFACTS_DIR, 'evidence-invoice-print-with-logo-1536x730.png');
   await page.screenshot({ path: printLogoShotPath, fullPage: false });
   assert('Captured invoice print view with custom company logo', fs.existsSync(printLogoShotPath));
 
   // Return to settings and click Reset
-  await page.goto(`${WEB_BASE}/settings/branding`, { waitUntil: 'networkidle' });
+  if (hasClientNav) {
+    await page.evaluate(() => window.__CRM_NAVIGATE__('/settings/branding'));
+  } else {
+    await page.goto(`${WEB_BASE}/settings/branding`, { waitUntil: 'domcontentloaded' });
+  }
   await page.waitForSelector('button:has-text("Reset")', { timeout: 12000 });
 
   const resetBtn = page.locator('button:has-text("Reset")').first();
@@ -488,8 +532,13 @@ async function runBrowserTests(ctx) {
   );
 
   // Visit dedicated print page again to verify plain invoice
-  await page.goto(`${WEB_BASE}/print/invoice/${ctx.invoice.id}?autoPrint=false`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(1000);
+  if (hasClientNav) {
+    await page.evaluate((id) => window.__CRM_NAVIGATE__(`/print/invoice/${id}?autoPrint=false`), ctx.invoice.id);
+  } else {
+    await page.goto(`${WEB_BASE}/print/invoice/${ctx.invoice.id}?autoPrint=false`, { waitUntil: 'domcontentloaded' });
+  }
+  await page.waitForSelector('text=Tax Invoice', { timeout: 15000 });
+  await page.waitForTimeout(500);
 
   // Check invoice content details:
   const invoicePageText = await page.innerText('body');

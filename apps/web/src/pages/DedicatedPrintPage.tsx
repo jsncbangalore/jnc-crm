@@ -8,7 +8,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Printer, Download, X, AlertTriangle, RefreshCw, FileText, Mail, CheckCircle2, Send } from 'lucide-react';
-import { invoicesApi, quotationsApi, ledgerApi, inventoryApi, brandingApi, paymentsApi } from '../services/api';
+import { invoicesApi, quotationsApi, ledgerApi, inventoryApi, brandingApi, paymentsApi, resolveFileUrl } from '../services/api';
 import { useAllowedPages } from '../hooks/useAllowedPages';
 import { BRAND_CONFIG } from '../config/brand';
 import InvoiceDocumentTemplate, { numberToIndianWords } from '../components/invoices/InvoiceDocumentTemplate';
@@ -18,7 +18,7 @@ import { DocumentType } from '../types';
 const isValidDocLogo = (url?: string | null): boolean => {
   if (!url || typeof url !== 'string' || url.trim() === '') return false;
   const lower = url.trim().toLowerCase();
-  return lower !== '/logo.png' && lower !== 'logo.png' && !lower.endsWith('/logo.png');
+  return lower !== '/logo.png' && lower !== 'logo.png' && !lower.endsWith('/logo.png') && !lower.includes('default-logo');
 };
 
 export default function DedicatedPrintPage() {
@@ -268,13 +268,13 @@ export default function DedicatedPrintPage() {
             <p className="text-xs text-slate-500 mt-1">{error || 'Could not load requested document.'}</p>
           </div>
           <div className="pt-2 flex justify-center gap-3">
-            <button
+            <button type="button"
               onClick={() => window.location.reload()}
               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition"
             >
               Retry
             </button>
-            <button
+            <button type="button"
               onClick={() => window.close()}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition"
             >
@@ -325,7 +325,7 @@ export default function DedicatedPrintPage() {
         <div className="flex items-center gap-2.5 flex-wrap">
           {/* Send Receipt by Email */}
           {isReceipt && (
-            <button
+            <button type="button"
               onClick={() => {
                 setRecipientEmail(docData?.receipt?.party?.email || '');
                 setShowEmailModal(true);
@@ -371,7 +371,7 @@ export default function DedicatedPrintPage() {
           </div>
 
           {/* Print Button */}
-          <button
+          <button type="button"
             onClick={() => window.print()}
             className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition active:scale-95"
             title="Open browser print dialog"
@@ -381,7 +381,7 @@ export default function DedicatedPrintPage() {
           </button>
 
           {/* Download PDF Button */}
-          <button
+          <button type="button"
             onClick={handleDownloadPdf}
             disabled={downloading}
             className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 transition disabled:opacity-50"
@@ -392,7 +392,7 @@ export default function DedicatedPrintPage() {
           </button>
 
           {/* Close Window */}
-          <button
+          <button type="button"
             onClick={() => window.close()}
             className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 transition"
             title="Close this window"
@@ -430,16 +430,16 @@ export default function DedicatedPrintPage() {
             >
               <div className="border-b-2 border-black pb-3 mb-4 flex justify-between items-start">
                 <div>
-                  {isValidDocLogo(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) ? (
+                  {isValidDocLogo(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) && resolveFileUrl(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) ? (
                     <img
-                      src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl}
+                      src={resolveFileUrl(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl)}
                       alt="Company Logo"
                       className="max-h-10 max-w-[160px] object-contain mb-2 inline-block"
                     />
                   ) : (
-                    <div className="mb-2 print:hidden" data-testid="logo-not-added-badge">
-                      <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                        Upload your company logo in Settings &gt; Branding
+                    <div className="mb-2">
+                      <span className="font-bold text-sm tracking-wide text-black uppercase">
+                        {brandingProfile?.companyName || BRAND_CONFIG.displayName}
                       </span>
                     </div>
                   )}
@@ -558,16 +558,16 @@ export default function DedicatedPrintPage() {
             >
               <div className="border-b-2 border-black pb-3 mb-4 flex justify-between items-start">
                 <div>
-                  {isValidDocLogo(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) ? (
+                  {isValidDocLogo(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) && resolveFileUrl(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl) ? (
                     <img
-                      src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl}
+                      src={resolveFileUrl(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl)}
                       alt="Company Logo"
                       className="max-h-10 max-w-[160px] object-contain mb-2 inline-block"
                     />
                   ) : (
-                    <div className="mb-2 print:hidden" data-testid="logo-not-added-badge">
-                      <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                        Upload your company logo in Settings &gt; Branding
+                    <div className="mb-2">
+                      <span className="font-bold text-sm tracking-wide text-black uppercase">
+                        {brandingProfile?.companyName || BRAND_CONFIG.displayName}
                       </span>
                     </div>
                   )}
@@ -750,19 +750,13 @@ export default function DedicatedPrintPage() {
               {/* Header with Company Logo & Details */}
               <div className="border-b-2 border-black pb-3 mb-4 flex justify-between items-start">
                 <div>
-                  {isValidDocLogo(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl) ? (
+                  {isValidDocLogo(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl) && resolveFileUrl(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl) ? (
                     <img
-                      src={brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl}
+                      src={resolveFileUrl(brandingProfile?.documentLogoUrl || brandingProfile?.logoUrl || docData.company?.logoUrl)}
                       alt="Company Logo"
                       className="max-h-12 max-w-[180px] object-contain mb-2 inline-block"
                     />
-                  ) : (
-                    <div className="mb-2 print:hidden" data-testid="logo-not-added-badge">
-                      <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                        Upload your company logo in Settings &gt; Branding
-                      </span>
-                    </div>
-                  )}
+                  ) : null}
                   <h2 className="text-base font-black uppercase text-black">
                     {brandingProfile?.companyName || docData.company?.legalName || docData.company?.name || BRAND_CONFIG.displayName}
                   </h2>
@@ -916,7 +910,7 @@ export default function DedicatedPrintPage() {
                 <Mail className="w-4 h-4 text-indigo-400" />
                 Send Receipt Voucher
               </h3>
-              <button onClick={() => setShowEmailModal(false)} className="text-slate-400 hover:text-white">
+              <button type="button" onClick={() => setShowEmailModal(false)} className="text-slate-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -928,7 +922,7 @@ export default function DedicatedPrintPage() {
                   value={recipientEmail}
                   onChange={(e) => setRecipientEmail(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono"
-                  placeholder="client@example.com"
+                  placeholder="client@company.com"
                 />
               </div>
               <p className="text-[11px] text-slate-400">
@@ -941,13 +935,13 @@ export default function DedicatedPrintPage() {
                 </div>
               )}
               <div className="flex justify-end gap-2 pt-2">
-                <button
+                <button type="button"
                   onClick={() => setShowEmailModal(false)}
                   className="px-3 py-1.5 text-xs text-slate-300 hover:text-white"
                 >
                   Cancel
                 </button>
-                <button
+                <button type="button"
                   onClick={handleSendReceiptEmail}
                   disabled={emailing || !recipientEmail.trim()}
                   className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"

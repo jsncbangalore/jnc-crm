@@ -369,7 +369,7 @@ export default function CreateOrderModal({
               }
             }}
             error={errors.customerEmail}
-            placeholder="client@example.com"
+            placeholder="client@company.com"
             maxLength={254}
           />
 

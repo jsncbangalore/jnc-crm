@@ -296,7 +296,7 @@ export default function CustomersPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={() => loadCustomers()}
             disabled={loading}
             className="btn bg-white dark:bg-[#141722] hover:bg-slate-100 dark:hover:bg-[#202534] border border-slate-300 dark:border-[#2A3042] text-xs font-bold gap-1.5 py-2 px-3 shadow-sm"
@@ -306,7 +306,7 @@ export default function CustomersPage() {
             <span className="hidden sm:inline">Refresh</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={() => handleOpenRegister()}
             className="btn bg-crm-blue hover:bg-crm-blue-hover text-white text-xs font-bold gap-1.5 py-2 px-3.5 shadow-glow-blue"
           >
@@ -333,7 +333,7 @@ export default function CustomersPage() {
             </div>
           </div>
 
-          <button
+          <button type="button"
             onClick={() => setShowDuplicatesOnly((prev) => !prev)}
             className={`btn text-xs font-bold px-3 py-1.5 rounded-lg border whitespace-nowrap ${
               showDuplicatesOnly
@@ -359,7 +359,7 @@ export default function CustomersPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
           {search && (
-            <button
+            <button type="button"
               onClick={() => setSearch('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
             >
@@ -376,7 +376,7 @@ export default function CustomersPage() {
             { id: 'unregistered', label: 'Unregistered' },
             { id: 'archived', label: 'Archived' },
           ].map((tab) => (
-            <button
+            <button type="button"
               key={tab.id}
               onClick={() => {
                 setFilterType(tab.id as any);
@@ -522,7 +522,7 @@ export default function CustomersPage() {
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         {!c.isRegistered && (
-                          <button
+                          <button type="button"
                             onClick={() => handleOpenRegister(c)}
                             className="btn bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] py-1 px-2.5 rounded-lg shadow-sm"
                             title="Register account and link all invoices"
@@ -532,7 +532,7 @@ export default function CustomersPage() {
                         )}
 
                         {c.isRegistered && !c.isArchived && (
-                          <button
+                          <button type="button"
                             onClick={() => handleOpenMerge(c)}
                             className="btn bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40 font-bold text-[11px] py-1 px-2.5 rounded-lg"
                             title="Merge duplicates into another customer"
@@ -542,7 +542,7 @@ export default function CustomersPage() {
                         )}
 
                         {c.isArchived ? (
-                          <button
+                          <button type="button"
                             onClick={() => handleUnarchive(c)}
                             className="btn bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[11px] py-1 px-2.5 rounded-lg"
                             title="Restore customer account"
@@ -550,7 +550,7 @@ export default function CustomersPage() {
                             <RotateCcw size={12} className="inline mr-1" /> Restore
                           </button>
                         ) : (
-                          <button
+                          <button type="button"
                             onClick={() => handleArchive(c)}
                             className="btn bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/60 dark:hover:bg-slate-700/60 text-slate-600 dark:text-slate-400 font-bold text-[11px] py-1 px-2 rounded-lg"
                             title="Archive customer (hides from pickers, never deletes historical documents)"
@@ -590,7 +590,7 @@ export default function CustomersPage() {
                   </p>
                 </div>
               </div>
-              <button
+              <button type="button"
                 onClick={() => setShowRegisterModal(false)}
                 className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-700"
               >
@@ -650,7 +650,7 @@ export default function CustomersPage() {
                   className="input text-xs w-full py-1.5"
                   value={registerForm.email}
                   onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
-                  placeholder="accounts@example.com"
+                  placeholder="accounts@company.com"
                 />
               </div>
 
@@ -731,7 +731,7 @@ export default function CustomersPage() {
                   </p>
                 </div>
               </div>
-              <button
+              <button type="button"
                 onClick={() => setShowMergeModal(false)}
                 className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-700"
               >

@@ -154,7 +154,7 @@ export const RestockComponentModal: React.FC<RestockComponentModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <button
+              <button type="button"
                 onClick={onClose}
                 className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white transition-colors"
                 title="Close"

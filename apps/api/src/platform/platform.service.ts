@@ -23,6 +23,7 @@ import * as path from 'path';
 import { ResetTenantAdminPasswordDto, PermanentDeleteTenantDto } from './dto/platform-admin.dto';
 import { validatePasswordPolicy } from '../common/password-policy';
 import { PRODUCT_NAME, BRAND } from '../common/brand';
+import { PlatformAuditService } from './platform-audit.service';
 
 export interface CreateTenantDto {
   code: string;            // e.g. "VERTEX", "ACME"
@@ -67,6 +68,7 @@ export class PlatformService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private notificationsService: NotificationsService,
+    private auditService: PlatformAuditService,
   ) {}
 
   /**
@@ -153,11 +155,12 @@ export class PlatformService {
   /**
    * Provision a new Tenant Company + Primary Tenant Admin Account and dispatch credentials email
    */
-  async createTenant(dto: CreateTenantDto) {
+  async createTenant(dto: CreateTenantDto, actor?: any, ipAddress?: string) {
     const cleanCode = dto.code.trim().toUpperCase();
     const cleanSlug = (dto.slug || cleanCode.toLowerCase()).trim().replace(/[^a-z0-9-]/gi, '-');
 
-    // 1. Check uniqueness
+    try {
+      // 1. Check uniqueness
     const existing = await this.prisma.tenant.findFirst({
       where: {
         OR: [{ code: cleanCode }, { slug: cleanSlug }],
@@ -240,6 +243,28 @@ export class PlatformService {
           city: dto.city || '',
           isActive: true,
         },
+      });
+
+      await this.auditService.recordLog(tx, {
+        actor,
+        action: 'CREATE_TENANT',
+        targetType: 'Tenant',
+        targetId: tenant.id,
+        targetTenantId: tenant.id,
+        targetTenantCode: tenant.code,
+        summary: `Created client company ${tenant.name} (${tenant.code}) with plan ${tenant.planTier} and ${tenant.maxUsers} max users`,
+        details: {
+          code: tenant.code,
+          name: tenant.name,
+          planTier: tenant.planTier,
+          maxUsers: tenant.maxUsers,
+          adminEmail: adminEmail,
+          adminName: dto.adminName,
+          city: dto.city,
+          state: dto.state,
+        },
+        outcome: 'success',
+        ipAddress,
       });
 
       return { tenant, adminUser };
@@ -385,7 +410,20 @@ export class PlatformService {
         tempPassword,
       },
     };
+  } catch (err: any) {
+    await this.auditService.recordLog(null, {
+      actor,
+      action: 'CREATE_TENANT',
+      targetType: 'Tenant',
+      targetTenantCode: cleanCode,
+      summary: `Failed to provision company ${dto.name || cleanCode} (${cleanCode}): ${err.message}`,
+      details: { code: cleanCode, error: err.message },
+      outcome: 'failed',
+      ipAddress,
+    }).catch(() => {});
+    throw err;
   }
+}
 
   /**
    * Update Tenant configuration or status (suspend / activate)
@@ -471,6 +509,50 @@ export class PlatformService {
       }
     }
 
+    let action = 'UPDATE_TENANT';
+    let summary = `Updated company settings for ${updated.name} (${tenant.code})`;
+
+    if (dto.status === 'suspended') {
+      action = 'SUSPEND_TENANT';
+      summary = `Suspended company workspace for ${updated.name} (${tenant.code})`;
+    } else if (dto.status === 'active' && tenant.status !== 'active') {
+      action = 'ACTIVATE_TENANT';
+      summary = `Reactivated company workspace for ${updated.name} (${tenant.code})`;
+    } else if (dto.planTier && dto.planTier !== tenant.planTier) {
+      action = 'CHANGE_PLAN';
+      summary = `Changed plan tier for ${updated.name} (${tenant.code}) from ${tenant.planTier} to ${dto.planTier}`;
+    } else if (dto.maxUsers !== undefined && Number(dto.maxUsers) !== tenant.maxUsers) {
+      action = 'CHANGE_SEAT_LIMIT';
+      summary = `Changed user seat limit for ${updated.name} (${tenant.code}) from ${tenant.maxUsers} to ${dto.maxUsers}`;
+    }
+
+    try {
+      await this.auditService.recordLog(this.prisma, {
+        actor,
+        action,
+        targetType: 'Tenant',
+        targetId: id,
+        targetTenantId: id,
+        targetTenantCode: tenant.code,
+        summary,
+        details: {
+          changedFields: Object.keys(dto),
+          previous: {
+            status: tenant.status,
+            planTier: tenant.planTier,
+            maxUsers: tenant.maxUsers,
+          },
+          updated: {
+            status: updated.status,
+            planTier: updated.planTier,
+            maxUsers: updated.maxUsers,
+          },
+        },
+        outcome: 'success',
+        ipAddress,
+      });
+    } catch {}
+
     try {
       await this.prisma.auditLog.create({
         data: {
@@ -503,6 +585,21 @@ export class PlatformService {
       where: { id },
       data: { deletedAt: new Date(), status: 'suspended' },
     });
+
+    try {
+      await this.auditService.recordLog(this.prisma, {
+        actor,
+        action: 'DELETE_TENANT',
+        targetType: 'Tenant',
+        targetId: id,
+        targetTenantId: id,
+        targetTenantCode: tenant.code,
+        summary: `Deactivated company workspace for ${tenant.name} (${tenant.code})`,
+        details: { tenantId: id, status: 'suspended' },
+        outcome: 'success',
+        ipAddress,
+      });
+    } catch {}
 
     try {
       await this.prisma.auditLog.create({
@@ -721,6 +818,28 @@ export class PlatformService {
     }
 
     // 4. Write ONE surviving audit record that does NOT depend on a tenantId foreign key
+    try {
+      await this.auditService.recordLog(this.prisma, {
+        actor,
+        action: 'PERMANENT_DELETE_TENANT',
+        targetType: 'Tenant',
+        targetId: id,
+        targetTenantId: id,
+        targetTenantCode: tenant.code,
+        summary: `Permanently deleted client company ${tenant.name} (${tenant.code}) and all associated records`,
+        details: {
+          tenantId: id,
+          tenantCode: tenant.code,
+          tenantName: tenant.name,
+          rowStats,
+        },
+        outcome: 'success',
+        ipAddress,
+      });
+    } catch (auditErr: any) {
+      this.logger.error('Failed to record permanent delete to PlatformAuditLog', auditErr);
+    }
+
     const internalTenant = await this.prisma.tenant.findFirst({
       where: {
         OR: [
@@ -839,6 +958,25 @@ export class PlatformService {
 
     // Write audit log entry for impersonation
     try {
+      await this.auditService.recordLog(this.prisma, {
+        actor,
+        action: 'IMPERSONATION_START',
+        targetType: 'Tenant',
+        targetId: tenant.id,
+        targetTenantId: tenant.id,
+        targetTenantCode: tenant.code,
+        summary: `Started impersonation session for company ${tenant.name} (${tenant.code}) as user ${targetUser.name}`,
+        details: {
+          impersonatedUserId: targetUser.id,
+          impersonatedUserEmail: targetUser.email,
+          impersonatedRole: targetUser.role,
+        },
+        outcome: 'success',
+        ipAddress,
+      });
+    } catch {}
+
+    try {
       await this.prisma.auditLog.create({
         data: {
           tenantId: tenant.id,
@@ -891,6 +1029,45 @@ export class PlatformService {
         },
       },
     };
+  }
+
+  /**
+   * Log impersonation end / exit
+   */
+  async exitImpersonation(id: string, actor?: any, ipAddress?: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id } });
+    const code = tenant?.code || id;
+    const name = tenant?.name || id;
+
+    await this.auditService.recordLog(this.prisma, {
+      actor,
+      action: 'IMPERSONATION_END',
+      targetType: 'Tenant',
+      targetId: id,
+      targetTenantId: id,
+      targetTenantCode: tenant?.code,
+      summary: `Exited impersonation session for company ${name} (${code})`,
+      details: { tenantId: id, tenantCode: code },
+      outcome: 'success',
+      ipAddress,
+    });
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: id,
+          actorId: actor?.sub || actor?.id || 'platform-admin',
+          actorName: actor?.name || 'Platform Administrator',
+          action: 'IMPERSONATION_END',
+          entityName: 'Tenant',
+          entityId: id,
+          afterState: JSON.stringify({ tenantCode: code, tenantName: name }),
+          ipAddress: ipAddress || '127.0.0.1',
+        },
+      });
+    } catch {}
+
+    return { message: 'Exited impersonation successfully' };
   }
 
   /**
@@ -1135,6 +1312,26 @@ export class PlatformService {
     }
 
     try {
+      await this.auditService.recordLog(this.prisma, {
+        actor,
+        action: 'RESET_TENANT_ADMIN_PASSWORD',
+        targetType: 'User',
+        targetId: adminUser.id,
+        targetTenantId: tenant.id,
+        targetTenantCode: tenant.code,
+        summary: `Reset tenant administrator password for ${adminUser.name} (${tenant.code})`,
+        details: {
+          adminUserId: adminUser.id,
+          adminEmail: adminUser.email,
+          mustResetPassword: mustReset,
+          sendEmail: dto?.sendEmail !== false,
+        },
+        outcome: 'success',
+        ipAddress,
+      });
+    } catch {}
+
+    try {
       await this.prisma.auditLog.create({
         data: {
           tenantId: tenant.id,
@@ -1318,6 +1515,25 @@ export class PlatformService {
     }
 
     try {
+      await this.auditService.recordLog(this.prisma, {
+        actor,
+        action: 'CREATE_PLATFORM_ADMIN',
+        targetType: 'PlatformAdmin',
+        targetId: newUser.id,
+        summary: `Created platform administrator account for ${newUser.name} (${newUser.employeeCode})`,
+        details: {
+          newAdminId: newUser.id,
+          employeeCode: newUser.employeeCode,
+          name: newUser.name,
+          email: cleanEmail,
+          role: newUserRole,
+        },
+        outcome: 'success',
+        ipAddress,
+      });
+    } catch {}
+
+    try {
       await this.prisma.auditLog.create({
         data: {
           tenantId: 'default-tenant-id',
@@ -1386,6 +1602,19 @@ export class PlatformService {
     });
 
     try {
+      await this.auditService.recordLog(this.prisma, {
+        actor,
+        action: 'TOGGLE_PLATFORM_ADMIN_ACTIVE',
+        targetType: 'PlatformAdmin',
+        targetId: id,
+        summary: `${nextState ? 'Activated' : 'Deactivated'} platform administrator ${target.name} (${target.employeeCode})`,
+        details: { adminId: id, isActive: nextState, previousState: target.isActive },
+        outcome: 'success',
+        ipAddress,
+      });
+    } catch {}
+
+    try {
       await this.prisma.auditLog.create({
         data: {
           tenantId: 'default-tenant-id',
@@ -1409,7 +1638,7 @@ export class PlatformService {
   /**
    * Reset credentials for a platform administrator
    */
-  async resetPlatformAdminUserPassword(id: string) {
+  async resetPlatformAdminUserPassword(id: string, actor?: any, ipAddress?: string) {
     const target = await this.prisma.user.findFirst({
       where: { id, role: 'platform_super_admin', tenantId: null },
     });
@@ -1502,6 +1731,19 @@ export class PlatformService {
       emailStatusMessage = `Password reset, but email delivery failed: ${err.message}`;
     }
 
+    try {
+      await this.auditService.recordLog(this.prisma, {
+        actor,
+        action: 'RESET_PLATFORM_ADMIN_PASSWORD',
+        targetType: 'PlatformAdmin',
+        targetId: id,
+        summary: `Reset platform administrator password for ${target.name} (${target.employeeCode})`,
+        details: { adminId: id, email: target.email, employeeCode: target.employeeCode },
+        outcome: 'success',
+        ipAddress,
+      });
+    } catch {}
+
     return {
       message: emailDispatched
         ? `Password for platform administrator ${target.name} has been reset and emailed to ${target.email}.`
@@ -1540,6 +1782,19 @@ export class PlatformService {
         data: { deletedAt: new Date(), isActive: false },
       });
     });
+
+    try {
+      await this.auditService.recordLog(this.prisma, {
+        actor,
+        action: 'DELETE_PLATFORM_ADMIN',
+        targetType: 'PlatformAdmin',
+        targetId: id,
+        summary: `Deleted platform administrator account for ${target.name} (${target.employeeCode})`,
+        details: { adminId: id, email: target.email, employeeCode: target.employeeCode },
+        outcome: 'success',
+        ipAddress,
+      });
+    } catch {}
 
     try {
       await this.prisma.auditLog.create({
@@ -1589,6 +1844,8 @@ export class PlatformService {
   async addTenantUser(
     tenantId: string,
     dto: { name: string; email: string; phone?: string; role?: string; employeeCode?: string; password?: string },
+    actor?: any,
+    ipAddress?: string,
   ) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Client company workspace not found');
@@ -1652,6 +1909,27 @@ export class PlatformService {
       },
     });
 
+    try {
+      await this.auditService.recordLog(this.prisma, {
+        actor,
+        action: 'CREATE_TENANT_USER',
+        targetType: 'User',
+        targetId: newUser.id,
+        targetTenantId: tenantId,
+        targetTenantCode: tenant.code,
+        summary: `Created user ${newUser.name} with role ${newUser.role} in ${tenant.name} (${tenant.code})`,
+        details: {
+          userId: newUser.id,
+          name: newUser.name,
+          email: cleanEmail,
+          role: newUser.role,
+          employeeCode: newUser.employeeCode,
+        },
+        outcome: 'success',
+        ipAddress,
+      });
+    } catch {}
+
     return {
       message: `User ${newUser.name} added to ${tenant.name} successfully`,
       user: newUser,
@@ -1662,7 +1940,8 @@ export class PlatformService {
   /**
    * Remove/delete a user/employee from a client company workspace
    */
-  async deleteTenantUser(tenantId: string, userId: string) {
+  async deleteTenantUser(tenantId: string, userId: string, actor?: any, ipAddress?: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
     const user = await this.prisma.user.findFirst({
       where: { id: userId, tenantId, deletedAt: null },
     });
@@ -1674,6 +1953,26 @@ export class PlatformService {
         data: { deletedAt: new Date(), isActive: false },
       });
     });
+
+    try {
+      await this.auditService.recordLog(this.prisma, {
+        actor,
+        action: 'DELETE_TENANT_USER',
+        targetType: 'User',
+        targetId: userId,
+        targetTenantId: tenantId,
+        targetTenantCode: tenant?.code,
+        summary: `Removed company user ${user.name} (${user.email}) from ${tenant?.code || tenantId}`,
+        details: {
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
+        outcome: 'success',
+        ipAddress,
+      });
+    } catch {}
 
     return { message: `User ${user.name} removed from company successfully.` };
   }

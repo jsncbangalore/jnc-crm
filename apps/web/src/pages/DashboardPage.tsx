@@ -461,7 +461,9 @@ export default function DashboardPage() {
             </div>
             <div className="flex items-center justify-between mt-0.5">
               <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                {formatIndianRupeesFull(kpisData?.invoices?.unpaidAmount || 0)}
+                {(kpisData?.invoices?.overdueAmount || 0) > 0
+                  ? `of which overdue: ${formatIndianRupeesFull(kpisData?.invoices?.overdueAmount || 0)}`
+                  : formatIndianRupeesFull(kpisData?.invoices?.unpaidAmount || 0)}
               </p>
               <ArrowUpRight size={13} className="text-emerald-600 dark:text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
@@ -517,7 +519,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex items-center justify-between mt-0.5">
               <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                {recentOrdersList.length} recent orders
+                {followUpsDueList.length === 1 ? '1 follow-up due' : `${followUpsDueList.length} follow-ups due`}
               </p>
               <ArrowUpRight size={13} className="text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>

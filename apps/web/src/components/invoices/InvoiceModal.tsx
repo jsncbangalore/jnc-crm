@@ -363,7 +363,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 { id: 'credit_note', label: 'Credit Note' },
                 { id: 'purchase_order', label: 'Purchase Order' },
               ].map((t) => (
-                <button
+                <button type="button"
                   key={t.id}
                   onClick={() => setActiveTemplate(t.id as DocumentType)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
@@ -379,7 +379,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
 
             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap">
               {/* Print */}
-              <button
+              <button type="button"
                 onClick={handlePrint}
                 disabled={isPrinting}
                 className="btn bg-white dark:bg-white/10 hover:bg-slate-100 dark:hover:bg-white/20 text-slate-800 dark:text-white border border-slate-300 dark:border-transparent text-xs gap-1.5 py-1.5 font-bold shadow-sm whitespace-nowrap"
@@ -389,7 +389,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
               </button>
 
               {/* Download PDF */}
-              <button
+              <button type="button"
                 onClick={handleDownloadPdf}
                 disabled={downloadingPdf}
                 className="btn bg-teal-50 hover:bg-teal-100 dark:bg-crm-teal/20 dark:hover:bg-crm-teal/30 text-teal-800 dark:text-crm-teal border border-teal-300 dark:border-crm-teal/40 text-xs gap-1.5 py-1.5 font-bold shadow-sm whitespace-nowrap"
@@ -400,7 +400,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
 
               {/* Mark as fully paid */}
               {!invoice.isVoided && invoice.paymentStatus !== 'paid' && ((invoice.balanceDue ?? invoice.totalAmount) > 0.01) && (
-                <button
+                <button type="button"
                   onClick={() => setShowPaymentModal(true)}
                   className="btn bg-green-600 hover:bg-green-700 text-white text-xs gap-1.5 py-1.5 shadow-sm font-bold whitespace-nowrap"
                   title="Open receipt with exact balance pre-filled to mark fully paid"
@@ -411,7 +411,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
 
               {/* Record Payment */}
               {!invoice.isVoided && (
-                <button
+                <button type="button"
                   onClick={() => setShowPaymentModal(true)}
                   className="btn bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/40 text-xs gap-1.5 py-1.5 shadow-sm font-bold whitespace-nowrap"
                   title="Record Advance Receipt or Final Balance Settlement (UTR/NEFT)"
@@ -536,7 +536,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                   onChange={(e) => setVoidReason(e.target.value)}
                 />
                 {hasAllocations ? (
-                  <button
+                  <button type="button"
                     onClick={() => handleVoid(true)}
                     disabled={voiding}
                     className="btn bg-rose-600 hover:bg-rose-700 text-white text-xs px-3.5 font-bold shadow-sm whitespace-nowrap"
@@ -544,7 +544,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                     {voiding ? 'Reversing & Voiding...' : 'Reverse payments and void'}
                   </button>
                 ) : (
-                  <button
+                  <button type="button"
                     onClick={() => handleVoid(false)}
                     disabled={voiding}
                     className="btn bg-red-600 hover:bg-red-700 text-white text-xs px-4 font-bold whitespace-nowrap"
@@ -552,7 +552,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                     {voiding ? 'Voiding...' : 'Confirm Void'}
                   </button>
                 )}
-                <button
+                <button type="button"
                   onClick={() => setShowVoidPrompt(false)}
                   className="btn-ghost text-xs text-slate-600 dark:text-slate-400 font-bold"
                 >
@@ -568,7 +568,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400 shrink-0" />
                 <span>{popupBlockedMsg}</span>
               </div>
-              <button
+              <button type="button"
                 onClick={handleDownloadPdf}
                 className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition shrink-0"
               >
@@ -583,7 +583,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
           <div className="p-3 sm:p-6 overflow-y-auto min-h-0 flex-1 bg-[#0B0D14] flex flex-col items-center print:bg-white print:p-0 print:m-0 print:overflow-visible relative">
             {/* Floating Zoom & Fit Toolbar */}
             <div className="sticky top-0 z-20 mb-3 flex items-center gap-1.5 bg-slate-900/90 text-white backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-700/60 shadow-xl print:hidden text-xs">
-              <button
+              <button type="button"
                 onClick={handleZoomOut}
                 disabled={zoom <= 0.5}
                 className="p-1 rounded-full hover:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent transition-all"
@@ -594,7 +594,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
               <span className="font-mono text-[11px] font-bold px-1.5 min-w-[42px] text-center text-slate-200">
                 {Math.round(zoom * 100)}%
               </span>
-              <button
+              <button type="button"
                 onClick={handleZoomIn}
                 disabled={zoom >= 1.5}
                 className="p-1 rounded-full hover:bg-white/20 text-slate-300 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent transition-all"
@@ -603,7 +603,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 <ZoomIn size={14} />
               </button>
               <div className="h-3.5 w-px bg-slate-700 mx-1" />
-              <button
+              <button type="button"
                 onClick={handleFitPage}
                 className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-all ${
                   zoom === 0.8 ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-300 hover:text-white hover:bg-white/10'
@@ -612,7 +612,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
               >
                 Fit Page
               </button>
-              <button
+              <button type="button"
                 onClick={handleResetZoom}
                 className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-all ${
                   zoom === 1 ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-300 hover:text-white hover:bg-white/10'
@@ -659,7 +659,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
             </span>
             <div className="flex items-center gap-3">
               <div className="flex items-center bg-slate-200/80 dark:bg-[#141722] rounded-lg p-0.5 border border-slate-300 dark:border-[#2A3042]">
-                <button
+                <button type="button"
                   onClick={handleZoomOut}
                   disabled={zoom <= 0.5}
                   className="p-1 rounded text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10 disabled:opacity-30 transition-all"
@@ -670,7 +670,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 <span className="text-[11px] font-mono font-bold px-2 text-slate-800 dark:text-slate-200 min-w-[38px] text-center">
                   {Math.round(zoom * 100)}%
                 </span>
-                <button
+                <button type="button"
                   onClick={handleZoomIn}
                   disabled={zoom >= 1.5}
                   className="p-1 rounded text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10 disabled:opacity-30 transition-all"
@@ -678,7 +678,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 >
                   <ZoomIn size={13} />
                 </button>
-                <button
+                <button type="button"
                   onClick={handleFitPage}
                   className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all ${
                     zoom === 0.8 ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -687,7 +687,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                 >
                   Fit Page
                 </button>
-                <button
+                <button type="button"
                   onClick={handleResetZoom}
                   className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all ${
                     zoom === 1 ? 'bg-crm-blue text-white shadow-sm' : 'text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -697,7 +697,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                   100%
                 </button>
               </div>
-              <button onClick={onClose} className="btn-ghost text-xs px-5">
+              <button type="button" onClick={onClose} className="btn-ghost text-xs px-5">
                 Close
               </button>
             </div>
@@ -720,7 +720,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                   <Mail size={18} className="text-crm-blue" />
                   <h3 className="text-sm font-bold text-slate-950 dark:text-white">Email Document to Customer</h3>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setShowEmailModal(false)}
                   className="p-1 rounded hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                 >
@@ -758,7 +758,7 @@ export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEdi
                     type="email"
                     required
                     className="input text-xs font-mono"
-                    placeholder="e.g. ap@example.com / billing@example.com"
+                    placeholder="e.g. ap@company.com / billing@company.com"
                     value={recipientEmail}
                     onChange={(e) => setRecipientEmail(e.target.value)}
                   />

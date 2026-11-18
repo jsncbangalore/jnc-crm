@@ -45,6 +45,7 @@ import {
   getClearSessionIndicatorCookieOptions,
   isSecureCookie,
 } from '../common/cookie.util';
+import { PlatformAuditService, maskEmail } from '../platform/platform-audit.service';
 
 function enforceCsrf(req: Request) {
   const xRequestedWith = req.headers['x-requested-with'];
@@ -64,7 +65,10 @@ function enforceCsrf(req: Request) {
 export class PlatformAuthController {
   private readonly logger = new Logger(PlatformAuthController.name);
 
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private auditService: PlatformAuditService,
+  ) {}
 
   /** Platform super-admin only — rate limit: 10 attempts / 15 min in production & staging (relaxed in dev/test) */
   @Throttle({ default: { limit: (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging') ? 10 : 100, ttl: 900000 } })
@@ -89,11 +93,45 @@ export class PlatformAuthController {
       }
       const code = result?.requires2FA ? 'REQUIRES_2FA' : 'LOGIN_SUCCESS';
       this.logger.log(`[AUTH] POST /platform-auth/login - status: 200, code: ${code}`);
+
+      await this.auditService.recordLog(null, {
+        actor: {
+          id: result?.user?.id,
+          name: result?.user?.name,
+          email: dto.email,
+          role: 'platform_super_admin',
+        },
+        action: 'PLATFORM_LOGIN_SUCCESS',
+        targetType: 'PlatformAuth',
+        targetId: result?.user?.id,
+        summary: `Platform super admin signed in successfully (${maskEmail(dto.email)})`,
+        details: { requires2FA: Boolean(result?.requires2FA) },
+        outcome: 'success',
+        ipAddress: ip,
+        userAgent,
+      }).catch(() => {});
+
       return result;
     } catch (err: any) {
       const status = err?.status || err?.getStatus?.() || 401;
       const reasonCode = err?.response?.code || err?.response?.message || err?.message || 'LOGIN_FAILED';
       this.logger.warn(`[AUTH] POST /platform-auth/login - status: ${status}, code: ${reasonCode}`);
+
+      await this.auditService.recordLog(null, {
+        actor: {
+          name: maskEmail(dto.email),
+          email: dto.email,
+          role: 'platform_super_admin',
+        },
+        action: 'PLATFORM_LOGIN_FAILED',
+        targetType: 'PlatformAuth',
+        summary: `Platform super admin sign in failed for ${maskEmail(dto.email)}`,
+        details: { reason: reasonCode, statusCode: status },
+        outcome: 'failed',
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers['user-agent'] as string | undefined,
+      }).catch(() => {});
+
       throw err;
     }
   }
@@ -124,6 +162,26 @@ export class PlatformAuthController {
       );
       delete result.trustedDeviceCookie;
     }
+
+    if (result && result.user) {
+      await this.auditService.recordLog(null, {
+        actor: {
+          id: result.user.id,
+          name: result.user.name,
+          email: result.user.email,
+          role: 'platform_super_admin',
+        },
+        action: 'PLATFORM_2FA_VERIFY',
+        targetType: 'PlatformAuth',
+        targetId: result.user.id,
+        summary: `Platform 2FA verification successful for ${result.user.name || 'admin'}`,
+        details: { method: 'totp' },
+        outcome: 'success',
+        ipAddress: ip,
+        userAgent,
+      }).catch(() => {});
+    }
+
     return result;
   }
 
@@ -138,7 +196,18 @@ export class PlatformAuthController {
   ) {
     const ip = req.ip || req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'] as string | undefined;
-    return this.authService.sendTwoFactorEmail(dto.loginTicket, ip, userAgent);
+    const res = await this.authService.sendTwoFactorEmail(dto.loginTicket, ip, userAgent);
+
+    await this.auditService.recordLog(null, {
+      action: 'PLATFORM_2FA_CODE_SENT',
+      targetType: 'PlatformAuth',
+      summary: 'Platform 2FA email verification code dispatched',
+      outcome: 'success',
+      ipAddress: ip,
+      userAgent,
+    }).catch(() => {});
+
+    return res;
   }
 
   private async resolvePlatformSetupContext(req: Request, dto?: any) {
@@ -170,7 +239,18 @@ export class PlatformAuthController {
     const setupToken = (req.headers['x-setup-token'] as string) || dto?.setupToken;
     const ip = req.ip || req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'] as string | undefined;
-    return this.authService.sendForcedSetupEmailOtp(setupToken, ip, userAgent);
+    const res = await this.authService.sendForcedSetupEmailOtp(setupToken, ip, userAgent);
+
+    await this.auditService.recordLog(null, {
+      action: 'PLATFORM_2FA_SETUP_INITIATED',
+      targetType: 'PlatformAuth',
+      summary: 'Platform 2FA setup email OTP code dispatched',
+      outcome: 'success',
+      ipAddress: ip,
+      userAgent,
+    }).catch(() => {});
+
+    return res;
   }
 
   /** Platform Forced 2FA Setup: verify 6-digit email code before showing QR */
@@ -231,6 +311,19 @@ export class PlatformAuthController {
       );
       delete result.trustedDeviceCookie;
     }
+
+    await this.auditService.recordLog(null, {
+      actor: { id: authContext.userId, role: 'platform_super_admin' },
+      action: 'PLATFORM_2FA_ENABLED',
+      targetType: 'PlatformAuth',
+      targetId: authContext.userId,
+      summary: 'Platform 2FA (TOTP) enabled successfully',
+      details: { trustDevice: Boolean(dto.trustDevice) },
+      outcome: 'success',
+      ipAddress: ip,
+      userAgent,
+    }).catch(() => {});
+
     return result;
   }
 
@@ -335,6 +428,15 @@ export class PlatformAuthController {
     const expectedUserId = body?.expectedUserId;
     await this.authService.logout(tokenFromCookie, expectedUserId, ip);
 
+    await this.auditService.recordLog(null, {
+      actor: { id: expectedUserId, role: 'platform_super_admin' },
+      action: 'PLATFORM_LOGOUT',
+      targetType: 'PlatformAuth',
+      summary: 'Platform super admin signed out',
+      outcome: 'success',
+      ipAddress: ip,
+    }).catch(() => {});
+
     res.clearCookie(PLATFORM_REFRESH_COOKIE_NAME, getClearRefreshCookieOptions(PLATFORM_AUTH_COOKIE_PATH));
     res.clearCookie(legacyPlatformRefresh, getClearRefreshCookieOptions(PLATFORM_AUTH_COOKIE_PATH));
     res.clearCookie(PLATFORM_REFRESH_COOKIE_NAME, getClearRefreshCookieOptions('/api/v1'));
@@ -397,6 +499,15 @@ export class PlatformAuthController {
     const expectedUserId = body?.expectedUserId;
     await this.authService.logoutAll(targetUserId, expectedUserId, ip);
 
+    await this.auditService.recordLog(null, {
+      actor: { id: targetUserId, role: 'platform_super_admin' },
+      action: 'PLATFORM_LOGOUT_ALL',
+      targetType: 'PlatformAuth',
+      summary: 'Platform super admin signed out of all devices',
+      outcome: 'success',
+      ipAddress: ip,
+    }).catch(() => {});
+
     res.clearCookie(PLATFORM_REFRESH_COOKIE_NAME, getClearRefreshCookieOptions(PLATFORM_AUTH_COOKIE_PATH));
     res.clearCookie(PLATFORM_SESSION_ACTIVE_COOKIE_NAME, getClearSessionIndicatorCookieOptions());
     res.setHeader('Clear-Site-Data', '"cache", "storage"');
@@ -420,7 +531,29 @@ export class PlatformAuthController {
     if (!body?.password || typeof body.password !== 'string' || body.password.trim().length === 0) {
       throw new UnauthorizedException('Password is required for step-up verification.');
     }
-    return this.authService.verifyPlatformStepUp(user.id, body.password);
+    try {
+      const res = await this.authService.verifyPlatformStepUp(user.id, body.password);
+      await this.auditService.recordLog(null, {
+        actor: user,
+        action: 'PLATFORM_STEP_UP_SUCCESS',
+        targetType: 'PlatformAuth',
+        targetId: user.id,
+        summary: `Platform step-up authentication successful for ${user.name || user.email}`,
+        outcome: 'success',
+      }).catch(() => {});
+      return res;
+    } catch (err: any) {
+      await this.auditService.recordLog(null, {
+        actor: user,
+        action: 'PLATFORM_STEP_UP_FAILED',
+        targetType: 'PlatformAuth',
+        targetId: user.id,
+        summary: `Platform step-up authentication failed for ${user.name || user.email}`,
+        details: { error: err?.message },
+        outcome: 'failed',
+      }).catch(() => {});
+      throw err;
+    }
   }
 }
 

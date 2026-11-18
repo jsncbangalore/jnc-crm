@@ -166,7 +166,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                 </p>
               </div>
             </div>
-            <button
+            <button type="button"
               onClick={onClose}
               className="p-2 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white rounded-lg hover:bg-white/5 transition-colors"
             >

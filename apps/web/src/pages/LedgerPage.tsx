@@ -679,7 +679,7 @@ export default function LedgerPage() {
 
           {/* Primary Action Button */}
           {canManage && (
-            <button
+            <button type="button"
               data-testid="btn-record-ledger-payment"
               onClick={() => setShowPaymentModal(true)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition"
@@ -693,7 +693,7 @@ export default function LedgerPage() {
 
           {/* Unlinked Invoices Reconciliation Button */}
           {partyType === 'customer' && canManage && (
-            <button
+            <button type="button"
               onClick={() => {
                 loadUnlinkedInvoices();
                 setShowUnlinkedModal(true);
@@ -712,7 +712,7 @@ export default function LedgerPage() {
           )}
 
           {/* Direct Print Button */}
-          <button
+          <button type="button"
             onClick={handleDirectPrintStatement}
             disabled={!selectedPartyId || loadingStatement}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
@@ -724,7 +724,7 @@ export default function LedgerPage() {
 
           {/* Download Dropdown (PDF, Excel, Email) */}
           <div className="relative" ref={downloadMenuRef}>
-            <button
+            <button type="button"
               onClick={() => setShowDownloadMenu((prev) => !prev)}
               disabled={!selectedPartyId || loadingStatement}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
@@ -737,7 +737,7 @@ export default function LedgerPage() {
 
             {showDownloadMenu && selectedPartyId && (
               <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 py-1 text-xs">
-                <button
+                <button type="button"
                   onClick={() => {
                     setShowDownloadMenu(false);
                     handleDirectPrintStatement();
@@ -747,21 +747,21 @@ export default function LedgerPage() {
                   <Printer className="w-4 h-4 text-blue-500" />
                   <span>Print Statement</span>
                 </button>
-                <button
+                <button type="button"
                   onClick={handleDownloadPdf}
                   className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
                 >
                   <FileText className="w-4 h-4 text-indigo-500" />
                   <span>PDF Statement</span>
                 </button>
-                <button
+                <button type="button"
                   onClick={handleExportCsv}
                   className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                   <span>Excel / CSV</span>
                 </button>
-                <button
+                <button type="button"
                   onClick={() => {
                     setShowDownloadMenu(false);
                     setShowEmailModal(true);
@@ -778,7 +778,7 @@ export default function LedgerPage() {
           {/* More Dropdown (Admins only: Add Entry, Lock Period) */}
           {canManage && (
             <div className="relative" ref={moreMenuRef}>
-              <button
+              <button type="button"
                 onClick={() => setShowMoreMenu((prev) => !prev)}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold shadow-sm transition"
               >
@@ -791,7 +791,7 @@ export default function LedgerPage() {
 
               {showMoreMenu && (
                 <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 py-1 text-xs">
-                  <button
+                  <button type="button"
                     onClick={() => {
                       setShowMoreMenu(false);
                       setShowEntryModal(true);
@@ -801,7 +801,7 @@ export default function LedgerPage() {
                     <Plus className="w-4 h-4 text-indigo-500" />
                     <span>Add entry</span>
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => {
                       setShowMoreMenu(false);
                       setShowLockModal(true);
@@ -829,7 +829,7 @@ export default function LedgerPage() {
             <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span className="font-semibold">{successMsg}</span>
           </div>
-          <button
+          <button type="button"
             onClick={() => setSuccessMsg(null)}
             className="text-emerald-600 hover:text-emerald-800 dark:hover:text-emerald-200"
           >
@@ -840,7 +840,7 @@ export default function LedgerPage() {
 
       {/* ─── TABS: Customers (owe you) vs Suppliers (you owe) ─────────────── */}
       <div className="flex border-b border-slate-200 dark:border-slate-800">
-        <button
+        <button type="button"
           data-testid="tab-ledger-customers"
           onClick={() => {
             if (partyType !== 'customer') {
@@ -858,7 +858,7 @@ export default function LedgerPage() {
           <Building2 className="w-4 h-4" />
           <span>Customers (owe you)</span>
         </button>
-        <button
+        <button type="button"
           data-testid="tab-ledger-suppliers"
           onClick={() => {
             if (partyType !== 'supplier') {
@@ -908,7 +908,7 @@ export default function LedgerPage() {
               <p className="text-[11px] text-slate-500">
                 Add company name, trade name, and GSTIN.
               </p>
-              <button
+              <button type="button"
                 onClick={() => navigate('/settings')}
                 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"
               >
@@ -929,7 +929,7 @@ export default function LedgerPage() {
               <p className="text-[11px] text-slate-500">
                 Add receiving bank account and IFSC in Settings.
               </p>
-              <button
+              <button type="button"
                 onClick={() => navigate('/settings')}
                 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"
               >
@@ -946,7 +946,7 @@ export default function LedgerPage() {
               <p className="text-[11px] text-slate-500">
                 Create customer account to issue invoices and track balances.
               </p>
-              <button
+              <button type="button"
                 onClick={() => navigate('/customers')}
                 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"
               >
@@ -974,7 +974,7 @@ export default function LedgerPage() {
                 className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
               {searchQuery && (
-                <button
+                <button type="button"
                   onClick={() => setSearchQuery('')}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
@@ -1020,7 +1020,7 @@ export default function LedgerPage() {
                     : 'No suppliers with open balance'}
                 </p>
                 {partyType === 'customer' ? (
-                  <button
+                  <button type="button"
                     onClick={() => navigate('/invoices')}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 shadow-xs"
                   >
@@ -1028,7 +1028,7 @@ export default function LedgerPage() {
                     <span>Create Invoice</span>
                   </button>
                 ) : (
-                  <button
+                  <button type="button"
                     onClick={() => navigate('/bills')}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 shadow-xs"
                   >
@@ -1045,7 +1045,7 @@ export default function LedgerPage() {
                 const pPhone = p.partyPhone;
 
                 return (
-                  <button
+                  <button type="button"
                     key={p.partyId}
                     onClick={() => setSelectedPartyId(p.partyId)}
                     className={`w-full text-left p-3.5 transition flex items-start justify-between gap-3 ${
@@ -1137,7 +1137,7 @@ export default function LedgerPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <button
+              <button type="button"
                 onClick={() => selectedPartyId && loadStatement(selectedPartyId, selectedFY)}
                 className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
                 title="Refresh statement"
@@ -1156,7 +1156,7 @@ export default function LedgerPage() {
             <div className="p-8 text-center space-y-3">
               <AlertCircle className="w-8 h-8 text-rose-500 mx-auto" />
               <p className="text-xs text-rose-600 dark:text-rose-400">{statementError}</p>
-              <button
+              <button type="button"
                 onClick={() => selectedPartyId && loadStatement(selectedPartyId, selectedFY)}
                 className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-semibold hover:bg-slate-200"
               >
@@ -1179,7 +1179,7 @@ export default function LedgerPage() {
                       <strong>FY {statement.alternativeFyWithEntries}</strong>.
                     </span>
                   </div>
-                  <button
+                  <button type="button"
                     onClick={() => setSelectedFY(statement.alternativeFyWithEntries!)}
                     className="px-2.5 py-1 bg-amber-600 text-white rounded text-xs font-bold hover:bg-amber-700 shadow-xs shrink-0"
                   >
@@ -1421,13 +1421,13 @@ export default function LedgerPage() {
                               No transactions recorded for {selectedParty?.partyName} in FY {selectedFY}.
                             </p>
                             <div className="flex items-center justify-center gap-2 pt-1">
-                              <button
+                              <button type="button"
                                 onClick={() => setShowPaymentModal(true)}
                                 className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 shadow-xs"
                               >
                                 {partyType === 'customer' ? 'Record receipt' : 'Record payment'}
                               </button>
-                              <button
+                              <button type="button"
                                 onClick={() =>
                                   navigate(partyType === 'customer' ? '/invoices' : '/bills')
                                 }
@@ -1732,7 +1732,7 @@ export default function LedgerPage() {
                         Open Bills & Invoices ({statement.openBills.length})
                       </h3>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => setShowPaymentModal(true)}
                       className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
                     >
@@ -2117,7 +2117,7 @@ function AddEntryModal({
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -2365,7 +2365,7 @@ function LockPeriodModal({
               <p className="text-xs text-slate-500">Prevent voucher modifications before lock date</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -2486,7 +2486,7 @@ function SendEmailModal({
               <p className="text-xs text-slate-500">Dispatch PDF statement with cover letter</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -2501,7 +2501,7 @@ function SendEmailModal({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              placeholder="recipient@example.com"
+              placeholder="recipient@company.com"
               className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500"
             />
           </div>

@@ -269,30 +269,34 @@ function CreateCustomerModal({
   const [city, setCity] = useState('Bengaluru');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [bypassWarning, setBypassWarning] = useState(false);
 
-  // Live duplicate warning check
-  const duplicateWarning = useMemo(() => {
+  useEffect(() => {
+    setBypassWarning(false);
+  }, [name, gstin, phone]);
+
+  // Live duplicate warning check (supports short names < 3 chars)
+  const matchedDuplicate = useMemo(() => {
     const normName = name.trim().toLowerCase();
     const normGstin = gstin.trim().toUpperCase();
     const cleanPhone = phone.replace(/\D/g, '');
 
     if (normGstin && normGstin.length === 15) {
       const match = existingCustomers.find((c) => c.gstin && c.gstin.toUpperCase() === normGstin);
-      if (match) return `A customer with GSTIN ${normGstin} already exists (${match.name}).`;
+      if (match) return { type: 'GSTIN', label: `A customer with GSTIN ${normGstin} already exists (${match.name}).`, customer: match };
     }
     if (cleanPhone && cleanPhone.length >= 10) {
       const match = existingCustomers.find((c) => c.phone && c.phone.replace(/\D/g, '').slice(-10) === cleanPhone.slice(-10));
-      if (match) return `A customer with phone number ${phone} already exists (${match.name}).`;
+      if (match) return { type: 'phone', label: `A customer with phone number ${phone} already exists (${match.name}).`, customer: match };
     }
-    if (normName && normName.length >= 3) {
+    if (normName && normName.length > 0) {
       const match = existingCustomers.find((c) => c.name.trim().toLowerCase() === normName);
-      if (match) return `A customer with exact name "${name}" already exists.`;
+      if (match) return { type: 'name', label: `A customer with this name already exists (${match.name}).`, customer: match };
     }
     return null;
   }, [name, gstin, phone, existingCustomers]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeCreate = async () => {
     const newErrors: Record<string, string> = {};
 
     const nameRes = validateCustomerName(name);
@@ -388,6 +392,14 @@ function CreateCustomerModal({
     }
   };
 
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (matchedDuplicate && !bypassWarning) {
+      return;
+    }
+    executeCreate();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
       <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
@@ -401,17 +413,40 @@ function CreateCustomerModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-3.5 text-xs overflow-y-auto">
+        <div className="p-4 space-y-3.5 text-xs overflow-y-auto">
           {errors.form && (
             <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 rounded-lg">
               {toPlainText(errors.form)}
             </div>
           )}
 
-          {duplicateWarning && (
-            <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 rounded-lg flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-600" />
-              <span>{duplicateWarning}</span>
+          {matchedDuplicate && !bypassWarning && (
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 rounded-lg space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-600" />
+                <span className="font-semibold">{matchedDuplicate.label}</span>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCreated(matchedDuplicate.customer);
+                  }}
+                  className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold cursor-pointer"
+                >
+                  Use existing
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBypassWarning(true);
+                    executeCreate();
+                  }}
+                  className="px-3 py-1 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-slate-700 rounded text-xs font-semibold cursor-pointer"
+                >
+                  Create anyway
+                </button>
+              </div>
             </div>
           )}
 
@@ -515,7 +550,7 @@ function CreateCustomerModal({
               </label>
               <input
                 type="email"
-                placeholder="accounts@example.com"
+                placeholder="accounts@company.com"
                 maxLength={254}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -560,14 +595,15 @@ function CreateCustomerModal({
               Cancel
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               disabled={submitting}
               className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 cursor-pointer shadow-sm"
             >
               {submitting ? 'Creating...' : 'Create & Select'}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

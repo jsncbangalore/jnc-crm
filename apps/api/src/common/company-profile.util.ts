@@ -232,6 +232,19 @@ export async function getUnifiedCompanyProfile(prisma: any, tenantId: string) {
       ? (tenant.logoUrl === '/api/v1/settings/branding/logo' ? `/api/v1/settings/branding/logo/${tenant.id}` : tenant.logoUrl)
       : null);
 
+  let highValueThreshold = 10_000_000;
+  try {
+    const hvSetting = await prisma.systemSetting.findUnique({
+      where: { key: `tenant:${tenant.id}:highValueThreshold` },
+    });
+    if (hvSetting && hvSetting.value) {
+      const parsed = Number(hvSetting.value);
+      if (!isNaN(parsed) && parsed > 0) {
+        highValueThreshold = parsed;
+      }
+    }
+  } catch {}
+
   return {
     ...tenant,
     tenantId: tenant.id,
@@ -267,6 +280,7 @@ export async function getUnifiedCompanyProfile(prisma: any, tenantId: string) {
     logoBuffer,
     invoicePrefix: tenant.invoicePrefix || 'INV',
     autoAllocateAdvance: tenant.autoAllocateAdvance !== false,
+    highValueThreshold,
     isOnboarded: tenant.isOnboarded || false,
     completeness,
   };
@@ -395,6 +409,17 @@ export async function updateUnifiedCompanyProfile(
       where: { id: tenantId },
       data: updateData,
     });
+
+    if (dto.highValueThreshold !== undefined) {
+      const hvVal = Number(dto.highValueThreshold);
+      if (!isNaN(hvVal) && hvVal > 0) {
+        await tx.systemSetting.upsert({
+          where: { key: `tenant:${tenantId}:highValueThreshold` },
+          update: { value: String(hvVal) },
+          create: { key: `tenant:${tenantId}:highValueThreshold`, value: String(hvVal) },
+        });
+      }
+    }
 
     return getUnifiedCompanyProfile(tx, tenantId);
   });

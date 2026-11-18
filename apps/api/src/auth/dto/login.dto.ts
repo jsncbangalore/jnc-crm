@@ -336,9 +336,13 @@ export class DisableTwoFactorDto {
 }
 
 export class ForgotPasswordStartDto {
-  @IsNotEmpty({ message: 'lookup is required' })
+  @IsOptional()
   @IsString()
-  lookup: string;
+  lookup?: string;
+
+  @IsOptional()
+  @IsString()
+  identifier?: string;
 
   @IsOptional()
   @IsString()

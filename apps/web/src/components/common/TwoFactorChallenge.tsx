@@ -1244,16 +1244,30 @@ export default function TwoFactorChallenge({
         )}
 
         {mode === 'code' ? (
-          <button
-            type="button"
-            onClick={() => {
-              setMode('backup');
-              setError('');
-            }}
-            className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-medium cursor-pointer block mx-auto"
-          >
-            Don't have your device? Use a backup code
-          </button>
+          <div className="space-y-2 pt-1 text-center">
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('backup');
+                  setError('');
+                }}
+                className="text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400 cursor-pointer inline-block"
+              >
+                Use a backup code
+              </button>
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={handleSendEmailOtp}
+                disabled={emailStatus.loading}
+                className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-medium cursor-pointer inline-block"
+              >
+                {emailStatus.loading ? 'Sending code...' : 'Lost your authenticator? Receive code by email'}
+              </button>
+            </div>
+          </div>
         ) : (
           <button
             type="button"
@@ -1261,7 +1275,7 @@ export default function TwoFactorChallenge({
               setMode('code');
               setError('');
             }}
-            className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-medium cursor-pointer block mx-auto"
+            className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-medium cursor-pointer block mx-auto"
           >
             Back to authenticator app code
           </button>

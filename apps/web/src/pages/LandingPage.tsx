@@ -247,7 +247,7 @@ function Navbar() {
           >
             {isDark ? <Sun size={17} className="text-amber-400" /> : <Moon size={17} />}
           </button>
-          <button
+          <button type="button"
             className="rounded-lg p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
             onClick={() => setOpen(true)}
             aria-label="Open menu"
@@ -273,7 +273,7 @@ function Navbar() {
           <Link to="/" onClick={() => setOpen(false)}>
             <BrandLogo size={32} reversed={isDark} showText={true} />
           </Link>
-          <button
+          <button type="button"
             onClick={() => setOpen(false)}
             className="rounded-lg p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
             aria-label="Close menu"
@@ -675,7 +675,7 @@ function Showcase() {
         className="mx-auto mt-10 flex max-w-xl flex-wrap justify-center gap-1 rounded-xl bg-slate-200/80 dark:bg-[#1E2230] p-1 border border-slate-300/60 dark:border-[#2A3042]"
       >
         {TABS.map((t) => (
-          <button
+          <button type="button"
             key={t.id}
             role="tab"
             aria-selected={active === t.id}

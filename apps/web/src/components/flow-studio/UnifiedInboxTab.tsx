@@ -38,7 +38,7 @@ const INITIAL_LEADS: InboxLead[] = [
     name: 'Test Lead 1',
     company: 'Test Account 1',
     phone: '',
-    email: 'lead1@example.com',
+    email: 'lead1@company.com',
     source: 'indiamart',
     stage: 'QUALIFIED',
     externalId: 'IM-DEMO-001',
@@ -61,7 +61,7 @@ const INITIAL_LEADS: InboxLead[] = [
         id: 'm2',
         sender: 'system',
         channel: 'EMAIL',
-        content: 'Product specifications and estimate sent to lead1@example.com',
+        content: 'Product specifications and estimate sent to lead1@company.com',
         timestamp: '10:15 AM',
         status: 'delivered',
       },
@@ -80,7 +80,7 @@ const INITIAL_LEADS: InboxLead[] = [
     name: 'Test Lead 2',
     company: 'Test Account 2',
     phone: '',
-    email: 'lead2@example.com',
+    email: 'lead2@company.com',
     source: 'meta',
     stage: 'PROPOSAL',
     externalId: 'FB-DEMO-002',
@@ -114,7 +114,7 @@ const INITIAL_LEADS: InboxLead[] = [
     name: 'Test Lead 3',
     company: 'Test Account 3',
     phone: '',
-    email: 'lead3@example.com',
+    email: 'lead3@company.com',
     source: 'web',
     stage: 'NEGOTIATION',
     externalId: 'WEB-DEMO-003',
@@ -236,7 +236,7 @@ export default function UnifiedInboxTab() {
           {/* Filter Pills */}
           <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-[11px] font-bold">
             {(['all', 'indiamart', 'meta', 'web', 'whatsapp'] as const).map((ch) => (
-              <button
+              <button type="button"
                 key={ch}
                 onClick={() => setChannelFilter(ch)}
                 className={`px-2.5 py-1 rounded-lg capitalize whitespace-nowrap transition-colors ${

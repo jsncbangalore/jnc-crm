@@ -16,6 +16,7 @@ import {
   Headers,
   Req,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
@@ -34,7 +35,7 @@ function stripClientTenantKeys(payload: any) {
 
 import { Public } from '../auth/page-access.decorator';
 
-@Controller('public-inquiry')
+@Controller(['public-inquiry', 'public/inquiries'])
 @Public()
 export class PublicInquiryController {
   constructor(
@@ -46,7 +47,7 @@ export class PublicInquiryController {
     return this.webhooksService.getInquiryInfo(key?.trim());
   }
 
-  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Post()
   @HttpCode(HttpStatus.OK)
   async submitInquiry(
@@ -55,11 +56,55 @@ export class PublicInquiryController {
     @Query('key') queryKey?: string,
     @Headers('x-tenant-key') headerKey?: string,
   ) {
+    // 1. Honeypot check
+    const honeypot = body?.website_hp || body?._hp_company_trap || body?.website_url_hp || body?.hp_fax || body?.hp_title;
+    if (honeypot) {
+      return { status: 'SUCCESS', message: 'Inquiry registered' };
+    }
+
     const rawKey = queryKey || headerKey || body?.key;
+
+    // 2. Direct public contact inquiry path (no tenant key required)
     if (!rawKey || typeof rawKey !== 'string' || !rawKey.trim()) {
+      const name = (body?.name || body?.customerName || '').trim();
+      const email = (body?.email || body?.customerEmail || '').trim().toLowerCase();
+      const message = (body?.message || body?.queryMessage || '').trim();
+      const phone = (body?.phone || body?.customerPhone || '').trim() || '0000000000';
+      const company = (body?.company || body?.companyName || '').trim();
+      const topic = (body?.topic || 'sales').trim();
+
+      if (!name || !email || !message) {
+        throw new BadRequestException('Name, email, and message are required.');
+      }
+
+      const tenant = await this.webhooksService.getDefaultTenant();
+      if (!tenant) {
+        throw new NotFoundException('Inquiry submission service currently unavailable');
+      }
+
+      const lead = await this.webhooksService.createPublicInquiryLead({
+        tenantId: tenant.id,
+        name,
+        email,
+        phone,
+        company,
+        topic,
+        message,
+      });
+
+      return {
+        status: 'SUCCESS',
+        message: 'Inquiry registered successfully',
+        referenceNumber: `REF-${Date.now().toString().slice(-6)}`,
+        leadId: lead?.id,
+      };
+    }
+
+    // 3. Webhook / Widget lead path with tenant key
+    const tenant = await this.webhooksService.findTenantByWebhookKey(rawKey.trim());
+    if (!tenant) {
       throw new NotFoundException('This form is not available');
     }
-    const tenant = await this.webhooksService.findTenantByWebhookKey(rawKey.trim());
 
     stripClientTenantKeys(body);
     const result = await this.webhooksService.processWebsiteLead(body, tenant.id, req);

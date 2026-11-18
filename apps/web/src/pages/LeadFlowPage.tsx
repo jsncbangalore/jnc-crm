@@ -46,7 +46,7 @@ export default function LeadFlowPage() {
 
         {/* Studio Navigation Tabs */}
         <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#181B26] p-1 rounded-xl border border-slate-200 dark:border-[#2A3042] text-xs font-bold">
-          <button
+          <button type="button"
             onClick={() => setActiveTab('builder')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
               activeTab === 'builder'
@@ -58,7 +58,7 @@ export default function LeadFlowPage() {
             <span>Flow Builder</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={() => setActiveTab('indiamart')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
               activeTab === 'indiamart'
@@ -69,7 +69,7 @@ export default function LeadFlowPage() {
             <span>IndiaMART</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={() => setActiveTab('meta')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
               activeTab === 'meta'
@@ -81,7 +81,7 @@ export default function LeadFlowPage() {
             <span>Meta &amp; WhatsApp</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={() => setActiveTab('inbox')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
               activeTab === 'inbox'
@@ -93,7 +93,7 @@ export default function LeadFlowPage() {
             <span>Unified Inbox</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={() => setActiveTab('analytics')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
               activeTab === 'analytics'

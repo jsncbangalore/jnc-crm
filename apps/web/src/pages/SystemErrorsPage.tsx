@@ -148,7 +148,7 @@ export default function SystemErrorsPage() {
         </div>
 
         <div className="flex items-center gap-2.5">
-          <button
+          <button type="button"
             onClick={() => {
               if (activeTab === 'errors') fetchErrors();
               else fetchSeriesAudit();
@@ -164,7 +164,7 @@ export default function SystemErrorsPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200 dark:border-slate-800">
-        <button
+        <button type="button"
           onClick={() => setActiveTab('errors')}
           className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition ${
             activeTab === 'errors'
@@ -179,7 +179,7 @@ export default function SystemErrorsPage() {
           </span>
         </button>
 
-        <button
+        <button type="button"
           onClick={() => setActiveTab('reconciliation')}
           className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition ${
             activeTab === 'reconciliation'
@@ -278,7 +278,7 @@ export default function SystemErrorsPage() {
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          <button
+                          <button type="button"
                             onClick={() => handleCopy(item.referenceId || item.id, item.id)}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition shadow-2xs"
                             title="Copy Reference ID"
@@ -288,7 +288,7 @@ export default function SystemErrorsPage() {
                           </button>
 
                           {item.componentStack && (
-                            <button
+                            <button type="button"
                               onClick={() => setExpandedId(isExpanded ? null : item.id)}
                               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition shadow-2xs"
                             >
@@ -431,7 +431,7 @@ export default function SystemErrorsPage() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <button
+                          <button type="button"
                             onClick={() => setExpandedSeriesKey(isExpanded ? null : grp.seriesKey)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition shadow-2xs"
                           >

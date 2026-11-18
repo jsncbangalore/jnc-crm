@@ -18,6 +18,8 @@ import { User } from '../types';
 import {
   authApi,
   platformAuthApi,
+  platformApi,
+  getAccessToken,
   setStaffAccessToken,
   setPlatformAccessToken,
   setStoredRefreshToken,
@@ -311,7 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Requirement 6: Refresh user's effective pages on window focus and after 403
   const refreshEffectivePages = useCallback(async (isAccessRevoked = false) => {
-    if (!staffUser) return;
+    if (!staffUser || !getAccessToken(false)) return;
     try {
       const meRes = await authApi.me();
       if (meRes?.data) {
@@ -1258,6 +1260,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setStaffUserWithStorage, setPlatformUserWithStorage, dismissSessionConflictBanner]);
 
   const exitImpersonation = useCallback(() => {
+    let impTenantId: string | null = null;
+    if (typeof window !== 'undefined') {
+      try {
+        const storedUser = sessionStorage.getItem('crm_tab_impersonate_user');
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser);
+          impTenantId = parsed?.tenantId || parsed?.tenant?.id || null;
+        }
+      } catch {}
+    }
+    if (impTenantId) {
+      platformApi.exitImpersonation(impTenantId).catch(() => {});
+    }
+
     setStaffUser(null);
     setImpersonationAccessToken(null);
     setStaffAccessToken(null);
@@ -1322,13 +1338,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               </p>
             </div>
             <div className="flex gap-2">
-              <button
+              <button type="button"
                 onClick={resetInactivityTimer}
                 className="flex-1 py-2 px-3 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm"
               >
                 Stay Signed In
               </button>
-              <button
+              <button type="button"
                 onClick={() => logout()}
                 className="py-2 px-3 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
               >

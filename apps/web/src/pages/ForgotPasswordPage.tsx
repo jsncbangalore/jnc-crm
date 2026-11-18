@@ -58,7 +58,7 @@ export default function ForgotPasswordPage() {
           setLast4(opts?.last4 || '4821');
         } else if (s === 'otp') {
           setMobileVerified(opts?.mobileVerified ?? true);
-          setMaskedEmail(opts?.maskedEmail || 'user***@example.com');
+          setMaskedEmail(opts?.maskedEmail || 'user***@company.com');
           setCodeDigits(opts?.digits || ['4', '8', '2', '1', '9', '0']);
         } else if (s === 'new-password') {
           setNewPassword(opts?.password || 'SecurePass#2026!');
@@ -110,6 +110,7 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [cooldown, setCooldown] = useState(0);
+  const [codeExpiresIn, setCodeExpiresIn] = useState(600);
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [maintenanceNotice, setMaintenanceNotice] = useState('');
 
@@ -127,6 +128,24 @@ export default function ForgotPasswordPage() {
       isMounted = false;
     };
   }, []);
+
+  // Automatically hide passwords after 10s or when window/tab loses focus
+  useEffect(() => {
+    if (!showPassword && !showConfirmPassword) return;
+    const timer = setTimeout(() => {
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+    }, 10000);
+    const handleBlur = () => {
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+    };
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [showPassword, showConfirmPassword]);
 
   // Load public password policy on mount
   useEffect(() => {
@@ -154,7 +173,16 @@ export default function ForgotPasswordPage() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  // ─── Step 1 of 4: Reset password (Email Lookup) ───────────────────────────
+  // Live code expiry countdown
+  useEffect(() => {
+    if (step !== 'otp' || codeExpiresIn <= 0) return;
+    const timer = setInterval(() => {
+      setCodeExpiresIn((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [step, codeExpiresIn]);
+
+  // ─── Step 1 of 3: Reset password (Email Lookup) ───────────────────────────
   const handleLookup = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (isMaintenanceMode) return;
@@ -182,26 +210,12 @@ export default function ForgotPasswordPage() {
       if (res.data?.flowId) {
         setFlowId(res.data.flowId);
         if (res.data.maskedEmail) setMaskedEmail(res.data.maskedEmail);
-
-        if (res.data.hasPhone && res.data.last4) {
-          setHasPhone(true);
-          setLast4(res.data.last4);
-          setMobileVerified(false);
-          setStep('phone');
-        } else {
-          // Normal user without registered mobile: proceed straight to email code step
-          setHasPhone(false);
-          setMobileVerified(false);
-          try {
-            const codeRes = await authApi.forgotPasswordSendCode(res.data.flowId);
-            if (codeRes.data?.flowId) {
-              setFlowId(codeRes.data.flowId);
-            }
-            setCooldown(codeRes.data?.resendAfterSeconds ?? 60);
-          } catch {}
-          setStep('otp');
-          setTimeout(() => codeInputsRef.current[0]?.focus(), 100);
-        }
+        setCooldown(res.data.resendAfterSeconds ?? 60);
+        setCodeExpiresIn(600);
+        setHasPhone(false);
+        setMobileVerified(false);
+        setStep('otp');
+        setTimeout(() => codeInputsRef.current[0]?.focus(), 100);
       } else {
         setError('The details do not match. Check and try again.');
       }
@@ -259,6 +273,12 @@ export default function ForgotPasswordPage() {
 
     if (clean && index < 5) {
       codeInputsRef.current[index + 1]?.focus();
+    } else if (clean && index === 5) {
+      if (newDigits.join('').length === 6) {
+        setTimeout(() => {
+          handleVerifyOtp(undefined, newDigits.join(''));
+        }, 50);
+      }
     }
   };
 
@@ -281,12 +301,18 @@ export default function ForgotPasswordPage() {
 
     const focusIdx = Math.min(paste.length, 5);
     codeInputsRef.current[focusIdx]?.focus();
+
+    if (paste.length === 6) {
+      setTimeout(() => {
+        handleVerifyOtp(undefined, paste);
+      }, 50);
+    }
   };
 
-  const handleVerifyOtp = async (e?: React.FormEvent) => {
+  const handleVerifyOtp = async (e?: React.FormEvent, overrideCode?: string) => {
     if (e) e.preventDefault();
     if (isMaintenanceMode) return;
-    const code = codeDigits.join('');
+    const code = (overrideCode || codeDigits.join('')).trim();
     if (code.length < 6) {
       setError('Please enter all 6 digits of your verification code.');
       return;
@@ -379,6 +405,8 @@ export default function ForgotPasswordPage() {
 
   const handleResetPassword = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    setShowPassword(false);
+    setShowConfirmPassword(false);
     if (isMaintenanceMode) return;
 
     // Check version compatibility before submitting
@@ -431,11 +459,9 @@ export default function ForgotPasswordPage() {
   const stepNumber =
     step === 'lookup'
       ? 1
-      : step === 'phone'
-      ? 2
       : step === 'otp'
-      ? 3
-      : 4;
+      ? 2
+      : 3;
 
   return (
     <AuthLayout>
@@ -445,7 +471,7 @@ export default function ForgotPasswordPage() {
         transition={{ duration: 0.2 }}
         className="w-full"
       >
-        {/* Navigation Breadcrumb & Step X of 4 Header */}
+        {/* Navigation Breadcrumb & Step X of 3 Header */}
         {step !== 'success' && (
           <div className="mb-4 flex items-center justify-between">
             {step === 'lookup' ? (
@@ -467,7 +493,7 @@ export default function ForgotPasswordPage() {
 
             {/* Step Counter Indicator */}
             <div className="text-[12px] font-semibold text-slate-400 dark:text-slate-500">
-              Step {stepNumber} of 4
+              Step {stepNumber} of 3
             </div>
           </div>
         )}
@@ -477,14 +503,12 @@ export default function ForgotPasswordPage() {
           <div className="mb-6">
             <h1 className="text-[28px] font-bold text-slate-900 dark:text-white leading-tight">
               {step === 'lookup' && 'Reset password'}
-              {step === 'phone' && 'Verify your mobile number'}
               {step === 'otp' && 'Enter the code'}
               {step === 'new-password' && 'Create new password'}
             </h1>
             <p className="text-[16px] text-slate-600 dark:text-slate-400 mt-2">
               {step === 'lookup' && 'Enter your registered email address or user ID to locate your account.'}
-              {step === 'phone' && 'Enter your registered mobile number to confirm your identity.'}
-              {step === 'otp' && 'Enter the 6-digit code sent to your registered email address.'}
+              {step === 'otp' && `Enter the 6-digit code sent to ${maskedEmail || 'your registered email address'}.`}
               {step === 'new-password' && 'Choose a strong, unique password for your account.'}
             </p>
           </div>
@@ -533,7 +557,7 @@ export default function ForgotPasswordPage() {
                     autoComplete="username"
                     required
                     className="w-full h-[48px] pl-[44px] pr-4 text-[16px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-[10px] text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
-                    placeholder="name@example.com or user ID"
+                    placeholder="name@company.com or user ID"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     autoFocus
@@ -731,6 +755,7 @@ export default function ForgotPasswordPage() {
                     type="text"
                     disabled={loading || isMaintenanceMode}
                     inputMode="numeric"
+                    autoComplete="one-time-code"
                     pattern="[0-9]*"
                     maxLength={1}
                     value={digit}
@@ -748,10 +773,10 @@ export default function ForgotPasswordPage() {
               <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-900 dark:text-amber-200 text-xs space-y-1">
                 <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
                   <Clock size={14} />
-                  <span>Code expires in 10 minutes</span>
+                  <span>Code expires in {Math.floor(codeExpiresIn / 60)}:{(codeExpiresIn % 60).toString().padStart(2, '0')}</span>
                 </div>
                 <p className="text-[12px] text-slate-600 dark:text-slate-300">
-                  Never share this code with anyone. Check your spam folder if you do not receive it within a minute.
+                  Check your spam or junk folder. Codes arrive within 60 seconds. Never share this code with anyone.
                 </p>
               </div>
 
@@ -986,6 +1011,9 @@ export default function ForgotPasswordPage() {
                 <p className="text-[13px] text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
                   Your new password is now active. All previous sessions across all devices have been signed out for your security.
                 </p>
+                <div className="mt-2 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 text-[13px] font-medium text-blue-700 dark:text-blue-300 text-center">
+                  Next, you will be asked for your 2-step code.
+                </div>
               </div>
 
               <div className="pt-2 space-y-2.5">

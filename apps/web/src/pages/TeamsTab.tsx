@@ -90,7 +90,7 @@ export default function TeamsTab() {
             Group users and restrict which modules they can access in the CRM.
           </p>
         </div>
-        <button onClick={openCreate} className="btn-primary">
+        <button type="button" onClick={openCreate} className="btn-primary">
           <Plus size={16} className="mr-2" /> Create Team
         </button>
       </div>
@@ -113,7 +113,7 @@ export default function TeamsTab() {
                     <p className="text-xs text-slate-500 dark:text-slate-400">{team.userCount || 0} Members</p>
                   </div>
                 </div>
-                <button onClick={() => openEdit(team)} className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+                <button type="button" onClick={() => openEdit(team)} className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
                   <Edit2 size={16} />
                 </button>
               </div>
@@ -153,7 +153,7 @@ export default function TeamsTab() {
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">
                 {editingTeam ? 'Edit Team Access' : 'Create Access Team'}
               </h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-900 dark:hover:text-white">
+              <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-900 dark:hover:text-white">
                 <X size={24} />
               </button>
             </div>
@@ -203,8 +203,8 @@ export default function TeamsTab() {
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-[#2A3042]">
-                <button onClick={() => setShowModal(false)} className="btn-ghost">Cancel</button>
-                <button 
+                <button type="button" onClick={() => setShowModal(false)} className="btn-ghost">Cancel</button>
+                <button type="button" 
                   onClick={handleSave} 
                   disabled={!formName.trim() || saving} 
                   className="btn-primary"

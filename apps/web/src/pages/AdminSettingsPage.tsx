@@ -83,7 +83,7 @@ export default function AdminSettingsPage({ initialTab = 'users' }: AdminSetting
           {/* Center: ONLY THE GRANTED MODULE TABS */}
           <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#141721] p-1 rounded-xl border border-slate-200 dark:border-[#2A3042] text-xs font-bold">
             {hasPage('users') && (
-              <button
+              <button type="button"
                 onClick={() => handleTabChange('users')}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
                   activeTab === 'users'
@@ -97,7 +97,7 @@ export default function AdminSettingsPage({ initialTab = 'users' }: AdminSetting
             )}
 
             {hasPage('audit_logs') && (
-              <button
+              <button type="button"
                 onClick={() => handleTabChange('audit')}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
                   activeTab === 'audit'
@@ -111,7 +111,7 @@ export default function AdminSettingsPage({ initialTab = 'users' }: AdminSetting
             )}
 
             {hasPage('branding') && (
-              <button
+              <button type="button"
                 onClick={() => handleTabChange('branding')}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
                   activeTab === 'branding'
@@ -125,7 +125,7 @@ export default function AdminSettingsPage({ initialTab = 'users' }: AdminSetting
             )}
 
             {hasPage('mail_settings') && (
-              <button
+              <button type="button"
                 onClick={() => handleTabChange('mail')}
                 className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
                   activeTab === 'mail'
@@ -150,7 +150,7 @@ export default function AdminSettingsPage({ initialTab = 'users' }: AdminSetting
               {isDark ? <Sun size={15} className="text-amber-400" /> : <Moon size={15} className="text-indigo-600" />}
             </button>
 
-            <button
+            <button type="button"
               onClick={() => navigate('/')}
               className="btn-ghost text-xs px-3 py-1.5 rounded-xl border border-slate-200 dark:border-[#2A3042] hover:bg-slate-100 dark:hover:bg-white/5 cursor-pointer font-bold"
               title="Return to CRM Workspace"

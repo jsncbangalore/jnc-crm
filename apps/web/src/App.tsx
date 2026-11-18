@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAllowedPages } from './hooks/useAllowedPages';
 import AppLayout from './components/layout/AppLayout';
@@ -41,6 +41,7 @@ import ActivityAnalyticsPage from './pages/analytics/ActivityAnalyticsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import PlatformCompaniesPage from './pages/PlatformCompaniesPage';
 import PlatformAdminsPage from './pages/PlatformAdminsPage';
+import PlatformAuditLogsPage from './pages/PlatformAuditLogsPage';
 import PlatformLoginPage from './pages/PlatformLoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -392,6 +393,7 @@ function AppRoutes() {
         <Route path="/quotations" element={<TeamPageGuard pageKey="quotations"><CrmRouteGuard><QuotationsPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/platform/companies" element={<PlatformOwnerGuard><PlatformCompaniesPage /></PlatformOwnerGuard>} />
         <Route path="/platform/admins" element={<PlatformOwnerGuard><PlatformAdminsPage /></PlatformOwnerGuard>} />
+        <Route path="/platform/audit-logs" element={<PlatformOwnerGuard><PlatformAuditLogsPage /></PlatformOwnerGuard>} />
         <Route path="/automation" element={<TeamPageGuard pageKey="automation"><CrmRouteGuard><AutomationPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/setup/objects" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/setup/objects/:objectId" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />
@@ -406,6 +408,14 @@ function AppRoutes() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
+}
+
+function NavigationExposer() {
+  const navigate = useNavigate();
+  React.useEffect(() => {
+    (window as any).__CRM_NAVIGATE__ = navigate;
+  }, [navigate]);
+  return null;
 }
 
 function MaintenanceNoticeBanner() {
@@ -453,6 +463,7 @@ export default function App() {
         <BrandingProvider>
           <PopupProvider>
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <NavigationExposer />
               <RobotsMetaHandler />
               <ReconnectingBanner />
               <MaintenanceNoticeBanner />

@@ -63,6 +63,7 @@ export const PAGE_ICON_MAP: Record<string, LucideIcon> = {
   platform_companies: Building2,
   platform_admins: Shield,
   platform_backup: HardDriveDownload,
+  platform_audit_logs: History,
 };
 
 export const PAGE_SUB_ITEMS: Record<string, { label: string; to: string; isAction?: boolean }[]> = {

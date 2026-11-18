@@ -29,31 +29,51 @@ export default function RelatedDocumentsPanel({ type, id, className = '' }: Rela
   const { hasPage } = useAllowedPages();
   const navigate = useNavigate();
 
+  const [retryCount, setRetryCount] = useState(0);
+
   useEffect(() => {
     let mounted = true;
     if (!id) return;
     
     setLoading(true);
     setError(null);
-    paymentsApi.getRelated(type, id)
-      .then((res) => {
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 4000); // 4 second timeout guard
+
+    const fetchRelated = async (attempt: number) => {
+      try {
+        const res = await paymentsApi.getRelated(type, id, { signal: controller.signal } as any);
+        clearTimeout(timeoutId);
         if (mounted) {
           setData(res.data);
           setLoading(false);
         }
-      })
-      .catch((err) => {
+      } catch (err: any) {
+        if (attempt < 1 && mounted && !controller.signal.aborted) {
+          // Automatic 1x retry after 300ms
+          setTimeout(() => fetchRelated(attempt + 1), 300);
+          return;
+        }
+        clearTimeout(timeoutId);
         if (mounted) {
-          console.error('Failed to load related documents:', err);
-          setError('Failed to load related chain');
+          console.warn('Failed to load related documents (timed out or error):', err?.message);
+          setError('Unable to load related document chain');
           setLoading(false);
         }
-      });
+      }
+    };
+
+    fetchRelated(0);
 
     return () => {
       mounted = false;
+      clearTimeout(timeoutId);
+      controller.abort();
     };
-  }, [type, id]);
+  }, [type, id, retryCount]);
 
   if (loading) {
     return (
@@ -67,7 +87,22 @@ export default function RelatedDocumentsPanel({ type, id, className = '' }: Rela
     );
   }
 
-  if (error || !data) {
+  if (error) {
+    return (
+      <div className={`p-3 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-800/40 text-xs flex items-center justify-between text-amber-800 dark:text-amber-300 ${className}`}>
+        <span>{error}</span>
+        <button
+          type="button"
+          onClick={() => setRetryCount((c) => c + 1)}
+          className="px-2.5 py-1 text-[11px] font-bold rounded bg-amber-200 dark:bg-amber-800/60 hover:bg-amber-300 dark:hover:bg-amber-700 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!data) {
     return null;
   }
 

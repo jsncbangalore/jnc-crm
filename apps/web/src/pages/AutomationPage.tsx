@@ -426,7 +426,7 @@ export default function AutomationPage() {
         </div>
 
         <div className="flex items-center gap-2.5">
-          <button onClick={handleOpenNewModal} className="btn-primary text-xs gap-1.5 shadow-glow-blue">
+          <button type="button" onClick={handleOpenNewModal} className="btn-primary text-xs gap-1.5 shadow-glow-blue">
             <Plus size={15} /> New Automation Rule
           </button>
         </div>
@@ -512,7 +512,7 @@ export default function AutomationPage() {
           </select>
         </div>
 
-        <button onClick={fetchRules} className="btn-ghost text-xs gap-1.5" title="Refresh">
+        <button type="button" onClick={fetchRules} className="btn-ghost text-xs gap-1.5" title="Refresh">
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>
@@ -585,7 +585,7 @@ export default function AutomationPage() {
                       <span className="text-[11px] font-semibold text-slate-400 pl-1">
                         {rule.isActive ? 'Enabled' : 'Disabled'}
                       </span>
-                      <button
+                      <button type="button"
                         onClick={() => handleToggleActive(rule.id, rule.isActive)}
                         className={`w-10 h-5 rounded-full p-0.5 transition-colors ${
                           rule.isActive ? 'bg-emerald-500' : 'bg-slate-700'
@@ -600,14 +600,14 @@ export default function AutomationPage() {
                       </button>
                     </div>
 
-                    <button
+                    <button type="button"
                       onClick={() => handleOpenEditModal(rule)}
                       className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
                       title="Edit Pipeline"
                     >
                       <Edit3 size={14} />
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => handleDeleteRule(rule.id)}
                       className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
                       title="Delete Rule"
@@ -779,7 +779,7 @@ export default function AutomationPage() {
                     </p>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setShowCreateModal(false)}
                   className="p-2 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                 >

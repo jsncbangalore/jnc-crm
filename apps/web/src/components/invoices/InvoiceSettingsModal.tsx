@@ -177,7 +177,7 @@ export default function InvoiceSettingsModal({ isOpen, onClose, onSaved }: Invoi
                 </p>
               </div>
             </div>
-            <button
+            <button type="button"
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
             >

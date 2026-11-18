@@ -12,9 +12,22 @@ import { numberToIndianWords } from './InvoiceModal';
 import { validateLutStatus } from '../../utils/lut-validator';
 import { validateGstin, cleanGstin, toPlainText } from '@crm/shared-validation';
 import { useAllowedPages } from '../../hooks/useAllowedPages';
+import { useAuth } from '../../contexts/AuthContext';
 import FullCalendarPicker from '../common/FullCalendarPicker';
 import FormFeedback from '../common/FormFeedback';
 import { PhoneField, QuantityField } from '../common/forms';
+
+const STANDARD_UNITS = ['Nos', 'Kg', 'Mtr', 'Set', 'Box', 'Ltr', 'Hrs', 'Sqft', 'Pair'];
+
+const stripLeadingZeroes = (val: string | number): string => {
+  if (typeof val === 'number') return String(val);
+  if (!val) return '';
+  const trimmed = String(val).trim();
+  if (/^0+(\d.*)$/.test(trimmed)) {
+    return trimmed.replace(/^0+(?=\d)/, '');
+  }
+  return trimmed;
+};
 
 const PAYMENT_TERMS_OPTIONS = [
   'Due on Receipt / Immediate',
@@ -59,8 +72,11 @@ const COMMON_HSN = [
 
 export default function CreateDocumentModal({ isOpen, onClose, onCreated, editInvoice }: CreateDocumentModalProps) {
   const { hasPage } = useAllowedPages();
+  const { user } = useAuth();
+  const isAdmin = Boolean(user && ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin'].includes(user.role));
   const [docType, setDocType] = useState<DocumentType>('tax_invoice');
   const [loadingNumber, setLoadingNumber] = useState(false);
+  const [isManualNumber, setIsManualNumber] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -95,7 +111,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
   const [poDate, setPoDate] = useState('');
   const [buyerOrderNo, setBuyerOrderNo] = useState('');
   const [referenceNo, setReferenceNo] = useState('');
-  const [paymentTerms, setPaymentTerms] = useState('');
+  const [paymentTerms, setPaymentTerms] = useState('Due on Receipt / Immediate');
   const [isCustomPaymentTerms, setIsCustomPaymentTerms] = useState(false);
   const paymentTermsInputRef = useRef<HTMLInputElement>(null);
   const [paymentStatus, setPaymentStatus] = useState<'unpaid' | 'paid' | 'partial'>('unpaid');
@@ -201,12 +217,13 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         }
       } else {
         fetchNextNumber(docType);
+        setIsManualNumber(false);
         setInvoiceDate(new Date().toISOString().split('T')[0]);
         setDueDate('');
         setPoDate('');
         setBuyerOrderNo('');
         setReferenceNo('');
-        setPaymentTerms('');
+        setPaymentTerms('Due on Receipt / Immediate');
         setIsCustomPaymentTerms(false);
         setPaymentStatus('unpaid');
         setDeliverySchedule('');
@@ -233,7 +250,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
             id: '1',
             description: '',
             hsnCode: '',
-            unit: '',
+            unit: 'Nos',
             quantity: '',
             unitPrice: '',
             taxRate: 18,
@@ -297,7 +314,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         id: String(Date.now()),
         description: '',
         hsnCode: '',
-        unit: '',
+        unit: 'Nos',
         quantity: '',
         unitPrice: '',
         taxRate: docType === 'delivery_challan' ? 0 : 18,
@@ -334,7 +351,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
           skuId: sku.id,
           description: sku.name,
           hsnCode: sku.hsnCode || '85312000',
-          unitPrice: sku.unitPrice || 0,
+          unitPrice: sku.unitPrice ? sku.unitPrice : '',
           taxRate: sku.taxRate || 18,
         };
       })
@@ -388,12 +405,17 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
   const isZeroTax = isDC || (isSEZ && sezTaxTreatment === 'lut');
   const totalTax = isZeroTax ? 0 : Number((isInterState || isSEZ ? totalIgst : (totalCgst + totalSgst)).toFixed(2));
   const grandTotal = isZeroTax ? subtotal : Number((subtotal + totalTax).toFixed(2));
+  const highValueThreshold = Number(companyProfile?.highValueThreshold) || 10000000;
   const appliedAdvanceAmount = applyAdvance ? Math.min(customerAdvance, grandTotal) : 0;
   const payNowVal = recordPaymentNow ? (Number(payNowAmount) || 0) : 0;
   const advanceAmount = isProforma ? Number(((grandTotal * (advancePercent || 50)) / 100).toFixed(2)) : 0;
   const balanceDue = Math.max(0, Number((grandTotal - appliedAdvanceAmount - payNowVal - (advanceAdjusted || 0)).toFixed(2)));
-  const derivedPaymentStatus: 'unpaid' | 'paid' | 'partial' = balanceDue <= 0.01 ? 'paid' : ((appliedAdvanceAmount + payNowVal + (advanceAdjusted || 0)) > 0 ? 'partial' : 'unpaid');
-  const amountWords = numberToIndianWords(grandTotal);
+  const derivedPaymentStatus: 'unpaid' | 'paid' | 'partial' = grandTotal <= 0
+    ? 'unpaid'
+    : balanceDue <= 0.01
+      ? 'paid'
+      : ((appliedAdvanceAmount + payNowVal + (advanceAdjusted || 0)) > 0 ? 'partial' : 'unpaid');
+  const amountWords = grandTotal > 0 ? numberToIndianWords(grandTotal) : '';
   const scrollAndFocusGstin = () => {
     setTimeout(() => {
       if (customerGstinInputRef.current) {
@@ -406,7 +428,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
     }, 50);
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, confirmedHigh = false) => {
     if (e) e.preventDefault();
     setFormError(null);
     setFieldErrors({});
@@ -416,6 +438,8 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         missingCompanyFields,
         invoiceNumber,
         invoiceDate,
+        dueDate,
+        poDate,
         customerName,
         customerGstin,
         lines,
@@ -423,8 +447,6 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
     }
 
     if (missingCompanyFields.length > 0) {
-      // The amber banner displays the missing fields clearly once.
-      // Suppress submit to prevent duplicate error boxes or duplicate toasts.
       return;
     }
 
@@ -436,6 +458,16 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
     if (!invoiceDate) {
       setFormError('Please select document date.');
       setFieldErrors({ invoiceDate: 'Document date is required' });
+      return;
+    }
+    if (dueDate && invoiceDate && dueDate < invoiceDate) {
+      setFormError('Due date cannot be earlier than invoice date.');
+      setFieldErrors({ dueDate: 'Due date cannot be earlier than document date' });
+      return;
+    }
+    if (poDate && invoiceDate && poDate > invoiceDate) {
+      setFormError('PO date cannot be later than invoice date.');
+      setFieldErrors({ poDate: 'PO date cannot be later than document date' });
       return;
     }
     if (!customerName.trim()) {
@@ -452,9 +484,29 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         return;
       }
     }
-    if (lines.some((l) => !l.description.trim())) {
-      setFormError('Please enter a description for all line items.');
-      setFieldErrors({ lines: 'All line items must have a valid description' });
+
+    const lineItemErrors: Record<string, string> = {};
+    lines.forEach((l, idx) => {
+      if (!l.description.trim()) {
+        lineItemErrors[`line_${idx}_desc`] = 'Description is required';
+      }
+      if (!isDC && (l.unitPrice === '' || Number(l.unitPrice) <= 0)) {
+        lineItemErrors[`line_${idx}_rate`] = 'Rate must be positive with at most 2 decimal places';
+      }
+      if (l.quantity === '' || Number(l.quantity) <= 0) {
+        lineItemErrors[`line_${idx}_qty`] = 'Quantity must be > 0';
+      }
+    });
+
+    if (Object.keys(lineItemErrors).length > 0) {
+      setFormError('Please correct the highlighted fields and try again.');
+      setFieldErrors(lineItemErrors);
+      return;
+    }
+
+    if (!isDC && (grandTotal <= 0)) {
+      setFormError('Document total must be greater than zero.');
+      setFieldErrors({ grandTotal: 'Total amount must be greater than zero' });
       return;
     }
 
@@ -463,21 +515,23 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
       return;
     }
 
-    // Advance Adjustment Guard: Advance cannot exceed invoice grand total
-    if (!isProforma && !isDC && advanceAdjusted > grandTotal) {
-      setFormError(`Advance payment received (₹${advanceAdjusted.toLocaleString('en-IN')}) cannot exceed the invoice total of ₹${grandTotal.toLocaleString('en-IN')}.`);
-      setFieldErrors({ advanceAdjusted: 'Advance payment cannot exceed invoice total' });
+    // Payment validation: Advance + Pay Now cannot exceed invoice grand total
+    const totalPaymentsReceived = (applyAdvance ? appliedAdvanceAmount : 0) + (recordPaymentNow ? payNowVal : 0);
+    if (!isDC && grandTotal > 0 && totalPaymentsReceived > grandTotal) {
+      setFormError(`Total payments (₹${totalPaymentsReceived.toLocaleString('en-IN')}) cannot exceed document total of ₹${grandTotal.toLocaleString('en-IN')}.`);
+      setFieldErrors({ payments: 'Total payments cannot exceed invoice total' });
       return;
     }
 
-    // High Value Guard: If invoice > Rs. 10,00,000, ask user to confirm before submit
-    if (grandTotal > 1000000 && !largeAmountConfirmed) {
+    // High Value Guard: If invoice > highValueThreshold, ask user to confirm before submit
+    if (grandTotal > highValueThreshold && !largeAmountConfirmed && !confirmedHigh) {
       setShowLargeAmountPrompt(true);
       return;
     }
 
     if (recordPaymentNow && payNowMode !== 'Cash' && !payNowRef.trim()) {
       setFormError(`Payment reference / UTR is required when recording ${payNowMode} payment.`);
+      setFieldErrors({ payNowRef: 'Payment reference / UTR is required' });
       return;
     }
 
@@ -487,6 +541,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
       payload = {
         docType,
         invoiceNumber: invoiceNumber.trim(),
+        isManualNumber: isManualNumber || undefined,
         invoiceDate,
         dueDate: dueDate || undefined,
         poDate: poDate || undefined,
@@ -495,6 +550,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
         paymentTerms: paymentTerms.trim(),
         paymentStatus: derivedPaymentStatus,
         applyAdvance: applyAdvance,
+        confirmedHighAmount: (confirmedHigh || largeAmountConfirmed) ? true : undefined,
         recordPaymentNow: (!isDC && recordPaymentNow) ? {
           amount: Number(payNowAmount) || grandTotal,
           paymentMethod: payNowMode,
@@ -630,7 +686,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
               </p>
             </div>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
           >
@@ -779,24 +835,47 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="label">
-                  {isDC ? 'DC Number' : isCreditNote ? 'CN Number' : isPO ? 'PO Number' : 'Invoice Number'} *
-                </label>
-                <input
-                  type="text"
-                  name="doc_number"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  data-lpignore="true"
-                  data-1p-ignore="true"
-                  data-form-type="other"
-                  required
-                  className="input text-xs font-mono"
-                  placeholder={isDC ? 'e.g. DC-001' : isCreditNote ? 'e.g. CN-001' : isPO ? 'e.g. PO-001' : 'e.g. INV-001'}
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="label mb-0">
+                    {isDC ? 'DC Number' : isCreditNote ? 'CN Number' : isPO ? 'PO Number' : 'Invoice Number'} *
+                  </label>
+                  {isAdmin && !editInvoice && (
+                    <button
+                      type="button"
+                      onClick={() => setIsManualNumber(!isManualNumber)}
+                      className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      {isManualNumber ? 'Use Auto Number' : 'Manual Override'}
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="doc_number"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-form-type="other"
+                    required
+                    readOnly={!isManualNumber && !editInvoice}
+                    className={`input text-xs font-mono ${
+                      !isManualNumber && !editInvoice
+                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 cursor-not-allowed'
+                        : ''
+                    } ${fieldErrors.invoiceNumber ? 'border-red-500' : ''}`}
+                    placeholder={isDC ? 'e.g. DC-001' : isCreditNote ? 'e.g. CN-001' : isPO ? 'e.g. PO-001' : 'e.g. INV-001'}
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                  />
+                  {!isManualNumber && !editInvoice && (
+                    <span className="absolute right-2 top-2 text-[10px] font-medium text-slate-400 dark:text-slate-500 pointer-events-none">
+                      (Auto-assigned)
+                    </span>
+                  )}
+                </div>
                 {fieldErrors.invoiceNumber && (
                   <p className="text-red-500 text-[11px] mt-1 font-semibold">{fieldErrors.invoiceNumber}</p>
                 )}
@@ -811,6 +890,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 placeholder="YYYY-MM-DD"
                 minYear={1990}
                 maxYear={3000}
+                error={fieldErrors.invoiceDate}
               />
 
               {!isDC && (
@@ -819,19 +899,23 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                     <span>Payment Status</span>
                     <span
                       className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
-                        derivedPaymentStatus === 'paid'
+                        grandTotal <= 0
+                          ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-300 dark:border-slate-700'
+                          : derivedPaymentStatus === 'paid'
                           ? 'bg-emerald-50 text-emerald-700 dark:bg-green-500/15 dark:text-green-400 border-emerald-300 dark:border-green-500/30'
                           : derivedPaymentStatus === 'partial'
                           ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 border-amber-300 dark:border-amber-500/30'
                           : 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-400 border-slate-300 dark:border-slate-500/30'
                       }`}
                     >
-                      {derivedPaymentStatus}
+                      {grandTotal <= 0 ? 'Not calculated yet' : derivedPaymentStatus}
                     </span>
                   </label>
                   <div className="input text-xs font-bold bg-slate-50 dark:bg-[#141722] text-slate-700 dark:text-slate-300 flex items-center justify-between pointer-events-none">
                     <span>
-                      {derivedPaymentStatus === 'paid'
+                      {grandTotal <= 0
+                        ? 'Not calculated yet (Draft)'
+                        : derivedPaymentStatus === 'paid'
                         ? 'Paid (Fully Settled)'
                         : derivedPaymentStatus === 'partial'
                         ? 'Partial (Partly Paid)'
@@ -870,6 +954,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 placeholder="Optional due date"
                 minYear={1990}
                 maxYear={3000}
+                error={fieldErrors.dueDate}
               />
 
               <div>
@@ -896,6 +981,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 placeholder="Optional PO date"
                 minYear={1990}
                 maxYear={3000}
+                error={fieldErrors.poDate}
               />
 
               <div>
@@ -928,104 +1014,6 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 </div>
               )}
             </div>
-
-            {/* Record Payment Now (Cash / Bank) Section */}
-            {!isDC && (
-              <div className="p-3.5 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-indigo-950 dark:text-indigo-200">
-                    <input
-                      type="checkbox"
-                      checked={recordPaymentNow}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setRecordPaymentNow(checked);
-                        if (checked && !payNowAmount) {
-                          const netDue = Math.max(0, Number((grandTotal - appliedAdvanceAmount).toFixed(2)));
-                          setPayNowAmount(String(netDue));
-                        }
-                      }}
-                      className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    Record payment now (Cash / Bank)
-                  </label>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                    Creates invoice & receipt together and posts both ledger entries
-                  </span>
-                </div>
-
-                {recordPaymentNow && (
-                  <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Amount (₹) *
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        max={grandTotal}
-                        value={payNowAmount}
-                        onChange={(e) => setPayNowAmount(e.target.value)}
-                        className="input text-xs font-mono font-bold"
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Mode *
-                      </label>
-                      <select
-                        value={payNowMode}
-                        onChange={(e) => {
-                          setPayNowMode(e.target.value);
-                          if (e.target.value === 'Cash') setPayNowRef('');
-                        }}
-                        className="input text-xs font-semibold"
-                      >
-                        <option value="Cash">Cash</option>
-                        <option value="NEFT">NEFT</option>
-                        <option value="RTGS">RTGS</option>
-                        <option value="IMPS">IMPS</option>
-                        <option value="UPI">UPI</option>
-                        <option value="Cheque">Cheque</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Reference / UTR {payNowMode !== 'Cash' && '*'}
-                      </label>
-                      <input
-                        type="text"
-                        disabled={payNowMode === 'Cash'}
-                        value={payNowRef}
-                        onChange={(e) => setPayNowRef(e.target.value)}
-                        placeholder={payNowMode === 'Cash' ? 'N/A for cash' : 'UTR / Ref No'}
-                        className="input text-xs font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Bank Account
-                      </label>
-                      <select
-                        disabled={payNowMode === 'Cash'}
-                        value={payNowBankId}
-                        onChange={(e) => setPayNowBankId(e.target.value)}
-                        className="input text-xs"
-                      >
-                        <option value="">Select bank account...</option>
-                        {bankAccountsList.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.bankName} (••••{b.accountNumberLast4 || (b.accountNumber ? b.accountNumber.slice(-4) : '')})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* SEZ Tax Treatment Selection & Compliance */}
             {isSEZ && (
@@ -1167,48 +1155,6 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 </div>
               </div>
             )}
-
-            {/* Advance Adjustment Deduction for Tax Invoices */}
-            {!isProforma && !isDC && (
-              <div className="p-3 rounded-lg bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] space-y-2 shadow-sm dark:shadow-none">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Advance Payment Already Received? (Optional Deduction)
-                  </label>
-                  <span className="text-[10px] text-slate-600 dark:text-slate-400 font-mono font-medium">Deducts from Final Balance Due</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-700 dark:text-slate-400 block mb-1">Advance Amount Received (₹)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max={grandTotal > 0 ? grandTotal : undefined}
-                      step="any"
-                      className={`input text-xs font-mono ${advanceAdjusted > grandTotal && grandTotal > 0 ? 'border-red-500 focus:ring-red-500' : ''}`}
-                      placeholder="0.00"
-                      value={advanceAdjusted || ''}
-                      onChange={(e) => setAdvanceAdjusted(Number(e.target.value) || 0)}
-                    />
-                    {advanceAdjusted > grandTotal && grandTotal > 0 && (
-                      <p className="text-[11px] text-red-500 font-semibold mt-1">
-                        Advance cannot exceed invoice total of ₹{grandTotal.toLocaleString('en-IN')}.
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-700 dark:text-slate-400 block mb-1">Bank Reference / UTR Number</label>
-                    <input
-                      type="text"
-                      className="input text-xs font-mono"
-                      placeholder="e.g. UTR-001"
-                      value={advanceRef}
-                      onChange={(e) => setAdvanceRef(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* 3. CUSTOMER / VENDOR DETAILS */}
@@ -1236,26 +1182,6 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                   required={false}
                   label="Select or Register Customer Master Account"
                 />
-              </div>
-            )}
-
-            {/* Customer Unallocated Advance Offer */}
-            {customerAdvance > 0 && !isDC && (
-              <div className="p-3 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-xl flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-purple-900 dark:text-purple-200">
-                    💡 This customer has an unallocated advance of ₹{customerAdvance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}.
-                  </span>
-                </div>
-                <label className="flex items-center gap-1.5 cursor-pointer font-bold text-purple-800 dark:text-purple-300">
-                  <input
-                    type="checkbox"
-                    checked={applyAdvance}
-                    onChange={(e) => setApplyAdvance(e.target.checked)}
-                    className="rounded border-purple-300 text-purple-600 focus:ring-purple-500"
-                  />
-                  Apply advance of ₹{Math.min(customerAdvance, grandTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                </label>
               </div>
             )}
 
@@ -1300,7 +1226,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                   data-1p-ignore="true"
                   data-form-type="other"
                   className="input text-xs font-mono"
-                  placeholder="billing@example.com"
+                  placeholder="billing@company.com"
                   value={customerEmail}
                   onChange={(e) => setCustomerEmail(e.target.value)}
                 />
@@ -1463,11 +1389,16 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                       <textarea
                         rows={2}
                         required
-                        className="input text-xs resize-none w-full"
+                        className={`input text-xs resize-none w-full ${
+                          fieldErrors[`line_${idx}_desc`] ? 'border-red-500 ring-1 ring-red-500 bg-red-50/20' : ''
+                        }`}
                         placeholder="Item name, serial numbers or bullet specs..."
                         value={line.description}
                         onChange={(e) => handleUpdateLine(line.id, 'description', e.target.value)}
                       />
+                      {fieldErrors[`line_${idx}_desc`] && (
+                        <p className="text-red-500 text-[10px] font-semibold mt-0.5">{fieldErrors[`line_${idx}_desc`]}</p>
+                      )}
                     </div>
 
                     {!isDC && (
@@ -1475,8 +1406,8 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                         <label className="text-[10px] font-bold text-slate-700 dark:text-slate-400 mb-1 block">HSN / SAC</label>
                         <input
                           type="text"
-                          className="input text-xs font-mono"
-                          placeholder="85312000"
+                          className="input text-xs font-mono placeholder:text-slate-400/50 dark:placeholder:text-slate-500/50"
+                          placeholder="e.g. 85312000"
                           value={line.hsnCode}
                           onChange={(e) => handleUpdateLine(line.id, 'hsnCode', e.target.value)}
                         />
@@ -1485,13 +1416,33 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
 
                     <div className="sm:col-span-1">
                       <label className="text-[10px] font-bold text-slate-700 dark:text-slate-400 mb-1 block">Unit</label>
-                      <input
-                        type="text"
-                        className="input text-xs text-center"
-                        placeholder="No's"
-                        value={line.unit}
-                        onChange={(e) => handleUpdateLine(line.id, 'unit', e.target.value)}
-                      />
+                      <select
+                        className="input text-xs text-center p-1 font-semibold"
+                        value={STANDARD_UNITS.includes(line.unit) ? line.unit : (line.unit ? 'Other' : 'Nos')}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === 'Other') {
+                            handleUpdateLine(line.id, 'unit', line.unit && !STANDARD_UNITS.includes(line.unit) ? line.unit : '');
+                          } else {
+                            handleUpdateLine(line.id, 'unit', val);
+                          }
+                        }}
+                      >
+                        {STANDARD_UNITS.map((u) => (
+                          <option key={u} value={u}>{u}</option>
+                        ))}
+                        <option value="Other">Other</option>
+                      </select>
+                      {(!STANDARD_UNITS.includes(line.unit) || line.unit === 'Other') && (
+                        <input
+                          type="text"
+                          maxLength={10}
+                          placeholder="Unit"
+                          className="input text-[10px] mt-1 text-center font-mono p-1"
+                          value={line.unit === 'Other' ? '' : line.unit}
+                          onChange={(e) => handleUpdateLine(line.id, 'unit', e.target.value.slice(0, 10))}
+                        />
+                      )}
                     </div>
 
                     <div className="sm:col-span-1">
@@ -1500,6 +1451,9 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                         value={Number(line.quantity) || 1}
                         onChange={(val) => handleUpdateLine(line.id, 'quantity', val)}
                       />
+                      {fieldErrors[`line_${idx}_qty`] && (
+                        <p className="text-red-500 text-[10px] font-semibold mt-0.5">{fieldErrors[`line_${idx}_qty`]}</p>
+                      )}
                     </div>
 
                     {!isDC && (
@@ -1509,11 +1463,20 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                           type="number"
                           step="any"
                           required
-                          className="input text-xs text-right font-mono font-bold"
+                          className={`input text-xs text-right font-mono font-bold ${
+                            fieldErrors[`line_${idx}_rate`] ? 'border-red-500 ring-1 ring-red-500 bg-red-50/20' : ''
+                          }`}
                           placeholder="0.00"
                           value={line.unitPrice === 0 || line.unitPrice === '' ? '' : line.unitPrice}
                           onChange={(e) => handleUpdateLine(line.id, 'unitPrice', e.target.value === '' ? '' : (Number(e.target.value) || e.target.value))}
+                          onBlur={(e) => {
+                            const val = stripLeadingZeroes(e.target.value);
+                            handleUpdateLine(line.id, 'unitPrice', val === '' ? '' : Number(val));
+                          }}
                         />
+                        {fieldErrors[`line_${idx}_rate`] && (
+                          <p className="text-red-500 text-[10px] font-semibold mt-0.5">{fieldErrors[`line_${idx}_rate`]}</p>
+                        )}
                       </div>
                     )}
 
@@ -1539,7 +1502,147 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
             </div>
           </div>
 
-          {/* 5. ACCURATE GST & TOTAL BREAKDOWN */}
+          {/* 5. CONSOLIDATED PAYMENT RECEIVED SECTION */}
+          {!isDC && (
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042] space-y-3 shadow-sm dark:shadow-none">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
+                  Step 5: Payment received (Optional)
+                </h4>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                  Deduct customer advance or record immediate payment receipt
+                </span>
+              </div>
+
+              {/* Option A: Customer Unallocated Advance */}
+              {customerAdvance > 0 && (
+                <div className="p-3 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-purple-900 dark:text-purple-200">
+                      💡 Unallocated customer advance available: ₹{customerAdvance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </span>
+                    <label className="flex items-center gap-1.5 cursor-pointer font-bold text-purple-800 dark:text-purple-300">
+                      <input
+                        type="checkbox"
+                        checked={applyAdvance}
+                        onChange={(e) => setApplyAdvance(e.target.checked)}
+                        className="rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      Use existing advance (₹{appliedAdvanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })})
+                    </label>
+                  </div>
+                  {applyAdvance && (
+                    <p className="text-[11px] text-purple-700 dark:text-purple-300">
+                      ₹{appliedAdvanceAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })} will be allocated against this invoice from customer advance.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Option B: Record Payment Now */}
+              <div className="p-3.5 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-indigo-950 dark:text-indigo-200">
+                    <input
+                      type="checkbox"
+                      checked={recordPaymentNow}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setRecordPaymentNow(checked);
+                        if (checked && !payNowAmount) {
+                          const netDue = Math.max(0, Number((grandTotal - appliedAdvanceAmount).toFixed(2)));
+                          setPayNowAmount(String(netDue));
+                        }
+                      }}
+                      className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Record payment now
+                  </label>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Creates invoice receipt with chosen method & bank
+                  </span>
+                </div>
+
+                {recordPaymentNow && (
+                  <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Amount (₹) *
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        max={grandTotal}
+                        value={payNowAmount}
+                        onChange={(e) => setPayNowAmount(e.target.value)}
+                        onBlur={(e) => setPayNowAmount(stripLeadingZeroes(e.target.value))}
+                        className={`input text-xs font-mono font-bold ${fieldErrors.payNowAmount ? 'border-red-500' : ''}`}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Mode *
+                      </label>
+                      <select
+                        value={payNowMode}
+                        onChange={(e) => {
+                          setPayNowMode(e.target.value);
+                          if (e.target.value === 'Cash') setPayNowRef('');
+                        }}
+                        className="input text-xs font-semibold"
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="NEFT">NEFT</option>
+                        <option value="RTGS">RTGS</option>
+                        <option value="IMPS">IMPS</option>
+                        <option value="UPI">UPI</option>
+                        <option value="Cheque">Cheque</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Reference / UTR {payNowMode !== 'Cash' && '*'}
+                      </label>
+                      <input
+                        type="text"
+                        disabled={payNowMode === 'Cash'}
+                        value={payNowRef}
+                        onChange={(e) => setPayNowRef(e.target.value)}
+                        placeholder={payNowMode === 'Cash' ? 'N/A for cash' : 'UTR / Ref No'}
+                        className={`input text-xs font-mono ${fieldErrors.payNowRef ? 'border-red-500' : ''}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Bank Account
+                      </label>
+                      <select
+                        disabled={payNowMode === 'Cash'}
+                        value={payNowBankId}
+                        onChange={(e) => setPayNowBankId(e.target.value)}
+                        className="input text-xs"
+                      >
+                        <option value="">Select bank account...</option>
+                        {bankAccountsList.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.bankName} (••••{b.accountNumberLast4 || (b.accountNumber ? b.accountNumber.slice(-4) : '')})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {fieldErrors.payments && (
+                <p className="text-red-500 text-[11px] font-semibold">{fieldErrors.payments}</p>
+              )}
+            </div>
+          )}
+
+          {/* 6. ACCURATE GST & TOTAL BREAKDOWN */}
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042] flex flex-col sm:flex-row justify-between gap-4 shadow-sm dark:shadow-none">
             <div className="flex-1 space-y-1">
               <span className="text-[11px] font-bold text-slate-700 dark:text-slate-400 uppercase tracking-wider">Amount in Words:</span>
@@ -1606,12 +1709,15 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 </>
               )}
 
-              <div className="flex justify-between text-sm font-bold text-slate-950 dark:text-white pt-2 border-t border-slate-200 dark:border-[#2A3042]">
+              <div className={`flex justify-between text-sm font-bold pt-2 border-t border-slate-200 dark:border-[#2A3042] ${fieldErrors.grandTotal ? 'p-1.5 rounded bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-400' : 'text-slate-950 dark:text-white'}`}>
                 <span>Total Amount:</span>
-                <strong className="text-emerald-700 dark:text-emerald-400 font-mono text-base font-black">
+                <strong className={`font-mono text-base font-black ${fieldErrors.grandTotal ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
                   {isDC ? '-' : `₹${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
                 </strong>
               </div>
+              {fieldErrors.grandTotal && (
+                <p className="text-[10px] text-rose-500 font-bold mt-1 text-right">{fieldErrors.grandTotal}</p>
+              )}
             </div>
           </div>
 
@@ -1648,7 +1754,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
               <button
                 type="button"
                 onClick={() => handleSubmit()}
-                disabled={submitting || (!isProforma && !isDC && advanceAdjusted > grandTotal && grandTotal > 0)}
+                disabled={submitting || (!isProforma && !isDC && ((applyAdvance ? appliedAdvanceAmount : 0) + (recordPaymentNow ? payNowVal : 0)) > grandTotal && grandTotal > 0)}
                 className="btn-primary text-xs px-6 py-2.5 shadow-glow-blue flex items-center gap-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {submitting ? 'Saving Document...' : editInvoice ? 'Update & Save Changes' : 'Save & Generate Document'}
@@ -1667,7 +1773,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
               <h3 className="font-bold text-base text-slate-900 dark:text-white">High Value Document Confirmation</h3>
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              The total invoice amount is <strong>₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>, which exceeds the high-value verification threshold of <strong>₹10,00,000</strong>.
+              The total invoice amount is <strong>₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>, which exceeds the high-value verification threshold of <strong>₹{highValueThreshold.toLocaleString('en-IN')}</strong>.
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Please verify that the line item quantities and unit rates are accurate before proceeding.
@@ -1685,7 +1791,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 onClick={() => {
                   setShowLargeAmountPrompt(false);
                   setLargeAmountConfirmed(true);
-                  setTimeout(() => handleSubmit(), 50);
+                  handleSubmit(undefined, true);
                 }}
                 className="px-4 py-2 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
               >

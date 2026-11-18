@@ -348,7 +348,7 @@ export default function MetaWhatsAppTab() {
               <Sparkles size={16} className="text-amber-500" />
               <span>New Verify Token Generated (Copy Now — Shown Once)</span>
             </div>
-            <button
+            <button type="button"
               onClick={() => handleCopy(newlyGeneratedVerifyToken, 'newToken')}
               className="text-[11px] px-2.5 py-1 rounded bg-amber-200/80 dark:bg-amber-800/40 hover:bg-amber-300 text-amber-900 dark:text-amber-100 font-bold flex items-center gap-1 cursor-pointer"
             >

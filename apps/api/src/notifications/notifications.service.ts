@@ -5,13 +5,16 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptAtRest } from '../common/encryption.util';
 import { BRAND_CONFIG, PRODUCT_NAME } from '../common/brand';
 import * as nodemailer from 'nodemailer';
 import * as dns from 'dns';
 import { isPrivateOrBlockedIp, isInternalHostname } from '../common/ssrf.util';
+import { resolveSmsProvider } from './sms/sms.providers';
+
+export const OUTBOX_BACKOFF_SECONDS = [10, 30, 120, 600, 1800, 3600, 10800];
 
 export type MailDeliveryStatus = 'sent' | 'failed' | 'not_configured';
 
@@ -194,11 +197,99 @@ export interface MailTestResult {
 }
 
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(NotificationsService.name);
   private transporterCache: Map<string, nodemailer.Transporter> = new Map();
+  private hourlyCheckInterval: any = null;
+  private outboxSweepInterval: any = null;
+  private smtpState: { status: 'ok' | 'degraded' | 'down'; provider: string; lastCheckedAt: Date | null; error?: string } = {
+    status: 'degraded',
+    provider: 'smtp',
+    lastCheckedAt: null,
+  };
 
   constructor(private prisma: PrismaService) {}
+
+  async onModuleInit() {
+    if (!this.isSmsConfigured()) {
+      this.logger.warn('[SMS_CONFIG] No SMS provider configured. SMS features are disabled; phone verification options will be unavailable.');
+    }
+    void this.verifySmtpConnection();
+    this.hourlyCheckInterval = setInterval(() => {
+      void this.verifySmtpConnection();
+    }, 3600000);
+    this.outboxSweepInterval = setInterval(() => {
+      void this.processPendingOutboxBatch();
+    }, 10000);
+  }
+
+  onModuleDestroy() {
+    if (this.hourlyCheckInterval) {
+      clearInterval(this.hourlyCheckInterval);
+      this.hourlyCheckInterval = null;
+    }
+    if (this.outboxSweepInterval) {
+      clearInterval(this.outboxSweepInterval);
+      this.outboxSweepInterval = null;
+    }
+  }
+
+  /**
+   * Performs lightweight SMTP connection verification (no email sent).
+   */
+  async verifySmtpConnection(): Promise<{ status: 'ok' | 'degraded' | 'down'; provider: string; lastCheckedAt: Date; error?: string }> {
+    const provider = this.getMailProvider();
+    const now = new Date();
+
+    if (provider === 'brevo') {
+      const apiKey = process.env.BREVO_API_KEY;
+      if (!apiKey || !apiKey.trim()) {
+        this.smtpState = { status: 'down', provider, lastCheckedAt: now, error: 'BREVO_API_KEY not configured' };
+      } else {
+        this.smtpState = { status: 'ok', provider, lastCheckedAt: now };
+      }
+      return this.smtpState;
+    }
+
+    if (provider === 'resend') {
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey || !apiKey.trim()) {
+        this.smtpState = { status: 'down', provider, lastCheckedAt: now, error: 'RESEND_API_KEY not configured' };
+      } else {
+        this.smtpState = { status: 'ok', provider, lastCheckedAt: now };
+      }
+      return this.smtpState;
+    }
+
+    try {
+      const transporterInfo = await this.getTenantTransporter();
+      if (!transporterInfo.transporter) {
+        const isProd = process.env.NODE_ENV === 'production';
+        this.smtpState = {
+          status: isProd ? 'down' : 'degraded',
+          provider: 'smtp',
+          lastCheckedAt: now,
+          error: 'SMTP transporter not configured',
+        };
+        return this.smtpState;
+      }
+
+      await transporterInfo.transporter.verify();
+      this.smtpState = { status: 'ok', provider: 'smtp', lastCheckedAt: now };
+      this.logger.log(`[SMTP_VERIFY] SMTP connection verified successfully (Provider: SMTP)`);
+    } catch (err: any) {
+      const isProd = process.env.NODE_ENV === 'production';
+      this.smtpState = {
+        status: isProd ? 'down' : 'degraded',
+        provider: 'smtp',
+        lastCheckedAt: now,
+        error: err?.message || 'SMTP handshake failed',
+      };
+      this.logger.warn(`[SMTP_VERIFY] SMTP verification failed: ${err.message}`);
+    }
+
+    return this.smtpState;
+  }
 
   /**
    * Retrieves the configured MAIL_PROVIDER: 'smtp' | 'brevo' | 'resend'
@@ -219,23 +310,37 @@ export class NotificationsService {
    * If a tenant has a custom MailAccount registered in DB, keep using SMTP for that tenant.
    */
   private async resolveAndValidateSmtpHost(host: string, port: number): Promise<string> {
-    if (![465, 587, 2525].includes(port)) {
-      throw new Error(`Port ${port} is not allowed. Only secure ports 465, 587, or 2525 are permitted.`);
-    }
-    if (isInternalHostname(host)) {
-      throw new Error(`Host "${host}" is an internal address and is prohibited.`);
-    }
-    const lookups = await dns.promises.lookup(host, { all: true });
-    const ips = lookups.map((l) => l.address);
-    if (ips.length === 0) {
-      throw new Error(`Host "${host}" could not be resolved in DNS.`);
-    }
-    for (const ip of ips) {
-      if (isPrivateOrBlockedIp(ip)) {
-        throw new Error(`Host "${host}" resolves to prohibited address ${ip}.`);
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) {
+      if (![465, 587, 2525].includes(port)) {
+        throw new Error(`Port ${port} is not allowed. Only secure ports 465, 587, or 2525 are permitted.`);
+      }
+      if (isInternalHostname(host)) {
+        throw new Error(`Host "${host}" is an internal address and is prohibited in production.`);
+      }
+      const lookups = await dns.promises.lookup(host, { all: true });
+      const ips = lookups.map((l) => l.address);
+      if (ips.length === 0) {
+        throw new Error(`Host "${host}" could not be resolved in DNS.`);
+      }
+      for (const ip of ips) {
+        if (isPrivateOrBlockedIp(ip)) {
+          throw new Error(`Host "${host}" resolves to prohibited address ${ip}.`);
+        }
+      }
+      return ips[0];
+    } else {
+      // Development/testing mode: allow local mail catchers (e.g. 127.0.0.1, localhost)
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return '127.0.0.1';
+      }
+      try {
+        const lookups = await dns.promises.lookup(host, { all: true });
+        return lookups[0]?.address || host;
+      } catch {
+        return host;
       }
     }
-    return ips[0];
   }
 
   private async getTenantTransporter(tenantId?: string, senderType: 'primary' | 'invoice' | 'sales' = 'primary'): Promise<{
@@ -301,28 +406,53 @@ export class NotificationsService {
     }
 
     // 2. Fallback to system env SMTP configuration
+    const isProd = process.env.NODE_ENV === 'production';
     const primaryUser = process.env.SMTP_USER || '';
     const primaryPass = process.env.SMTP_PASS || '';
     const primaryFrom = process.env.EMAIL_FROM || primaryUser;
 
+    if (isProd) {
+      // In production, NEVER fallback to localhost or smtp.gmail.com
+      if (!process.env.SMTP_HOST || !primaryUser || !primaryPass || !primaryFrom) {
+        return {
+          transporter: null,
+          fromEmail: primaryFrom,
+          senderName: PRODUCT_NAME,
+          isCustomTenantAccount: false,
+        };
+      }
+    }
+
     if (primaryUser && primaryPass) {
       const isGmail = primaryUser.toLowerCase().includes('gmail.com');
-      const host = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'localhost');
+      const host = process.env.SMTP_HOST || (isProd ? '' : (isGmail ? 'smtp.gmail.com' : '127.0.0.1'));
       const port = Number(process.env.SMTP_PORT) || (isGmail ? 465 : 587);
       const isSsl = port === 465;
+
+      if (!host && isProd) {
+        return {
+          transporter: null,
+          fromEmail: primaryFrom,
+          senderName: PRODUCT_NAME,
+          isCustomTenantAccount: false,
+        };
+      }
 
       try {
         const checkedIp = await this.resolveAndValidateSmtpHost(host, port);
         const cacheKey = `default_root_smtp_${checkedIp}_${port}_${isSsl}`;
         let transporter = this.transporterCache.get(cacheKey);
         if (!transporter) {
+          const isDevPort = !isProd && (port === 1025 || port === 2525 || checkedIp === '127.0.0.1');
           transporter = nodemailer.createTransport({
             host: checkedIp,
             port,
             secure: isSsl,
-            requireTLS: !isSsl,
+            requireTLS: isDevPort ? false : !isSsl,
+            ignoreTLS: isDevPort,
             tls: {
               servername: host,
+              rejectUnauthorized: isProd,
             },
             auth: { user: primaryUser, pass: primaryPass },
             connectionTimeout: 10000,
@@ -840,6 +970,42 @@ export class NotificationsService {
       mailLogModel?.count ? mailLogModel.count({ where: { status: 'not_configured' } }).catch(() => 0) : Promise.resolve(0),
     ]);
 
+    let queueSize = 0;
+    let failedCount = 0;
+    let oldestPendingAgeSec = 0;
+    let failedVerificationCount = 0;
+
+    try {
+      const now = new Date();
+      const [pendingCount, failedTotal, oldestPending, verifFailures] = await Promise.all([
+        this.prisma.emailOutbox.count({ where: { status: 'pending', isDecoy: false } }).catch(() => 0),
+        this.prisma.emailOutbox.count({ where: { status: 'failed', isDecoy: false } }).catch(() => 0),
+        this.prisma.emailOutbox.findFirst({
+          where: { status: 'pending', isDecoy: false },
+          orderBy: { createdAt: 'asc' },
+          select: { createdAt: true },
+        }).catch(() => null),
+        this.prisma.emailOutbox.count({
+          where: {
+            status: 'failed',
+            isDecoy: false,
+            OR: [
+              { subject: { contains: 'verification code' } },
+              { subject: { contains: '2-step' } },
+              { subject: { contains: 'reset' } },
+            ],
+          },
+        }).catch(() => 0),
+      ]);
+
+      queueSize = pendingCount;
+      failedCount = failedTotal;
+      failedVerificationCount = verifFailures;
+      if (oldestPending && oldestPending.createdAt) {
+        oldestPendingAgeSec = Math.max(0, Math.floor((now.getTime() - new Date(oldestPending.createdAt).getTime()) / 1000));
+      }
+    } catch {}
+
     return {
       provider,
       senderDomain,
@@ -850,6 +1016,14 @@ export class NotificationsService {
       warningMessage: smtpPortBlockedWarning
         ? "Outbound SMTP (ports 25, 465, 587) is blocked on Render free tier. Use RESEND or BREVO HTTPS APIs for guaranteed delivery."
         : null,
+      smtpStatus: this.smtpState.status,
+      smtpLastCheckedAt: this.smtpState.lastCheckedAt,
+      smtpError: this.smtpState.error,
+      queueSize,
+      failedCount,
+      oldestPendingAgeSec,
+      failedVerificationCount,
+      hasFailedVerificationAlert: failedVerificationCount > 0,
       recentFailures,
       stats: {
         totalSent,
@@ -857,6 +1031,129 @@ export class NotificationsService {
         totalNotConfigured,
       },
     };
+  }
+
+  /**
+   * Diagnostic summary for GET /health endpoint
+   */
+  async getEmailHealthStatus() {
+    const statusData = await this.getMailStatus();
+    let healthState: 'ok' | 'degraded' | 'down' = this.smtpState.status;
+
+    if (healthState === 'ok') {
+      if (statusData.failedVerificationCount > 0 || statusData.oldestPendingAgeSec > 600 || statusData.failedCount > 10) {
+        healthState = 'degraded';
+      }
+    }
+
+    return {
+      status: healthState,
+      provider: statusData.provider,
+      smtpStatus: statusData.smtpStatus,
+      queueSize: statusData.queueSize,
+      failedCount: statusData.failedCount,
+      oldestPendingAgeSec: statusData.oldestPendingAgeSec,
+      failedVerificationCount: statusData.failedVerificationCount,
+      hasFailedVerificationAlert: statusData.hasFailedVerificationAlert,
+      error: statusData.smtpError || null,
+    };
+  }
+
+  /**
+   * Worker sweep for pending EmailOutbox items with exponential backoff & priority
+   */
+  async processPendingOutboxBatch(): Promise<number> {
+    try {
+      const now = new Date();
+      const pendingItems = await this.prisma.emailOutbox.findMany({
+        where: {
+          status: 'pending',
+          isDecoy: false,
+          nextAttemptAt: { lte: now },
+        },
+        orderBy: [{ createdAt: 'asc' }],
+        take: 20,
+      });
+
+      if (!pendingItems || pendingItems.length === 0) return 0;
+
+      // Priority sort: verification emails first
+      pendingItems.sort((a, b) => {
+        const aIsVerif = (a.subject || '').includes('verification code') || (a.subject || '').includes('2-step') ? 1 : 0;
+        const bIsVerif = (b.subject || '').includes('verification code') || (b.subject || '').includes('2-step') ? 1 : 0;
+        return bIsVerif - aIsVerif;
+      });
+
+      for (const item of pendingItems.slice(0, 10)) {
+        await this.dispatchOutboxItem(item.id);
+      }
+      return pendingItems.length;
+    } catch (err: any) {
+      this.logger.error(`[EMAIL_OUTBOX_BATCH] Worker sweep error: ${err.message}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Dispatch single outbox item with exponential backoff up to 8 attempts
+   */
+  async dispatchOutboxItem(outboxId: string): Promise<void> {
+    try {
+      const item = await this.prisma.emailOutbox.findUnique({ where: { id: outboxId } });
+      if (!item || item.isDecoy || item.status !== 'pending') return;
+
+      let deliveryError: string | null = null;
+      try {
+        const isReset = (item.subject || '').toLowerCase().includes('reset') || (item.subject || '').toLowerCase().includes('password');
+        const res = await this.sendEmail({
+          to: item.to,
+          subject: item.subject,
+          text: item.text || undefined,
+          html: item.html || undefined,
+          tenantId: item.tenantId || undefined,
+          purpose: isReset ? 'password_reset_code' : 'two_factor_code',
+          throwOnError: false,
+        });
+        if (res.status === 'failed') {
+          deliveryError = res.error || res.reason || 'delivery failure';
+        }
+      } catch (err: any) {
+        deliveryError = err?.message || 'SMTP delivery failed';
+      }
+
+      if (!deliveryError) {
+        await this.prisma.emailOutbox.update({
+          where: { id: item.id },
+          data: {
+            status: 'sent',
+            sentAt: new Date(),
+            attempts: item.attempts + 1,
+            text: null,
+            html: null,
+          },
+        });
+      } else {
+        const attempts = item.attempts + 1;
+        const maxAttempts = item.maxAttempts || 8;
+        const isExhausted = attempts >= maxAttempts;
+        const nextDelaySec = OUTBOX_BACKOFF_SECONDS[attempts - 1] ?? 10800;
+
+        // Log ONLY failure reason, NEVER the verification code!
+        this.logger.error(`[EMAIL_OUTBOX] Outbox item ${item.id} delivery attempt ${attempts}/${maxAttempts} failed: ${deliveryError}`);
+
+        await this.prisma.emailOutbox.update({
+          where: { id: item.id },
+          data: {
+            attempts,
+            lastError: deliveryError,
+            status: isExhausted ? 'failed' : 'pending',
+            nextAttemptAt: isExhausted ? item.nextAttemptAt : new Date(Date.now() + nextDelaySec * 1000),
+          },
+        });
+      }
+    } catch (err: any) {
+      this.logger.error(`[EMAIL_OUTBOX] Outbox item processing failure: ${err?.message || 'internal error'}`);
+    }
   }
 
   async createInAppTask(options: CreateInAppTaskOptions) {
@@ -882,9 +1179,24 @@ export class NotificationsService {
     }
   }
 
+  isSmsConfigured(): boolean {
+    const provider = resolveSmsProvider();
+    return Boolean(provider && provider.isConfigured());
+  }
+
   async sendSms(phone: string, message: string) {
-    this.logger.log(`[SMS DISPATCH] To: ${phone} | Content: ${message.slice(0, 50)}...`);
-    return { success: true, status: 'sent' };
+    const provider = resolveSmsProvider();
+    if (!provider || !provider.isConfigured()) {
+      this.logger.warn(`[SMS DISPATCH BLOCKED] SMS provider not configured. Target: ${phone}`);
+      return { success: false, status: 'not_configured', error: 'SMS service is not configured.' };
+    }
+    const result = await provider.sendSms(phone, message);
+    return {
+      success: result.success,
+      status: result.status,
+      messageId: result.messageId,
+      error: result.error,
+    };
   }
 
   async syncGoDaddyInbox() {

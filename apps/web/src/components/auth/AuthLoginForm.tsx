@@ -207,9 +207,26 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
     }
   };
 
+  // Automatically hide password after 10s or when window/tab loses focus
+  useEffect(() => {
+    if (!showPassword) return;
+    const timer = setTimeout(() => {
+      setShowPassword(false);
+    }, 10000);
+    const handleBlur = () => {
+      setShowPassword(false);
+    };
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [showPassword]);
+
   // ── Submit handler ──────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setShowPassword(false);
     if (isMaintenanceMode) return;
     setError('');
 
@@ -643,7 +660,7 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
               }}
               aria-invalid={Boolean(error && !identifier.trim())}
               aria-describedby={error ? `${portal}-form-error` : undefined}
-              placeholder="name@example.com or user ID"
+              placeholder="name@company.com or user ID"
               className="w-full h-[44px] rounded-[10px] border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[15px] text-slate-900 dark:text-white pl-[42px] pr-4 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-[3px] focus:ring-blue-500/30 focus:border-blue-600 dark:focus:border-blue-500 transition-colors disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
               required
             />

@@ -107,13 +107,13 @@ export class InventoryController {
   }
 
   @Get('skus')
-  @PageAccess('inventory', 'quotations', 'orders', 'invoices')
+  @PageAccess('inventory', 'quotations', 'orders', 'invoices', 'suppliers')
   getSkus(@CurrentUser() user: ScopedUser, @Query('search') search?: string) {
     return this.inventoryService.getSkus(user, search);
   }
 
   @Get('skus/:id')
-  @PageAccess('inventory', 'quotations', 'orders', 'invoices')
+  @PageAccess('inventory', 'quotations', 'orders', 'invoices', 'suppliers')
   getSku(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.getSkuById(id, user);
   }
@@ -365,6 +365,7 @@ export class InventoryController {
   // ─── Inventory Management — Project-wise Stock Position Endpoints ───────────
 
   @Get('project-stock')
+  @PageAccess('inventory', 'bills', 'purchase_bills')
   async getProjectStock(
     @CurrentUser() user: ScopedUser,
     @Query('project') project?: string,
@@ -381,6 +382,7 @@ export class InventoryController {
   }
 
   @Get('project-stock/summary')
+  @PageAccess('inventory', 'bills', 'purchase_bills')
   async getProjectStockSummary(@CurrentUser() user: ScopedUser) {
     return this.inventoryService.getProjectStockSummary(user);
   }
@@ -402,6 +404,7 @@ export class InventoryController {
   }
 
   @Post('project-stock/:id/purchase')
+  @PageAccess('inventory', 'bills', 'purchase_bills')
   @Roles('tenant_admin', 'admin', 'sub_admin')
   async recordProjectStockPurchase(
     @Param('id') id: string,
@@ -412,6 +415,7 @@ export class InventoryController {
   }
 
   @Post('project-stock/atomic-purchase')
+  @PageAccess('inventory', 'bills', 'purchase_bills')
   @Roles('tenant_admin', 'admin', 'sub_admin')
   async recordComponentPurchase(
     @Body() body: RecordComponentPurchaseDto,
@@ -474,7 +478,7 @@ export class InventoryController {
   // ─── Purchase Document Upload ────────────────────────────────────────────────
 
   @Post('purchase-documents/upload')
-  @PageAccess('bills', 'purchase_bills')
+  @PageAccess('inventory', 'bills', 'purchase_bills', 'suppliers')
   @Roles('tenant_admin', 'admin', 'sub_admin')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -514,7 +518,7 @@ export class InventoryController {
 
 
   @Get('purchase-documents/:filename')
-  @PageAccess('bills', 'purchase_bills')
+  @PageAccess('inventory', 'bills', 'purchase_bills', 'suppliers')
   async streamPurchaseDoc(
     @Param('filename') filename: string,
     @CurrentUser() user: ScopedUser,
@@ -525,7 +529,7 @@ export class InventoryController {
   }
 
   @Get('purchase-documents/:tenantId/:filename')
-  @PageAccess('bills', 'purchase_bills')
+  @PageAccess('inventory', 'bills', 'purchase_bills', 'suppliers')
   async streamPurchaseDocWithTenant(
     @Param('tenantId') targetTenantId: string,
     @Param('filename') filename: string,
@@ -536,7 +540,7 @@ export class InventoryController {
   }
 
   @Get('uploads/purchase-docs/:filename')
-  @PageAccess('bills', 'purchase_bills')
+  @PageAccess('inventory', 'bills', 'purchase_bills', 'suppliers')
   async streamLegacyPurchaseDoc(
     @Param('filename') filename: string,
     @CurrentUser() user: ScopedUser,
@@ -586,6 +590,7 @@ export class InventoryController {
   // ─── Supplier Purchase History ───────────────────────────────────────────────
 
   @Get('suppliers/:supplierId/purchases')
+  @PageAccess('inventory', 'suppliers')
   async getSupplierPurchases(
     @Param('supplierId') supplierId: string,
     @CurrentUser() user: ScopedUser,
@@ -594,6 +599,7 @@ export class InventoryController {
   }
 
   @Post('suppliers/:supplierId/purchase')
+  @PageAccess('inventory', 'suppliers')
   @Roles('tenant_admin', 'admin', 'sub_admin')
   async recordSupplierPurchase(
     @Param('supplierId') supplierId: string,

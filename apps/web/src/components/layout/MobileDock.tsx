@@ -72,7 +72,7 @@ export default function MobileDock() {
 
         {/* 5th Tab: More / Drawer Toggle (Shown only if there are remaining pages) */}
         {showMoreTab && (
-          <button
+          <button type="button"
             onClick={() => setDrawerOpen(true)}
             className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all duration-200 ${
               isDrawerRouteActive || drawerOpen
@@ -124,7 +124,7 @@ export default function MobileDock() {
                       <Moon size={17} className="text-indigo-600 shrink-0" />
                     )}
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => setDrawerOpen(false)}
                     className="w-8 h-8 rounded-full bg-slate-100 dark:bg-[#1E2230] border border-slate-200 dark:border-[#2A3042] flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                   >
@@ -188,7 +188,7 @@ export default function MobileDock() {
                   </div>
                 </div>
 
-                <button
+                <button type="button"
                   onClick={() => {
                     setDrawerOpen(false);
                     logout();

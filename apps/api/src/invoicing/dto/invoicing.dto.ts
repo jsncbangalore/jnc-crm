@@ -290,6 +290,10 @@ export class CreateDirectInvoiceDto {
   @IsBoolean()
   @IsOptional()
   confirmHighAmount?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isManualNumber?: boolean;
 }
 
 export class UpdateInvoiceDto {

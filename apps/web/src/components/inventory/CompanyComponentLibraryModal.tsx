@@ -214,7 +214,7 @@ export const CompanyComponentLibraryModal: React.FC<CompanyComponentLibraryModal
                 </p>
               </div>
             </div>
-            <button
+            <button type="button"
               onClick={onClose}
               className="p-2 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white transition-colors"
             >
@@ -289,7 +289,7 @@ export const CompanyComponentLibraryModal: React.FC<CompanyComponentLibraryModal
                 className="input pl-8.5 text-xs py-1.5 w-full"
               />
               {search && (
-                <button
+                <button type="button"
                   onClick={() => setSearch('')}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                 >

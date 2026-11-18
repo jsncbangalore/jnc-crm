@@ -125,7 +125,7 @@ export default function NotificationsPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button
+          <button type="button"
             onClick={handleSyncGoDaddy}
             disabled={syncingGoDaddy}
             className="btn bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs gap-1.5"
@@ -133,13 +133,13 @@ export default function NotificationsPage() {
             <RefreshCw size={13} className={syncingGoDaddy ? 'animate-spin' : ''} />
             {syncingGoDaddy ? 'Syncing...' : 'Sync Mail'}
           </button>
-          <button
+          <button type="button"
             onClick={() => setShowLogReplyModal(true)}
             className="btn bg-crm-blue hover:bg-crm-blue-hover text-white font-bold text-xs gap-1.5"
           >
             <Inbox size={13} /> Log Reply
           </button>
-          <button onClick={fetchNotifications} className="btn-ghost text-xs gap-1 px-2.5" title="Refresh">
+          <button type="button" onClick={fetchNotifications} className="btn-ghost text-xs gap-1 px-2.5" title="Refresh">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
@@ -165,7 +165,7 @@ export default function NotificationsPage() {
             { id: 'email', label: 'Outbound' },
             { id: 'in_app', label: 'Tasks' },
           ].map((c) => (
-            <button
+            <button type="button"
               key={c.id}
               onClick={() => setChannelFilter(c.id)}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all ${
@@ -352,7 +352,7 @@ export default function NotificationsPage() {
                       </div>
                     </td>
                     <td className={`text-right whitespace-nowrap ${density === 'compact' ? 'py-2 px-3' : 'py-3 px-4'}`}>
-                      <button
+                      <button type="button"
                         onClick={() => setSelectedItem(item)}
                         className="btn-ghost text-xs px-2.5 py-1 border border-slate-300 dark:border-white/10 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white font-bold inline-flex items-center gap-1"
                       >
@@ -387,7 +387,7 @@ export default function NotificationsPage() {
                     <p className="text-xs text-slate-400">Append client response to Lead Timeline</p>
                   </div>
                 </div>
-                <button onClick={() => setShowLogReplyModal(false)} className="w-8 h-8 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white flex items-center justify-center">
+                <button type="button" onClick={() => setShowLogReplyModal(false)} className="w-8 h-8 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white flex items-center justify-center">
                   <X size={16} />
                 </button>
               </div>
@@ -398,7 +398,7 @@ export default function NotificationsPage() {
                   <input
                     type="email"
                     className="input text-xs"
-                    placeholder="e.g. client@example.com"
+                    placeholder="e.g. client@company.com"
                     value={replyFrom}
                     onChange={(e) => setReplyFrom(e.target.value)}
                     required
@@ -468,7 +468,7 @@ export default function NotificationsPage() {
                   <span className="text-[11px] font-mono text-slate-400 hidden sm:block">
                     {format(new Date(selectedItem.sentAt), 'dd MMM yyyy, HH:mm')}
                   </span>
-                  <button
+                  <button type="button"
                     onClick={() => setSelectedItem(null)}
                     className="w-8 h-8 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white flex items-center justify-center transition-colors"
                   >
@@ -514,7 +514,7 @@ export default function NotificationsPage() {
 
               {/* Footer */}
               <div className="flex justify-end p-4 border-t border-slate-200 dark:border-[#2A3042] shrink-0">
-                <button
+                <button type="button"
                   onClick={() => setSelectedItem(null)}
                   className="btn bg-crm-blue hover:bg-crm-blue-hover text-white text-xs font-bold px-6 shadow-glow-blue w-full sm:w-auto"
                 >

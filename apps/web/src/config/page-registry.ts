@@ -214,6 +214,13 @@ export const PLATFORM_PAGE_REGISTRY: Record<string, PlatformPageDefinition> = {
     controllers: ['backup'],
     description: 'Automated encrypted database archives and restoration verification',
   },
+  platform_audit_logs: {
+    key: 'platform_audit_logs',
+    label: 'Security & Audit Logs',
+    frontendRoutes: ['/platform/audit-logs'],
+    controllers: ['platform-audit-logs', 'platform'],
+    description: 'Tamper-evident platform audit trail, security events, company activity, and cryptographic integrity verification',
+  },
 };
 
 export const ALL_PLATFORM_PAGE_KEYS = Object.keys(PLATFORM_PAGE_REGISTRY);

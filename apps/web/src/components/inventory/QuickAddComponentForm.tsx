@@ -135,7 +135,7 @@ export default function QuickAddComponentForm({ preselectedProduct, onClose, onS
           </p>
         </div>
         {onClose && (
-          <button onClick={onClose} className="btn-ghost p-2 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white">
+          <button type="button" onClick={onClose} className="btn-ghost p-2 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white">
             <X size={16} />
           </button>
         )}

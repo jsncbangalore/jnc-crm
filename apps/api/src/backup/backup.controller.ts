@@ -29,6 +29,7 @@ import { ScopedUser } from '../auth/scoping.service';
 import { BackupService } from './backup.service';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PlatformAuditService } from '../platform/platform-audit.service';
 
 function checkDbAdminEnabled() {
   const enabled = process.env.ENABLE_INAPP_BACKUP === 'true' || process.env.ENABLE_DB_ADMIN_ENDPOINTS === 'true';
@@ -65,6 +66,7 @@ async function logBackupAudit(
   action: string,
   entityId: string,
   ip?: string,
+  auditService?: PlatformAuditService,
 ) {
   await prisma.auditLog.create({
     data: {
@@ -78,6 +80,19 @@ async function logBackupAudit(
       afterState: JSON.stringify({ timestamp: new Date().toISOString() }),
     },
   }).catch(() => {});
+
+  if (auditService) {
+    await auditService.recordLog(prisma, {
+      actor,
+      action,
+      targetType: 'DatabaseBackup',
+      targetId: entityId,
+      summary: `Platform action: ${action} for ${entityId}`,
+      details: { entityId, timestamp: new Date().toISOString() },
+      outcome: 'success',
+      ipAddress: ip,
+    }).catch(() => {});
+  }
 }
 
 @Controller('system/backup')
@@ -89,6 +104,7 @@ export class BackupController {
     private readonly backupService: BackupService,
     private readonly authService: AuthService,
     private readonly prisma: PrismaService,
+    private readonly auditService: PlatformAuditService,
   ) {}
 
   /**
@@ -116,7 +132,7 @@ export class BackupController {
 
     const result = await this.backupService.createBackup(user);
     const ip = req.ip || req.socket?.remoteAddress || '127.0.0.1';
-    await logBackupAudit(this.prisma, user, 'BACKUP_CREATE', result?.filename || 'latest', ip);
+    await logBackupAudit(this.prisma, user, 'BACKUP_CREATE', result?.filename || 'latest', ip, this.auditService);
     return result;
   }
 
@@ -137,7 +153,7 @@ export class BackupController {
 
     const result = await this.backupService.runRestoreDrill(body?.filename);
     const ip = req.ip || req.socket?.remoteAddress || '127.0.0.1';
-    await logBackupAudit(this.prisma, user, 'BACKUP_RESTORE_DRILL', body?.filename || 'restore-drill', ip);
+    await logBackupAudit(this.prisma, user, 'BACKUP_RESTORE_DRILL', body?.filename || 'restore-drill', ip, this.auditService);
     return result;
   }
 
@@ -158,7 +174,7 @@ export class BackupController {
 
     const { filename, buffer } = this.backupService.getLatestBackupFile();
     const ip = req.ip || req.socket?.remoteAddress || '127.0.0.1';
-    await logBackupAudit(this.prisma, user, 'BACKUP_DOWNLOAD', filename, ip);
+    await logBackupAudit(this.prisma, user, 'BACKUP_DOWNLOAD', filename, ip, this.auditService);
 
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

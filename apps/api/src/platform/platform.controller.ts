@@ -38,6 +38,7 @@ import {
 } from './dto/platform-admin.dto';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PlatformAuditService } from './platform-audit.service';
 
 function extractStepUpToken(req: any, body?: any): string | undefined {
   return (
@@ -68,8 +69,13 @@ export class PlatformController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createTenant(@Body() dto: CreateTenantDto) {
-    return this.platformService.createTenant(dto);
+  async createTenant(
+    @Body() dto: CreateTenantDto,
+    @CurrentUser() user: any,
+    @Req() req: any,
+  ) {
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.createTenant(dto, user, ip);
   }
 
   @Put(':id')
@@ -133,6 +139,16 @@ export class PlatformController {
     return this.platformService.impersonateTenant(id, user, ip);
   }
 
+  @Post(':id/impersonate-exit')
+  async exitImpersonateTenant(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Req() req: any,
+  ) {
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.exitImpersonation(id, user, ip);
+  }
+
   @Post(':id/reset-admin-password')
   async resetTenantAdminPassword(
     @Param('id') id: string,
@@ -156,13 +172,22 @@ export class PlatformController {
   async addTenantUser(
     @Param('id') id: string,
     @Body() dto: { name: string; email: string; phone?: string; role?: string; employeeCode?: string; password?: string },
+    @CurrentUser() user: any,
+    @Req() req: any,
   ) {
-    return this.platformService.addTenantUser(id, dto);
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.addTenantUser(id, dto, user, ip);
   }
 
   @Delete(':id/users/:userId')
-  async deleteTenantUser(@Param('id') id: string, @Param('userId') userId: string) {
-    return this.platformService.deleteTenantUser(id, userId);
+  async deleteTenantUser(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: any,
+    @Req() req: any,
+  ) {
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.deleteTenantUser(id, userId, user, ip);
   }
 }
 
@@ -208,8 +233,13 @@ export class PlatformAdminsController {
   }
 
   @Post(':id/reset-password')
-  async resetPassword(@Param('id') id: string) {
-    return this.platformService.resetPlatformAdminUserPassword(id);
+  async resetPassword(
+    @Param('id') id: string,
+    @CurrentUser() actor: any,
+    @Req() req: any,
+  ) {
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    return this.platformService.resetPlatformAdminUserPassword(id, actor, ip);
   }
 
   @Delete(':id')
@@ -235,6 +265,7 @@ export class PlatformMailTestController {
     private readonly platformService: PlatformService,
     private readonly authService: AuthService,
     private readonly prisma: PrismaService,
+    private readonly auditService: PlatformAuditService,
   ) {}
 
   @Get('recent-signins')
@@ -293,7 +324,33 @@ export class PlatformMailTestController {
     }
 
     const reqId = req?.headers?.['x-request-id'] || req?.id;
-    return this.notificationsService.sendTestMail(userEmail, reqId);
+    const ip = req?.ip || req?.connection?.remoteAddress || '127.0.0.1';
+    try {
+      const res = await this.notificationsService.sendTestMail(userEmail, reqId);
+      await this.auditService.recordLog(this.prisma, {
+        actor: user,
+        action: 'PLATFORM_MAIL_TEST',
+        targetType: 'MailNotification',
+        summary: `Dispatched test email to ${userEmail}`,
+        details: { to: userEmail, reqId, status: res?.status || 'sent' },
+        outcome: 'success',
+        ipAddress: ip,
+        requestId: reqId,
+      });
+      return res;
+    } catch (err: any) {
+      await this.auditService.recordLog(this.prisma, {
+        actor: user,
+        action: 'PLATFORM_MAIL_TEST',
+        targetType: 'MailNotification',
+        summary: `Failed to dispatch test email to ${userEmail}`,
+        details: { to: userEmail, reqId, error: err?.message || 'Mail test failed' },
+        outcome: 'failed',
+        ipAddress: ip,
+        requestId: reqId,
+      });
+      throw err;
+    }
   }
 }
 

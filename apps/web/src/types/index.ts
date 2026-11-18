@@ -438,6 +438,7 @@ export interface DashboardKpis {
     invoices?: {
       unpaidAmount: number;
       overdueCount: number;
+      overdueAmount?: number;
     } | null;
     revenue?: {
       thisMonth: number;

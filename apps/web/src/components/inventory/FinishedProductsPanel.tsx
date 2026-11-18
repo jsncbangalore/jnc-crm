@@ -93,7 +93,7 @@ export default function FinishedProductsPanel({ onQuickAdd }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={handleSeedProducts}
             disabled={seeding}
             className="btn bg-crm-violet/20 text-crm-violet border border-crm-violet/30 hover:bg-crm-violet/30 text-xs gap-1.5"
@@ -101,7 +101,7 @@ export default function FinishedProductsPanel({ onQuickAdd }: Props) {
             {seeding ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
             {products.length === 0 ? 'Seed Sample Catalog' : 'Re-seed Catalog'}
           </button>
-          <button
+          <button type="button"
             onClick={fetchProducts}
             className="btn-ghost text-xs border border-white/10 hover:bg-white/5 text-slate-300"
           >
@@ -122,7 +122,7 @@ export default function FinishedProductsPanel({ onQuickAdd }: Props) {
               Click "Seed Sample Catalog" to populate sample finished products and BOM components
             </p>
           </div>
-          <button
+          <button type="button"
             onClick={handleSeedProducts}
             disabled={seeding}
             className="btn-primary text-xs gap-1.5 shadow-glow-blue"
@@ -187,7 +187,7 @@ export default function FinishedProductsPanel({ onQuickAdd }: Props) {
 
                 {/* Component list toggle */}
                 {componentCount > 0 && (
-                  <button
+                  <button type="button"
                     onClick={() => setExpandedId(isExpanded ? null : product.id)}
                     className="flex items-center gap-1.5 text-[10.5px] text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white transition-colors"
                   >
@@ -213,7 +213,7 @@ export default function FinishedProductsPanel({ onQuickAdd }: Props) {
                 )}
 
                 {/* Action Button */}
-                <button
+                <button type="button"
                   onClick={() => onQuickAdd?.(product)}
                   className="btn bg-white/5 hover:bg-white/10 border border-white/10 text-white text-[11px] gap-1.5 mt-auto"
                 >

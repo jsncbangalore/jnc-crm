@@ -252,12 +252,26 @@ export class CompaniesService {
     }
     const email = (dto.billingEmail || dto.email)?.trim().toLowerCase() || null;
     const phone = dto.phone?.trim() ? normalizeToE164(dto.phone) : null;
+    const gstin = dto.gstin?.trim() ? dto.gstin.trim().toUpperCase() : null;
+
+    if (gstin) {
+      const existingGstin = await this.prisma.company.findFirst({
+        where: {
+          tenantId,
+          deletedAt: null,
+          gstin: { equals: gstin, mode: 'insensitive' },
+        },
+      });
+      if (existingGstin) {
+        throw new ConflictException(`A customer with GSTIN ${gstin} already exists (${existingGstin.name}).`);
+      }
+    }
 
     const company = await this.prisma.company.create({
       data: {
         tenantId,
         name: trimmedName,
-        gstin: dto.gstin?.trim() || null,
+        gstin,
         industry: dto.industry?.trim() || null,
         address: dto.address?.trim() || null,
         city: dto.city?.trim() || null,
@@ -407,11 +421,26 @@ export class CompaniesService {
     const email = (dto.billingEmail || dto.email)?.trim().toLowerCase();
     const phone = dto.phone?.trim();
 
+    const gstin = dto.gstin !== undefined ? (dto.gstin?.trim() ? dto.gstin.trim().toUpperCase() : null) : undefined;
+    if (gstin) {
+      const existingGstin = await this.prisma.company.findFirst({
+        where: {
+          tenantId,
+          deletedAt: null,
+          id: { not: id },
+          gstin: { equals: gstin, mode: 'insensitive' },
+        },
+      });
+      if (existingGstin) {
+        throw new ConflictException(`A customer with GSTIN ${gstin} already exists (${existingGstin.name}).`);
+      }
+    }
+
     const res = await this.prisma.company.updateMany({
       where: { id, tenantId, ...scope, deletedAt: null },
       data: {
         ...(dto.name !== undefined && { name: dto.name.trim() }),
-        ...(dto.gstin !== undefined && { gstin: dto.gstin?.trim() || null }),
+        ...(gstin !== undefined && { gstin }),
         ...(dto.industry !== undefined && { industry: dto.industry?.trim() || null }),
         ...(dto.address !== undefined && { address: dto.address?.trim() || null }),
         ...(dto.city !== undefined && { city: dto.city?.trim() || null }),

@@ -201,7 +201,7 @@ export function LeadSetupView({
       ${formFields.email ? `
       <div>
         <label style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 5px;">Email Address</label>
-        <input type="email" name="email" placeholder="name@example.com" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
+        <input type="email" name="email" placeholder="name@company.com" style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; box-sizing: border-box; outline: none;" />
       </div>` : ''}
       ${formFields.company ? `
       <div>
@@ -377,7 +377,7 @@ export function LeadSetupView({
 
         <div className="flex items-center gap-2">
           {onNavigateToPipeline && (
-            <button
+            <button type="button"
               onClick={onNavigateToPipeline}
               className="btn bg-crm-blue hover:bg-crm-blue-hover text-white text-xs gap-1.5 shadow-glow-blue font-bold px-3 py-1.5"
             >
@@ -387,7 +387,7 @@ export function LeadSetupView({
           )}
 
           {isModal && onClose && (
-            <button
+            <button type="button"
               onClick={onClose}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
             >
@@ -421,7 +421,7 @@ export function LeadSetupView({
           {/* Source Breakdown Interactive Channel Switchers */}
           <div className="flex items-center gap-2 flex-wrap">
             {/* IndiaMART */}
-            <button
+            <button type="button"
               onClick={() => setActiveTab('indiamart')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02] ${
                 activeTab === 'indiamart'
@@ -437,7 +437,7 @@ export function LeadSetupView({
             </button>
 
             {/* Website */}
-            <button
+            <button type="button"
               onClick={() => setActiveTab('website')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02] ${
                 activeTab === 'website'
@@ -453,7 +453,7 @@ export function LeadSetupView({
             </button>
 
             {/* WhatsApp */}
-            <button
+            <button type="button"
               onClick={() => setActiveTab('whatsapp')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02] ${
                 activeTab === 'whatsapp'
@@ -469,7 +469,7 @@ export function LeadSetupView({
             </button>
 
             {/* Manual / Routing */}
-            <button
+            <button type="button"
               onClick={() => setActiveTab('routing')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm hover:scale-[1.02] ${
                 activeTab === 'routing'
@@ -489,7 +489,7 @@ export function LeadSetupView({
         {/* Action Buttons Inside Lead Setup */}
         <div className="flex items-center gap-2 flex-wrap">
           {onOpenShareModal && (
-            <button
+            <button type="button"
               onClick={onOpenShareModal}
               className="btn bg-crm-teal/15 hover:bg-crm-teal/25 text-crm-teal border border-crm-teal/30 text-xs gap-1.5 font-bold"
             >
@@ -497,7 +497,7 @@ export function LeadSetupView({
             </button>
           )}
           {onOpenAddLead && (
-            <button
+            <button type="button"
               onClick={onOpenAddLead}
               className="btn-primary text-xs gap-1.5 font-bold shadow-glow-blue"
             >
@@ -536,7 +536,7 @@ export function LeadSetupView({
 
         {/* ─── NAVIGATION TABS ──────────────────────────────────────────────── */}
         <div className="px-6 border-b border-slate-200 dark:border-[#2A3042] flex items-center gap-2 overflow-x-auto bg-slate-50/50 dark:bg-[#151824] shrink-0 pt-2">
-          <button
+          <button type="button"
             onClick={() => setActiveTab('indiamart')}
             className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 border-b-2 ${
               activeTab === 'indiamart'
@@ -548,7 +548,7 @@ export function LeadSetupView({
             <span>IndiaMART API & Push</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={() => setActiveTab('website')}
             className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 border-b-2 ${
               activeTab === 'website'
@@ -560,7 +560,7 @@ export function LeadSetupView({
             <span>Web-to-Lead & Form</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={() => setActiveTab('whatsapp')}
             className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 border-b-2 ${
               activeTab === 'whatsapp'
@@ -572,7 +572,7 @@ export function LeadSetupView({
             <span>WhatsApp Business API</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={() => setActiveTab('routing')}
             className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 border-b-2 ${
               activeTab === 'routing'
@@ -584,7 +584,7 @@ export function LeadSetupView({
             <span>Sales Routing & SLA</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={() => setActiveTab('pipeline')}
             className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 border-b-2 ${
               activeTab === 'pipeline'
@@ -622,7 +622,7 @@ export function LeadSetupView({
                     value={indiamartWebhookUrl}
                     className="input font-mono text-xs text-slate-800 dark:text-slate-200 bg-white dark:bg-[#13161F] flex-1 cursor-text select-all"
                   />
-                  <button
+                  <button type="button"
                     onClick={() => handleCopy(indiamartWebhookUrl, 'indiamart-webhook')}
                     className="btn btn-secondary text-xs flex items-center gap-1.5 shrink-0"
                   >
@@ -691,7 +691,7 @@ export function LeadSetupView({
                     Simulates an instant IndiaMART prospect inquiry to verify pipeline arrival and notifications.
                   </p>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => handleSimulateInboundLead('indiamart')}
                   disabled={isSimulating}
                   className="btn-primary text-xs flex items-center gap-1.5 shrink-0"
@@ -792,7 +792,7 @@ export function LeadSetupView({
                               type="email"
                               value={generatorEmail}
                               onChange={(e) => setGeneratorEmail(e.target.value)}
-                              placeholder="e.g. sales@example.com"
+                              placeholder="e.g. sales@company.com"
                               className="input text-xs"
                             />
                           </div>
@@ -1105,7 +1105,7 @@ export function LeadSetupView({
                               {formFields.email && (
                                 <div>
                                   <label className="block text-[11px] font-bold text-slate-700 mb-1">Email Address</label>
-                                  <input type="email" readOnly placeholder="name@example.com" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
+                                  <input type="email" readOnly placeholder="name@company.com" className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-slate-50" />
                                 </div>
                               )}
                               {formFields.company && (
@@ -1307,7 +1307,7 @@ export function LeadSetupView({
                     value={metaWebhookUrl}
                     className="input font-mono text-xs text-blue-600 dark:text-blue-400 font-bold bg-white dark:bg-[#13161F] flex-1 cursor-text select-all"
                   />
-                  <button
+                  <button type="button"
                     onClick={() => handleCopy(metaWebhookUrl, 'meta-webhook')}
                     className="btn btn-secondary text-xs flex items-center gap-1.5 shrink-0"
                   >
@@ -1341,7 +1341,7 @@ export function LeadSetupView({
                         value={webhookVerifyToken}
                         className="input text-xs font-mono bg-slate-50 dark:bg-[#181B26] flex-1"
                       />
-                      <button
+                      <button type="button"
                         onClick={() => handleCopy(webhookVerifyToken, 'whatsapp-verify')}
                         className="btn btn-secondary text-xs shrink-0"
                       >
@@ -1373,7 +1373,7 @@ export function LeadSetupView({
                     Simulates a customer sending a WhatsApp message to your business phone number.
                   </p>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => handleSimulateInboundLead('whatsapp')}
                   disabled={isSimulating}
                   className="btn bg-emerald-600 hover:bg-emerald-500 text-white text-xs flex items-center gap-1.5 shrink-0 shadow-sm"
@@ -1472,7 +1472,7 @@ export function LeadSetupView({
                   </h4>
                   <div className="flex items-center gap-3">
                     {[15, 30, 60].map((mins) => (
-                      <button
+                      <button type="button"
                         key={mins}
                         onClick={() => setSlaMinutes(mins)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
@@ -1569,14 +1569,14 @@ export function LeadSetupView({
 
           <div className="flex items-center gap-2">
             {isModal && onClose && (
-              <button
+              <button type="button"
                 onClick={onClose}
                 className="btn btn-secondary text-xs"
               >
                 Close
               </button>
             )}
-            <button
+            <button type="button"
               onClick={() => {
                 showAlert('Saved', 'Lead setup preferences and sales routing rules updated successfully.');
                 if (onClose) onClose();

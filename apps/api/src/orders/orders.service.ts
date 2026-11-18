@@ -663,6 +663,44 @@ export class OrdersService {
     return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
+  /**
+   * Minimal dispatchable orders list for logistics & shipments:
+   * Returns ONLY id, orderNumber, customerName, status, destination.
+   * Strips out all commercial totals, line pricing, and payment details.
+   */
+  async getDispatchableOrders(user: ScopedUser) {
+    const tenantScope = this.scopingService.getTenantScope(user);
+    const where: any = {
+      ...tenantScope,
+      deletedAt: null,
+      status: { in: ['confirmed', 'processing', 'partially_dispatched'] },
+    };
+
+    const orders = await this.prisma.order.findMany({
+      where,
+      select: {
+        id: true,
+        orderNumber: true,
+        customerName: true,
+        status: true,
+        shippingAddress: true,
+        customerAddress: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    return {
+      items: orders.map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        customerName: o.customerName,
+        status: o.status,
+        destination: o.shippingAddress || o.customerAddress || undefined,
+      })),
+    };
+  }
+
   async findOne(id: string, user: ScopedUser) {
     const tenantId = requireTenantId(user);
     const scope = this.scopingService.getOrderScope(user);

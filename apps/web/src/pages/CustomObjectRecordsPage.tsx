@@ -283,7 +283,7 @@ export default function CustomObjectRecordsPage() {
             </Link>
           )}
 
-          <button
+          <button type="button"
             onClick={handleOpenNewModal}
             className="btn-primary text-xs gap-1.5 shadow-glow-blue"
           >
@@ -307,13 +307,13 @@ export default function CustomObjectRecordsPage() {
               }}
             />
           </div>
-          <button onClick={fetchRecordsAndSchema} className="btn-ghost text-xs">
+          <button type="button" onClick={fetchRecordsAndSchema} className="btn-ghost text-xs">
             Search
           </button>
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={fetchRecordsAndSchema} className="btn-ghost text-xs gap-1.5" title="Refresh">
+          <button type="button" onClick={fetchRecordsAndSchema} className="btn-ghost text-xs gap-1.5" title="Refresh">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
         </div>
@@ -371,14 +371,14 @@ export default function CustomObjectRecordsPage() {
                   </td>
                   <td className="text-right whitespace-nowrap">
                     <div className="inline-flex items-center gap-1">
-                      <button
+                      <button type="button"
                         onClick={() => handleOpenEditModal(record)}
                         className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-crm-blue transition-colors"
                         title="Edit Record"
                       >
                         <Edit3 size={13} />
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => handleDeleteRecord(record.id)}
                         className="p-1.5 rounded hover:bg-red-500/20 text-slate-400 hover:text-crm-coral transition-colors"
                         title="Archive Record"
@@ -418,7 +418,7 @@ export default function CustomObjectRecordsPage() {
                     </p>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setShowModal(false)}
                   className="p-2 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                 >

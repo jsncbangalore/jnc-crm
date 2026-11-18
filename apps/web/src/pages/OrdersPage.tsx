@@ -251,7 +251,7 @@ export default function OrdersPage() {
             {orders.length} Confirmed orders with automated stock reservation & {user?.tenant?.state ? `${user.tenant.state} ` : ''}GST invoices
           </p>
         </div>
-        <button
+        <button type="button"
           onClick={() => setShowCreateModal(true)}
           className="btn-primary text-xs gap-1.5 shadow-glow-blue"
         >
@@ -298,7 +298,7 @@ export default function OrdersPage() {
             sortable: true,
             sortAccessor: (o) => o.orderNumber,
             cell: (order) => (
-              <button
+              <button type="button"
                 onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
                 className="font-mono text-xs text-crm-amber font-bold whitespace-nowrap hover:underline text-left inline-flex items-center gap-1"
                 title="Click to view related document chain"
@@ -319,7 +319,7 @@ export default function OrdersPage() {
               const cid = (order as any).customerId || (order as any).lead?.companyId;
               return (
                 <div className="truncate">
-                  <button
+                  <button type="button"
                     onClick={() => {
                       if (cid) {
                         setAccountCustomerId(cid);
@@ -386,7 +386,7 @@ export default function OrdersPage() {
             cell: (order) => {
               const activeInv = order.invoices && order.invoices.length > 0 ? order.invoices[0] : null;
               return activeInv ? (
-                <button
+                <button type="button"
                   onClick={() => handleViewInvoice(activeInv.id, activeInv)}
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-crm-teal/15 text-crm-teal hover:bg-crm-teal/25 border border-crm-teal/30 font-mono text-[10.5px] font-bold transition-colors cursor-pointer whitespace-nowrap"
                   title="Click to view Tax Invoice"
@@ -525,7 +525,7 @@ export default function OrdersPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {activeInv && (
-                    <button
+                    <button type="button"
                       onClick={() => handleViewInvoice(activeInv.id, activeInv)}
                       className="px-2 py-1 rounded bg-crm-teal/15 text-crm-teal text-[10px] font-mono font-bold"
                     >
@@ -566,7 +566,7 @@ export default function OrdersPage() {
             emptyTitle="No orders found"
             emptySubtitle="No orders found matching the filter criteria. Confirm an order to generate GST invoices."
             emptyAction={
-              <button
+              <button type="button"
                 onClick={() => setShowCreateModal(true)}
                 className="btn-primary text-xs gap-1.5"
               >

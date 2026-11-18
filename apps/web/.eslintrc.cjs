@@ -9,10 +9,16 @@ module.exports = {
       jsx: true,
     },
   },
-  plugins: ['react-hooks', '@typescript-eslint'],
+  plugins: ['react', 'react-hooks', '@typescript-eslint'],
   rules: {
     'react-hooks/rules-of-hooks': 'error',
     'react-hooks/exhaustive-deps': 'warn',
+    'react/button-has-type': 'error',
+  },
+  settings: {
+    react: {
+      version: 'detect',
+    },
   },
   ignorePatterns: ['dist', 'node_modules', '*.d.ts'],
 };

@@ -197,7 +197,7 @@ export default function UnlinkedInvoicesModal({
               </p>
             </div>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
           >
@@ -212,7 +212,7 @@ export default function UnlinkedInvoicesModal({
               <span className="font-bold text-indigo-900 dark:text-indigo-300">
                 {selectedInvoiceIds.length} {selectedInvoiceIds.length === 1 ? 'invoice' : 'invoices'} selected
               </span>
-              <button
+              <button type="button"
                 onClick={() => setSelectedInvoiceIds([])}
                 className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
               >
@@ -232,7 +232,7 @@ export default function UnlinkedInvoicesModal({
                   </option>
                 ))}
               </select>
-              <button
+              <button type="button"
                 onClick={handleBulkLink}
                 disabled={!bulkTargetCustomerId || bulkLinking}
                 className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold disabled:opacity-50 transition flex items-center gap-1.5"
@@ -337,14 +337,14 @@ export default function UnlinkedInvoicesModal({
                                       </option>
                                     ))}
                                   </select>
-                                  <button
+                                  <button type="button"
                                     onClick={() => handleSingleLink(inv.id)}
                                     disabled={!selectedTargetCustomerId || singleLinkingLoading}
                                     className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition"
                                   >
                                     {singleLinkingLoading ? '...' : 'Link'}
                                   </button>
-                                  <button
+                                  <button type="button"
                                     onClick={() => {
                                       setLinkingInvoiceId(null);
                                       setSelectedTargetCustomerId('');
@@ -358,7 +358,7 @@ export default function UnlinkedInvoicesModal({
                                 <span className="text-xs text-indigo-600 font-bold">Creating customer...</span>
                               ) : (
                                 <div className="flex items-center justify-end gap-1.5">
-                                  <button
+                                  <button type="button"
                                     onClick={() => {
                                       setLinkingInvoiceId(inv.id);
                                       setCreatingForInvoiceId(null);
@@ -369,7 +369,7 @@ export default function UnlinkedInvoicesModal({
                                     <UserCheck size={12} />
                                     <span>Link</span>
                                   </button>
-                                  <button
+                                  <button type="button"
                                     onClick={() => openCreateNew(inv)}
                                     className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold transition flex items-center gap-1"
                                   >
@@ -391,7 +391,7 @@ export default function UnlinkedInvoicesModal({
                                       <UserPlus size={14} />
                                       <span>Create New Customer & Link to Invoice {inv.invoiceNumber}</span>
                                     </span>
-                                    <button
+                                    <button type="button"
                                       onClick={() => setCreatingForInvoiceId(null)}
                                       className="text-slate-400 hover:text-slate-600 text-xs font-bold"
                                     >
@@ -556,7 +556,7 @@ export default function UnlinkedInvoicesModal({
                             ))}
                           </select>
                           <div className="flex justify-end gap-2">
-                            <button
+                            <button type="button"
                               onClick={() => {
                                 setLinkingInvoiceId(null);
                                 setSelectedTargetCustomerId('');
@@ -565,7 +565,7 @@ export default function UnlinkedInvoicesModal({
                             >
                               Cancel
                             </button>
-                            <button
+                            <button type="button"
                               onClick={() => handleSingleLink(inv.id)}
                               disabled={!selectedTargetCustomerId || singleLinkingLoading}
                               className="px-3.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold disabled:opacity-50"
@@ -606,13 +606,13 @@ export default function UnlinkedInvoicesModal({
                             className="w-full px-2.5 py-1.5 rounded-lg border text-xs uppercase font-mono"
                           />
                           <div className="flex justify-end gap-2 pt-1">
-                            <button
+                            <button type="button"
                               onClick={() => setCreatingForInvoiceId(null)}
                               className="px-3 py-1 rounded-lg border text-xs"
                             >
                               Cancel
                             </button>
-                            <button
+                            <button type="button"
                               onClick={() => handleCreateAndLink(inv.id)}
                               disabled={creatingLoading || !newCustomerName.trim()}
                               className="px-3 py-1 rounded-lg bg-indigo-600 text-white font-bold text-xs disabled:opacity-50"
@@ -623,7 +623,7 @@ export default function UnlinkedInvoicesModal({
                         </div>
                       ) : (
                         <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-                          <button
+                          <button type="button"
                             onClick={() => {
                               setLinkingInvoiceId(inv.id);
                               setCreatingForInvoiceId(null);
@@ -634,7 +634,7 @@ export default function UnlinkedInvoicesModal({
                             <UserCheck size={13} />
                             <span>Link to Customer</span>
                           </button>
-                          <button
+                          <button type="button"
                             onClick={() => openCreateNew(inv)}
                             className="flex-1 py-1.5 px-3 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5"
                           >
@@ -653,7 +653,7 @@ export default function UnlinkedInvoicesModal({
 
         {/* Footer */}
         <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-200 dark:border-slate-800 flex justify-end shrink-0">
-          <button
+          <button type="button"
             onClick={onClose}
             className="px-4 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition"
           >

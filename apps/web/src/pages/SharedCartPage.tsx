@@ -307,7 +307,7 @@ export default function SharedCartPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <button
+            <button type="button"
               onClick={handleCopyLink}
               className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1C2234] text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#252D44] flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
               title="Copy share link to clipboard"
@@ -325,7 +325,7 @@ export default function SharedCartPage() {
               )}
             </button>
 
-            <button
+            <button type="button"
               onClick={handlePrintCart}
               className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#1C2234] text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#252D44] flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
             >
@@ -333,7 +333,7 @@ export default function SharedCartPage() {
               <span>Print / PDF</span>
             </button>
 
-            <button
+            <button type="button"
               onClick={handleDownloadExcel}
               disabled={items.length === 0}
               className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
@@ -342,7 +342,7 @@ export default function SharedCartPage() {
               <span>Excel (.xlsx)</span>
             </button>
 
-            <button
+            <button type="button"
               onClick={handleTransferToMyCart}
               disabled={items.length === 0}
               className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition-all cursor-pointer"
@@ -466,7 +466,7 @@ export default function SharedCartPage() {
               </select>
             )}
 
-            <button
+            <button type="button"
               onClick={handleDownloadCsv}
               className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-[#2A3042] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#1C2234] transition-colors"
             >

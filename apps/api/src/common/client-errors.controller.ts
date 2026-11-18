@@ -90,7 +90,6 @@ export class ReportClientErrorDto {
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
 @Controller()
-@UseGuards(AuthGuard('jwt'))
 export class ClientErrorsController {
   private readonly logger = new Logger('ClientErrors');
 
@@ -169,6 +168,7 @@ export class ClientErrorsController {
   }
 
   @Get(['admin/system-errors', 'api/v1/admin/system-errors', 'client-errors'])
+  @UseGuards(AuthGuard('jwt'))
   async getSystemErrors(
     @Req() req: Request,
     @Query('search') search?: string,

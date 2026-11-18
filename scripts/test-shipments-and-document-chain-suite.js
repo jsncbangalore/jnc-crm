@@ -888,33 +888,27 @@ async function runPlaywrightE2ETests() {
       { width: 390, height: 844, name: '390px' },
     ];
 
+    const context = await browser.newContext({ viewport: { width: 1536, height: 730 } });
+    const page = await context.newPage();
+
+    // Log in ONCE as accountant user who has been granted shipments page
+    await page.goto(`${WEB_BASE}/login`, { waitUntil: 'domcontentloaded' });
+    await dismissCookieBanner(page);
+    await page.fill('#company-identifier', nonShipmentUser.email);
+    await page.fill('#company-password', rawPassword);
+    await page.click('button[type="submit"]');
+    await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 20000 });
+    await page.waitForTimeout(1000);
+
     for (const vp of viewports) {
       for (const theme of ['dark', 'light']) {
-        const context = await browser.newContext({
-          viewport: { width: vp.width, height: vp.height },
-          colorScheme: theme,
-        });
-        await context.addInitScript((t) => {
+        await page.setViewportSize({ width: vp.width, height: vp.height });
+        await page.emulateMedia({ colorScheme: theme });
+        await page.evaluate((t) => {
           if (t === 'dark') document.documentElement.classList.add('dark');
           else document.documentElement.classList.remove('dark');
           localStorage.setItem('crm_theme', t);
-          localStorage.setItem('crm_cookie_consent', JSON.stringify({
-            choice: 'all',
-            preferences: true,
-            policyVersion: '2026.10.1',
-            savedAt: new Date().toISOString(),
-          }));
         }, theme);
-        const page = await context.newPage();
-
-        // Log in as accountant user who has been granted shipments page
-        await page.goto(`${WEB_BASE}/login`, { waitUntil: 'domcontentloaded' });
-        await dismissCookieBanner(page);
-        await page.fill('#company-identifier', nonShipmentUser.email);
-        await page.fill('#company-password', rawPassword);
-        await page.click('button[type="submit"]');
-        await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 20000 });
-        await page.waitForTimeout(1000);
 
         // 3.1 Test Shipments 403 Error Handling & Clean Access
         // First simulate a 403 Forbidden response on shipments list to test ErrorStateCard rendering
@@ -962,10 +956,21 @@ async function runPlaywrightE2ETests() {
 
         // Now unroute so shipments API calls hit the real backend with our fix (role vs page invariant)
         await page.unroute('**/orders/shipments**');
-        await page.goto(`${WEB_BASE}/shipments`, { waitUntil: 'domcontentloaded' });
-        await dismissCookieBanner(page);
-        await page.waitForSelector('text=Shipment', { timeout: 15000 }).catch(() => {});
-        await page.waitForTimeout(1000);
+        await page.evaluate(() => {
+          if (typeof window.__CRM_NAVIGATE__ === 'function') {
+            window.__CRM_NAVIGATE__('/notifications');
+          }
+        });
+        await page.waitForTimeout(200);
+        await page.evaluate(() => {
+          if (typeof window.__CRM_NAVIGATE__ === 'function') {
+            window.__CRM_NAVIGATE__('/shipments');
+          } else {
+            window.location.reload();
+          }
+        });
+        await page.waitForSelector('text=Logistics & Shipments', { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(500);
 
         const cleanPageText = await page.innerText('body');
         assert(
@@ -977,10 +982,12 @@ async function runPlaywrightE2ETests() {
         await page.screenshot({ path: shotCleanPath, fullPage: false });
         assert(`[${vp.name}-${theme}] Captured clean shipments screenshot to artifacts`, fs.existsSync(shotCleanPath));
 
-        await page.waitForTimeout(500);
-        await context.close();
+        await page.waitForTimeout(300);
       }
     }
+
+    await page.close();
+    await context.close();
 
     // 3.2 Test Related Document Chain UI (with adminUser)
     console.log('\n--- Testing Related Document Chain UI, Chips, and Allocate Interaction ---');

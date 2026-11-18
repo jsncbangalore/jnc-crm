@@ -52,6 +52,7 @@ export class InvoicingController {
   }
 
   @Get('series-audit')
+  @PageAccess('invoices', 'system_errors', 'audit_logs')
   async getSeriesAudit(@CurrentUser() user: ScopedUser) {
     return this.invoicingService.getInvoiceSeriesAudit(user);
   }
@@ -75,6 +76,7 @@ export class InvoicingController {
   }
 
   @Get('company-profile/completeness')
+  @PageAccess('invoices', 'ledger', 'orders', 'quotations', 'branding')
   async getCompanyProfileCompleteness(
     @CurrentUser() user: ScopedUser,
     @Query('isSez') isSezQuery?: string,
@@ -86,6 +88,7 @@ export class InvoicingController {
   }
 
   @Get('company-profile')
+  @PageAccess('invoices', 'ledger', 'orders', 'quotations', 'branding')
   async getCompanyProfile(@CurrentUser() user: ScopedUser) {
     return this.invoicingService.getCompanyProfile(user);
   }

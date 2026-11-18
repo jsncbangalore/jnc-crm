@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import PublicLayout from '../components/layout/PublicLayout';
 import { PRODUCT_NAME } from '../config/brand';
+import { PUBLIC_CONTACT } from '../config/publicContact';
 
 export default function HelpPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -92,7 +93,7 @@ export default function HelpPage() {
     },
     {
       q: 'How can I reach direct technical support?',
-      a: 'Our support team is available via email at support@example.com, or you can submit an inquiry through our Contact page. Typical response time is under four business hours.',
+      a: `Our support team is available via email at ${PUBLIC_CONTACT.supportEmail}, or you can submit an inquiry through our Contact page. Typical response time is under four business hours.`,
     },
   ];
 
@@ -222,10 +223,10 @@ export default function HelpPage() {
               <ArrowRight size={14} />
             </Link>
             <a
-              href="mailto:support@example.com"
+              href={`mailto:${PUBLIC_CONTACT.supportEmail}`}
               className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#181B26] px-5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
             >
-              support@example.com
+              {PUBLIC_CONTACT.supportEmail}
             </a>
           </div>
         </div>

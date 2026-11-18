@@ -225,7 +225,7 @@ export default function SuppliersPage() {
           </p>
         </div>
         {canManage && (
-          <button
+          <button type="button"
             onClick={() => setShowAddModal(true)}
             className="btn bg-crm-violet hover:bg-crm-violet-hover text-white shadow-glow-violet text-xs gap-1.5 font-bold"
           >
@@ -274,7 +274,7 @@ export default function SuppliersPage() {
                   </span>
 
                   {canManage && (
-                    <button
+                    <button type="button"
                       onClick={() =>
                         setEditingSupplier({
                           id: sup.id,
@@ -298,7 +298,7 @@ export default function SuppliersPage() {
                   )}
 
                   {canDelete && (
-                    <button
+                    <button type="button"
                       onClick={() => setSupplierToDelete({ id: sup.id, name: sup.name })}
                       disabled={deletingId === sup.id}
                       className="p-1 rounded hover:bg-red-500/20 text-slate-600 dark:text-slate-400 hover:text-crm-coral transition-colors"
@@ -357,13 +357,13 @@ export default function SuppliersPage() {
               {/* Record Purchase + History buttons */}
               {canManage && (
                 <div className="flex gap-2 pt-2 border-t border-slate-200 dark:border-[#2A3042]">
-                  <button
+                  <button type="button"
                     onClick={() => setPurchaseSupplier(sup)}
                     className="flex-1 btn bg-emerald-50 dark:bg-emerald-600/15 hover:bg-emerald-100 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 text-xs py-1.5 gap-1.5 font-bold shadow-sm"
                   >
                     <ShoppingCart size={13} /> Record Purchase
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => toggleHistory(sup.id)}
                     className={`btn text-[11px] gap-1 border border-white/10 hover:bg-white/5 ${expandedHistory === sup.id ? 'text-crm-blue bg-crm-blue/10' : 'text-slate-400'}`}
                   >
@@ -437,7 +437,7 @@ export default function SuppliersPage() {
                 <h2 className="text-base font-bold text-slate-950 dark:text-white flex items-center gap-2">
                   <Building2 size={16} className="text-crm-violet" /> Add New Supplier Company
                 </h2>
-                <button
+                <button type="button"
                   onClick={() => setShowAddModal(false)}
                   className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white flex items-center justify-center"
                 >
@@ -508,7 +508,7 @@ export default function SuppliersPage() {
                     label="Email Address"
                     type="email"
                     inputMode="email"
-                    placeholder="sales@example.com"
+                    placeholder="sales@company.com"
                     value={newSupplier.email}
                     onChange={(e) => {
                       setNewSupplier({ ...newSupplier, email: e.target.value });
@@ -633,7 +633,7 @@ export default function SuppliersPage() {
                 <h2 className="text-base font-bold text-slate-950 dark:text-white flex items-center gap-2">
                   <Edit3 size={16} className="text-crm-blue" /> Edit Supplier: {editingSupplier.name}
                 </h2>
-                <button
+                <button type="button"
                   onClick={() => setEditingSupplier(null)}
                   className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white flex items-center justify-center"
                 >

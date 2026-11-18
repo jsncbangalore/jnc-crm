@@ -230,7 +230,7 @@ export function UnifiedErrorComponent({
       {/* Admin Error Details Expander */}
       {isAdmin && (
         <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 text-left">
-          <button
+          <button type="button"
             onClick={() => setDetailsOpen((v) => !v)}
             className="inline-flex items-center justify-between w-full text-[11px] font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition"
           >

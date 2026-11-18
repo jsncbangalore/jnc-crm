@@ -453,8 +453,30 @@ export class InvoicingService {
 
     const invoiceDateObj = dto.invoiceDate ? new Date(dto.invoiceDate) : new Date();
     if (isNaN(invoiceDateObj.getTime())) {
-      throw new BadRequestException('A valid invoice date is required.');
+      fieldErrors.invoiceDate = 'A valid invoice date is required.';
     }
+
+    if (dto.dueDate && dto.invoiceDate) {
+      const dueDateObj = new Date(dto.dueDate);
+      if (!isNaN(dueDateObj.getTime()) && !isNaN(invoiceDateObj.getTime()) && dueDateObj < invoiceDateObj) {
+        fieldErrors.dueDate = 'Due date cannot be earlier than invoice date';
+      }
+    }
+
+    if (dto.poDate && dto.invoiceDate) {
+      const poDateObj = new Date(dto.poDate);
+      if (!isNaN(poDateObj.getTime()) && !isNaN(invoiceDateObj.getTime()) && poDateObj > invoiceDateObj) {
+        fieldErrors.poDate = 'PO date cannot be later than invoice date';
+      }
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+      throw new BadRequestException({
+        message: 'Validation failed for document creation',
+        fieldErrors,
+      });
+    }
+
     const fyCode = getIndianFinancialYear(invoiceDateObj);
     const fyBounds = getFinancialYearDateBounds(fyCode);
 
@@ -504,9 +526,13 @@ export class InvoicingService {
       }
 
       let invoiceNumber = dto.invoiceNumber?.trim();
-      if (!invoiceNumber) {
-        invoiceNumber = await this.getNextDocumentNumber(docType, undefined, user, tx);
-      } else {
+      const isManualNumber = Boolean((dto as any).isManualNumber);
+
+      if (isManualNumber && invoiceNumber) {
+        const canManualOverride = ['platform_super_admin', 'tenant_admin', 'admin'].includes(user.role);
+        if (!canManualOverride) {
+          throw new ForbiddenException('Only administrators can manually override document numbering.');
+        }
         const existing = await tx.invoice.findFirst({ where: { invoiceNumber, tenantId } });
         if (existing) {
           throw new BadRequestException({
@@ -514,6 +540,23 @@ export class InvoicingService {
             fieldErrors: { invoiceNumber: `Document number "${invoiceNumber}" already exists` },
           });
         }
+        await this.auditService.log({
+          tenantId,
+          actorId: user.id,
+          actorName: user.employeeCode || user.id,
+          action: 'MANUAL_DOCUMENT_NUMBER_OVERRIDE',
+          entityName: 'Invoice',
+          entityId: invoiceNumber,
+          afterState: { manualInvoiceNumber: invoiceNumber, docType },
+        }, tx);
+      } else {
+        const seriesResult = await this.documentSeriesService.getNextDocumentNumber(
+          tenantId,
+          docType,
+          invoiceDateObj,
+          tx
+        );
+        invoiceNumber = seriesResult.formattedNumber;
       }
 
       let subtotal = 0;
@@ -565,17 +608,43 @@ export class InvoicingService {
         ? subtotal
         : (isSez ? subtotal : Number((subtotal + totalCgst + totalSgst + totalIgst).toFixed(2)));
 
+      // High-Value Threshold check (default 1 Crore, configurable per company)
+      let highValueThreshold = 10_000_000;
+      try {
+        const hvSetting = await this.prisma.systemSetting.findUnique({
+          where: { key: `tenant:${tenantId}:highValueThreshold` },
+        });
+        if (hvSetting && hvSetting.value) {
+          const parsed = Number(hvSetting.value);
+          if (!isNaN(parsed) && parsed > 0) highValueThreshold = parsed;
+        }
+      } catch {}
+
+      const isHighAmount = totalAmount > highValueThreshold;
+      const isConfirmedHigh = Boolean((dto as any).confirmedHighAmount || (dto as any).confirmHighAmount);
+
+      if (isHighAmount) {
+        if (!isConfirmedHigh) {
+          throw new BadRequestException('This document is above the high-value limit. Please confirm.');
+        }
+        const allowedHighValueRoles = ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin'];
+        if (!allowedHighValueRoles.includes(user.role)) {
+          throw new ForbiddenException('Your role is not authorized to approve high-value documents.');
+        }
+      }
+
       // Validate Document Amount Limits (Item 8)
       const amountLimitCheck = validateDocumentAmountLimits({
         totalAmount,
         lines: lineItemsData,
-        confirmedHighAmount: Boolean((dto as any).confirmedHighAmount || (dto as any).confirmHighAmount),
+        warningDocumentAmount: highValueThreshold,
+        confirmedHighAmount: isConfirmedHigh,
       });
       if (!amountLimitCheck.valid) {
         throw new BadRequestException(amountLimitCheck.error);
       }
       if (amountLimitCheck.needsConfirmation) {
-        throw new BadRequestException(`${amountLimitCheck.warning} (Provide confirmedHighAmount: true to proceed).`);
+        throw new BadRequestException(amountLimitCheck.warning);
       }
 
       if (docType === 'credit_note' && referencedInvoice) {
@@ -650,19 +719,16 @@ export class InvoicingService {
       const advanceAmount = advancePercent ? Number(((totalAmount * advancePercent) / 100).toFixed(2)) : undefined;
 
       // Handle Advances: Query unallocated customer advances if applyAdvance is requested
-      let effectiveAdvanceAdjusted = dto.advanceAdjusted ? Number(dto.advanceAdjusted) : 0;
-      if (effectiveAdvanceAdjusted > Number(totalAmount.toFixed(2))) {
-        throw new BadRequestException(
-          `Advance payment (₹${effectiveAdvanceAdjusted.toFixed(2)}) cannot exceed the invoice total amount of ₹${totalAmount.toFixed(2)}.`
-        );
-      }
+      let effectiveAdvanceAdjusted = 0;
       const availableAdvancePayments: Array<{ payment: any; unallocated: number }> = [];
-      if ((dto as any).applyAdvance && resolvedCompanyId) {
+      if (((dto as any).applyAdvance || (dto.advanceAdjusted && Number(dto.advanceAdjusted) > 0)) && resolvedCompanyId) {
         const unallocatedPayments = await tx.paymentRecord.findMany({
           where: {
             tenantId,
             customerId: resolvedCompanyId,
             reversalOfId: null,
+            reversals: { none: {} },
+            paymentType: { not: 'refund' },
             amount: { gt: 0 },
           },
           include: { allocations: true },
@@ -677,13 +743,22 @@ export class InvoicingService {
             availableAdvancePayments.push({ payment: p, unallocated });
           }
         }
-        const maxAdvanceToApply = Math.min(Number(totalAmount.toFixed(2)), Number(availableAdvance.toFixed(2)));
-        effectiveAdvanceAdjusted = Math.max(effectiveAdvanceAdjusted, maxAdvanceToApply);
+        availableAdvance = Number(availableAdvance.toFixed(2));
+        if (dto.advanceAdjusted && Number(dto.advanceAdjusted) > 0 && availableAdvance < 0.01) {
+          throw new BadRequestException({
+            message: 'No unallocated advance payments found for this customer.',
+            fieldErrors: { advanceAdjusted: 'No unallocated advance payments exist for this customer.' },
+          });
+        }
+        const requestedAdv = dto.advanceAdjusted ? Number(dto.advanceAdjusted) : availableAdvance;
+        effectiveAdvanceAdjusted = Math.min(Number(totalAmount.toFixed(2)), Math.min(requestedAdv, availableAdvance));
       }
 
-      const coveredByExisting = availableAdvancePayments.reduce((s, a) => s + a.unallocated, 0);
-      const advanceCoveredByExisting = Math.min(effectiveAdvanceAdjusted, coveredByExisting);
-      const newAdvanceToRecord = Number((effectiveAdvanceAdjusted - advanceCoveredByExisting).toFixed(2));
+      if (effectiveAdvanceAdjusted > Number(totalAmount.toFixed(2))) {
+        throw new BadRequestException(
+          `Advance payment (₹${effectiveAdvanceAdjusted.toFixed(2)}) cannot exceed the invoice total amount of ₹${totalAmount.toFixed(2)}.`
+        );
+      }
 
       // Handle Record Payment Now: Single-transaction cash or electronic settlement
       const payNow = (dto as any).recordPaymentNow;
@@ -692,12 +767,22 @@ export class InvoicingService {
         payNowAmount = Number(Number(payNow.amount).toFixed(2));
       }
 
+      // Payment Guard: Total payments (received + advance) cannot exceed invoice total
+      if (Number((payNowAmount + effectiveAdvanceAdjusted).toFixed(2)) > Number(totalAmount.toFixed(2))) {
+        throw new BadRequestException({
+          message: 'Total payments (payment received + advance adjusted) cannot exceed the document total.',
+          fieldErrors: { payment: 'Total payments cannot exceed document total' },
+        });
+      }
+
       // Calculate Derived Payment Status & Balance Due (NEVER manual status)
       const postAdvanceBalance = Math.max(0, Number((totalAmount - effectiveAdvanceAdjusted).toFixed(2)));
       const finalBalanceDue = Math.max(0, Number((postAdvanceBalance - payNowAmount).toFixed(2)));
 
       let derivedStatus = 'unpaid';
-      if (finalBalanceDue <= 0.01 && totalAmount > 0) {
+      if (totalAmount <= 0) {
+        derivedStatus = 'unpaid';
+      } else if (finalBalanceDue <= 0.01) {
         derivedStatus = 'paid';
       } else if (totalAmount - finalBalanceDue > 0.01) {
         derivedStatus = 'partial';
@@ -718,7 +803,7 @@ export class InvoicingService {
             poDate: dto.poDate ? new Date(dto.poDate) : undefined,
             buyerOrderNo: dto.buyerOrderNo,
             referenceNo: dto.referenceNo,
-            paymentTerms: dto.paymentTerms || (docType === 'delivery_challan' ? 'Immediately' : 'Advance'),
+            paymentTerms: dto.paymentTerms?.trim() || (docType === 'delivery_challan' ? 'Immediately' : (docType === 'purchase_order' ? 'Net 30' : 'Immediate')),
             customerName: dto.customerName.trim(),
             customerPhone: resolvedPhone,
             customerEmail: dto.customerEmail,
@@ -726,14 +811,14 @@ export class InvoicingService {
             customerState,
             billingAddress: dto.billingAddress,
             deliveryAddress: dto.deliveryAddress || dto.billingAddress,
-            lutBondNo: dto.lutBondNo || tenant.lutBondNo || null,
-            lutValidity: dto.lutValidity || tenant.lutValidity || null,
+            lutBondNo: isSez ? (dto.lutBondNo || tenant.lutBondNo || null) : null,
+            lutValidity: isSez ? (dto.lutValidity || tenant.lutValidity || null) : null,
             isSez,
             advancePercent,
             advanceAmount,
             advanceAdjusted: effectiveAdvanceAdjusted,
             balanceDue: finalBalanceDue,
-            paymentStatus: derivedStatus,
+            paymentStatus: totalAmount <= 0 ? 'unpaid' : derivedStatus,
             paymentMethod: payNow?.paymentMethod || (dto as any).paymentMethod,
             transactionRef: payNow?.reference || (dto as any).transactionRef,
             subtotal: Number(subtotal.toFixed(2)),
@@ -801,9 +886,32 @@ export class InvoicingService {
         afterState: { invoiceNumber, docType, totalAmount, balanceDue: finalBalanceDue, paymentStatus: derivedStatus },
       }, tx);
 
+      if (isHighAmount && isConfirmedHigh) {
+        await this.auditService.log({
+          tenantId,
+          actorId: user.id,
+          actorName: user.employeeCode || user.id,
+          action: 'APPROVE_HIGH_VALUE_DOCUMENT',
+          entityName: 'Invoice',
+          entityId: invoice.id,
+          afterState: {
+            who: (user as any).email || user.employeeCode || user.id,
+            amount: totalAmount,
+            threshold: highValueThreshold,
+            document: invoice.invoiceNumber,
+          },
+        }, tx);
+      }
+
       // Automated LUT Validity Verification for SEZ Invoices
       if (isSez) {
         const lutStatus = validateLutStatus(invoice.lutBondNo || '', invoice.lutValidity || '', invoice.invoiceDate);
+        if (lutStatus.isExpired && !(dto as any).lutAcknowledged && !(dto as any).confirmExpiredLut) {
+          throw new BadRequestException({
+            message: `SEZ invoice blocked: LUT validity has expired (${lutStatus.warningMessage}). Confirmation required to proceed.`,
+            fieldErrors: { lutValidity: 'LUT validity has expired. Confirmation required.' },
+          });
+        }
         if (lutStatus.isExpired || lutStatus.isExpiringSoon) {
           await this.auditService.log({
             actorId: user.id,
@@ -829,80 +937,6 @@ export class InvoicingService {
 
       // Post to ledger within the same interactive transaction (Debit party totalAmount)
       await this.postingService?.postInvoice(invoice, user, tx);
-
-      // If an Advance Payment was entered directly on the invoice, create Receipt & post Ledger Credit in the SAME transaction
-      if (newAdvanceToRecord > 0) {
-        const advSeries = await this.documentSeriesService.getNextDocumentNumber(
-          tenantId,
-          'receipt',
-          invoiceDateObj,
-          tx
-        );
-
-        const advBankRef = ((dto as any).transactionRef || (dto as any).advanceRef || '')?.trim();
-        const advRecord = await tx.paymentRecord.create({
-          data: {
-            tenantId,
-            invoiceId: invoice.id,
-            customerId: resolvedCompanyId || null,
-            amount: newAdvanceToRecord,
-            paymentType: 'advance',
-            paymentMethod: (dto as any).paymentMethod || 'Bank Transfer',
-            transactionRef: advBankRef || advSeries.formattedNumber,
-            paymentDate: invoiceDateObj,
-            notes: `Advance payment recorded at invoice creation [${invoice.invoiceNumber}]`,
-            bankAccountId: (dto as any).bankAccountId?.trim() || null,
-            recordedById: user.id,
-          },
-        });
-
-        await tx.paymentAllocation.create({
-          data: {
-            tenantId,
-            paymentType: 'customer_receipt',
-            paymentRecordId: advRecord.id,
-            invoiceId: invoice.id,
-            amount: new Prisma.Decimal(newAdvanceToRecord.toFixed(2)),
-          },
-        });
-
-        if (resolvedCompanyId) {
-          const refText = advBankRef ? ` [Ref: ${advBankRef}]` : '';
-          await tx.ledgerEntry.create({
-            data: {
-              tenantId,
-              partyType: 'customer',
-              partyId: resolvedCompanyId,
-              entryDate: invoiceDateObj,
-              financialYear: advSeries.financialYear,
-              voucherType: 'receipt',
-              voucherNo: advSeries.formattedNumber,
-              particulars: `Advance Receipt for Invoice #${invoice.invoiceNumber}${refText}`,
-              debit: new Prisma.Decimal('0.00'),
-              credit: new Prisma.Decimal(newAdvanceToRecord.toFixed(2)),
-              sourceType: 'payment',
-              sourceId: advRecord.id,
-              createdById: user.id,
-            },
-          });
-        }
-
-        await this.auditService.log({
-          tenantId,
-          actorId: user.id,
-          actorName: user.employeeCode,
-          action: 'PAYMENT_RECORDED',
-          entityName: 'PaymentRecord',
-          entityId: advRecord.id,
-          afterState: {
-            receiptNumber: advSeries.formattedNumber,
-            amount: newAdvanceToRecord,
-            invoiceId: invoice.id,
-            type: 'advance',
-            bankRef: advBankRef,
-          },
-        }, tx);
-      }
 
       // If Record Payment Now was requested, create Receipt & post Ledger Credit in the SAME transaction
       if (payNowAmount > 0) {

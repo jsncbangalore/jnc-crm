@@ -13,6 +13,7 @@ interface FullCalendarPickerProps {
   maxYear?: number;
   className?: string;
   disabled?: boolean;
+  error?: string;
 }
 
 const MONTH_NAMES = [
@@ -49,6 +50,7 @@ export const FullCalendarPicker: React.FC<FullCalendarPickerProps> = ({
   maxYear = 3000,
   className = '',
   disabled = false,
+  error,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -240,7 +242,9 @@ export const FullCalendarPicker: React.FC<FullCalendarPickerProps> = ({
           onChange={(e) => setInputValue(e.target.value)}
           onBlur={handleManualInputBlur}
           onClick={() => !disabled && setIsOpen(true)}
-          className="input text-xs pr-8 font-mono cursor-pointer"
+          className={`input text-xs pr-8 font-mono cursor-pointer ${
+            error ? 'border-red-500 ring-1 ring-red-500 focus:border-red-500 focus:ring-red-500' : ''
+          }`}
         />
 
         <button
@@ -253,6 +257,10 @@ export const FullCalendarPicker: React.FC<FullCalendarPickerProps> = ({
           <Calendar size={14} className="text-teal-600 dark:text-crm-teal" />
         </button>
       </div>
+
+      {error && (
+        <p className="text-red-500 text-[11px] mt-1 font-semibold">{error}</p>
+      )}
 
       {/* Popover Calendar Window */}
       {isOpen && (

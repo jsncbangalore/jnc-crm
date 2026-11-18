@@ -46,6 +46,12 @@ export class OrdersController {
     return this.ordersService.findAll(user, { status, search, page, limit });
   }
 
+  @Get('dispatchable')
+  @PageAccess('shipments', 'orders')
+  getDispatchableOrders(@CurrentUser() user: ScopedUser) {
+    return this.ordersService.getDispatchableOrders(user);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.ordersService.findOne(id, user);

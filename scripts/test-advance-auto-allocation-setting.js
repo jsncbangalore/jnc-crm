@@ -44,10 +44,11 @@ function assert(title, condition, extra = '') {
   }
 }
 
-async function apiCall(method, path, token, body = null) {
+async function apiCall(method, path, token, body = null, retries = 2) {
   const headers = {
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
+    'Connection': 'close',
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -56,9 +57,19 @@ async function apiCall(method, path, token, body = null) {
   if (body) {
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(`${API_BASE}${path}`, opts);
-  const data = await res.json().catch(() => ({}));
-  return { status: res.status, data };
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(`${API_BASE}${path}`, opts);
+      const data = await res.json().catch(() => ({}));
+      return { status: res.status, data };
+    } catch (err) {
+      if (attempt < retries && (err.message.includes('fetch failed') || err.code === 'ECONNRESET')) {
+        await new Promise((r) => setTimeout(r, 150));
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 async function runSuite() {

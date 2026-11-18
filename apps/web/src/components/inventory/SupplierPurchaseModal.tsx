@@ -201,7 +201,7 @@ export default function SupplierPurchaseModal({ supplier, prefillSkuId, onClose,
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="btn-ghost p-2 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white">
+          <button type="button" onClick={onClose} className="btn-ghost p-2 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white">
             <X size={18} />
           </button>
         </div>

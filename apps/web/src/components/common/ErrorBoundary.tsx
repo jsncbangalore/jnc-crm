@@ -129,7 +129,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </div>
             )}
             <div className="pt-2 flex flex-wrap gap-2 justify-center">
-              <button
+              <button type="button"
                 onClick={() => {
                   this.setState({ hasError: false, error: null, referenceId: null });
                   window.location.reload();
@@ -138,7 +138,7 @@ export class ErrorBoundary extends Component<Props, State> {
               >
                 <RefreshCw size={13} /> Reload
               </button>
-              <button
+              <button type="button"
                 onClick={() => {
                   this.setState({ hasError: false, error: null, referenceId: null });
                   if (window.history.length > 1) {
@@ -151,7 +151,7 @@ export class ErrorBoundary extends Component<Props, State> {
               >
                 <ArrowLeft size={13} /> Go Back
               </button>
-              <button
+              <button type="button"
                 onClick={() => {
                   try {
                     const consent = localStorage.getItem('crm_cookie_consent');

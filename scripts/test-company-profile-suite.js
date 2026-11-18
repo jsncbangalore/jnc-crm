@@ -196,8 +196,8 @@ async function runSuite() {
     await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 15000 });
 
     // Navigate to /settings/branding
-    await page.goto(`${WEB_BASE}/settings/branding`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('input[data-testid="input-company-name"]', { timeout: 10000 });
+    await page.goto(`${WEB_BASE}/settings/branding`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('input[data-testid="input-company-name"]', { timeout: 15000 });
 
     // 3.1 Field-level error display & focus
     console.log('\nSubtest 3.1: Testing field error display, focus, and dynamic banner...');

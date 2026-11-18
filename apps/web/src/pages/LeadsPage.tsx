@@ -231,7 +231,7 @@ export default function LeadsPage() {
               assignedToId: assignedToId !== 'all' ? assignedToId : undefined,
               search: search.trim() || undefined,
             }),
-            usersApi.list().catch(() => ({ data: [] })),
+            usersApi.getAssignees().catch(() => ({ data: [] })),
           ]);
 
           const items: Lead[] = listRes.data?.items || (Array.isArray(listRes.data) ? listRes.data : []);
@@ -274,7 +274,7 @@ export default function LeadsPage() {
           const closedCount = stages.won.count + stages.lost.count;
           const winRate = closedCount > 0 ? Math.round((wonCount / closedCount) * 100) : 0;
 
-          const rawUsers = Array.isArray(usersRes.data) ? usersRes.data : usersRes.data?.items || [];
+          const rawUsers: any[] = Array.isArray(usersRes.data) ? usersRes.data : ((usersRes.data as any)?.items || []);
           const salesReps = rawUsers.filter((u: any) => ['sales', 'employee', 'tenant_admin', 'admin'].includes(u.role));
 
           data = {

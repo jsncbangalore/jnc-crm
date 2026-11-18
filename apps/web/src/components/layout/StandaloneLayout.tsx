@@ -55,15 +55,20 @@ export default function StandaloneLayout({ children }: { children?: React.ReactN
   const [schemaPendingCount, setSchemaPendingCount] = useState<number | null>(null);
 
   useEffect(() => {
-    const isAdmin =
-      user?.role === 'admin' ||
+    const isPlatformOrTenantAdmin =
       user?.role === 'tenant_admin' ||
       user?.role === 'platform_super_admin' ||
       user?.role === 'platform_admin' ||
       Boolean((user as any)?.isPlatformAdmin);
 
-    if (!user || !isAdmin) {
+    if (!user || !isPlatformOrTenantAdmin) {
       setSchemaPendingCount(null);
+      return;
+    }
+
+    // Call at most once per session
+    const sessionKey = `crm_schema_status_checked_${user.id}`;
+    if (typeof window !== 'undefined' && sessionStorage.getItem(sessionKey)) {
       return;
     }
 
@@ -71,6 +76,7 @@ export default function StandaloneLayout({ children }: { children?: React.ReactN
     authApi
       .getSchemaStatus()
       .then((res) => {
+        try { sessionStorage.setItem(sessionKey, '1'); } catch {}
         if (!mounted) return;
         if (res.data?.ok === false && res.data?.pendingCount > 0) {
           setSchemaPendingCount(res.data.pendingCount);
@@ -79,6 +85,7 @@ export default function StandaloneLayout({ children }: { children?: React.ReactN
         }
       })
       .catch(() => {
+        try { sessionStorage.setItem(sessionKey, '1'); } catch {}
         if (mounted) setSchemaPendingCount(null);
       });
 
@@ -177,7 +184,7 @@ export default function StandaloneLayout({ children }: { children?: React.ReactN
           <span data-testid="impersonation-banner-text">
             Viewing as <strong>{(user as any)?.impersonatedTenantName || 'Company'}</strong>.
           </span>
-          <button
+          <button type="button"
             onClick={handleExitImpersonation}
             className="btn bg-white text-slate-900 hover:bg-slate-100 text-xs px-3 py-1 rounded-lg font-bold shadow-sm transition-all"
             data-testid="exit-impersonation-btn"

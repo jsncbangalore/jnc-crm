@@ -29,6 +29,7 @@ export class TeamsController {
   constructor(private teamsService: TeamsService) {}
 
   @Get()
+  @PageAccess('teams', 'users')
   @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async findAll(@CurrentUser() user: ScopedUser) {
     return this.teamsService.findAll(user);

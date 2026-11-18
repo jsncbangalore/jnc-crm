@@ -57,6 +57,22 @@ export default defineConfig(({ command, mode }) => {
     plugins: [
       react(),
       {
+        name: 'validate-no-placeholder-domains',
+        generateBundle(_, bundle) {
+          if (!isDev && mode === 'production') {
+            const forbiddenStrings = ['example.com', 'example.test', '+1-800-555'];
+            for (const [filename, item] of Object.entries(bundle)) {
+              const code = item.type === 'chunk' ? item.code : typeof (item as any).source === 'string' ? (item as any).source : '';
+              for (const forbidden of forbiddenStrings) {
+                if (code.includes(forbidden)) {
+                  throw new Error(`[PRODUCTION BUILD ERROR] Forbidden placeholder string "${forbidden}" found in bundled file: ${filename}`);
+                }
+              }
+            }
+          }
+        },
+      },
+      {
         name: 'html-transform-csp',
         transformIndexHtml(html: string, ctx) {
           let modified = html.replace(/%VITE_PRODUCT_NAME%/g, productName);

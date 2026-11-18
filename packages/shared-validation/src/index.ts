@@ -1437,7 +1437,7 @@ export function validateDocumentAmountLimits(params: {
     return {
       valid: true,
       needsConfirmation: true,
-      warning: `Document total of ₹${Math.round(params.totalAmount).toLocaleString('en-IN')} exceeds the high amount threshold of ₹${warnDoc.toLocaleString('en-IN')} (1 Crore). Please confirm to proceed.`,
+      warning: 'This document is above the high-value limit. Please confirm.',
     };
   }
 

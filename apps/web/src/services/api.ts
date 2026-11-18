@@ -95,80 +95,79 @@ if (typeof window !== 'undefined') {
  * 5. 400 from validation -> show the field messages. Never show raw server text or paths.
  */
 export function getApiErrorMessage(err: any): string {
+  const reqId = err?.requestId || err?.response?.data?.requestId || err?.response?.headers?.['x-request-id'] || err?.config?.headers?.['X-Request-Id'];
+
+  let baseMessage = 'Unable to complete request. Please try again.';
+
   // Case 1: No response at all (network, DNS, timeout, or CORS)
   if (!err?.response) {
-    return 'Cannot reach the server. Check your connection.';
-  }
+    baseMessage = 'Cannot reach the server. Check your connection.';
+  } else {
+    const status = err.response.status;
 
-  const status = err.response.status;
+    // Case 2: 404 Not Found or 405 Method Not Allowed
+    if (status === 404 || status === 405) {
+      baseMessage = 'Server update pending. Please try again in a few minutes.';
+    } else if (status === 429) {
+      baseMessage = 'Too many attempts. Please wait and try again.';
+    } else if (status >= 500) {
+      baseMessage = 'Something went wrong on our side. Please try again.';
+    } else if (status === 400) {
+      const data = err.response.data;
+      const rawMsg = typeof data?.message === 'string'
+        ? data.message
+        : Array.isArray(data?.message)
+        ? data.message.join(' ')
+        : '';
 
-  // Case 2: 404 Not Found or 405 Method Not Allowed
-  if (status === 404 || status === 405) {
-    return 'Server update pending. Please try again in a few minutes.';
-  }
-
-  // Case 3: 429 Rate limiting
-  if (status === 429) {
-    return 'Too many attempts. Please wait and try again.';
-  }
-
-  // Case 4: 5xx Server errors
-  if (status >= 500) {
-    return 'Something went wrong on our side. Please try again.';
-  }
-
-  // Case 5: 400 Validation errors
-  if (status === 400) {
-    const data = err.response.data;
-    const rawMsg = typeof data?.message === 'string'
-      ? data.message
-      : Array.isArray(data?.message)
-      ? data.message.join(' ')
-      : '';
-
-    if (rawMsg.toLowerCase().includes('should not exist')) {
-      return 'Server update pending. Please try again in a few minutes.';
-    }
-
-    if (data?.message) {
-      if (Array.isArray(data.message)) {
-        const cleanList = data.message
-          .map((m: any) => String(m).replace(/[A-Za-z]:\\[^ ]+|\/[a-zA-Z0-9_\-./]+/g, '').trim())
-          .filter(Boolean);
-        if (cleanList.length > 0) {
-          return cleanList.join(', ');
+      if (rawMsg.toLowerCase().includes('should not exist')) {
+        baseMessage = 'Server update pending. Please try again in a few minutes.';
+      } else if (data?.message) {
+        if (Array.isArray(data.message)) {
+          const cleanList = data.message
+            .map((m: any) => String(m).replace(/[A-Za-z]:\\[^ ]+|\/[a-zA-Z0-9_\-./]+/g, '').trim())
+            .filter(Boolean);
+          if (cleanList.length > 0) {
+            baseMessage = cleanList.join(', ');
+          } else {
+            baseMessage = 'Invalid request details. Please check the fields and try again.';
+          }
+        } else if (typeof data.message === 'string') {
+          const clean = data.message.replace(/[A-Za-z]:\\[^ ]+|\/[a-zA-Z0-9_\-./]+/g, '').trim();
+          const lower = clean.toLowerCase();
+          if (clean && !lower.includes('syntaxerror') && !lower.includes('prisma') && !lower.includes('stack')) {
+            baseMessage = clean;
+          } else {
+            baseMessage = 'Invalid request details. Please check the fields and try again.';
+          }
         }
-      } else if (typeof data.message === 'string') {
-        const clean = data.message.replace(/[A-Za-z]:\\[^ ]+|\/[a-zA-Z0-9_\-./]+/g, '').trim();
-        const lower = clean.toLowerCase();
-        if (clean && !lower.includes('syntaxerror') && !lower.includes('prisma') && !lower.includes('stack')) {
-          return clean;
-        }
+      } else {
+        baseMessage = 'Invalid request details. Please check the fields and try again.';
+      }
+    } else if (status === 401) {
+      baseMessage = err.response.data?.message || 'Incorrect email or password. Please check and try again.';
+    } else if (status === 403) {
+      baseMessage = err.response.data?.message || 'Access restricted. Please contact your administrator.';
+    } else {
+      const fallback = err.response.data?.message;
+      if (typeof fallback === 'string' && !fallback.includes('/') && !fallback.includes('\\')) {
+        baseMessage = fallback;
       }
     }
-    return 'Invalid request details. Please check the fields and try again.';
   }
 
-  // 401 Unauthorized
-  if (status === 401) {
-    return err.response.data?.message || 'Incorrect email or password. Please check and try again.';
+  if (reqId && typeof reqId === 'string' && !baseMessage.includes(reqId) && !baseMessage.toLowerCase().includes('ref:')) {
+    return `${baseMessage} (Ref: ${reqId})`;
   }
-
-  // 403 Forbidden
-  if (status === 403) {
-    return err.response.data?.message || 'Access restricted. Please contact your administrator.';
-  }
-
-  const fallback = err.response.data?.message;
-  if (typeof fallback === 'string' && !fallback.includes('/') && !fallback.includes('\\')) {
-    return fallback;
-  }
-
-  return 'Unable to complete request. Please try again.';
+  return baseMessage;
 }
 
 export const resolveFileUrl = (url: string | null | undefined): string => {
   if (!url) return '';
+  const lower = url.trim().toLowerCase();
+  if (lower === '/logo.png' || lower === 'logo.png' || lower.endsWith('/logo.png') || lower.includes('default-logo')) {
+    return '';
+  }
   if (url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
     return url;
   }
@@ -217,8 +216,14 @@ const PLATFORM_TOKEN_STORAGE_KEY = 'crm_platform_token';
 const STAFF_REFRESH_KEY = 'crm_refresh_token_fb';
 const PLATFORM_REFRESH_KEY = 'platform_refresh_token_fb';
 
-let _inMemoryStaffToken: string | null = null;
-let _inMemoryPlatformToken: string | null = null;
+let _inMemoryStaffToken: string | null =
+  typeof window !== 'undefined' && (window as any).__INITIAL_STAFF_TOKEN__
+    ? (window as any).__INITIAL_STAFF_TOKEN__
+    : null;
+let _inMemoryPlatformToken: string | null =
+  typeof window !== 'undefined' && (window as any).__INITIAL_PLATFORM_TOKEN__
+    ? (window as any).__INITIAL_PLATFORM_TOKEN__
+    : null;
 let _currentTabUserId: string | null =
   typeof window !== 'undefined'
     ? sessionStorage.getItem('crm_tab_user_id')
@@ -1130,6 +1135,21 @@ api.interceptors.response.use(
     }
 
     const reqMethod = (original?.method || err?.config?.method || 'get').toUpperCase();
+    const cleanUrl = (url || '').split('?')[0];
+    const requestId = err.response?.data?.requestId ||
+      err.response?.headers?.['x-request-id'] ||
+      original?.headers?.['X-Request-Id'] ||
+      (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
+    err.requestId = requestId;
+
+    if (import.meta.env.DEV) {
+      console.error(`[API Error] ${reqMethod} ${cleanUrl || '/'} -> Status: ${status || 'NETWORK_ERROR'} [Request ID: ${requestId}]`, err);
+    }
+
+    if (cleanUrl && !cleanUrl.includes('/client-errors') && typeof window !== 'undefined') {
+      reportFailedApiCall(reqMethod, cleanUrl, status || 0, requestId);
+    }
+
     const isNetworkOrTimeout =
       !err.response ||
       err.code === 'ECONNABORTED' ||
@@ -1148,6 +1168,45 @@ api.interceptors.response.use(
     return Promise.reject(err);
   },
 );
+
+const reportedErrorsCache = new Map<string, number>();
+
+function reportFailedApiCall(method: string, path: string, status: number, requestId: string) {
+  const now = Date.now();
+  const dedupKey = `${method}:${path}:${status}`;
+  const lastReported = reportedErrorsCache.get(dedupKey);
+
+  // De-duplicate: ignore if same method + path + status within 10 seconds
+  if (lastReported && now - lastReported < 10000) {
+    return;
+  }
+  reportedErrorsCache.set(dedupKey, now);
+
+  if (reportedErrorsCache.size > 100) {
+    for (const [k, v] of reportedErrorsCache.entries()) {
+      if (now - v > 60000) reportedErrorsCache.delete(k);
+    }
+  }
+
+  const page = typeof window !== 'undefined' ? window.location.pathname : '';
+  const message = `API call failed: ${method} ${path} -> Status ${status || 'NETWORK_ERROR'}`;
+  const componentStack = `Method: ${method}, URL: ${path}, Status: ${status}, RequestId: ${requestId}, Page: ${page}`;
+
+  try {
+    fetch(`${getApiBaseUrl()}/client-errors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: requestId,
+        route: path.substring(0, 500),
+        page: page.substring(0, 100),
+        message: message.substring(0, 5000),
+        componentStack: componentStack.substring(0, 10000),
+        buildVersion: import.meta.env.VITE_APP_VERSION || '1.0.0',
+      }),
+    }).catch(() => {});
+  } catch {}
+}
 
 if (typeof window !== 'undefined') {
   (window as any).getConnectionStatus = getConnectionStatus;
@@ -1442,6 +1501,27 @@ export const platformApi = {
   getMailStatus: () => api.get('/platform/mail-status'),
   sendMailTest: () => api.post('/platform/mail-test'),
   getRecentSignIns: () => api.get('/platform/recent-signins'),
+  listAuditLogs: (params?: {
+    page?: number;
+    limit?: number;
+    startDate?: string;
+    endDate?: string;
+    actor?: string;
+    action?: string;
+    tenantCode?: string;
+    outcome?: string;
+    search?: string;
+    category?: string;
+  }) => api.get('/platform/audit-logs', { params }),
+  getAuditLogDetail: (id: string) => api.get(`/platform/audit-logs/${id}`),
+  verifyAuditIntegrity: () => api.get('/platform/audit-logs/verify'),
+  exportAuditLogs: (params?: any, stepUpToken?: string) =>
+    api.get('/platform/audit-logs/export', {
+      params,
+      responseType: 'blob',
+      headers: stepUpToken ? { 'x-step-up-token': stepUpToken } : undefined,
+    }),
+  exitImpersonation: (tenantId: string) => api.post(`/platform/tenants/${tenantId}/impersonate-exit`),
 };
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -1487,6 +1567,7 @@ export const leadsApi = {
 // ─── Orders ──────────────────────────────────────────────────────────────────
 export const ordersApi = {
   list: (params?: Record<string, any>) => api.get('/orders', { params }),
+  getDispatchable: () => api.get<{ items: Array<{ id: string; orderNumber: string; customerName: string; status: string; destination?: string }> }>('/orders/dispatchable'),
   get: (id: string) => api.get(`/orders/${id}`),
   create: (data: any) => api.post('/orders', data),
   update: (id: string, data: any) => api.patch(`/orders/${id}`, data),
@@ -1754,6 +1835,7 @@ export const companiesApi = {
 // ─── Users & Team Management ──────────────────────────────────────────────────
 export const usersApi = {
   list: (params?: Record<string, any>) => api.get('/users', { params }),
+  getAssignees: () => api.get<Array<{ id: string; name: string; email: string; role: string }>>('/users/assignees'),
   get: (id: string) => api.get(`/users/${id}`),
   create: (data: any) => api.post('/users', data),
   update: (id: string, data: any) => api.patch(`/users/${id}`, data),
@@ -2070,7 +2152,7 @@ export const paymentsApi = {
   record: (data: any, config?: any) => api.post("/payments", data, config),
   allocate: (id: string, data: { invoiceId: string; amount?: number }) => api.post(`/payments/${id}/allocate`, data),
   reverse: (id: string, reason: string) => api.post("/payments/" + id + "/reverse", { reason }),
-  getRelated: (type: string, id: string) => api.get("/documents/" + type + "/" + id + "/related"),
+  getRelated: (type: string, id: string, config?: any) => api.get("/documents/" + type + "/" + id + "/related", config),
   getCustomerAccountSummary: (customerId: string) => api.get("/customers/" + customerId + "/account-summary"),
   checkIdempotency: (key: string) => api.get(`/payments/idempotency/${encodeURIComponent(key)}`),
   getReceipt: (id: string) => api.get(`/payments/${id}/receipt`),

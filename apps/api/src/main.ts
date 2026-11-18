@@ -216,6 +216,7 @@ async function bootstrap() {
     allowedHeaders: CORS_ALLOWED_HEADERS,
     exposedHeaders: CORS_EXPOSED_HEADERS,
     credentials: true,
+    maxAge: 7200,
   });
 
   app.use(async (req: any, res: any, next: any) => {

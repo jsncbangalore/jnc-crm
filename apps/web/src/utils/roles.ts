@@ -87,7 +87,7 @@ export function getRoleRedirectPath(user?: { role?: string; tenantId?: string | 
     case 'platform_admin':
     case 'admin':
     case 'sub_admin':
-      return '/';
+      return '/dashboard';
     case 'employee':
       return '/leads';
     case 'developer':
@@ -100,7 +100,7 @@ export function getRoleRedirectPath(user?: { role?: string; tenantId?: string | 
     case 'accountant':
       return '/invoices';
     default:
-      return '/';
+      return '/dashboard';
   }
 }
 

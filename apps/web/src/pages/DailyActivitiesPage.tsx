@@ -369,7 +369,7 @@ export default function DailyActivitiesPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           {view === 'logs' && (
-            <button
+            <button type="button"
               onClick={backToProjects}
               className="w-8 h-8 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-400 flex items-center justify-center transition-colors"
             >
@@ -399,7 +399,7 @@ export default function DailyActivitiesPage() {
 
         <div className="flex items-center gap-2">
           {canCreateProject && (
-            <button
+            <button type="button"
               onClick={openCreateProject}
               className="btn-primary text-xs gap-1.5 px-4 font-bold flex items-center shadow-glow-blue"
             >
@@ -407,7 +407,7 @@ export default function DailyActivitiesPage() {
             </button>
           )}
           {view === 'logs' && (
-            <button
+            <button type="button"
               onClick={() => setUploadModal(true)}
               className="btn bg-crm-teal hover:bg-crm-teal-hover text-black font-bold text-xs gap-1.5 px-4 shadow-glow-teal flex items-center"
             >
@@ -508,7 +508,7 @@ export default function DailyActivitiesPage() {
                   {/* Action Buttons */}
                   <div className="px-5 pb-4 flex gap-2">
                     {canAssignMembers && (
-                      <button
+                      <button type="button"
                         onClick={() => openAssignModal(p)}
                         className="flex-1 text-[11px] font-bold py-1.5 rounded-lg border border-crm-blue/30 text-crm-blue hover:bg-crm-blue/10 transition-colors flex items-center justify-center gap-1 cursor-pointer"
                       >
@@ -516,7 +516,7 @@ export default function DailyActivitiesPage() {
                       </button>
                     )}
                     {canCreateProject && (
-                      <button
+                      <button type="button"
                         onClick={() => openEditProject(p)}
                         className="px-3 text-[11px] font-bold py-1.5 rounded-lg border border-slate-200 dark:border-[#2A3042] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
                       >
@@ -524,7 +524,7 @@ export default function DailyActivitiesPage() {
                       </button>
                     )}
                     {['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin'].includes(user?.role || '') && (
-                      <button
+                      <button type="button"
                         onClick={() => deleteProject(p)}
                         className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-slate-200 dark:border-[#2A3042] transition-colors cursor-pointer"
                         title="Delete project"
@@ -707,7 +707,7 @@ export default function DailyActivitiesPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
                             {rowCount > 0 && (
-                              <button
+                              <button type="button"
                                 onClick={() => { setViewingLog(log); setViewLogModal(true); }}
                                 className="p-1.5 rounded-lg text-crm-blue hover:bg-crm-blue/10 transition-colors"
                                 title="Preview File Data"
@@ -716,7 +716,7 @@ export default function DailyActivitiesPage() {
                               </button>
                             )}
                             {log.fileName && (
-                              <button
+                              <button type="button"
                                 onClick={() => downloadLog(log)}
                                 className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
                                 title="Download Excel"
@@ -725,7 +725,7 @@ export default function DailyActivitiesPage() {
                               </button>
                             )}
                             {(user?.role === 'tenant_admin' || user?.role === 'admin') && (
-                              <button
+                              <button type="button"
                                 onClick={() => deleteLog(log)}
                                 className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                                 title="Delete Log"
@@ -759,7 +759,7 @@ export default function DailyActivitiesPage() {
                 <h3 className="font-bold text-slate-950 dark:text-white">
                   {editingProject ? 'Edit Project' : 'New Project'}
                 </h3>
-                <button onClick={() => setProjectModal(false)} className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 flex items-center justify-center">
+                <button type="button" onClick={() => setProjectModal(false)} className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 flex items-center justify-center">
                   <X size={16} />
                 </button>
               </div>
@@ -799,8 +799,8 @@ export default function DailyActivitiesPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#2A3042]">
-                <button onClick={() => setProjectModal(false)} className="btn-ghost text-xs px-4">Cancel</button>
-                <button
+                <button type="button" onClick={() => setProjectModal(false)} className="btn-ghost text-xs px-4">Cancel</button>
+                <button type="button"
                   onClick={saveProject}
                   disabled={savingProject || !projectForm.name.trim()}
                   className="btn-primary text-xs px-5 font-bold"
@@ -830,7 +830,7 @@ export default function DailyActivitiesPage() {
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">{assigningProject.name}</p>
                 </div>
-                <button onClick={() => setAssignModal(false)} className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 flex items-center justify-center">
+                <button type="button" onClick={() => setAssignModal(false)} className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 flex items-center justify-center">
                   <X size={16} />
                 </button>
               </div>
@@ -874,8 +874,8 @@ export default function DailyActivitiesPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#2A3042]">
-                <button onClick={() => setAssignModal(false)} className="btn-ghost text-xs px-4">Cancel</button>
-                <button
+                <button type="button" onClick={() => setAssignModal(false)} className="btn-ghost text-xs px-4">Cancel</button>
+                <button type="button"
                   onClick={saveAssignments}
                   disabled={savingAssignments}
                   className="btn-primary text-xs px-5 font-bold"
@@ -903,7 +903,7 @@ export default function DailyActivitiesPage() {
                   <h3 className="font-bold text-slate-950 dark:text-white">Add Daily Activity Log</h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">{selectedProject?.name}</p>
                 </div>
-                <button onClick={() => { setUploadModal(false); setUploadFile(null); setPreviewRows([]); }} className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 flex items-center justify-center">
+                <button type="button" onClick={() => { setUploadModal(false); setUploadFile(null); setPreviewRows([]); }} className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 flex items-center justify-center">
                   <X size={16} />
                 </button>
               </div>
@@ -970,8 +970,8 @@ export default function DailyActivitiesPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#2A3042]">
-                <button onClick={() => { setUploadModal(false); setUploadFile(null); setPreviewRows([]); }} className="btn-ghost text-xs px-4">Cancel</button>
-                <button
+                <button type="button" onClick={() => { setUploadModal(false); setUploadFile(null); setPreviewRows([]); }} className="btn-ghost text-xs px-4">Cancel</button>
+                <button type="button"
                   onClick={submitUpload}
                   disabled={(!uploadFile && !uploadSummary.trim()) || uploading}
                   className="btn-primary text-xs px-5 gap-1.5 font-bold"
@@ -1006,11 +1006,11 @@ export default function DailyActivitiesPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {viewingLog.fileName && (
-                    <button onClick={() => downloadLog(viewingLog)} className="btn-ghost text-xs gap-1.5 px-3">
+                    <button type="button" onClick={() => downloadLog(viewingLog)} className="btn-ghost text-xs gap-1.5 px-3">
                       <Download size={13} /> Download
                     </button>
                   )}
-                  <button onClick={() => setViewLogModal(false)} className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 flex items-center justify-center">
+                  <button type="button" onClick={() => setViewLogModal(false)} className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 flex items-center justify-center">
                     <X size={16} />
                   </button>
                 </div>
@@ -1084,7 +1084,7 @@ export default function DailyActivitiesPage() {
                     </p>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setMemberWorkModal({ ...memberWorkModal, show: false })}
                   className="w-7 h-7 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-400 flex items-center justify-center"
                 >

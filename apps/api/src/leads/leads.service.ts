@@ -199,6 +199,14 @@ export class LeadsService {
       leadNumber = `${prefix}-${String(count + 1).padStart(5, '0')}`;
     }
 
+    // Ensure leadNumber is strictly unique for tenant
+    const baseNumber = leadNumber;
+    let attempt = 0;
+    while (await this.prisma.lead.findFirst({ where: { tenantId, leadNumber } })) {
+      attempt++;
+      leadNumber = `${baseNumber}-${attempt}`;
+    }
+
     let ownerDisplayName = 'Unassigned';
     if (assignedToId) {
       const assignedUser = await this.prisma.user.findUnique({

@@ -22,7 +22,7 @@ import { Response } from 'express';
 
 @Controller('leads')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@PageAccess('leads')
+@PageAccess('leads', 'lead_setup', 'lead_flow')
 export class LeadsController {
   constructor(private leadsService: LeadsService) {}
 

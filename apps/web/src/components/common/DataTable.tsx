@@ -327,7 +327,7 @@ export function DataTable<T extends Record<string, any>>({
         <div className="flex items-center gap-2">
           {/* Row Density Toggle */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-800/60 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-400">
-            <button
+            <button type="button"
               onClick={() => handleDensityChange('compact')}
               title="Compact rows"
               className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
@@ -338,7 +338,7 @@ export function DataTable<T extends Record<string, any>>({
             >
               Compact
             </button>
-            <button
+            <button type="button"
               onClick={() => handleDensityChange('comfortable')}
               title="Comfortable rows"
               className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
@@ -349,7 +349,7 @@ export function DataTable<T extends Record<string, any>>({
             >
               Default
             </button>
-            <button
+            <button type="button"
               onClick={() => handleDensityChange('spacious')}
               title="Spacious rows"
               className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
@@ -364,7 +364,7 @@ export function DataTable<T extends Record<string, any>>({
 
           {/* Columns Chooser Dropdown */}
           <div className="relative" ref={chooserRef}>
-            <button
+            <button type="button"
               onClick={() => setShowChooser(!showChooser)}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors font-medium shadow-sm"
               title="Customize Columns"
@@ -377,7 +377,7 @@ export function DataTable<T extends Record<string, any>>({
               <div className="absolute right-0 top-full mt-1.5 w-60 z-50 bg-white dark:bg-[#181B26] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-3 text-xs">
                 <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
                   <span className="font-bold text-slate-900 dark:text-white">Show / Hide Columns</span>
-                  <button
+                  <button type="button"
                     onClick={handleResetColumns}
                     className="text-[11px] text-crm-blue dark:text-crm-blue-light hover:underline flex items-center gap-1"
                     title="Reset to default columns"

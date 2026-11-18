@@ -12,6 +12,46 @@ import { ScopingService } from '../auth/scoping.service';
 import { isPlatformOwner } from '../auth/roles';
 import { getEffectivePagesForUser } from '../auth/effective-page-access';
 
+export interface ReceivablesKpiSummary {
+  totalReceivable: number;
+  unpaidAmount: number;
+  overdueAmount: number;
+  overdueCount: number;
+  customerAdvances: number;
+}
+
+export function calculateReceivablesKpi(
+  invoices: Array<{ totalAmount: number; balanceDue: number | null; dueDate?: Date | string | null }>,
+  todayStart: Date,
+  customerAdvances: number = 0,
+): ReceivablesKpiSummary {
+  let totalReceivable = 0;
+  let overdueAmount = 0;
+  let overdueCount = 0;
+
+  for (const inv of invoices) {
+    const bal = inv.balanceDue != null && Number(inv.balanceDue) >= 0
+      ? Number(inv.balanceDue)
+      : Number(inv.totalAmount || 0);
+    totalReceivable += bal;
+    if (inv.dueDate && new Date(inv.dueDate) < todayStart) {
+      overdueAmount += bal;
+      overdueCount += 1;
+    }
+  }
+
+  totalReceivable = Math.round(totalReceivable * 100) / 100;
+  overdueAmount = Math.round(overdueAmount * 100) / 100;
+
+  return {
+    totalReceivable,
+    unpaidAmount: totalReceivable,
+    overdueAmount,
+    overdueCount,
+    customerAdvances: Math.round(customerAdvances * 100) / 100,
+  };
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
@@ -217,7 +257,7 @@ export class DashboardService {
               paymentStatus: { in: ['unpaid', 'partially_paid', 'partial', 'overdue'] },
               isVoided: false,
             },
-            select: { totalAmount: true, balanceDue: true },
+            select: { totalAmount: true, balanceDue: true, dueDate: true },
           }),
           this.prisma.invoice.count({
             where: {
@@ -471,12 +511,8 @@ export class DashboardService {
     totalCustomerReceivable = Number(totalCustomerReceivable.toFixed(2));
     totalCustomerAdvances = Number(totalCustomerAdvances.toFixed(2));
 
-    const unpaidInvoicesAmount = totalCustomerReceivable > 0
-      ? totalCustomerReceivable
-      : (unpaidInvoices as any[]).reduce((acc: number, inv: any) => {
-          const bal = inv.balanceDue != null && inv.balanceDue >= 0 ? Number(inv.balanceDue) : Number(inv.totalAmount || 0);
-          return acc + bal;
-        }, 0);
+    const recKpis = calculateReceivablesKpi(unpaidInvoices as any[], todayStart, totalCustomerAdvances);
+    const unpaidInvoicesAmount = recKpis.totalReceivable;
     const revenueThisMonth = (paidOrdersOrInvoices as any[]).reduce((sum: number, r: any) => sum + (r.totalAmount || 0), 0);
 
     const lowStockCount = (allSkus as Array<{ reorderPoint: number; stockItems: Array<{ quantityOnHand: number }> }>).filter((sku) => {
@@ -577,10 +613,11 @@ export class DashboardService {
           : null,
         invoices: hasInvoices
           ? {
-              unpaidAmount: unpaidInvoicesAmount,
-              totalReceivable: unpaidInvoicesAmount,
+              unpaidAmount: recKpis.totalReceivable,
+              totalReceivable: recKpis.totalReceivable,
+              overdueAmount: recKpis.overdueAmount,
               customerAdvances: totalCustomerAdvances,
-              overdueCount: overdueInvoicesCount,
+              overdueCount: recKpis.overdueCount,
             }
           : null,
         revenue: (hasInvoices || hasOrders)

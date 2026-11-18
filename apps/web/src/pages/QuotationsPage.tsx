@@ -297,14 +297,14 @@ export default function QuotationsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={() => setShowCreateModal(true)}
             className="btn bg-crm-amber hover:bg-crm-amber-hover text-black font-bold text-xs gap-1.5 shadow-glow-amber"
           >
             <Plus size={15} /> Create Quotation
           </button>
 
-          <button onClick={fetchQuotations} className="btn-ghost text-xs gap-1" title="Refresh">
+          <button type="button" onClick={fetchQuotations} className="btn-ghost text-xs gap-1" title="Refresh">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
@@ -322,7 +322,7 @@ export default function QuotationsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
             {search && (
-              <button
+              <button type="button"
                 onClick={() => setSearch('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-950 dark:hover:text-white"
               >
@@ -333,7 +333,7 @@ export default function QuotationsPage() {
 
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#141722] p-1 rounded-xl border border-slate-200 dark:border-[#2A3042]">
             {['all', 'draft', 'sent', 'approved', 'rejected'].map((st) => (
-              <button
+              <button type="button"
                 key={st}
                 onClick={() => setStatusFilter(st)}
                 className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-all ${
@@ -348,7 +348,7 @@ export default function QuotationsPage() {
           </div>
 
           {(search || statusFilter !== 'all') && (
-            <button
+            <button type="button"
               onClick={() => {
                 setSearch('');
                 setStatusFilter('all');
@@ -377,7 +377,7 @@ export default function QuotationsPage() {
             sortAccessor: (q) => q.quoteNumber,
             cell: (q) => (
               <div className="flex flex-col">
-                <button
+                <button type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setExpandedQuoteId(expandedQuoteId === q.id ? null : q.id);
@@ -410,7 +410,7 @@ export default function QuotationsPage() {
 
               return (
                 <div className="flex flex-col min-w-0">
-                  <button
+                  <button type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       if (cid) {
@@ -571,7 +571,7 @@ export default function QuotationsPage() {
               const isApproved = (q.status || '').toLowerCase() === 'approved';
               return (
                 <div className="flex items-center justify-end gap-1">
-                  <button
+                  <button type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       handlePrintQuote(q);
@@ -583,7 +583,7 @@ export default function QuotationsPage() {
                   </button>
 
                   {isApproved && !q.order && hasPage('orders') && (
-                    <button
+                    <button type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleConvertToOrder(q.id);
@@ -595,7 +595,7 @@ export default function QuotationsPage() {
                     </button>
                   )}
 
-                  <button
+                  <button type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setExpandedQuoteId(expandedQuoteId === q.id ? null : q.id);
@@ -649,7 +649,7 @@ export default function QuotationsPage() {
                   );
                 })()}
                 <div className="flex items-center gap-1.5">
-                  <button
+                  <button type="button"
                     onClick={() => handlePrintQuote(q)}
                     className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
                     title="Print"
@@ -657,7 +657,7 @@ export default function QuotationsPage() {
                     <Printer size={13} />
                   </button>
                   {isApproved && !q.order && (
-                    <button
+                    <button type="button"
                       onClick={() => handleConvertToOrder(q.id)}
                       className="p-1.5 rounded-lg bg-emerald-600 text-white"
                       title="Convert to Order"
@@ -693,7 +693,7 @@ export default function QuotationsPage() {
                   <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
                     Related Documents for {quotations.find((q) => q.id === expandedQuoteId)?.quoteNumber}
                   </span>
-                  <button
+                  <button type="button"
                     onClick={() => setExpandedQuoteId(null)}
                     className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs flex items-center gap-1 font-semibold"
                   >
@@ -755,13 +755,13 @@ export default function QuotationsPage() {
               <div className="flex items-center justify-center gap-2 pt-2">
                 {inAppPopup.type === 'confirm' ? (
                   <>
-                    <button
+                    <button type="button"
                       onClick={() => setInAppPopup({ ...inAppPopup, show: false })}
                       className="btn-ghost text-xs px-4"
                     >
                       Cancel
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => {
                         const cb = inAppPopup.onConfirm;
                         setInAppPopup({ ...inAppPopup, show: false });

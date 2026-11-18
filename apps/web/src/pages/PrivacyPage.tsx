@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { ShieldCheck, Lock, FileText, ArrowLeft, Mail } from 'lucide-react';
 import PublicLayout from '../components/layout/PublicLayout';
 import { PRODUCT_NAME, COMPANY_NAME } from '../config/brand';
+import { PUBLIC_CONTACT } from '../config/publicContact';
 
 export default function PrivacyPage() {
   const lastUpdated = 'October 24, 2026';
@@ -139,8 +140,8 @@ export default function PrivacyPage() {
               <p className="font-semibold text-slate-900 dark:text-white">{COMPANY_NAME} Data Privacy Office</p>
               <p className="text-slate-600 dark:text-slate-400">
                 Email:{' '}
-                <a href="mailto:privacy@example.com" className="text-blue-600 dark:text-blue-400 hover:underline">
-                  privacy@example.com
+                <a href={`mailto:${PUBLIC_CONTACT.privacyEmail}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+                  {PUBLIC_CONTACT.privacyEmail}
                 </a>
               </p>
               <p className="text-slate-600 dark:text-slate-400">

@@ -393,7 +393,7 @@ export default function ProjectStockPositionView() {
 
         <div className="flex items-center gap-2 flex-wrap">
           {canManage && (
-            <button
+            <button type="button"
               onClick={() => setShowComponentLibrary(true)}
               className="btn bg-gradient-to-r from-crm-blue to-crm-teal hover:opacity-90 text-white text-xs gap-1.5 shadow-glow-blue font-bold px-3.5 py-2"
               title="Pick from company component inventory & batch add to project"
@@ -403,7 +403,7 @@ export default function ProjectStockPositionView() {
           )}
 
           {canManage && (
-            <button
+            <button type="button"
               onClick={handleOpenAddModal}
               className="btn-primary text-xs gap-1.5 shadow-glow-blue"
             >
@@ -411,7 +411,7 @@ export default function ProjectStockPositionView() {
             </button>
           )}
 
-          <button
+          <button type="button"
             onClick={handleExportExcel}
             disabled={positions.length === 0}
             className="btn bg-emerald-600 hover:bg-emerald-500 text-white text-xs gap-1.5 shadow-sm"
@@ -420,7 +420,7 @@ export default function ProjectStockPositionView() {
             <FileSpreadsheet size={14} /> Export Excel
           </button>
 
-          <button
+          <button type="button"
             onClick={handlePrintWorkOrder}
             className="btn bg-white/10 hover:bg-white/20 text-white text-xs gap-1.5"
             title="Print Production & Picking Slip"
@@ -429,7 +429,7 @@ export default function ProjectStockPositionView() {
           </button>
 
           {canDelete && (
-            <button
+            <button type="button"
               onClick={() => setShowClearModal(true)}
               className="btn bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-crm-coral text-xs gap-1.5"
               title="Wipe test data and start completely fresh"
@@ -463,7 +463,7 @@ export default function ProjectStockPositionView() {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
+            <button type="button"
               onClick={() => setActiveTab('what_to_buy')}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'what_to_buy' ? 'bg-red-500 text-white shadow-glow-coral' : 'bg-slate-100 dark:bg-[#141722] text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-[#2A3042]'}`}
             >
@@ -471,7 +471,7 @@ export default function ProjectStockPositionView() {
               <span>1. What to BUY ({buyItems.length} Parts)</span>
             </button>
 
-            <button
+            <button type="button"
               onClick={() => setActiveTab('what_to_collect')}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'what_to_collect' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-100 dark:bg-[#141722] text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-[#2A3042]'}`}
             >
@@ -479,7 +479,7 @@ export default function ProjectStockPositionView() {
               <span>2. What to COLLECT ({collectItems.length} Parts)</span>
             </button>
 
-            <button
+            <button type="button"
               onClick={() => setActiveTab('full_bom')}
               className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === 'full_bom' ? 'bg-crm-blue text-white shadow-glow-blue' : 'bg-slate-100 dark:bg-[#141722] text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-[#2A3042]'}`}
             >
@@ -569,7 +569,7 @@ export default function ProjectStockPositionView() {
                 </span>
               </div>
             </div>
-            <button
+            <button type="button"
               onClick={handleExportCsv}
               className="btn bg-red-600 hover:bg-red-500 text-white text-xs px-3.5 py-1.5 font-bold shadow-glow-coral flex items-center gap-1.5"
             >
@@ -636,7 +636,7 @@ export default function ProjectStockPositionView() {
                       </td>
                       {canManage && (
                         <td className="p-3 text-center">
-                          <button
+                          <button type="button"
                             onClick={() => handleOpenEditModal(item)}
                             className="btn-ghost text-xs p-1 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white"
                             title="Edit component or update stock"
@@ -667,7 +667,7 @@ export default function ProjectStockPositionView() {
                 </span>
               </div>
             </div>
-            <button
+            <button type="button"
               onClick={handlePrintWorkOrder}
               className="btn bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3.5 py-1.5 font-bold shadow-lg flex items-center gap-1.5"
             >
@@ -736,7 +736,7 @@ export default function ProjectStockPositionView() {
                         </td>
                         {canManage && (
                           <td className="p-3 text-center">
-                            <button
+                            <button type="button"
                               onClick={() => handleOpenEditModal(item)}
                               className="btn-ghost text-xs p-1 text-slate-300 hover:text-white"
                               title="Edit component or update stock"
@@ -815,7 +815,7 @@ export default function ProjectStockPositionView() {
                           {canManage && (
                             <td className="p-2.5 text-center">
                               <div className="flex items-center justify-center gap-1">
-                                <button
+                                <button type="button"
                                   onClick={() => handleOpenEditModal(p)}
                                   className="p-1 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white rounded"
                                   title="Edit"
@@ -823,7 +823,7 @@ export default function ProjectStockPositionView() {
                                   <Edit3 size={13} />
                                 </button>
                                 {canDelete && (
-                                  <button
+                                  <button type="button"
                                     onClick={() => handleDeletePosition(p.id, p.itemCode)}
                                     className="p-1 text-slate-400 hover:text-crm-coral rounded"
                                     title="Delete"
@@ -864,7 +864,7 @@ export default function ProjectStockPositionView() {
                     Configure component parameters & calculate whether to collect from store or buy from supplier
                   </p>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setShowModal(false)}
                   className="p-1.5 rounded-lg hover:bg-white/10 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                 >

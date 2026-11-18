@@ -31,6 +31,7 @@ import { BackupModule } from './backup/backup.module';
 import { SettingsModule } from './settings/settings.module';
 import { ActivitiesModule } from './activities/activities.module';
 import { PlatformModule } from './platform/platform.module';
+import { PlatformAuditModule } from './platform/platform-audit.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { PaymentsModule } from './payments/payments.module';
 import { HealthController } from './health/health.controller';
@@ -42,7 +43,7 @@ import { ClientErrorsController } from './common/client-errors.controller';
       {
         name: 'default',
         ttl: 60000,
-        limit: process.env.NODE_ENV === 'test' ? 10000 : 100,
+        limit: (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging') ? 100 : 10000,
       },
     ]),
     PrismaModule,
@@ -66,6 +67,7 @@ import { ClientErrorsController } from './common/client-errors.controller';
     SettingsModule,
     ActivitiesModule,
     PlatformModule,
+    PlatformAuditModule,
     LedgerModule,
     PaymentsModule,
   ],

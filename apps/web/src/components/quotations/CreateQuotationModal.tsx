@@ -412,7 +412,7 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
             value={customerEmail}
             onChange={(e) => setCustomerEmail(e.target.value)}
             error={errors.customerEmail}
-            placeholder="client@example.com"
+            placeholder="client@company.com"
             maxLength={254}
           />
         </div>

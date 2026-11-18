@@ -553,7 +553,7 @@ export default function InvoicesPage() {
 
         <div className="flex items-center gap-2.5 flex-wrap">
           {canAdmin && (
-            <button
+            <button type="button"
               onClick={() => setShowSignatorySettings(true)}
               className="btn bg-white dark:bg-[#181B26] hover:bg-slate-100 dark:hover:bg-[#202534] border border-slate-300 dark:border-[#2A3042] text-slate-800 dark:text-slate-300 text-xs py-2 px-3 gap-1.5 shadow-sm"
             >
@@ -561,7 +561,7 @@ export default function InvoicesPage() {
             </button>
           )}
 
-          <button
+          <button type="button"
             onClick={toggleKpis}
             className={`btn text-xs py-2 px-2.5 gap-1.5 shadow-sm border transition-all ${
               showKpis
@@ -574,7 +574,7 @@ export default function InvoicesPage() {
             <span>{showKpis ? 'Hide Stats' : 'Stats'}</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={fetchInvoices}
             className="btn bg-white dark:bg-[#181B26] hover:bg-slate-100 dark:hover:bg-[#202534] border border-slate-300 dark:border-[#2A3042] text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white text-xs p-2.5 shadow-sm"
             title="Refresh documents"
@@ -583,7 +583,7 @@ export default function InvoicesPage() {
           </button>
 
           {unlinkedInvoicesList.length > 0 && (
-            <button
+            <button type="button"
               onClick={() => {
                 loadUnlinkedInvoices();
                 setShowUnlinkedModal(true);
@@ -599,7 +599,7 @@ export default function InvoicesPage() {
             </button>
           )}
 
-          <button
+          <button type="button"
             onClick={() => setShowCreateModal(true)}
             className="btn-primary text-xs py-2 px-4 shadow-glow-blue flex items-center gap-1.5"
           >
@@ -706,7 +706,7 @@ export default function InvoicesPage() {
           </div>
 
           {/* Quick Remove / Dismiss button */}
-          <button
+          <button type="button"
             onClick={toggleKpis}
             className="absolute -top-2.5 -right-2 w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 dark:bg-[#2A3042] dark:hover:bg-[#343B52] text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] shadow-sm transition-all border border-slate-300 dark:border-slate-600"
             title="Remove summary boxes"
@@ -729,7 +729,7 @@ export default function InvoicesPage() {
             { id: 'credit_note', label: 'Credit Notes' },
             { id: 'purchase_order', label: 'Purchase Orders' },
           ].map((tab) => (
-            <button
+            <button type="button"
               key={tab.id}
               onClick={() => setDocTypeFilter(tab.id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
@@ -814,7 +814,7 @@ export default function InvoicesPage() {
 
               return (
                 <div className="flex flex-col min-w-0">
-                  <button
+                  <button type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       if (cid) {
@@ -1116,14 +1116,14 @@ export default function InvoicesPage() {
                 )}
 
                 <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                  <button
+                  <button type="button"
                     onClick={() => openDedicatedPrintTab(inv.docType || 'tax_invoice', inv.id)}
                     className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
                     title="Print"
                   >
                     <Printer size={13} />
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => handleOpenDoc(inv)}
                     className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
                     title="View"
@@ -1195,7 +1195,7 @@ export default function InvoicesPage() {
           >
             <CheckCircle2 size={16} />
             <span>{successToast}</span>
-            <button
+            <button type="button"
               onClick={() => setSuccessToast(null)}
               className="p-1 hover:bg-emerald-700/60 rounded text-emerald-100 hover:text-white"
             >

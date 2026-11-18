@@ -25,6 +25,7 @@ const colorForPath: Record<string, string> = {
   '/users':             'text-blue-600 dark:text-crm-blue-light',
   '/platform/companies':'text-indigo-600 dark:text-indigo-400',
   '/platform/admins':   'text-purple-600 dark:text-purple-400',
+  '/platform/audit-logs': 'text-amber-600 dark:text-amber-400',
   '/automation':        'text-rose-600 dark:text-crm-coral',
   '/daily-activities':  'text-emerald-600 dark:text-emerald-400',
 };
@@ -104,7 +105,7 @@ export default function Sidebar() {
             <div className="text-xs font-bold text-slate-950 dark:text-white truncate">{user?.name}</div>
             <div className="text-[10px] text-slate-500 font-medium capitalize">{user?.role?.replace('_', ' ')}</div>
           </div>
-          <button
+          <button type="button"
             onClick={handleLogout}
             className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-slate-400 hover:text-red-600 transition-colors"
             title="Logout"

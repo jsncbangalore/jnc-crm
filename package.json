@@ -21,6 +21,7 @@
     "bundle:test-linux": "node scripts/bundle-test-linux.js",
     "release:pack": "node scripts/release-pack.js",
     "release:verify": "node scripts/release-verify.js",
+    "smoke:auth": "node scripts/smoke-auth.js",
     "test:all": "node scripts/test-all-runner.js",
     "test:contract-dtos": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/test-contract-dto-keys.ts",
     "balance-impact": "node node_modules/ts-node/dist/bin.js --project apps/api/tsconfig.json scripts/balance-impact-analysis.ts",

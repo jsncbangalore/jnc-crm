@@ -208,6 +208,7 @@ async function main() {
       await tabA.goto(`${WEB_BASE}/invoices`, { waitUntil: 'domcontentloaded' });
 
       // Tab B signs in as the SAME user u1
+      await tabB.bringToFront();
       await tabB.fill('input[name="username"]', u1.email);
       await tabB.fill('input[name="password"]', u1.password);
       await tabB.click('button[type="submit"]');
@@ -330,6 +331,7 @@ async function main() {
       await tabA.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 15000 });
 
       // Tab B logs in as User 2
+      await tabB.bringToFront();
       await tabB.fill('input[name="username"]', u2.email);
       await tabB.fill('input[name="password"]', u2.password);
       await tabB.click('button[type="submit"]');
@@ -399,6 +401,7 @@ async function main() {
       await tabA.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 15000 });
 
       // Tab B logs in
+      await tabB.bringToFront();
       await tabB.fill('input[name="username"]', u2.email);
       await tabB.fill('input[name="password"]', u2.password);
       await tabB.click('button[type="submit"]');

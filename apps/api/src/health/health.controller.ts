@@ -11,6 +11,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Public } from '../auth/page-access.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { getMigrationStatus } from '../common/migration-status.util';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export const API_VERSION = '1.2.0';
 const STARTED_AT = new Date().toISOString();
@@ -29,7 +30,10 @@ function resolveApiCommitId(): string {
 
 @Controller('health')
 export class HealthController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   @Get()
   @Public()
@@ -60,10 +64,21 @@ export class HealthController {
       };
     } catch {}
 
-    const isHealthy = database && migrationCounts.pendingCount === 0 && migrationCounts.failedCount === 0;
+    let emailHealth: any = { status: 'ok' };
+    try {
+      emailHealth = await this.notificationsService.getEmailHealthStatus();
+    } catch {}
+
+    const isHealthy =
+      database &&
+      migrationCounts.pendingCount === 0 &&
+      migrationCounts.failedCount === 0 &&
+      emailHealth.status !== 'down';
 
     return {
-      status: isHealthy ? 'ok' : 'degraded',
+      status: isHealthy ? (emailHealth.status === 'degraded' ? 'degraded' : 'ok') : 'degraded',
+      email: emailHealth.status,
+      emailDiagnostics: emailHealth,
       version: API_VERSION,
       apiVersion: API_VERSION,
       commitId: resolveApiCommitId(),
@@ -125,7 +140,7 @@ export class HealthController {
   @UseGuards(AuthGuard('jwt'))
   async getSchemaStatus(@Req() req: Request) {
     const user = (req as any).user;
-    if (!user || (!['admin', 'tenant_admin', 'super_admin', 'platform_super_admin'].includes(user.role) && !user.isPlatformAdmin)) {
+    if (!user || (!['admin', 'tenant_admin', 'super_admin', 'platform_super_admin', 'platform_admin'].includes(user.role) && !user.isPlatformAdmin)) {
       throw new ForbiddenException('Admin access required to view schema migration status');
     }
 
