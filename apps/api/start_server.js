@@ -63,6 +63,15 @@ if (process.env.DATABASE_URL && process.env.SKIP_MIGRATE !== 'true') {
     } catch (_) {
       // Ignore if it was not in a failed state
     }
+    try {
+      execSync('npx prisma migrate resolve --rolled-back "20261119150000_ensure_deprecated_columns"', {
+        stdio: 'pipe',
+        cwd: __dirname,
+        env: process.env,
+      });
+    } catch (_) {
+      // Ignore if it was not in a failed state
+    }
 
     console.log('[STARTUP] Applying database migrations via prisma migrate deploy...');
     execSync('npx prisma migrate deploy', {
