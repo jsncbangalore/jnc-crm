@@ -14,8 +14,8 @@ export function resolveDatabaseUrl(): string {
     throw new Error('DATABASE_URL environment variable is required');
   }
   let url = rawUrl.trim();
-  // Ensure Supabase transaction pooler (port 6543) has pgbouncer=true
-  if ((url.includes(':6543') || url.includes('pooler.supabase.com')) && !url.includes('pgbouncer=true')) {
+  // Ensure transaction pooler (e.g. port 6543 or pooler host) has pgbouncer=true
+  if ((url.includes(':6543') || url.includes('pooler.')) && !url.includes('pgbouncer=true')) {
     const sep = url.includes('?') ? '&' : '?';
     url = `${url}${sep}pgbouncer=true`;
   }
