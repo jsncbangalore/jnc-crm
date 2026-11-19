@@ -116,15 +116,15 @@ export function getApiErrorMessage(err: any): string {
   // Case 3: 503 Service Unavailable / Maintenance / Schema update
   if (status === 503 || err.response.data?.code === 'SCHEMA_OUT_OF_DATE' || err.response.data?.code === 'SERVER_UPDATE_PENDING') {
     if (isLoginRoute) {
-      return "We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.";
+      return "We can't sign you in right now. Please try again in a few minutes.";
     }
-    return "We could not complete your request right now. Please try again in a few minutes. If this continues, contact support.";
+    return "We could not complete your request right now. Please try again in a few minutes.";
   }
 
   // Case 4: 5xx Server Error
   if (status >= 500) {
     if (isLoginRoute) {
-      return "We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.";
+      return "We can't sign you in right now. Please try again in a few minutes.";
     }
     return 'We could not complete your request right now. Please try again in a few minutes.';
   }

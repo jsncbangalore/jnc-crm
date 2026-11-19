@@ -119,7 +119,7 @@ async function run() {
             body: JSON.stringify({
               statusCode: 500,
               code: 'INTERNAL',
-              message: "We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.",
+              message: "We can't sign you in right now. Please try again in a few minutes.",
               requestId: 'e8a71234-abcd-ef01-2345-6789abcdef01',
               supportCode: 'K7F-29Q',
               fieldErrors: [],
@@ -141,7 +141,7 @@ async function run() {
         // Assertion 1: Friendly message without technical jargon
         assert(
           `[Login 500 ${vp.name} ${theme}] Shows friendly sign-in message without technical words`,
-          errorText.includes("We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.") &&
+          errorText.includes("We can't sign you in right now. Please try again in a few minutes.") &&
             !errorText.includes('Prisma') &&
             !errorText.includes('SQL') &&
             !errorText.includes('column') &&
@@ -172,13 +172,12 @@ async function run() {
           !footerText.includes('Build mismatch') && !footerText.includes('Build dev') && !footerText.includes('API:')
         );
 
-        // Assertion 5: Try again button and Contact support link present without displaying codes
+        // Assertion 5: Only error message shown (zero 'Try again' button and zero 'Contact support' link)
         const tryAgainBtn = await page.$('[data-testid="btn-try-again"]');
         const contactSupportLink = await page.$('[data-testid="link-contact-support"]');
-        const contactHref = contactSupportLink ? await contactSupportLink.getAttribute('href') : '';
         assert(
-          `[Login 500 ${vp.name} ${theme}] 'Try again' button and 'Contact support' link are present without code leak`,
-          Boolean(tryAgainBtn) && Boolean(contactSupportLink) && !contactHref.includes('K7F-29Q')
+          `[Login 500 ${vp.name} ${theme}] Shows only error message, zero 'Try again' or 'Contact support' buttons`,
+          !tryAgainBtn && !contactSupportLink
         );
 
         await captureScreenshot(page, `evidence-friendly-login-500-${vp.name}-${theme}.png`);
@@ -201,7 +200,7 @@ async function run() {
           body: JSON.stringify({
             statusCode: 503,
             code: 'SERVER_UPDATE_PENDING',
-            message: "We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.",
+            message: "We can't sign you in right now. Please try again in a few minutes.",
             requestId: 'c1234567-89ab-cdef-0123-456789abcdef',
           }),
         });
@@ -219,7 +218,7 @@ async function run() {
       assert(
         '[Login 503] Public login does NOT say "system is being updated"; shows friendly sign-in text',
         !errorText503.toLowerCase().includes('system is being updated') &&
-          errorText503.includes("We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.")
+          errorText503.includes("We can't sign you in right now. Please try again in a few minutes.")
       );
 
       assert(

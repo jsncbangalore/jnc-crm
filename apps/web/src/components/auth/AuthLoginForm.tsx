@@ -443,28 +443,8 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
         {error && (
           <div className="p-3.5 rounded-[10px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-[14px] font-medium flex items-start gap-2.5" role="alert">
             <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
-            <div className="flex-1 space-y-2">
+            <div className="flex-1">
               <span>{error}</span>
-              <div className="flex items-center gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError('');
-                    setLoading(false);
-                  }}
-                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer"
-                  data-testid="btn-try-again"
-                >
-                  Try again
-                </button>
-                <a
-                  href="mailto:support@jsnc.co.in?subject=Sign%20in%20assistance"
-                  className="text-xs text-rose-700 dark:text-rose-300 hover:underline font-medium"
-                  data-testid="link-contact-support"
-                >
-                  Contact support
-                </a>
-              </div>
             </div>
           </div>
         )}
@@ -651,28 +631,8 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
             role="alert"
           >
             <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
-            <div className="flex-1 space-y-2">
-              <span>We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.</span>
-              <div className="flex items-center gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMaintenanceMode(false);
-                    setError('');
-                  }}
-                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer"
-                  data-testid="btn-try-again"
-                >
-                  Try again
-                </button>
-                <a
-                  href="mailto:support@jsnc.co.in?subject=Sign%20in%20assistance"
-                  className="text-xs text-rose-700 dark:text-rose-300 hover:underline font-medium"
-                  data-testid="link-contact-support"
-                >
-                  Contact support
-                </a>
-              </div>
+            <div className="flex-1">
+              <span>We can't sign you in right now. Please try again in a few minutes.</span>
             </div>
           </div>
         )}
@@ -685,32 +645,8 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
             role="alert"
           >
             <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
-            <div className="flex-1 space-y-2">
+            <div className="flex-1">
               <span>{retryAfterSeconds > 0 ? `Too many attempts. Please wait ${Math.max(1, Math.ceil(retryAfterSeconds / 60))} minute${Math.max(1, Math.ceil(retryAfterSeconds / 60)) === 1 ? '' : 's'}.` : error}</span>
-
-              {/* Try again & Contact support for server/network errors */}
-              {retryAfterSeconds <= 0 && !error.toLowerCase().includes('invalid credentials') && (
-                <div className="flex items-center gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setError('');
-                      setLoading(false);
-                    }}
-                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer"
-                    data-testid="btn-try-again"
-                  >
-                    Try again
-                  </button>
-                  <a
-                    href="mailto:support@jsnc.co.in?subject=Sign%20in%20assistance"
-                    className="text-xs text-rose-700 dark:text-rose-300 hover:underline font-medium"
-                    data-testid="link-contact-support"
-                  >
-                    Contact support
-                  </a>
-                </div>
-              )}
 
               {/* Step 5: Wrong Portal Help */}
               {isPlatform && error.toLowerCase().includes('invalid credentials') && (
