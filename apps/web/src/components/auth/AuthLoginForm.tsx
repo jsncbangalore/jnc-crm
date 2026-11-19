@@ -22,7 +22,6 @@ import {
 import { useAuth, CompanyChoice } from '../../contexts/AuthContext';
 import { getRoleRedirectPath } from '../../utils/roles';
 import { authApi, platformAuthApi, subscribeColdStart, getApiErrorMessage, getApiBaseUrl } from '../../services/api';
-import { generateSupportCode, isSupportCodeHidden } from '../../utils/supportCode';
 import { checkApiCompatibility } from '../../utils/versionCheck';
 import TwoFactorChallenge from '../common/TwoFactorChallenge';
 
@@ -54,8 +53,6 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
   // ── UI state ────────────────────────────────────────────────────────────────
   const [step, setStep] = useState<Step>('login');
   const [error, setError] = useState('');
-  const [supportCode, setSupportCode] = useState('');
-  const [copiedSupportCode, setCopiedSupportCode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
@@ -348,17 +345,9 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
         setRetryAfterSeconds(seconds);
         const minutes = Math.max(1, Math.ceil(seconds / 60));
         setError(`Too many attempts. Please wait ${minutes} minute${minutes === 1 ? '' : 's'}.`);
-        setSupportCode('');
       } else {
         const errMsg = getApiErrorMessage(err);
         setError(errMsg);
-        const sCode =
-          err?.response?.data?.supportCode ||
-          err?.response?.headers?.['x-support-code'] ||
-          (err?.response?.status >= 500
-            ? generateSupportCode(err?.response?.data?.requestId || err?.response?.headers?.['x-request-id'])
-            : '');
-        setSupportCode(sCode || '');
       }
     } finally {
       setLoading(false);
@@ -420,17 +409,9 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
         setRetryAfterSeconds(seconds);
         const minutes = Math.max(1, Math.ceil(seconds / 60));
         setError(`Too many attempts. Please wait ${minutes} minute${minutes === 1 ? '' : 's'}.`);
-        setSupportCode('');
       } else {
         const errMsg = getApiErrorMessage(err);
         setError(errMsg);
-        const sCode =
-          err?.response?.data?.supportCode ||
-          err?.response?.headers?.['x-support-code'] ||
-          (err?.response?.status >= 500
-            ? generateSupportCode(err?.response?.data?.requestId || err?.response?.headers?.['x-request-id'])
-            : '');
-        setSupportCode(sCode || '');
       }
     } finally {
       setLoading(false);
@@ -462,24 +443,28 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
         {error && (
           <div className="p-3.5 rounded-[10px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-[14px] font-medium flex items-start gap-2.5" role="alert">
             <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
-            <div className="flex-1">
+            <div className="flex-1 space-y-2">
               <span>{error}</span>
-              {!isSupportCodeHidden() && supportCode && (
-                <div data-testid="select-company-support-code" className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-mono">
-                  <span>Support code: <span className="font-bold select-all">{supportCode}</span></span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(supportCode);
-                      setCopiedSupportCode(true);
-                      setTimeout(() => setCopiedSupportCode(false), 2000);
-                    }}
-                    className="text-[11px] px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700/70 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors cursor-pointer"
-                  >
-                    {copiedSupportCode ? 'Copied' : 'Copy'}
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError('');
+                    setLoading(false);
+                  }}
+                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer"
+                  data-testid="btn-try-again"
+                >
+                  Try again
+                </button>
+                <a
+                  href="mailto:support@jsnc.co.in?subject=Sign%20in%20assistance"
+                  className="text-xs text-rose-700 dark:text-rose-300 hover:underline font-medium"
+                  data-testid="link-contact-support"
+                >
+                  Contact support
+                </a>
+              </div>
             </div>
           </div>
         )}
@@ -662,11 +647,33 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
         {isMaintenanceMode && (
           <div
             id={`${portal}-maintenance-banner`}
-            className="p-3.5 rounded-[10px] bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-[13px] font-medium flex items-start gap-2.5 shadow-xs"
+            className="p-3.5 rounded-[10px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-[13px] font-medium flex items-start gap-2.5 shadow-xs"
             role="alert"
           >
-            <Clock size={18} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-            <span>{maintenanceNotice || 'We are updating the system. Please try again in a few minutes.'}</span>
+            <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+            <div className="flex-1 space-y-2">
+              <span>We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.</span>
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMaintenanceMode(false);
+                    setError('');
+                  }}
+                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer"
+                  data-testid="btn-try-again"
+                >
+                  Try again
+                </button>
+                <a
+                  href="mailto:support@jsnc.co.in?subject=Sign%20in%20assistance"
+                  className="text-xs text-rose-700 dark:text-rose-300 hover:underline font-medium"
+                  data-testid="link-contact-support"
+                >
+                  Contact support
+                </a>
+              </div>
+            </div>
           </div>
         )}
 
@@ -674,29 +681,37 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
         {!isMaintenanceMode && error && (
           <div
             id={`${portal}-form-error`}
-            className="p-3 rounded-[10px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-[13px] font-medium flex items-start gap-2.5"
+            className="p-3.5 rounded-[10px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-[13px] font-medium flex items-start gap-2.5"
             role="alert"
           >
             <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
-            <div className="flex-1">
+            <div className="flex-1 space-y-2">
               <span>{retryAfterSeconds > 0 ? `Too many attempts. Please wait ${Math.max(1, Math.ceil(retryAfterSeconds / 60))} minute${Math.max(1, Math.ceil(retryAfterSeconds / 60)) === 1 ? '' : 's'}.` : error}</span>
-              {!isSupportCodeHidden() && supportCode && (
-                <div data-testid="login-support-code" className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-mono">
-                  <span>Support code: <span className="font-bold select-all">{supportCode}</span></span>
+
+              {/* Try again & Contact support for server/network errors */}
+              {retryAfterSeconds <= 0 && !error.toLowerCase().includes('invalid credentials') && (
+                <div className="flex items-center gap-3 pt-1">
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(supportCode);
-                      setCopiedSupportCode(true);
-                      setTimeout(() => setCopiedSupportCode(false), 2000);
+                      setError('');
+                      setLoading(false);
                     }}
-                    className="text-[11px] px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700/70 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors cursor-pointer"
-                    data-testid="copy-support-code-btn"
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer"
+                    data-testid="btn-try-again"
                   >
-                    {copiedSupportCode ? 'Copied' : 'Copy'}
+                    Try again
                   </button>
+                  <a
+                    href="mailto:support@jsnc.co.in?subject=Sign%20in%20assistance"
+                    className="text-xs text-rose-700 dark:text-rose-300 hover:underline font-medium"
+                    data-testid="link-contact-support"
+                  >
+                    Contact support
+                  </a>
                 </div>
               )}
+
               {/* Step 5: Wrong Portal Help */}
               {isPlatform && error.toLowerCase().includes('invalid credentials') && (
                 <div className="mt-1 text-[12px] text-slate-700 dark:text-slate-300">

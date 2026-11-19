@@ -13,7 +13,13 @@ export function resolveDatabaseUrl(): string {
   if (!rawUrl || !rawUrl.trim()) {
     throw new Error('DATABASE_URL environment variable is required');
   }
-  return rawUrl;
+  let url = rawUrl.trim();
+  // Ensure Supabase transaction pooler (port 6543) has pgbouncer=true
+  if ((url.includes(':6543') || url.includes('pooler.supabase.com')) && !url.includes('pgbouncer=true')) {
+    const sep = url.includes('?') ? '&' : '?';
+    url = `${url}${sep}pgbouncer=true`;
+  }
+  return url;
 }
 
 const PRE_MIGRATION_USER_COLUMNS: Record<string, boolean> = {

@@ -13,6 +13,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { Request, Response } from 'express';
 import { maskSensitiveUrl } from './request-id.middleware';
 import { humanizeField } from './validation-error.formatter';
@@ -241,7 +242,25 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
     const supportCode = generateSupportCode(requestId);
     const pathWithoutQuery = route.split('?')[0];
 
-    // Always log full error stack for 500s server-side with requestId, errorClass, prismaCode and sanitized stack
+    const isAuthLoginRoute =
+      pathWithoutQuery.includes('/auth/login') ||
+      pathWithoutQuery.includes('/platform-auth/login');
+
+    const isPublicRoute =
+      isAuthLoginRoute ||
+      pathWithoutQuery.startsWith('/auth/') ||
+      pathWithoutQuery.startsWith('/platform-auth/') ||
+      pathWithoutQuery.startsWith('/public/') ||
+      pathWithoutQuery.startsWith('/inquiries') ||
+      pathWithoutQuery.startsWith('/api/v1/auth/') ||
+      pathWithoutQuery.startsWith('/api/v1/platform-auth/') ||
+      pathWithoutQuery.startsWith('/api/v1/public/') ||
+      pathWithoutQuery.startsWith('/api/v1/inquiries') ||
+      pathWithoutQuery.includes('/cart/shared') ||
+      pathWithoutQuery.includes('/webhooks') ||
+      !userId;
+
+    // Always log full error stack for 500s server-side with requestId, route, time, errorClass, prismaCode, hashedEmail, maskedIp
     if (status >= 500) {
       const errorClass = (exception as any)?.name || (exception as any)?.constructor?.name || typeof exception;
       const prismaCode = (exception as any)?.code || ((exception as any)?.name === 'PrismaClientInitializationError' ? 'P1001' : undefined);
@@ -253,16 +272,45 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
           .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, '$1***')
       );
 
-      // EXACTLY ONE structured log line per Requirement 4
+      // Extract and hash email for server log
+      const rawEmail = request.body?.email || request.body?.identifier || request.body?.username || (request as any).user?.email;
+      let hashedEmail = 'NONE';
+      if (rawEmail && typeof rawEmail === 'string' && rawEmail.trim()) {
+        try {
+          hashedEmail = crypto.createHash('sha256').update(rawEmail.toLowerCase().trim()).digest('hex').slice(0, 12);
+        } catch {
+          hashedEmail = 'HASH_ERR';
+        }
+      }
+
+      // Mask client IP
+      const rawIp = (request.headers?.['x-forwarded-for'] as string) || request.ip || request.socket?.remoteAddress || '127.0.0.1';
+      const cleanIp = String(rawIp).split(',')[0].trim();
+      let maskedIp = 'UNKNOWN';
+      if (cleanIp.includes('.')) {
+        const parts = cleanIp.split('.');
+        maskedIp = parts.length === 4 ? `${parts[0]}.${parts[1]}.***.***` : `${cleanIp.slice(0, 7)}***`;
+      } else if (cleanIp.includes(':')) {
+        const parts = cleanIp.split(':');
+        maskedIp = `${parts.slice(0, 2).join(':')}::***`;
+      } else {
+        maskedIp = 'LOCAL';
+      }
+
+      const logTimestamp = new Date().toISOString();
+
+      // EXACTLY ONE structured log line per Requirement 2 & 4
       this.logger.error(
-        `[5XX] supportCode=${supportCode} requestId=${requestId} method=${request.method} path=${pathWithoutQuery} status=${status} errorClass=${errorClass} prismaCode=${prismaCode || 'NONE'} tenantId=${tenantId} userId=${userId} | Stack: ${sanitizedStack}`
+        `[5XX] supportCode=${supportCode} requestId=${requestId} route=${request.method} ${pathWithoutQuery} time=${logTimestamp} errorClass=${errorClass} prismaCode=${prismaCode || 'NONE'} hashedEmail=${hashedEmail} maskedIp=${maskedIp} status=${status} tenantId=${tenantId} userId=${userId} | Stack: ${sanitizedStack}`
       );
 
       // Ensure 500s never leak SQL or stack traces to client; use friendly messages
-      if (status === HttpStatus.SERVICE_UNAVAILABLE || code === 'SCHEMA_OUT_OF_DATE' || code === 'SERVER_UPDATE_PENDING') {
+      if (isAuthLoginRoute) {
+        message = "We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.";
+      } else if (isPublicRoute) {
+        message = "We could not complete your request right now. Please try again in a few minutes. If this continues, contact support.";
+      } else if (status === HttpStatus.SERVICE_UNAVAILABLE || code === 'SCHEMA_OUT_OF_DATE' || code === 'SERVER_UPDATE_PENDING') {
         message = 'The system is being updated. Please try again in a few minutes.';
-      } else if (pathWithoutQuery.includes('/auth/login') || pathWithoutQuery.includes('/platform-auth/login')) {
-        message = 'We could not sign you in right now. Please try again in a few minutes.';
       } else {
         message = 'We could not complete your request right now. Please try again in a few minutes.';
       }
@@ -306,7 +354,13 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
       } else if (status === HttpStatus.SERVICE_UNAVAILABLE && (code === 'SCHEMA_OUT_OF_DATE' || code === 'SERVER_UPDATE_PENDING')) {
         field = undefined;
         fieldErrors = [];
-        message = 'The system is being updated. Please try again in a few minutes.';
+        if (isAuthLoginRoute) {
+          message = "We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.";
+        } else if (isPublicRoute) {
+          message = "We could not complete your request right now. Please try again in a few minutes. If this continues, contact support.";
+        } else {
+          message = 'The system is being updated. Please try again in a few minutes.';
+        }
       } else if (status === HttpStatus.CONFLICT && code === 'LINKED_RECORD_MISSING') {
         if (field !== 'customerId') {
           field = undefined;
@@ -321,9 +375,11 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
           if (status === 404) message = 'The requested resource could not be found.';
           else if (status === 403) message = 'You do not have permission to perform this action.';
           else if (status === 401) message = 'Invalid credentials.';
+          else if (isAuthLoginRoute)
+            message = "We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.";
+          else if (isPublicRoute)
+            message = "We could not complete your request right now. Please try again in a few minutes. If this continues, contact support.";
           else if (status === 503) message = 'The system is being updated. Please try again in a few minutes.';
-          else if (pathWithoutQuery.includes('/auth/login') || pathWithoutQuery.includes('/platform-auth/login'))
-            message = 'We could not sign you in right now. Please try again in a few minutes.';
           else message = 'We could not complete your request right now. Please try again in a few minutes.';
           break;
         }
@@ -338,7 +394,7 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
       message,
       requestId,
       fieldErrors: Array.isArray(fieldErrors) ? fieldErrors : [],
-      ...(!isProduction ? { supportCode } : {}),
+      ...(!isProduction && !isPublicRoute ? { supportCode } : {}),
       ...(status === 429 && typeof response.getHeader === 'function' && response.getHeader('Retry-After')
         ? { retryAfter: parseInt(String(response.getHeader('Retry-After')), 10) }
         : {}),
@@ -352,7 +408,9 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
         response.setHeader('Access-Control-Allow-Origin', reqOrigin);
         response.setHeader('Access-Control-Allow-Credentials', 'true');
       }
-      response.setHeader('x-support-code', supportCode);
+      if (!isPublicRoute) {
+        response.setHeader('x-support-code', supportCode);
+      }
       response.setHeader('x-request-id', requestId);
       response.setHeader('X-Content-Type-Options', 'nosniff');
       response.setHeader('X-Frame-Options', 'DENY');

@@ -96,8 +96,14 @@ export class HealthController {
       };
     }
 
+    let emailHealth: any = { status: 'ok' };
+    try {
+      emailHealth = await this.notificationsService.getEmailHealthStatus();
+    } catch {}
+
     return {
       status: isHealthy ? 'ok' : 'degraded',
+      email: emailHealth.status,
       version: API_VERSION,
       commitId: resolveApiCommitId(),
       database: database ? 'ok' : 'down',

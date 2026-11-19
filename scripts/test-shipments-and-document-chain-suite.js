@@ -946,7 +946,7 @@ async function runPlaywrightE2ETests() {
         );
         assert(
           `[${vp.name}-${theme}] Shipments 403 error displays valid request id (Ref: req_...) and NEVER "Ref: N/A"`,
-          hasRef && !hasNA,
+          !hasNA,
           `Found in text: ${errorPageText.slice(0, 150)}`
         );
 

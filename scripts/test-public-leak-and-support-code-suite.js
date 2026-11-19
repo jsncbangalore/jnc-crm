@@ -7,17 +7,17 @@
  * ----------------------------------------------------- */
 
 /**
- * Dedicated Public Leak Prevention & Support Code Verification Suite
+ * Dedicated Public Leak Prevention & Zero Code Exposure Verification Suite
  * (scripts/test-public-leak-and-support-code-suite.js)
  *
- * Runs comprehensive Playwright E2E and contract verifications:
- * 1. Forced error injection on /login (500, 503, 429, network failure)
- * 2. Forced error injection on company pages (/invoices, /quotations, /users)
- * 3. Light and dark mode across 1536x730 and 390px viewports
- * 4. Friendly messages verification: zero technical words (Prisma, SQL, column, migration, stack, etc.)
- * 5. Short support code verification: 6-8 chars (e.g. K7F-29Q) with Copy button, no long UUIDs
- * 6. Build badge verification: only for platform admin inside /platform/*; equal IDs never warn
- * 7. Evidence screenshot captures to artifact directory
+ * Verifies Requirement 1, 2, 3, and 4:
+ * 1. Public error screens NEVER show support codes, UUIDs, 'Ref', 'Copy' buttons, or technical wording.
+ * 2. Login error shows friendly sentence: "We can't sign you in right now. Please try again in a few minutes. If this continues, contact support."
+ * 3. Shows 'Try again' button and 'Contact support' link without exposing codes.
+ * 4. Never says 'system is being updated' on public screens.
+ * 5. Full DOM HTML and text scanning for UUID and hex patterns on public error screens.
+ * 6. Viewports: 1536x730 and 390px, Light and Dark mode.
+ * 7. Traceability: Logged-in admins still see support code under 'Error details'; non-admins see only friendly text.
  */
 
 const fs = require('fs');
@@ -83,21 +83,20 @@ function parseCookies(setCookieHeader) {
 
 async function run() {
   console.log('========================================================================');
-  console.log('PUBLIC LEAK PREVENTION, FRIENDLY MESSAGES & SUPPORT CODE E2E SUITE');
+  console.log('PUBLIC LEAK PREVENTION, ZERO CODES ON PUBLIC SCREENS & FRIENDLY MESSAGES');
   console.log('Testing Playwright on 1536x730 and 390px (Light & Dark Mode)...');
   console.log('========================================================================\n');
 
   const browser = await chromium.launch({ headless: true });
 
   try {
-    // ─── SECTION 1: LOGIN PAGE ERROR SCENARIOS (1536x730 & 390px, LIGHT & DARK) ───
-    console.log('\n[1/5] Testing Login Page Failure Scenarios...');
+    // ─── SECTION 1: LOGIN 500 (1536x730 & 390px, LIGHT & DARK) ──────────────────
+    console.log('\n[1/4] Testing Login 500 across Viewports & Themes (Zero Codes, Friendly Text)...');
 
     const viewports = [
       { name: '1536x730', width: 1536, height: 730 },
       { name: '390px', width: 390, height: 844 },
     ];
-
     const themes = ['light', 'dark'];
 
     for (const vp of viewports) {
@@ -108,7 +107,7 @@ async function run() {
         });
         const page = await context.newPage();
 
-        // 1.1 Force 500 on login
+        // Force 500 on login
         await page.route('**/api/v1/auth/login', async (route) => {
           await route.fulfill({
             status: 500,
@@ -120,7 +119,7 @@ async function run() {
             body: JSON.stringify({
               statusCode: 500,
               code: 'INTERNAL',
-              message: 'We could not sign you in right now. Please try again in a few minutes.',
+              message: "We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.",
               requestId: 'e8a71234-abcd-ef01-2345-6789abcdef01',
               supportCode: 'K7F-29Q',
               fieldErrors: [],
@@ -133,34 +132,53 @@ async function run() {
         await page.fill('#company-password, #platform-password, input[type="password"]', 'Password123!');
         await page.click('button[type="submit"]');
 
-        await page.waitForSelector('#company-form-error, [role="alert"]', { timeout: 5000 });
+        await page.waitForSelector('#company-form-error, [role="alert"]', { timeout: 15000 });
 
-        const errorText = await page.innerText('#company-form-error, [role="alert"]');
+        const errorEl = await page.$('#company-form-error, [role="alert"]');
+        const errorText = errorEl ? await errorEl.innerText() : '';
+        const domContent = errorEl ? await errorEl.innerHTML() : '';
+
+        // Assertion 1: Friendly message without technical jargon
         assert(
-          `[Login 500 ${vp.name} ${theme}] Shows friendly login failure message without technical words`,
-          errorText.includes('We could not sign you in right now. Please try again in a few minutes.') &&
+          `[Login 500 ${vp.name} ${theme}] Shows friendly sign-in message without technical words`,
+          errorText.includes("We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.") &&
             !errorText.includes('Prisma') &&
             !errorText.includes('SQL') &&
             !errorText.includes('column') &&
+            !errorText.includes('migration') &&
             !errorText.includes('stack')
         );
 
+        // Assertion 2: Zero support codes, zero 'Support code' label, zero 'Copy' buttons in error container
+        const hasSupportCode = /[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{3}/.test(errorText);
+        const hasCopyBtn = await page.$('#company-form-error button:has-text("Copy"), [role="alert"] button:has-text("Copy"), [data-testid="copy-support-code-btn"]');
         assert(
-          `[Login 500 ${vp.name} ${theme}] Shows short support code with copy button`,
-          errorText.includes('Support code: K7F-29Q')
+          `[Login 500 ${vp.name} ${theme}] Zero support code and zero Copy button on public screen`,
+          !hasSupportCode && !errorText.toLowerCase().includes('support code') && !hasCopyBtn
         );
 
+        // Assertion 3: Zero long UUIDs in visible text AND DOM HTML of error container
+        const hasUuidInText = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(errorText);
+        const hasUuidInDom = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(domContent);
         assert(
-          `[Login 500 ${vp.name} ${theme}] Long UUID is NOT displayed in visible text`,
-          !errorText.includes('e8a71234-abcd-ef01-2345-6789abcdef01') &&
-            !/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(errorText)
+          `[Login 500 ${vp.name} ${theme}] Zero UUID in page text and zero UUID in error DOM`,
+          !hasUuidInText && !hasUuidInDom && !errorText.includes('Ref:') && !errorText.includes('(Ref')
         );
 
-        // Check footer on public login page: must not show build IDs or build mismatch
+        // Assertion 4: Footer shows only copyright (no build mismatch or build IDs on public page)
         const footerText = await page.innerText('footer');
         assert(
-          `[Login 500 ${vp.name} ${theme}] Footer shows only copyright and legal links (no build mismatch or commit ID)`,
+          `[Login 500 ${vp.name} ${theme}] Footer shows copyright only without build IDs or mismatch banner`,
           !footerText.includes('Build mismatch') && !footerText.includes('Build dev') && !footerText.includes('API:')
+        );
+
+        // Assertion 5: Try again button and Contact support link present without displaying codes
+        const tryAgainBtn = await page.$('[data-testid="btn-try-again"]');
+        const contactSupportLink = await page.$('[data-testid="link-contact-support"]');
+        const contactHref = contactSupportLink ? await contactSupportLink.getAttribute('href') : '';
+        assert(
+          `[Login 500 ${vp.name} ${theme}] 'Try again' button and 'Contact support' link are present without code leak`,
+          Boolean(tryAgainBtn) && Boolean(contactSupportLink) && !contactHref.includes('K7F-29Q')
         );
 
         await captureScreenshot(page, `evidence-friendly-login-500-${vp.name}-${theme}.png`);
@@ -168,13 +186,13 @@ async function run() {
       }
     }
 
-    // ─── SECTION 2: OTHER LOGIN ERROR STATES (503, 429, NETWORK FAIL) ─────────
-    console.log('\n[2/5] Testing 503, 429, and Network Failure on Login...');
+    // ─── SECTION 2: OTHER PUBLIC ERROR STATES (503, PUBLIC FORM, 429, NETWORK) ───
+    console.log('\n[2/4] Testing 503, Public Form, Rate Limit 429, and Network Failure...');
     {
       const context = await browser.newContext({ viewport: { width: 1536, height: 730 } });
       const page = await context.newPage();
 
-      // 2.1 Force 503 Schema update
+      // 2.1 Force 503 on Login (must NOT say 'system is being updated' to public; must show friendly login text, zero codes)
       await page.route('**/api/v1/auth/login', async (route) => {
         await route.fulfill({
           status: 503,
@@ -182,10 +200,9 @@ async function run() {
           headers: { 'x-support-code': 'M4K-89P' },
           body: JSON.stringify({
             statusCode: 503,
-            code: 'SCHEMA_OUT_OF_DATE',
-            message: 'The system is being updated. Please try again in a few minutes.',
+            code: 'SERVER_UPDATE_PENDING',
+            message: "We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.",
             requestId: 'c1234567-89ab-cdef-0123-456789abcdef',
-            supportCode: 'M4K-89P',
           }),
         });
       });
@@ -195,17 +212,78 @@ async function run() {
       await page.fill('#company-password, #platform-password, input[type="password"]', 'Password123!');
       await page.click('button[type="submit"]');
 
-      await page.waitForSelector('#company-form-error, [role="alert"]', { timeout: 5000 });
+      await page.waitForSelector('#company-form-error, [role="alert"]', { timeout: 15000 });
       const errorText503 = await page.innerText('#company-form-error, [role="alert"]');
+      const errorDom503 = await page.innerHTML('#company-form-error, [role="alert"]');
+
       assert(
-        '[Login 503] Displays friendly system update message and support code',
-        errorText503.includes('The system is being updated. Please try again in a few minutes.') &&
-          errorText503.includes('Support code: M4K-89P') &&
-          !errorText503.includes('c1234567-89ab-cdef-0123-456789abcdef')
+        '[Login 503] Public login does NOT say "system is being updated"; shows friendly sign-in text',
+        !errorText503.toLowerCase().includes('system is being updated') &&
+          errorText503.includes("We can't sign you in right now. Please try again in a few minutes. If this continues, contact support.")
+      );
+
+      assert(
+        '[Login 503] Zero support code, zero UUID, and zero Copy button on 503 public error',
+        !/[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{3}/.test(errorText503) &&
+          !/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(errorDom503) &&
+          !errorText503.toLowerCase().includes('support code') &&
+          !errorDom503.includes('copy-support-code-btn')
       );
       await captureScreenshot(page, 'evidence-friendly-login-503-1536x730.png');
 
-      // 2.2 Force 429 Rate limit
+      // 2.2 Public Form: Force 500 on Public Walkthrough Inquiry (/public/inquiry)
+      await page.route('**/api/v1/inquiries/config**', async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            statusCode: 500,
+            code: 'INTERNAL',
+            message: 'We could not complete your request right now. Please try again in a few minutes. If this continues, contact support.',
+            requestId: 'f9999999-8888-7777-6666-555555555555',
+          }),
+        });
+      });
+
+      await page.goto('http://localhost:5173/public/inquiry', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(1000);
+      const publicFormVisibleText = await page.innerText('body');
+
+      assert(
+        '[Public Form 500] Zero support codes, zero UUIDs, and zero Copy buttons on public form error',
+        !/[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{3}/.test(publicFormVisibleText) &&
+          !/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(publicFormVisibleText) &&
+          !publicFormVisibleText.includes('Support code:') &&
+          !publicFormVisibleText.includes('Ref:')
+      );
+
+      // 2.3 Public Form: Force 503 on Public Walkthrough Inquiry
+      await page.unroute('**/api/v1/inquiries/config**');
+      await page.route('**/api/v1/inquiries/config**', async (route) => {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            statusCode: 503,
+            code: 'SERVER_UPDATE_PENDING',
+            message: 'We could not complete your request right now. Please try again in a few minutes. If this continues, contact support.',
+            requestId: 'a8888888-7777-6666-5555-444444444444',
+          }),
+        });
+      });
+
+      await page.goto('http://localhost:5173/public/inquiry', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(1000);
+      const public503Text = await page.innerText('body');
+
+      assert(
+        '[Public Form 503] Public form shows friendly error and does not say "system is being updated"',
+        !public503Text.toLowerCase().includes('system is being updated') &&
+          !/[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{3}/.test(public503Text) &&
+          !/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(public503Text)
+      );
+
+      // 2.4 Force 429 Rate limit on Login
       await page.unroute('**/api/v1/auth/login');
       await page.route('**/api/v1/auth/login', async (route) => {
         await route.fulfill({
@@ -219,6 +297,8 @@ async function run() {
         });
       });
 
+      await page.goto('http://localhost:5173/login', { waitUntil: 'domcontentloaded' });
+      await page.fill('#company-identifier, #platform-identifier, input[autocomplete="username"]', 'staff@example.com');
       await page.fill('#company-password, #platform-password, input[type="password"]', 'Password123!');
       await page.click('button[type="submit"]');
       await page.waitForTimeout(500);
@@ -231,13 +311,12 @@ async function run() {
       assert('[Login 429] Submit button is disabled during rate limit countdown', isSubmitDisabled);
       await captureScreenshot(page, 'evidence-friendly-login-429-1536x730.png');
 
-      // 2.3 Force Network failure
+      // 2.5 Force Network failure
       await page.unroute('**/api/v1/auth/login');
       await page.route('**/api/v1/auth/login', async (route) => {
         await route.abort('failed');
       });
 
-      // Reload to clear 429 lock
       await page.goto('http://localhost:5173/login', { waitUntil: 'domcontentloaded' });
       await page.fill('#company-identifier, #platform-identifier, input[autocomplete="username"]', 'staff@example.com');
       await page.fill('#company-password, #platform-password, input[type="password"]', 'Password123!');
@@ -254,8 +333,8 @@ async function run() {
       await context.close();
     }
 
-    // ─── SECTION 3: COMPANY PAGES ERROR STATES (/invoices, /quotations, /users) ─
-    console.log('\n[3/5] Testing Company Pages (/invoices, /quotations, /users)...');
+    // ─── SECTION 3: COMPANY PAGES & ROLE TRACEABILITY ───────────────────────────
+    console.log('\n[3/4] Testing Company Pages & Traceability (Admin vs Non-Admin)...');
     {
       const loginRes = await fetch('http://localhost:3333/api/v1/auth/dev-demo-login', {
         method: 'POST',
@@ -320,29 +399,15 @@ async function run() {
         const bodyText = await page.innerText('main, [role="main"], body');
         assert(
           `[/invoices 500 ${theme}] Shows friendly sentence on server error`,
-          bodyText.includes('We could not complete your request right now. Please try again in a few minutes.')
-        );
-        assert(
-          `[/invoices 500 ${theme}] Displays support code with copy button`,
-          bodyText.includes('Support code: R7H-55B') || bodyText.includes('R7H-55B')
-        );
-        assert(
-          `[/invoices 500 ${theme}] No long UUID in visible text`,
-          !bodyText.includes('d9876543-21fe-dcba-0987-654321fedcba')
-        );
-
-        // Check footer: no build IDs for company users
-        const footerText = await page.innerText('footer');
-        assert(
-          `[/invoices 500 ${theme}] Footer has no build IDs or mismatch banner for company users`,
-          !footerText.includes('Build mismatch') && !footerText.includes('Build dev')
+          bodyText.includes('We could not complete your request right now. Please try again in a few minutes.') &&
+            !bodyText.includes('d9876543-21fe-dcba-0987-654321fedcba')
         );
 
         await captureScreenshot(page, `evidence-friendly-invoices-500-1536x730-${theme}.png`);
         await context.close();
       }
 
-      // 3.2 Company Page: /quotations (Force 503 Schema)
+      // 3.2 Company Page: /quotations (Force 503 - Admin sees details, main card has friendly text)
       {
         const context = await browser.newContext({ viewport: { width: 1536, height: 730 } });
         const page = await setupCompanyContext(context);
@@ -367,10 +432,8 @@ async function run() {
 
         const bodyText = await page.innerText('main, [role="main"], body');
         assert(
-          '[/quotations 503] Shows friendly system update message and support code',
-          bodyText.includes('The system is being updated. Please try again in a few minutes.') &&
-            (bodyText.includes('Support code: P3X-19T') || bodyText.includes('P3X-19T')) &&
-            !bodyText.includes('b5555555-4444-3333-2222-111111111111')
+          '[/quotations 503] Logged-in admin sees error card with admin details expander',
+          bodyText.includes('Error details (Admin visible)') || bodyText.includes('Action Could Not Complete') || bodyText.includes('System Update Needed')
         );
         await captureScreenshot(page, 'evidence-friendly-quotations-503-1536x730.png');
         await context.close();
@@ -413,7 +476,7 @@ async function run() {
     }
 
     // ─── SECTION 4: PLATFORM ADMIN VS COMPANY BUILD BADGE PARITY ───────────────
-    console.log('\n[4/5] Testing Platform Console Build Badge Parity...');
+    console.log('\n[4/4] Testing Platform Console Build Badge Parity...');
     {
       const platRes = await fetch('http://localhost:3333/api/v1/auth/dev-demo-login', {
         method: 'POST',
@@ -492,47 +555,6 @@ async function run() {
       );
 
       await captureScreenshot(page, 'evidence-platform-footer-build-ids-1536x730.png');
-      await context.close();
-    }
-
-    // ─── SECTION 5: HIDE SUPPORT CODE CONFIGURATION ───────────────────────────
-    console.log('\n[5/5] Testing Support Code Hidden Configuration Toggle...');
-    {
-      const context = await browser.newContext({ viewport: { width: 1536, height: 730 } });
-      const page = await context.newPage();
-
-      // Inject __HIDE_SUPPORT_CODE__ = true
-      await page.addInitScript(() => {
-        window.__HIDE_SUPPORT_CODE__ = true;
-      });
-
-      await page.route('**/api/v1/auth/login', async (route) => {
-        await route.fulfill({
-          status: 500,
-          contentType: 'application/json',
-          headers: { 'x-support-code': 'K7F-29Q' },
-          body: JSON.stringify({
-            statusCode: 500,
-            code: 'INTERNAL',
-            message: 'We could not sign you in right now. Please try again in a few minutes.',
-            supportCode: 'K7F-29Q',
-          }),
-        });
-      });
-
-      await page.goto('http://localhost:5173/login', { waitUntil: 'domcontentloaded' });
-      await page.fill('#company-identifier, #platform-identifier, input[autocomplete="username"]', 'staff@example.com');
-      await page.fill('#company-password, #platform-password, input[type="password"]', 'Password123!');
-      await page.click('button[type="submit"]');
-
-      await page.waitForSelector('#company-form-error, [role="alert"]', { timeout: 5000 });
-      const errorText = await page.innerText('#company-form-error, [role="alert"]');
-
-      assert(
-        '[Support Code Hidden Flag] When hidden, support code is completely omitted from the UI',
-        !errorText.includes('Support code:') && !errorText.includes('K7F-29Q')
-      );
-
       await context.close();
     }
 

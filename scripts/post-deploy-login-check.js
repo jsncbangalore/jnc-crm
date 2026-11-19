@@ -162,17 +162,20 @@ async function runCheck() {
     console.log(`Status: ${loginRes.status} ${loginRes.statusText}`);
     console.log('Response:', loginJson ? JSON.stringify(loginJson, null, 2) : loginBodyText);
 
-    if (loginRes.status >= 500) {
-      console.error(`\n[FAIL] Post-deploy login check encountered 5xx server error! Status: ${loginRes.status}`);
+    if (loginRes.status >= 500 || loginRes.status === 503 || loginJson?.code === 'SCHEMA_OUT_OF_DATE' || loginJson?.code === 'SERVER_UPDATE_PENDING') {
+      console.error(`\n[FAIL] Post-deploy login check encountered 5xx/503 server error! Status: ${loginRes.status}`);
       if (loginJson && loginJson.code) {
         console.error(`Error Code: ${loginJson.code}`);
+      }
+      if (loginJson && loginJson.message) {
+        console.error(`Message: ${loginJson.message}`);
       }
       if (loginJson && loginJson.requestId) {
         console.error(`Request ID: ${loginJson.requestId}`);
       }
       hasFailures = true;
     } else if (loginRes.status === 401 || loginRes.status === 400 || loginRes.status === 404) {
-      console.log('\n[PASS] Auth controller rejected invalid fake credentials as expected.');
+      console.log('\n[PASS] Auth controller rejected invalid fake credentials as expected with 401/400 (no 5xx/503).');
       console.log('[PASS] Database connection, Prisma schema, and error handlers are operating normally.');
     } else {
       console.log(`\n[INFO] Auth endpoint returned non-5xx status: ${loginRes.status}`);

@@ -95,7 +95,9 @@ export function UnifiedErrorComponent({
   let displayMessage = serverMessage || 'We could not complete your request right now. Please try again in a few minutes.';
 
   if (code === 'SCHEMA_OUT_OF_DATE' || code === 'SERVER_UPDATE_PENDING' || status === 503) {
-    displayMessage = 'The system is being updated. Please try again in a few minutes.';
+    displayMessage = isAdmin
+      ? 'The system is being updated. Please try again in a few minutes.'
+      : 'We could not complete your request right now. Please try again in a few minutes.';
   } else if (status === 429) {
     displayMessage = 'Too many attempts. Please wait a few minutes.';
   } else if (status >= 500) {
@@ -134,10 +136,12 @@ export function UnifiedErrorComponent({
   }
 
   const handleCopyDetails = () => {
+    const referenceId = rawRequestId || supportCode;
     const details = {
       code,
       module: page || 'CRM',
       supportCode,
+      referenceId,
       status,
       field,
       recordType,
@@ -145,6 +149,13 @@ export function UnifiedErrorComponent({
       timestamp: new Date().toISOString(),
     };
     navigator.clipboard.writeText(JSON.stringify(details, null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyReference = () => {
+    const referenceId = rawRequestId || supportCode;
+    navigator.clipboard.writeText(referenceId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -165,30 +176,7 @@ export function UnifiedErrorComponent({
             <div className="flex flex-col gap-1 text-[11px] text-slate-500 dark:text-slate-400">
               <div className="flex items-center gap-2">
                 <span>Where: <span className="font-semibold text-slate-700 dark:text-slate-300">{whereLocation}</span></span>
-                {!isSupportCodeHidden() && supportCode && (
-                  <>
-                    <span>•</span>
-                    <span data-testid="error-support-code">Support code: <span className="font-mono font-bold text-slate-700 dark:text-slate-200 select-all">{supportCode}</span></span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(supportCode);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 2000);
-                      }}
-                      className="px-1.5 py-0.5 text-[10px] rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 transition cursor-pointer"
-                      data-testid="copy-support-code-btn"
-                    >
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
-                  </>
-                )}
               </div>
-              {!isSupportCodeHidden() && supportCode && (
-                <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                  If this keeps happening, contact support and quote this reference.
-                </p>
-              )}
             </div>
           </div>
           {effectiveActionHandler && (
@@ -222,45 +210,18 @@ export function UnifiedErrorComponent({
       </div>
 
       <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">
-        {title || (isSchemaUpdate ? 'System Update Needed' : 'Action Could Not Complete')}
+        {title || (isAdmin && isSchemaUpdate ? 'System Update Needed' : 'Action Could Not Complete')}
       </h3>
 
       <p className="text-xs text-slate-600 dark:text-slate-400 mb-3 leading-relaxed">
         {displayMessage}
       </p>
 
-      {/* Where & Support Code */}
+      {/* Where Location */}
       <div className="flex flex-col items-center justify-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mb-5">
         <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
           <span>Location: <span className="font-semibold text-slate-700 dark:text-slate-300">{whereLocation}</span></span>
-          {!isSupportCodeHidden() && supportCode && (
-            <>
-              <span>•</span>
-              <span data-testid="error-support-code">Support code: <span className="font-mono font-bold text-slate-700 dark:text-slate-200 select-all">{supportCode}</span></span>
-              {rawRequestId && !/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(rawRequestId) && (
-                <span className="text-[10px] text-slate-400 dark:text-slate-500">(Ref: {rawRequestId})</span>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  // navigator.clipboard.writeText(referenceId)
-                  navigator.clipboard.writeText(supportCode);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}
-                className="px-1.5 py-0.5 text-[10px] rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 transition cursor-pointer"
-                data-testid="copy-support-code-btn"
-              >
-                {copied ? 'Copied' : 'Copy'}
-              </button>
-            </>
-          )}
         </div>
-        {!isSupportCodeHidden() && supportCode && (
-          <p className="text-[10px] text-slate-400 dark:text-slate-500">
-            If this keeps happening, contact support and quote this reference.
-          </p>
-        )}
       </div>
 
       {/* Action Buttons */}
@@ -321,8 +282,12 @@ export function UnifiedErrorComponent({
               </div>
               <div className="text-slate-600 dark:text-slate-400">Module: {page || 'CRM Core'}</div>
               <div className="text-slate-600 dark:text-slate-400">Support Code: {supportCode}</div>
+              <div className="text-slate-600 dark:text-slate-400">Reference: {rawRequestId || supportCode}</div>
               {field && <div className="text-slate-600 dark:text-slate-400">Field: {field}</div>}
               {recordType && <div className="text-slate-600 dark:text-slate-400">Record: {recordType}</div>}
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 pt-1">
+                If this keeps happening, contact support and quote this reference.
+              </p>
             </div>
           )}
         </div>
