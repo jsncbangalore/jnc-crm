@@ -39,5 +39,7 @@ services:
         generateValue: true
       - key: ENCRYPTION_KEY
         generateValue: true
+      - key: OTP_SECRET
+        generateValue: true
       - key: BACKUP_ENCRYPTION_KEY
         generateValue: true

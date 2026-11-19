@@ -337,6 +337,20 @@ async function run() {
     process.exit(1);
   }
 
+  // Step 0.3b: Prisma Schema Drift Check
+  console.log(' [VERIFY] Running Schema Drift Check (scripts/check-schema-drift.js)...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/check-schema-drift.js', {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'inherit',
+    });
+    console.log(' [SUCCESS] Schema drift check passed: schema.prisma matches migration history.');
+  } catch (err) {
+    console.error(' [FAIL] Schema drift detected! Changes in schema.prisma lack migrations. Deployment blocked.');
+    process.exit(1);
+  }
+
   // Step 0.4: React rules-of-hooks AST verification
   console.log(' [VERIFY] Running React hooks AST scanner (scripts/scan-hooks.js)...');
   try {
@@ -376,6 +390,48 @@ async function run() {
     console.log(' [SUCCESS] Production dist scan passed: zero dev-demo-login, DevPassword, dev-credentials-box, or fixed verification code bypasses found.');
   } catch (err) {
     console.error(' [FAIL] Forbidden dev credentials or dev demo strings detected in dist! Deployment blocked.');
+    process.exit(1);
+  }
+
+  // Step 0.7: Production dist secrets scanner (scripts/scan-dist-secrets.js)
+  console.log(' [VERIFY] Running Production Dist Secrets Scanner (scripts/scan-dist-secrets.js)...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/scan-dist-secrets.js', {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'inherit',
+    });
+    console.log(' [SUCCESS] Dist secrets scanner passed: zero credentials, private keys, or internal env secrets found.');
+  } catch (err) {
+    console.error(' [FAIL] Secrets scanner failed! Credentials or forbidden internal secrets detected in dist. Deployment blocked.');
+    process.exit(1);
+  }
+
+  // Step 0.8: Public file hygiene check (scripts/check-public-files.js)
+  console.log(' [VERIFY] Running Public File Hygiene Check (scripts/check-public-files.js)...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/check-public-files.js', {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'inherit',
+    });
+    console.log(' [SUCCESS] Public file hygiene check passed: zero forbidden files (.zip, .sql, .map, .bak, etc.) in web dist.');
+  } catch (err) {
+    console.error(' [FAIL] Public file hygiene check failed! Forbidden files detected in apps/web/dist. Deployment blocked.');
+    process.exit(1);
+  }
+
+  // Step 0.9: Production Leak Guard Scanner (scripts/scan-production-leak-guard.js)
+  console.log(' [VERIFY] Running Production Leak Guard Scanner (scripts/scan-production-leak-guard.js)...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/scan-production-leak-guard.js', {
+      cwd: path.resolve(__dirname, '..'),
+      stdio: 'inherit',
+    });
+    console.log(' [SUCCESS] Production leak guard scanner passed: zero internal leaks, no UUIDs in visible text, short support codes enforced.');
+  } catch (err) {
+    console.error(' [FAIL] Production leak guard scanner failed! Internal leaks or unmasked technical data detected. Deployment blocked.');
     process.exit(1);
   }
 

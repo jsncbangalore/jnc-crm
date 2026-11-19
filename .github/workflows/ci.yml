@@ -73,6 +73,9 @@ jobs:
       - name: Deploy Migrations to CI PostgreSQL
         run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
 
+      - name: Verify Zero Schema Drift (schema.prisma vs migrations)
+        run: npm run check:schema-drift
+
       - name: Seed Initial Test Data
         run: npm run seed
 

@@ -116,13 +116,53 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST https://api.jsnc.co.in/api/v1/a
    ```bash
    VITE_API_URL=https://api.jsnc.co.in/api/v1 npm --workspace=apps/web run build
    ```
-2. Upload the contents of `apps/web/dist/` to your web server (e.g. cPanel, S3, Netlify, or VPS hosting `admin.jsnc.co.in`).
+2. Verify public file hygiene before uploading:
+   ```bash
+   node scripts/check-public-files.js
+   ```
+3. Upload **ONLY** the compiled static assets inside `apps/web/dist/` (HTML, JS, CSS, assets, and `.htaccess`) to your web server (e.g. Hostinger, cPanel, Apache, Nginx hosting `admin.jsnc.co.in`).
+
+> [!CAUTION]
+> **CRITICAL SECURITY REQUIREMENT: NEVER UPLOAD ZIP FILES, DATABASE DUMPS, OR BACKUPS TO THE WEB ROOT**
+> - **Zip archives (`.zip`, `.tar.gz`, etc.), SQL dump files (`.sql`, `.dump`), `.env` files, backups, logs, test results, or entire source repositories must NEVER be uploaded or unpacked in the public web root (`public_html` or web directory).**
+> - Placing zip archives or backups in the public web root creates a catastrophic security vulnerability where anyone can download source code, credentials, or proprietary data directly over HTTP.
+> - Only the generated static bundle inside `apps/web/dist/` along with the production `.htaccess` file belongs in the public web root.
 
 ### Step 9: Post-Deploy Verification
+
+#### 9.1 Automated Post-Deploy Smoke Check
+Run the automated post-deploy smoke check against the deployed API:
+```bash
+node scripts/post-deploy-login-check.js https://api.jsnc.co.in
+# Or locally / staging:
+node scripts/post-deploy-login-check.js http://localhost:3333
+```
+This check automatically:
+1. Validates `GET /api/v1/health` confirms `database === 'ok'` and migration counts show **0 pending** and **0 failed**.
+2. Validates `GET /api/v1/health/ready` confirms HTTP 200 and system status is `ready`.
+3. Validates `POST /api/v1/auth/login` with fake credentials returns HTTP 401 (not 5xx) to confirm the database schema, Prisma connection, and error handling are working properly.
+
+#### 9.2 Running Automatically After Each Deploy
+To automate post-deploy verification without manual intervention:
+- **Render Deploy Hook / Webhook**: In Render Dashboard -> Settings -> Deploy Hooks, add a webhook triggered on deploy completion that executes `node scripts/post-deploy-login-check.js https://api.jsnc.co.in`.
+- **GitHub Actions Post-Deploy Job**: Add a job to `.github/workflows/ci.yml` triggered on deployment completion that runs `node scripts/post-deploy-login-check.js $TARGET_API_URL`.
+- **Scheduled Uptime Monitor**: Configure an external monitor (e.g. BetterStack, UptimeRobot, or Pingdom) polling `https://api.jsnc.co.in/api/v1/health/ready` every 1–5 minutes. If status is ever non-200, an immediate alert is triggered.
+
+#### 9.3 Finding and Debugging Production Errors
+
+> [!NOTE]
+> **How to find an error: search the support code in the Render logs**
+> - When an error occurs in the application, users see a user-friendly message and a short 6-8 character support code (e.g. `K7F-29Q`).
+> - The long internal request UUID, SQL statements, and stack traces are **never** shown to users on screen.
+> - To investigate any user error report: open the Render logs for `jnc-crm-api` and search for the support code:
+>   `supportCode=K7F-29Q`
+> - Every 5xx error writes exactly one structured log line containing the full `requestId`, `method`, `path`, `status`, `errorClass`, `prismaCode`, `tenantId`, `userId`, and sanitized stack trace.
+
+#### 9.4 Manual Smoke Checks
 1. Open `https://admin.jsnc.co.in` in your browser.
 2. Check the global footer at the bottom of the page:
-   - Look for `Build <hash>`.
-   - Verify that there is **NO** warning banner showing `⚠️ Build mismatch: Web ... / API ...`.
+   - On public pages and company pages, the footer shows only the clean copyright line and cookie links (no internal build IDs or version numbers).
+   - Inside the platform administration console (`/platform/*`), signed-in platform administrators see `Build <hash>` and confirm there is **NO** warning banner showing `⚠️ Build mismatch: Web ... / API ...`.
 3. Perform one real test login with an authorized staff account:
    - Verify login completes smoothly.
    - Verify sidebar links appear matching the role.

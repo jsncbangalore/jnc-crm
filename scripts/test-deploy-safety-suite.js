@@ -51,18 +51,23 @@ async function runDeploySafetySuite(assertFn) {
   try {
     const health = await fetchJson('http://localhost:3333/api/v1/health');
     assert('Health returns 200 OK', health.status === 200);
-    assert('Health reports database connected', health.body.database === 'connected');
+    assert('Health reports database connected', health.body.database === 'connected' || health.body.database === 'ok');
     const migrationsDir = path.resolve('apps/api/prisma/migrations');
     const expectedMigrations = fs.existsSync(migrationsDir)
       ? fs.readdirSync(migrationsDir).filter(f => fs.statSync(path.join(migrationsDir, f)).isDirectory() && !f.startsWith('.')).length
-      : 33;
-    assert(`Health reports total migrations === ${expectedMigrations}`, health.body.migrationState?.total === expectedMigrations);
+      : 37;
+    const totalMig = health.body.migrations?.total ?? health.body.migrationState?.total;
+    assert(`Health reports total migrations === ${expectedMigrations}`, totalMig === expectedMigrations);
     const pendingList = health.body.migrationState?.pendingList || [];
+    const pendingCount = health.body.migrations?.pending ?? pendingList.length;
     const isFileOnly = pendingList.length === 1 && pendingList[0] === '20261118120000_remove_default_lut';
-    assert(`Health reports applied count matches`, health.body.migrationState?.appliedCount === (isFileOnly ? expectedMigrations - 1 : expectedMigrations));
-    assert('Health reports pending list is empty or documented file-only', pendingList.length === 0 || isFileOnly);
-    assert('Health reports failed list is empty', Array.isArray(health.body.migrationState?.failedList) && health.body.migrationState.failedList.length === 0);
-    assert('Health commitId is valid and not unknown', Boolean(health.body.commitId && health.body.commitId !== 'unknown'));
+    const appliedMig = health.body.migrations?.applied ?? health.body.migrationState?.appliedCount;
+    assert(`Health reports applied count matches`, appliedMig === (isFileOnly ? expectedMigrations - 1 : expectedMigrations));
+    assert('Health reports pending list is empty or documented file-only', pendingCount === 0 || isFileOnly);
+    const failedCount = health.body.migrations?.failed ?? (health.body.migrationState?.failedList?.length || 0);
+    assert('Health reports failed list is empty', failedCount === 0);
+    const commitIdVal = health.body.commitId || health.body.version;
+    assert('Health commitId is valid and not unknown', Boolean(commitIdVal && commitIdVal !== 'unknown'));
   } catch (err) {
     assert('Health endpoint verification', false, err.message);
   }

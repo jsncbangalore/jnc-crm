@@ -40,6 +40,13 @@ function generateHtaccess() {
   if (fs.existsSync(path.dirname(TARGET_DIST))) {
     fs.writeFileSync(TARGET_DIST, rendered, 'utf8');
     console.log(`[OK] Updated apps/web/dist/.htaccess`);
+
+    // Clean up .htaccess.template from dist if copied over by Vite
+    const distTemplate = path.resolve(ROOT, 'apps/web/dist/.htaccess.template');
+    if (fs.existsSync(distTemplate)) {
+      fs.unlinkSync(distTemplate);
+      console.log(`[OK] Removed .htaccess.template from apps/web/dist`);
+    }
   }
 }
 

@@ -6,6 +6,11 @@ dist/
 *.env
 # Secrets and backups
 *.zip
+*.sql
+!apps/api/prisma/migrations/**/*.sql
+!apps/api/prisma/migration_plans/**/*.sql
+!deploy/**/*.sql
+!docs/deferred-migrations/**/*.sql
 backups/
 # SQLite dev DB
 *.db
