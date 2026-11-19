@@ -49,10 +49,10 @@ export class SettingsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Helper to retrieve cached branding asset from disk
+   * Helper to retrieve cached branding asset from disk (private cache outside web root)
    */
   private getDiskAssetCache(tenantId: string, assetType: string): { filePath: string; mime: string } | null {
-    const baseDir = path.resolve(process.cwd(), 'apps/web/public/uploads/branding');
+    const baseDir = path.resolve(process.cwd(), 'uploads/branding');
     const extensions = ['png', 'jpg', 'jpeg', 'webp'];
     for (const ext of extensions) {
       const p = path.join(baseDir, `${tenantId}_${assetType}.${ext}`);
@@ -65,11 +65,11 @@ export class SettingsService {
   }
 
   /**
-   * Helper to persist branding asset bytes to disk cache
+   * Helper to persist branding asset bytes to disk cache (private cache outside web root)
    */
   private saveDiskAssetCache(tenantId: string, assetType: string, mime: string, buffer: Buffer): void {
     try {
-      const baseDir = path.resolve(process.cwd(), 'apps/web/public/uploads/branding');
+      const baseDir = path.resolve(process.cwd(), 'uploads/branding');
       if (!fs.existsSync(baseDir)) {
         fs.mkdirSync(baseDir, { recursive: true });
       }
@@ -87,9 +87,8 @@ export class SettingsService {
   private deleteDiskAssetCache(tenantId: string, assetType: string): void {
     try {
       const baseDirs = [
-        path.resolve(process.cwd(), 'apps/web/public/uploads/branding'),
-        path.resolve(process.cwd(), 'apps/api/uploads/branding'),
         path.resolve(process.cwd(), 'uploads/branding'),
+        path.resolve(process.cwd(), 'apps/api/uploads/branding'),
       ];
       const extensions = ['png', 'jpg', 'jpeg', 'webp'];
       for (const baseDir of baseDirs) {

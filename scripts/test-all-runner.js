@@ -30,6 +30,7 @@
  * - Production Security Hygiene: 30
  * - Schema Drift, Predeploy & Dangerous Endpoints: 36
  * - Browser Console Hygiene & Reliability: 42
+ * - Secrets, Storage & Repo Hygiene: 29
  */
 
 const fs = require('fs');
@@ -418,6 +419,11 @@ runLayer('AE', 'Public Protection, Friendly Messages & Support Code Suite', (ass
   runDedicatedSuite('AE', 'Public Protection & Support Code', 'scripts/test-public-leak-and-support-code-suite.js', 33, assert);
 });
 
+// ─── LAYER AF: SECRETS, STORAGE & REPOSITORY HYGIENE (29 tests) ─
+runLayer('AF', 'Secrets, Storage & Repository Hygiene Suite', (assert) => {
+  runDedicatedSuite('AF', 'Secrets, Storage & Repository Hygiene', 'scripts/test-secrets-storage-suite.js', 29, assert);
+});
+
 // ─── REPORT GENERATION ───────────────────────────────────────────────────────
 const jsonReportPath = path.join(REPORT_DIR, 'test-all-report.json');
 fs.writeFileSync(jsonReportPath, JSON.stringify(report, null, 2), 'utf8');
@@ -523,6 +529,7 @@ const comparisonRows = [
   { suite: 'Schema Drift, Predeploy & Dangerous Endpoints', file: 'scripts/test-schema-drift-predeploy-suite.js', expected: 36, layer: 'AC' },
   { suite: 'Browser Console Hygiene & Fonts', file: 'scripts/test-browser-console-hygiene-suite.js', expected: 42, layer: 'AD' },
   { suite: 'Public Protection, Friendly Messages & Support Code', file: 'scripts/test-public-leak-and-support-code-suite.js', expected: 33, layer: 'AE' },
+  { suite: 'Secrets, Storage & Repository Hygiene', file: 'scripts/test-secrets-storage-suite.js', expected: 29, layer: 'AF' },
 ];
 
 console.log('\n========================================================================================');

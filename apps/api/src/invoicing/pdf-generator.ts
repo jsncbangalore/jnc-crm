@@ -262,10 +262,7 @@ export function generateInvoicePdfBuffer(invoice: any, options?: PdfDocumentOpti
         const candidateDirs = [
           path.resolve(process.cwd(), 'uploads/branding'),
           path.resolve(process.cwd(), '../../uploads/branding'),
-          path.resolve(process.cwd(), 'apps/web/public/uploads/branding'),
-          path.resolve(process.cwd(), '../web/public/uploads/branding'),
-          path.resolve(process.cwd(), '../../apps/web/public/uploads/branding'),
-          path.resolve(process.cwd(), 'public/uploads/branding'),
+          path.resolve(process.cwd(), '../uploads/branding'),
         ];
         for (const dir of candidateDirs) {
           for (const ext of exts) {

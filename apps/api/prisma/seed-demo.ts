@@ -1,5 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import * as path from 'path';
+
+// Load local dev password helper safely
+const { getDevPassword } = require(path.resolve(__dirname, '../../../scripts/dev/get-dev-password.js'));
 
 const prisma = new PrismaClient();
 
@@ -34,7 +38,8 @@ async function main() {
     },
   });
 
-  const demoPassHash = await bcrypt.hash('DemoPassword123!', 10);
+  const devPass = getDevPassword();
+  const demoPassHash = await bcrypt.hash(devPass, 10);
 
   // 2. Demo Users
   const demoAdmin = await prisma.user.upsert({

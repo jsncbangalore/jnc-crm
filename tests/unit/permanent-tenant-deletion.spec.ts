@@ -231,8 +231,8 @@ describe('Permanent Tenant Deletion & Cascade Isolation Test Suite', () => {
       },
     });
 
-    // Create fake disk files in uploads/branding
-    const brandingDir = path.resolve(process.cwd(), 'apps/web/public/uploads/branding');
+    // Create fake disk files in private uploads/branding
+    const brandingDir = path.resolve(process.cwd(), 'uploads/branding');
     if (!fs.existsSync(brandingDir)) {
       fs.mkdirSync(brandingDir, { recursive: true });
     }

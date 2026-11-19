@@ -7,6 +7,9 @@
 
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import * as path from 'path';
+
+const { getDevPassword } = require(path.resolve(__dirname, './dev/get-dev-password.js'));
 
 const prisma = new PrismaClient({
   datasources: {
@@ -19,7 +22,8 @@ const prisma = new PrismaClient({
 export async function seedDevData() {
   console.log('[SEED-DEV] Starting development database seeding with fake test entities...');
 
-  const passHash = await bcrypt.hash('DevPassword@123', 10);
+  const devPass = getDevPassword();
+  const passHash = await bcrypt.hash(devPass, 10);
 
   // 1. Create 3 Companies / Tenants
   const tenantConfigs = [

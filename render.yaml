@@ -33,13 +33,14 @@ services:
         sync: false
       - key: DIRECT_URL
         sync: false
+      # Security Secrets: Must be generated once manually, stored in password manager, and never overwritten automatically
       - key: JWT_SECRET
-        generateValue: true
+        sync: false
       - key: JWT_REFRESH_SECRET
-        generateValue: true
+        sync: false
       - key: ENCRYPTION_KEY
-        generateValue: true
+        sync: false
       - key: OTP_SECRET
-        generateValue: true
+        sync: false
       - key: BACKUP_ENCRYPTION_KEY
-        generateValue: true
+        sync: false

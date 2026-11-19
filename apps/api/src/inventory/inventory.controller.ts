@@ -531,7 +531,7 @@ export class InventoryController {
   ) {
     if (!file) throw new BadRequestException('File is required');
 
-    validateUploadedFile(file, 'document_or_image', 10 * 1024 * 1024);
+    validateUploadedFile(file, 'purchase_document', 10 * 1024 * 1024);
 
     const tenantId = requireTenantId(user);
     const tenantDir = path.resolve(process.cwd(), '../../purchase-documents', tenantId);
@@ -596,6 +596,19 @@ export class InventoryController {
     user: ScopedUser,
     res: Response,
   ) {
+    if (
+      !filename ||
+      filename.includes('..') ||
+      filename.includes('/') ||
+      filename.includes('\\') ||
+      !targetTenantId ||
+      targetTenantId.includes('..') ||
+      targetTenantId.includes('/') ||
+      targetTenantId.includes('\\')
+    ) {
+      throw new BadRequestException('Invalid filename or path traversal detected.');
+    }
+
     const userTenantId = requireTenantId(user);
     if (user.role !== 'platform_super_admin' && userTenantId !== targetTenantId) {
       throw new ForbiddenException('Access denied to cross-tenant documents.');
@@ -620,8 +633,18 @@ export class InventoryController {
       throw new NotFoundException('Requested document was not found.');
     }
 
-    res.setHeader('Content-Disposition', 'inline');
+    const ext = path.extname(filename).toLowerCase();
+    const isImage = ext === '.png' || ext === '.jpg' || ext === '.jpeg';
+    const cleanBasename = path.basename(filename);
+
+    if (isImage) {
+      res.setHeader('Content-Disposition', 'inline');
+    } else {
+      res.setHeader('Content-Disposition', `attachment; filename="${cleanBasename}"`);
+    }
+
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cache-Control', 'private, no-store');
     return res.sendFile(safePath);

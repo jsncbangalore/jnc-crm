@@ -8,7 +8,7 @@
 import { BadRequestException } from '@nestjs/common';
 import * as path from 'path';
 
-export type AllowedFileCategory = 'document_or_image' | 'spreadsheet';
+export type AllowedFileCategory = 'document_or_image' | 'spreadsheet' | 'purchase_document';
 
 const ALLOWED_MIME_TYPES: Record<AllowedFileCategory, string[]> = {
   document_or_image: [
@@ -25,11 +25,17 @@ const ALLOWED_MIME_TYPES: Record<AllowedFileCategory, string[]> = {
     'application/vnd.ms-excel',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   ],
+  purchase_document: [
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+  ],
 };
 
 const ALLOWED_EXTENSIONS: Record<AllowedFileCategory, string[]> = {
   document_or_image: ['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.avif', '.ico'],
   spreadsheet: ['.csv', '.xlsx', '.xls'],
+  purchase_document: ['.pdf', '.png', '.jpg', '.jpeg'],
 };
 
 const DANGEROUS_EXTENSIONS = [

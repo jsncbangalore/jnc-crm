@@ -8,6 +8,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const { getDevPassword } = require(path.resolve(__dirname, './dev/get-dev-password.js'));
 
 // Load environment variables strictly from application root or .env.development
 const envPath = fs.existsSync(path.resolve(__dirname, '../.env.development'))
@@ -140,7 +141,8 @@ async function seed() {
 
     // 2. Provision Demo Users
     console.log('[3/6] Upserting 6 Demo Users...');
-    const defaultPasswordHash = await bcrypt.hash('DemoPassword@123', 10);
+    const devPass = getDevPassword();
+    const defaultPasswordHash = await bcrypt.hash(devPass, 10);
 
     const demoUsers = [
       {

@@ -133,32 +133,34 @@ describe('Item 12: Schema Guard, Error Taxonomy, and Unregistered Receipts', () 
     // Drop a test column on throwaway database
     await testPrisma.$executeRawUnsafe(`ALTER TABLE "PaymentRecord" DROP COLUMN IF EXISTS "deductions";`);
 
-    let caughtPrismaError: any = null;
     try {
-      // Query that expects the deductions column
-      await testPrisma.paymentRecord.findFirst({
-        where: { tenantId: testTenantId },
-      });
-    } catch (err) {
-      caughtPrismaError = err;
+      let caughtPrismaError: any = null;
+      try {
+        // Query that expects the deductions column
+        await testPrisma.paymentRecord.findFirst({
+          where: { tenantId: testTenantId },
+        });
+      } catch (err) {
+        caughtPrismaError = err;
+      }
+
+      expect(caughtPrismaError).toBeDefined();
+      expect(caughtPrismaError).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+      expect(caughtPrismaError.code).toBe('P2022'); // Column does not exist
+
+      const mock = createMockHost();
+      filter.catch(caughtPrismaError, mock.host);
+
+      expect(mock.getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+      const body = mock.getBody();
+      expect(body.code).toBe('SCHEMA_OUT_OF_DATE');
+      expect(body.message).toContain('The system is being updated. Please try again in a few minutes.');
+      expect(body.requestId).toBe('req-test-999');
+      expect(body.field).toBe('deductions');
+    } finally {
+      // Restore column unconditionally
+      await testPrisma.$executeRawUnsafe(`ALTER TABLE "PaymentRecord" ADD COLUMN IF NOT EXISTS "deductions" JSONB DEFAULT '[]'::jsonb;`);
     }
-
-    expect(caughtPrismaError).toBeDefined();
-    expect(caughtPrismaError).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
-    expect(caughtPrismaError.code).toBe('P2022'); // Column does not exist
-
-    const mock = createMockHost();
-    filter.catch(caughtPrismaError, mock.host);
-
-    expect(mock.getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
-    const body = mock.getBody();
-    expect(body.code).toBe('SCHEMA_OUT_OF_DATE');
-    expect(body.message).toContain('The system needs an update. Nothing was lost.');
-    expect(body.requestId).toBe('req-test-999');
-    expect(body.field).toBe('deductions');
-
-    // Restore column
-    await testPrisma.$executeRawUnsafe(`ALTER TABLE "PaymentRecord" ADD COLUMN "deductions" JSONB DEFAULT '[]'::jsonb;`);
   });
 
   // --------------------------------------------------------------------------

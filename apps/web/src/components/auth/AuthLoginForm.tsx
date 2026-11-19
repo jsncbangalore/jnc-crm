@@ -26,10 +26,6 @@ import { generateSupportCode, isSupportCodeHidden } from '../../utils/supportCod
 import { checkApiCompatibility } from '../../utils/versionCheck';
 import TwoFactorChallenge from '../common/TwoFactorChallenge';
 
-const DevAccountsBox = (import.meta.env.DEV && import.meta.env.VITE_SHOW_DEV_ACCOUNTS === 'true')
-  ? React.lazy(() => import('./DevAccountsBox'))
-  : null;
-
 const DemoLoginPanel = (import.meta.env.DEV && import.meta.env.VITE_DEMO_LOGIN === 'true')
   ? React.lazy(() => import('./DemoLoginPanel'))
   : null;
@@ -620,18 +616,6 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
           {subtitleText}
         </p>
       </div>
-
-      {/* Dev Mode Test Accounts Helper - strictly pruned from production builds by bundler */}
-      {DevAccountsBox && !isPlatform && (
-        <React.Suspense fallback={null}>
-          <DevAccountsBox
-            onSelect={(id, pass) => {
-              setIdentifier(id);
-              setPassword(pass);
-            }}
-          />
-        </React.Suspense>
-      )}
 
       {/* Dev Demo Login Panel (Local development only, completely omitted in production builds) */}
       {DemoLoginPanel && (
