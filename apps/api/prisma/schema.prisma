@@ -624,6 +624,8 @@ model Product {
 }
 
 model Sku {
+  description         String?
+  unit                String?
   id                  String    @id @default(uuid())
   tenantId            String    @default("default-tenant-id")
   productId           String?
@@ -737,6 +739,8 @@ model StockMovement {
   sourceWarehouse   Warehouse? @relation("SourceWarehouse", fields: [sourceWarehouseId], references: [id], onDelete: SetNull)
   destWarehouse     Warehouse? @relation("DestWarehouse", fields: [destWarehouseId], references: [id], onDelete: SetNull)
   performedBy       User?      @relation("UserStockMovements", fields: [performedById], references: [id], onDelete: SetNull)
+
+  @@index([skuId])
 }
 
 model ProjectStockPosition {
@@ -774,6 +778,7 @@ model ProjectStockPosition {
 // 6. QUOTATIONS, ORDERS & INVOICES (PER-TENANT)
 // ==========================================
 model Quotation {
+  shippingAddress     String?
   id              String    @id @default(uuid())
   tenantId        String    @default("default-tenant-id")
   quoteNumber     String
@@ -917,6 +922,7 @@ model Shipment {
 }
 
 model Invoice {
+  shippingAddress     String?
   id              String        @id @default(uuid())
   tenantId        String        @default("default-tenant-id")
   invoiceNumber   String

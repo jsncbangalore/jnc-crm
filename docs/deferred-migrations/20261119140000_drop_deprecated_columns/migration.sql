@@ -1,0 +1,4 @@
+ALTER TABLE "Invoice" DROP COLUMN IF EXISTS "shippingAddress";
+ALTER TABLE "Quotation" DROP COLUMN IF EXISTS "shippingAddress";
+ALTER TABLE "Sku" DROP COLUMN IF EXISTS "description";
+ALTER TABLE "Sku" DROP COLUMN IF EXISTS "unit";
