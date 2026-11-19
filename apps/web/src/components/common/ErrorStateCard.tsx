@@ -8,6 +8,7 @@
 import React from 'react';
 import { LogIn } from 'lucide-react';
 import { UnifiedErrorComponent } from './UnifiedErrorComponent';
+import { generateSupportCode } from '../../utils/supportCode';
 
 export interface ErrorStateCardProps {
   message: string;
@@ -17,6 +18,7 @@ export interface ErrorStateCardProps {
   page?: string;
   recordType?: string;
   referenceId?: string;
+  supportCode?: string;
   isNetworkError?: boolean;
   onRetry?: () => void;
   onAction?: () => void;
@@ -34,6 +36,7 @@ export function ErrorStateCard({
   page,
   recordType,
   referenceId,
+  supportCode,
   isNetworkError,
   onRetry,
   onAction,
@@ -88,6 +91,8 @@ export function ErrorStateCard({
     );
   }
 
+  const effectiveSupportCode = supportCode || generateSupportCode(referenceId);
+
   return (
     <UnifiedErrorComponent
       title={title}
@@ -98,6 +103,7 @@ export function ErrorStateCard({
       page={page}
       recordType={recordType}
       referenceId={referenceId}
+      supportCode={effectiveSupportCode}
       onRetry={onRetry}
       onAction={onAction}
       actionLabel={actionLabel}
@@ -114,6 +120,7 @@ export function parseApiError(err: any): {
   code?: string;
   field?: string;
   referenceId?: string;
+  supportCode?: string;
 } {
   const isNetworkError =
     !err?.response ||
@@ -131,35 +138,36 @@ export function parseApiError(err: any): {
     err?.response?.headers?.['x-request-id'] ||
     err?.response?.headers?.['X-Request-Id'] ||
     err?.config?.headers?.['x-request-id'] ||
-    err?.config?.headers?.['X-Request-Id'] ||
-    (typeof crypto !== 'undefined' && crypto.randomUUID ? `req_${crypto.randomUUID().slice(0, 8)}` : `req_${Date.now()}`);
+    err?.config?.headers?.['X-Request-Id'];
 
-  let message = 'An unexpected error occurred.';
+  const supportCode = data?.supportCode || err?.response?.headers?.['x-support-code'] || generateSupportCode(referenceId);
+
+  let message = 'We could not complete your request right now. Please try again in a few minutes.';
+  // serverMsg || `The system needs an update`
   if (isNetworkError) {
-    message = 'Cannot reach the server';
-  } else if (code === 'SCHEMA_OUT_OF_DATE' || status === 503) {
-    message = `The system needs an update. Nothing was lost. Ask your administrator (reference ${referenceId}).`;
+    message = 'Could not reach the server. Check your internet and try again.';
+  } else if (code === 'SCHEMA_OUT_OF_DATE' || code === 'SERVER_UPDATE_PENDING' || status === 503) {
+    message = 'The system is being updated. Please try again in a few minutes.';
+  } else if (status === 429) {
+    const mins = Math.max(1, Math.ceil(parseInt(String(err?.response?.headers?.['retry-after'] || 900), 10) / 60));
+    message = `Too many attempts. Please wait ${mins} minute${mins === 1 ? '' : 's'}.`;
+  } else if (status >= 500) {
+    message = 'We could not complete your request right now. Please try again in a few minutes.';
   } else if (status === 403) {
-    let dataMsg = data?.message || data?.error;
-    if (Array.isArray(dataMsg)) dataMsg = dataMsg.join(', ');
-    if (typeof dataMsg === 'string') {
-      if (dataMsg.includes('Required roles') || dataMsg.includes('Access denied')) {
-        const pageKey = data?.pageKey;
-        const pageLabel = pageKey ? (pageKey.charAt(0).toUpperCase() + pageKey.slice(1)) : 'Shipments';
-        dataMsg = `You do not have permission to use ${pageLabel}. Ask your administrator.`;
-      }
+    const dataMsg = data?.message || data?.error;
+    if (typeof dataMsg === 'string' && dataMsg.includes('permission')) {
       message = dataMsg.trim();
     } else {
-      message = 'You do not have permission to use this resource. Ask your administrator.';
+      message = 'You do not have permission to view this page. Ask your administrator.';
     }
+  } else if (status === 401) {
+    message = 'Your session has expired. Please sign in again.';
   } else {
     const dataMsg = data?.message || data?.error;
-    message = Array.isArray(dataMsg)
-      ? dataMsg.join(', ')
-      : typeof dataMsg === 'string' && dataMsg.trim()
-      ? dataMsg
-      : err.message || 'Failed to load data from server.';
+    if (typeof dataMsg === 'string' && dataMsg.trim()) {
+      message = dataMsg.trim();
+    }
   }
 
-  return { status, message, isNetworkError, code, field, referenceId };
+  return { status, message, isNetworkError, code, field, referenceId, supportCode };
 }

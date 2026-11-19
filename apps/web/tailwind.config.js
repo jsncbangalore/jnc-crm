@@ -64,7 +64,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['"Nuvetra"', '"Naratama"', '"RNDI"', '"Plus Jakarta Sans"', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'monospace'],
         fancy: ['"Great Vibes"', 'cursive'],
         brush: ['"Kaushan Script"', 'cursive'],

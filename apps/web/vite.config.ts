@@ -18,6 +18,37 @@ export default defineConfig(({ command, mode }) => {
   const apiUrl = (env.VITE_API_URL || env.VITE_API_BASE_URL || '').trim();
   process.env.VITE_PRODUCT_NAME = productName;
 
+  // Strict public VITE_ environment variable allowlist
+  const ALLOWED_VITE_VARS = new Set([
+    'VITE_API_URL',
+    'VITE_API_BASE_URL',
+    'VITE_PUBLIC_API_URL',
+    'VITE_PRODUCT_NAME',
+    'VITE_PRODUCT_LOGO_URL',
+    'VITE_TERMS_URL',
+    'VITE_PRIVACY_URL',
+    'VITE_SUPPORT_URL',
+    'VITE_APP_VERSION',
+    'VITE_GIT_COMMIT',
+    'VITE_INACTIVITY_TIMEOUT_MINUTES',
+    'VITE_SESSION_TIMEOUT_COUNTDOWN',
+    'VITE_SHOW_DEV_ACCOUNTS',
+    'VITE_DEMO_LOGIN',
+    'VITE_USER_NODE_ENV',
+  ]);
+
+  const allViteKeys = Array.from(
+    new Set([...Object.keys(process.env), ...Object.keys(env)].filter((k) => k.startsWith('VITE_')))
+  );
+  const disallowedViteKeys = allViteKeys.filter((k) => !ALLOWED_VITE_VARS.has(k));
+  if (disallowedViteKeys.length > 0) {
+    throw new Error(
+      `[SECURITY CONFIG ERROR] Non-allowed VITE_ environment variable(s) detected: ${disallowedViteKeys.join(
+        ', '
+      )}. The web build permits only whitelisted public VITE_ variables to protect secrets.`
+    );
+  }
+
   if (!isDev && mode === 'production') {
     if (!apiUrl) {
       throw new Error(

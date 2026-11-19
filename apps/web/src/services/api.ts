@@ -87,79 +87,77 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Maps API errors to safe, separated, and human-friendly user messages:
- * 1. No response at all (network or CORS) -> 'Cannot reach the server. Check your connection.'
- * 2. 404 or 405 -> 'This feature is not available yet. We are updating the system, please try again in a few minutes.'
- * 3. 429 -> 'Too many attempts. Please wait and try again.'
- * 4. 5xx -> 'Something went wrong on our side. Please try again.'
- * 5. 400 from validation -> show the field messages. Never show raw server text or paths.
+ * Maps API errors to safe, friendly plain sentences without any technical jargon or UUIDs:
+ * - login failure on server error = 'We could not sign you in right now. Please try again in a few minutes.'
+ * - schema or maintenance = 'The system is being updated. Please try again in a few minutes.'
+ * - too many attempts = 'Too many attempts. Please wait N minutes.'
+ * - network = 'Could not reach the server. Check your internet and try again.'
  */
 export function getApiErrorMessage(err: any): string {
-  const reqId = err?.requestId || err?.response?.data?.requestId || err?.response?.headers?.['x-request-id'] || err?.config?.headers?.['X-Request-Id'];
-
-  let baseMessage = 'Unable to complete request. Please try again.';
-
   // Case 1: No response at all (network, DNS, timeout, or CORS)
   if (!err?.response) {
-    baseMessage = 'Cannot reach the server. Check your connection.';
-  } else {
-    const status = err.response.status;
+    return 'Could not reach the server. Check your internet and try again.';
+  }
 
-    // Case 2: 404 Not Found or 405 Method Not Allowed
-    if (status === 404 || status === 405) {
-      baseMessage = 'Server update pending. Please try again in a few minutes.';
-    } else if (status === 429) {
-      baseMessage = 'Too many attempts. Please wait and try again.';
-    } else if (status >= 500) {
-      baseMessage = 'Something went wrong on our side. Please try again.';
-    } else if (status === 400) {
-      const data = err.response.data;
-      const rawMsg = typeof data?.message === 'string'
-        ? data.message
-        : Array.isArray(data?.message)
-        ? data.message.join(' ')
-        : '';
+  const status = err.response.status;
+  const isLoginRoute = Boolean(
+    err.config?.url?.includes('/auth/login') ||
+    err.config?.url?.includes('/platform-auth/login') ||
+    (typeof window !== 'undefined' && (window.location.pathname.includes('/login') || window.location.pathname.includes('/platform/login')))
+  );
 
-      if (rawMsg.toLowerCase().includes('should not exist')) {
-        baseMessage = 'Server update pending. Please try again in a few minutes.';
-      } else if (data?.message) {
-        if (Array.isArray(data.message)) {
-          const cleanList = data.message
-            .map((m: any) => String(m).replace(/[A-Za-z]:\\[^ ]+|\/[a-zA-Z0-9_\-./]+/g, '').trim())
-            .filter(Boolean);
-          if (cleanList.length > 0) {
-            baseMessage = cleanList.join(', ');
-          } else {
-            baseMessage = 'Invalid request details. Please check the fields and try again.';
-          }
-        } else if (typeof data.message === 'string') {
-          const clean = data.message.replace(/[A-Za-z]:\\[^ ]+|\/[a-zA-Z0-9_\-./]+/g, '').trim();
-          const lower = clean.toLowerCase();
-          if (clean && !lower.includes('syntaxerror') && !lower.includes('prisma') && !lower.includes('stack')) {
-            baseMessage = clean;
-          } else {
-            baseMessage = 'Invalid request details. Please check the fields and try again.';
-          }
-        }
-      } else {
-        baseMessage = 'Invalid request details. Please check the fields and try again.';
-      }
-    } else if (status === 401) {
-      baseMessage = err.response.data?.message || 'Incorrect email or password. Please check and try again.';
-    } else if (status === 403) {
-      baseMessage = err.response.data?.message || 'Access restricted. Please contact your administrator.';
-    } else {
-      const fallback = err.response.data?.message;
-      if (typeof fallback === 'string' && !fallback.includes('/') && !fallback.includes('\\')) {
-        baseMessage = fallback;
-      }
+  // Case 2: 429 Too Many Requests
+  if (status === 429) {
+    const retryHeader = err.response.headers?.['retry-after'] || err.response.data?.retryAfter;
+    const mins = retryHeader ? Math.max(1, Math.ceil(parseInt(String(retryHeader), 10) / 60)) : 15;
+    return `Too many attempts. Please wait ${mins} minute${mins === 1 ? '' : 's'}.`;
+  }
+
+  // Case 3: 503 Service Unavailable / Maintenance / Schema update
+  if (status === 503 || err.response.data?.code === 'SCHEMA_OUT_OF_DATE' || err.response.data?.code === 'SERVER_UPDATE_PENDING') {
+    return 'The system is being updated. Please try again in a few minutes.';
+  }
+
+  // Case 4: 5xx Server Error
+  if (status >= 500) {
+    if (isLoginRoute) {
+      return 'We could not sign you in right now. Please try again in a few minutes.';
     }
+    // (Ref: ${reqId}) mapped to short support code in UI
+  return 'We could not complete your request right now. Please try again in a few minutes.';
   }
 
-  if (reqId && typeof reqId === 'string' && !baseMessage.includes(reqId) && !baseMessage.toLowerCase().includes('ref:')) {
-    return `${baseMessage} (Ref: ${reqId})`;
+  // Case 5: 401 Unauthorized
+  if (status === 401) {
+    const msg = err.response.data?.message;
+    if (typeof msg === 'string' && msg.toLowerCase().includes('session')) {
+      return 'Session expired. Please sign in again.';
+    }
+    return 'Invalid credentials.';
   }
-  return baseMessage;
+
+  // Case 6: 403 Forbidden
+  if (status === 403) {
+    return 'You do not have permission to perform this action.';
+  }
+
+  // Case 7: 400 Bad Request
+  if (status === 400) {
+    const data = err.response.data;
+    if (Array.isArray(data?.fieldErrors) && data.fieldErrors.length > 0) {
+      return data.fieldErrors.map((f: any) => `${f.field}: ${f.message}`).join(', ');
+    }
+    if (Array.isArray(data?.message)) {
+      return data.message.join(', ');
+    }
+    if (typeof data?.message === 'string' && data.message.trim()) {
+      return data.message.trim();
+    }
+    return 'Please check the information entered and try again.';
+  }
+
+  // (Ref: ${reqId}) mapped to short support code in UI
+  return 'We could not complete your request right now. Please try again in a few minutes.';
 }
 
 export const resolveFileUrl = (url: string | null | undefined): string => {
@@ -608,21 +606,66 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/**
+ * Checks whether any session indicator exists for staff or platform portal:
+ * - Cookie indicator: crm_session_active or crm_platform_session_active
+ * - Fallback storage refresh token: crm_refresh_token_fb or platform_refresh_token_fb
+ * - Persisted user: crm_user or crm_platform_user in localStorage/sessionStorage
+ * - Tab user id: crm_tab_user_id or crm_tab_platform_user_id
+ * - In-memory access token
+ */
+export const hasSessionIndicator = (isPlatform: boolean = false): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    const cookieName = isPlatform ? 'crm_platform_session_active' : 'crm_session_active';
+    const hasCookie = typeof document !== 'undefined' && document.cookie.includes(cookieName);
+    if (hasCookie) return true;
+
+    const inMemoryToken = isPlatform ? _inMemoryPlatformToken : _inMemoryStaffToken;
+    if (inMemoryToken) return true;
+
+    const fallbackRefreshToken = getStoredRefreshToken(isPlatform);
+    if (fallbackRefreshToken) return true;
+
+    const userKey = isPlatform ? 'crm_platform_user' : 'crm_user';
+    const tabUserKey = isPlatform ? 'crm_tab_platform_user_id' : 'crm_tab_user_id';
+    const fbRefreshKey = isPlatform ? 'platform_refresh_token_fb' : 'crm_refresh_token_fb';
+
+    if (typeof localStorage !== 'undefined') {
+      if (localStorage.getItem(userKey) || localStorage.getItem(fbRefreshKey)) return true;
+    }
+    if (typeof sessionStorage !== 'undefined') {
+      if (sessionStorage.getItem(userKey) || sessionStorage.getItem(tabUserKey) || sessionStorage.getItem(fbRefreshKey)) return true;
+    }
+  } catch {}
+  return false;
+};
+
 // Helper to terminate session and navigate to index page on expired refresh
 export const handleSessionExpired = (isPlatform: boolean = false) => {
-  const hadSession = Boolean(
-    (isPlatform ? _inMemoryPlatformToken : _inMemoryStaffToken) ||
-    getStoredRefreshToken(isPlatform) ||
-    (typeof localStorage !== 'undefined' && (localStorage.getItem(isPlatform ? 'crm_platform_user' : 'crm_user') || localStorage.getItem(isPlatform ? 'platform_refresh_token_fb' : 'crm_refresh_token_fb'))) ||
-    (typeof sessionStorage !== 'undefined' && (sessionStorage.getItem(isPlatform ? 'crm_platform_user' : 'crm_user') || sessionStorage.getItem(isPlatform ? 'crm_tab_platform_user_id' : 'crm_tab_user_id'))) ||
-    (typeof document !== 'undefined' && document.cookie.includes(isPlatform ? 'crm_platform_session_active' : 'crm_session_active'))
-  );
+  const hadSession = hasSessionIndicator(isPlatform);
 
-  // Best-effort POST /auth/logout once (never call legacy /api/logout)
+  // If no session existed, do NOT make unnecessary or failing POST /auth/logout calls
+  if (!hadSession) {
+    return;
+  }
+
+  // Best-effort POST /auth/logout once with CSRF headers (never call legacy /api/logout)
   try {
     const logoutUrl = `${getApiBaseUrl()}/${isPlatform ? 'platform-auth' : 'auth'}/logout`;
     const uid = getCurrentTabUserId();
-    axios.post(logoutUrl, uid ? { expectedUserId: uid } : {}, { withCredentials: true, timeout: 3000 }).catch(() => {});
+    axios.post(
+      logoutUrl,
+      uid ? { expectedUserId: uid } : {},
+      {
+        withCredentials: true,
+        timeout: 3000,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/json',
+        },
+      }
+    ).catch(() => {});
   } catch {}
 
   if (isPlatform) {
@@ -667,6 +710,16 @@ let _activePlatformRefreshPromise: Promise<any> | null = null;
  * - If all retries fail, shows 'Cannot reach the server. Your work is still here.' with a Retry button without logging out.
  */
 const executeResilientRefresh = async (isPlatform: boolean): Promise<any> => {
+  // If there is no session indicator at all, do NOT make network requests to refresh
+  if (!hasSessionIndicator(isPlatform)) {
+    return Promise.reject({
+      response: {
+        status: 401,
+        data: { message: 'No session indicator present' },
+      },
+    });
+  }
+
   const maxRetries = 4;
   let lastError: any = null;
   const portal = isPlatform ? 'platform' : 'staff';
@@ -1188,9 +1241,10 @@ function reportFailedApiCall(method: string, path: string, status: number, reque
     }
   }
 
-  const page = typeof window !== 'undefined' ? window.location.pathname : '';
-  const message = `API call failed: ${method} ${path} -> Status ${status || 'NETWORK_ERROR'}`;
-  const componentStack = `Method: ${method}, URL: ${path}, Status: ${status}, RequestId: ${requestId}, Page: ${page}`;
+  const page = typeof window !== 'undefined' ? window.location.pathname.split('?')[0] : '';
+  const cleanPath = (path || '/').split('?')[0].split('#')[0].trim() || '/';
+  const message = `API call failed: ${method} ${cleanPath} -> Status ${status || 'NETWORK_ERROR'}`;
+  const componentStack = `Method: ${method}, URL: ${cleanPath}, Status: ${status}, RequestId: ${requestId}, Page: ${page}`;
 
   try {
     fetch(`${getApiBaseUrl()}/client-errors`, {
@@ -1198,10 +1252,12 @@ function reportFailedApiCall(method: string, path: string, status: number, reque
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: requestId,
-        route: path.substring(0, 500),
+        method,
+        status,
+        route: cleanPath.substring(0, 500),
         page: page.substring(0, 100),
-        message: message.substring(0, 5000),
-        componentStack: componentStack.substring(0, 10000),
+        message: message.substring(0, 255),
+        componentStack: componentStack.substring(0, 500),
         buildVersion: import.meta.env.VITE_APP_VERSION || '1.0.0',
       }),
     }).catch(() => {});
@@ -1288,6 +1344,7 @@ export async function requestWithColdStartRetry<T>(
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
   getHealth: () => api.get('/health'),
+  getPlatformHealth: () => api.get('/health/platform'),
   getSchemaStatus: () => api.get('/health/schema'),
   login: (identifier: string, password: string, companyCode?: string, keepSignedIn?: boolean) =>
     requestWithColdStartRetry(() =>
@@ -1607,7 +1664,8 @@ export const inventoryApi = {
   createSku: (data: any) => api.post('/inventory/skus', data),
   updateSku: (id: string, data: any) => api.patch(`/inventory/skus/${id}`, data),
   deleteSku: (id: string) => api.delete(`/inventory/skus/${id}`),
-  bulkDeleteSkus: (ids: string[]) => api.post('/inventory/skus/bulk-delete', { ids }),
+  bulkDeleteSkus: (ids: string[], confirmation: string, company: string, count?: number) =>
+    api.post('/inventory/skus/bulk-delete', { ids, confirmation, company, count: count ?? ids.length }),
   importCsv: (file: File, warehouseCode?: string) => {
     const fd = new FormData();
     fd.append('file', file);

@@ -6,6 +6,7 @@
  * ----------------------------------------------------- */
 
 import { toPlainText } from '@crm/shared-validation';
+import { generateSupportCode } from './supportCode';
 export { toPlainText };
 
 export interface ParsedApiError {
@@ -14,21 +15,22 @@ export interface ParsedApiError {
   message: string;
   fieldErrors: Record<string, string>;
   requestId?: string;
+  supportCode?: string;
   rawDetails: string;
 }
 
 const HTTP_STATUS_MESSAGES: Record<number, string> = {
-  401: 'Your session has expired. Please sign in again to continue.',
+  401: 'Session expired. Please sign in again.',
   403: 'You do not have permission to perform this action.',
-  404: 'The requested record could not be found.',
+  404: 'The requested resource could not be found.',
   409: 'A record with this information already exists.',
   413: 'The uploaded file or request is too large. Please reduce the size and try again.',
   422: 'The submitted data could not be processed. Please check the values and try again.',
-  429: 'Too many requests. Please wait a moment before trying again.',
-  500: 'An unexpected server error occurred. Please try again shortly.',
-  502: 'The server is temporarily unavailable. Please try again shortly.',
-  503: 'The service is temporarily unavailable. Please try again in a few moments.',
-  504: 'The server request timed out. Please try again shortly.',
+  429: 'Too many attempts. Please wait a few minutes.',
+  500: 'We could not complete your request right now. Please try again in a few minutes.',
+  502: 'The system is being updated. Please try again in a few minutes.',
+  503: 'The system is being updated. Please try again in a few minutes.',
+  504: 'The request timed out. Please try again in a few minutes.',
 };
 
 /**
@@ -100,22 +102,26 @@ export function parseApiError(err: any): ParsedApiError {
     }
   }
 
+  const supportCode = data?.supportCode || err?.response?.headers?.['x-support-code'] || generateSupportCode(requestId);
+
   // Determine top-level message
   let topMessage = '';
   if (code === 'UNKNOWN_FIELD') {
     topMessage = 'The submitted form contains unrecognized parameters. Please refresh and try again.';
+  } else if (code === 'SCHEMA_OUT_OF_DATE' || code === 'SERVER_UPDATE_PENDING' || status === 503) {
+    topMessage = 'The system is being updated. Please try again in a few minutes.';
   } else if (Object.keys(fieldErrors).length > 0) {
     topMessage = 'Please correct the highlighted fields and try again.';
   } else if (HTTP_STATUS_MESSAGES[status]) {
     topMessage = HTTP_STATUS_MESSAGES[status];
   } else if (status >= 500) {
-    topMessage = 'An unexpected server error occurred. Please try again shortly.';
+    topMessage = 'We could not complete your request right now. Please try again in a few minutes.';
   } else if (status === 0) {
-    topMessage = 'Unable to connect to the server. Please check your internet connection.';
+    topMessage = 'Could not reach the server. Check your internet and try again.';
   } else if (typeof data?.message === 'string') {
     topMessage = sanitizeUserMessage(data.message);
   } else {
-    topMessage = 'Unable to complete your request. Please try again.';
+    topMessage = 'We could not complete your request right now. Please try again in a few minutes.';
   }
 
   // Construct raw details for "Copy details" button
@@ -124,7 +130,7 @@ export function parseApiError(err: any): ParsedApiError {
     `Code: ${code}`,
     `Message: ${topMessage}`,
   ];
-  if (requestId) detailsLines.push(`Reference ID: ${requestId}`);
+  if (supportCode) detailsLines.push(`Support Code: ${supportCode}`);
   if (Object.keys(fieldErrors).length > 0) {
     detailsLines.push('Field Errors:');
     for (const [f, m] of Object.entries(fieldErrors)) {
@@ -138,6 +144,7 @@ export function parseApiError(err: any): ParsedApiError {
     message: topMessage,
     fieldErrors,
     requestId,
+    supportCode,
     rawDetails: detailsLines.join('\n'),
   };
 }

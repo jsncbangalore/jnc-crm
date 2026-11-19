@@ -9,6 +9,7 @@ import {
   CheckSquare, Square, Layers, LayoutGrid, ChevronRight, Eye, Plus, Sparkles, FolderKey
 } from 'lucide-react';
 import api, { usersApi, authApi } from '../services/api';
+import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import { User, Role } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
@@ -294,6 +295,7 @@ export default function UsersPage() {
   const assignableRoles = getAllowedAssignableRoles(currentUser?.role);
 
   const [users, setUsers] = useState<User[]>([]);
+  const [error, setError] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -527,6 +529,7 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError(null);
       const { data } = await usersApi.list({
         search,
         role: roleFilter,
@@ -536,6 +539,8 @@ export default function UsersPage() {
       setUsers(data.items || []);
     } catch (err) {
       console.error('Failed to load team users:', err);
+      setError(parseApiError(err));
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -1343,6 +1348,21 @@ export default function UsersPage() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
+
+  if (error && users.length === 0) {
+    return (
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 select-none">
+        <ErrorStateCard
+          message={error.message}
+          status={error.status}
+          isNetworkError={error.isNetworkError}
+          referenceId={error.referenceId}
+          supportCode={error.supportCode}
+          onRetry={fetchUsers}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

@@ -38,7 +38,7 @@ export default function QuotationsPage() {
 
   const [quotations, setQuotations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean } | null>(null);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean; referenceId?: string; supportCode?: string } | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(() => {
     return searchParams.get('filter') === 'pending' ? 'draft' : 'all';
@@ -279,6 +279,8 @@ export default function QuotationsPage() {
           message={error.message}
           status={error.status}
           isNetworkError={error.isNetworkError}
+          referenceId={error.referenceId}
+          supportCode={error.supportCode}
           onRetry={fetchQuotations}
         />
       </div>

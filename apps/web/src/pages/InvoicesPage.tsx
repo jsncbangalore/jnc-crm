@@ -202,7 +202,7 @@ export default function InvoicesPage() {
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean; referenceId?: string; code?: string } | null>(null);
+  const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean; referenceId?: string; code?: string; supportCode?: string } | null>(null);
   const [search, setSearch] = useState(() => searchParams.get('search') || searchParams.get('invoiceNumber') || '');
   const [docTypeFilter, setDocTypeFilter] = useState<string>(() => {
     if (searchParams.get('filter') === 'lut') return 'sez_invoice';
@@ -529,6 +529,7 @@ export default function InvoicesPage() {
           status={error.status}
           isNetworkError={error.isNetworkError}
           referenceId={error.referenceId}
+          supportCode={error.supportCode}
           onRetry={fetchInvoices}
         />
       </div>

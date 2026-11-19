@@ -31,6 +31,7 @@ import {
   isSaveInProgress,
   notifyUserActivity,
   checkAndPerformProactiveRefresh,
+  hasSessionIndicator,
 } from '../services/api';
 import {
   subscribeCrossTabAuth,
@@ -589,7 +590,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if (isPlatformRoute) {
-          // On platform routes, restore strictly platform session
+          // On platform routes, check for session indicator before attempting network refresh
+          if (!hasSessionIndicator(true)) {
+            setPlatformAccessToken(null);
+            setPlatformUserWithStorage(null);
+            setIsLoading(false);
+            return;
+          }
           try {
             const { data } = await platformAuthApi.refresh();
             if (isMounted && data) {
@@ -613,7 +620,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }
         } else {
-          // On staff/company routes, restore strictly staff session
+          // On staff/company routes, check for session indicator before attempting network refresh
+          if (!hasSessionIndicator(false)) {
+            setStaffAccessToken(null);
+            setStaffUserWithStorage(null);
+            setIsLoading(false);
+            return;
+          }
           try {
             const { data } = await authApi.refresh();
             if (isMounted && data) {

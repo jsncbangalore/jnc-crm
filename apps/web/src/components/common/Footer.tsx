@@ -10,6 +10,8 @@ import { Link } from 'react-router-dom';
 import { BRAND } from '../../config/brand';
 import { openCookiePreferencesPanel } from '../../utils/cookieConsent';
 import { authApi } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
+import { isPlatformOwner } from '../../utils/roles';
 
 export interface FooterProps {
   className?: string;
@@ -24,12 +26,26 @@ export const Footer: React.FC<FooterProps> = ({
 }) => {
   const [apiCommitId, setApiCommitId] = useState<string | null>(null);
   const webCommitId = (import.meta.env.VITE_GIT_COMMIT as string) || 'dev';
+  const auth = useAuth();
+  const user = auth?.user;
+  const isImpersonating = auth?.isImpersonating;
+
+  const isPlatformConsole =
+    typeof window !== 'undefined' && window.location.pathname.startsWith('/platform');
+  const isPlatformAdmin = Boolean(
+    user && (isPlatformOwner(user) || user.role === 'platform_super_admin') && !isImpersonating
+  );
+
+  // Show web and API build ids only to signed-in platform administrators inside the platform console
+  const showBuildIds = isPlatformConsole && isPlatformAdmin;
 
   useEffect(() => {
+    if (!showBuildIds) return;
     let mounted = true;
     authApi
-      .getHealth()
-      .then((res) => {
+      .getPlatformHealth()
+      .catch(() => authApi.getHealth())
+      .then((res: any) => {
         if (mounted && res?.data?.commitId) {
           setApiCommitId(res.data.commitId);
         }
@@ -38,9 +54,23 @@ export const Footer: React.FC<FooterProps> = ({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [showBuildIds]);
 
-  const isMismatch = Boolean(apiCommitId && webCommitId && !['dev', 'unknown', 'local-dev'].includes(webCommitId) && !['dev', 'unknown', 'local-dev'].includes(apiCommitId) && apiCommitId !== webCommitId);
+  const cleanWeb = (webCommitId || '').trim().toLowerCase();
+  const cleanApi = (apiCommitId || '').trim().toLowerCase();
+  const web7 = cleanWeb.slice(0, 7);
+  const api7 = cleanApi.slice(0, 7);
+
+  const isIgnored = (id: string) => !id || ['dev', 'unknown', 'local-dev'].includes(id);
+
+  // Fix comparison so equal ids never warn (trim, lowercase, compare first 7 characters)
+  const isMismatch = Boolean(
+    cleanApi &&
+    cleanWeb &&
+    !isIgnored(cleanWeb) &&
+    !isIgnored(cleanApi) &&
+    web7 !== api7
+  );
 
   return (
     <footer
@@ -53,18 +83,22 @@ export const Footer: React.FC<FooterProps> = ({
     >
       <div className="flex items-center gap-3 flex-wrap">
         <span data-testid="footer-copyright-text">{BRAND.copyright}</span>
-        <span aria-hidden="true" className="opacity-40">•</span>
-        <div data-testid="footer-build-ids" className="flex items-center gap-1.5 text-[11px] font-mono">
-          {isMismatch ? (
-            <span className="text-amber-600 dark:text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-              ⚠️ Build mismatch: Web {webCommitId.slice(0, 7)} / API {apiCommitId?.slice(0, 7)}
-            </span>
-          ) : (
-            <span className="opacity-75">
-              Build {webCommitId.slice(0, 7)}{apiCommitId && apiCommitId !== webCommitId ? ` (API: ${apiCommitId.slice(0, 7)})` : ''}
-            </span>
-          )}
-        </div>
+        {showBuildIds && (
+          <>
+            <span aria-hidden="true" className="opacity-40">•</span>
+            <div data-testid="footer-build-ids" className="flex items-center gap-1.5 text-[11px] font-mono">
+              {isMismatch ? (
+                <span className="text-amber-600 dark:text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                  ⚠️ Build mismatch: Web {web7} / API {api7}
+                </span>
+              ) : (
+                <span className="opacity-75">
+                  Build {web7}
+                </span>
+              )}
+            </div>
+          </>
+        )}
       </div>
       {showCookieLinks && (
         <div className="flex items-center gap-3 sm:gap-4 text-xs" data-testid="footer-cookie-links-container">

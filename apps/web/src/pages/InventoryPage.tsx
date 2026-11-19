@@ -232,6 +232,8 @@ export default function InventoryPage() {
     description: string;
     confirmText: string;
     danger?: boolean;
+    requiredTypedConfirmation?: string;
+    typedConfirmation?: string;
     onConfirm: () => Promise<void> | void;
   }>({
     isOpen: false,
@@ -239,6 +241,8 @@ export default function InventoryPage() {
     description: '',
     confirmText: 'Confirm',
     danger: false,
+    requiredTypedConfirmation: undefined,
+    typedConfirmation: '',
     onConfirm: () => {},
   });
 
@@ -608,20 +612,33 @@ export default function InventoryPage() {
   // Bulk Delete
   const handleBulkDelete = () => {
     if (!canDelete || selectedIds.length === 0) return;
+    const requiredPhrase = `DELETE ${selectedIds.length} PRODUCTS`;
+    const company = user?.tenant?.name || (user as any)?.companyName || '';
     setConfirmModal({
       isOpen: true,
       title: `Delete ${selectedIds.length} Selected Components?`,
-      description: `Are you sure you want to permanently delete ${selectedIds.length} selected components from inventory? This action cannot be undone.`,
+      description: `Permanently deleting ${selectedIds.length} components from inventory cannot be undone. To prevent accidental bulk deletions, please type the confirmation phrase below.`,
       confirmText: `Delete ${selectedIds.length} Items`,
       danger: true,
+      requiredTypedConfirmation: requiredPhrase,
+      typedConfirmation: '',
       onConfirm: async () => {
         try {
+          const skuIds = selectedIds
+            .map((id) => {
+              const item = combinedComponents.find((it) => it.id === id);
+              return item?.skuId || id;
+            })
+            .filter(Boolean);
+
+          if (skuIds.length > 0) {
+            await inventoryApi.bulkDeleteSkus(skuIds, requiredPhrase, company, skuIds.length);
+          }
+
           for (const id of selectedIds) {
             const item = combinedComponents.find((it) => it.id === id);
             if (item?.positionId) {
               await inventoryApi.deleteProjectStockPosition(item.positionId);
-            } else if (item?.skuId) {
-              await inventoryApi.deleteSku(item.skuId);
             }
           }
           setSelectedIds([]);
@@ -629,7 +646,7 @@ export default function InventoryPage() {
         } catch (err: any) {
           console.error('Delete failed:', err);
         } finally {
-          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+          setConfirmModal((prev) => ({ ...prev, isOpen: false, typedConfirmation: '' }));
         }
       },
     });
@@ -1844,18 +1861,39 @@ export default function InventoryPage() {
                 {confirmModal.description}
               </p>
 
+              {confirmModal.requiredTypedConfirmation && (
+                <div className="space-y-2 pt-1">
+                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                    Type <span className="font-mono font-bold text-red-600 dark:text-red-400 select-all">{confirmModal.requiredTypedConfirmation}</span> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    value={confirmModal.typedConfirmation || ''}
+                    onChange={(e) => setConfirmModal((prev) => ({ ...prev, typedConfirmation: e.target.value }))}
+                    placeholder={confirmModal.requiredTypedConfirmation}
+                    className="w-full text-xs px-3 py-2 border rounded-lg bg-white dark:bg-[#1E2230] border-slate-300 dark:border-[#2A3042] text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                    autoFocus
+                  />
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
-                  onClick={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+                  onClick={() => setConfirmModal((prev) => ({ ...prev, isOpen: false, typedConfirmation: '' }))}
                   className="btn bg-white dark:bg-[#1E2230] hover:bg-slate-100 dark:hover:bg-[#252A3C] text-slate-800 dark:text-slate-300 text-xs px-4 py-2 border border-slate-300 dark:border-[#2A3042] font-bold shadow-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
+                  disabled={
+                    confirmModal.requiredTypedConfirmation
+                      ? confirmModal.typedConfirmation?.trim() !== confirmModal.requiredTypedConfirmation
+                      : false
+                  }
                   onClick={confirmModal.onConfirm}
-                  className={`btn text-xs px-5 py-2 font-bold flex items-center gap-1.5 shadow-sm ${
+                  className={`btn text-xs px-5 py-2 font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${
                     confirmModal.danger
                       ? 'bg-red-600 hover:bg-red-500 text-white'
                       : 'bg-crm-blue hover:bg-crm-blue-light text-white'

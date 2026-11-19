@@ -15,7 +15,9 @@
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # 4. Fallback all non-file routes to index.html for React Router pushState
+  # 4. Fallback only extensionless paths to index.html for React Router pushState
+  # Any missing file with an extension (.woff2, .js, .css, .png, .map, .json, etc.) returns 404, never index.html
+  RewriteCond %{REQUEST_URI} !\.[a-zA-Z0-9]{1,8}$
   RewriteRule ^ index.html [L]
 </IfModule>
 

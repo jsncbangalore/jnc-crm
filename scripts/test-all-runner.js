@@ -27,6 +27,9 @@
  * - Tax Invoice & Document Management: 33
  * - Authentication Reliability & Security: 30
  * - Verification Consistency & Sleep Resilience: 20
+ * - Production Security Hygiene: 30
+ * - Schema Drift, Predeploy & Dangerous Endpoints: 36
+ * - Browser Console Hygiene & Reliability: 42
  */
 
 const fs = require('fs');
@@ -395,6 +398,26 @@ runLayer('AA', 'Verification Consistency & Server Sleep Resilience Suite', (asse
   runDedicatedSuite('AA', 'Verification Consistency & Sleep Resilience', 'scripts/test-verification-consistency-suite.js', 20, assert);
 });
 
+// ─── LAYER AB: PRODUCTION SECURITY HYGIENE & PUBLIC EXPOSURE SUITE (30 tests) ─
+runLayer('AB', 'Production Security Hygiene & Public Exposure Prevention Suite', (assert) => {
+  runDedicatedSuite('AB', 'Production Security Hygiene', 'scripts/test-production-security-hygiene.js', 30, assert);
+});
+
+// ─── LAYER AC: SCHEMA DRIFT, PREDEPLOY & DANGEROUS ENDPOINTS SUITE (36 tests) ─
+runLayer('AC', 'Schema Drift, Predeploy Guard & Dangerous Endpoints Protection Suite', (assert) => {
+  runDedicatedSuite('AC', 'Schema Drift, Predeploy & Dangerous Endpoints', 'scripts/test-schema-drift-predeploy-suite.js', 36, assert);
+});
+
+// ─── LAYER AD: BROWSER CONSOLE HYGIENE, FONTS & RATE LIMIT FAIRNESS SUITE (42 tests) ─
+runLayer('AD', 'Browser Console Hygiene, Fonts & Rate Limit Fairness Suite', (assert) => {
+  runDedicatedSuite('AD', 'Browser Console Hygiene', 'scripts/test-browser-console-hygiene-suite.js', 42, assert);
+});
+
+// ─── LAYER AE: PUBLIC LEAK GUARD, FRIENDLY MESSAGES & SUPPORT CODE (33 tests) ─
+runLayer('AE', 'Public Protection, Friendly Messages & Support Code Suite', (assert) => {
+  runDedicatedSuite('AE', 'Public Protection & Support Code', 'scripts/test-public-leak-and-support-code-suite.js', 33, assert);
+});
+
 // ─── REPORT GENERATION ───────────────────────────────────────────────────────
 const jsonReportPath = path.join(REPORT_DIR, 'test-all-report.json');
 fs.writeFileSync(jsonReportPath, JSON.stringify(report, null, 2), 'utf8');
@@ -496,6 +519,10 @@ const comparisonRows = [
   { suite: 'Tax Invoice & Document Management', file: 'scripts/test-invoice-tax-fixes-suite.js', expected: 33, layer: 'Y' },
   { suite: 'Authentication Reliability & Security', file: 'scripts/test-auth-reliability-suite.js', expected: 30, layer: 'Z' },
   { suite: 'Verification Consistency & Sleep Resilience', file: 'scripts/test-verification-consistency-suite.js', expected: 20, layer: 'AA' },
+  { suite: 'Production Security Hygiene', file: 'scripts/test-production-security-hygiene.js', expected: 30, layer: 'AB' },
+  { suite: 'Schema Drift, Predeploy & Dangerous Endpoints', file: 'scripts/test-schema-drift-predeploy-suite.js', expected: 36, layer: 'AC' },
+  { suite: 'Browser Console Hygiene & Fonts', file: 'scripts/test-browser-console-hygiene-suite.js', expected: 42, layer: 'AD' },
+  { suite: 'Public Protection, Friendly Messages & Support Code', file: 'scripts/test-public-leak-and-support-code-suite.js', expected: 33, layer: 'AE' },
 ];
 
 console.log('\n========================================================================================');

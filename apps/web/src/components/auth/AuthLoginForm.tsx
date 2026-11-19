@@ -22,6 +22,7 @@ import {
 import { useAuth, CompanyChoice } from '../../contexts/AuthContext';
 import { getRoleRedirectPath } from '../../utils/roles';
 import { authApi, platformAuthApi, subscribeColdStart, getApiErrorMessage, getApiBaseUrl } from '../../services/api';
+import { generateSupportCode, isSupportCodeHidden } from '../../utils/supportCode';
 import { checkApiCompatibility } from '../../utils/versionCheck';
 import TwoFactorChallenge from '../common/TwoFactorChallenge';
 
@@ -57,10 +58,34 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
   // ── UI state ────────────────────────────────────────────────────────────────
   const [step, setStep] = useState<Step>('login');
   const [error, setError] = useState('');
+  const [supportCode, setSupportCode] = useState('');
+  const [copiedSupportCode, setCopiedSupportCode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [maintenanceNotice, setMaintenanceNotice] = useState('');
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState(0);
+
+  // Rate limit countdown effect
+  useEffect(() => {
+    if (retryAfterSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setRetryAfterSeconds((prev) => {
+        if (prev <= 1) {
+          setError('');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [retryAfterSeconds]);
+
+  const formatCountdown = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
 
   // ── 2FA state ───────────────────────────────────────────────────────────────
   const [twoFactorData, setTwoFactorData] = useState<{
@@ -317,7 +342,28 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       navigate(destination, { replace: true });
     } catch (err: any) {
       setPassword('');
-      setError(getApiErrorMessage(err));
+      if (err?.response?.status === 429) {
+        const retryHeader = err?.response?.headers?.['retry-after'];
+        const retryData = err?.response?.data?.retryAfter;
+        let seconds = parseInt(String(retryHeader || retryData), 10);
+        if (isNaN(seconds) || seconds <= 0) {
+          seconds = 900;
+        }
+        setRetryAfterSeconds(seconds);
+        const minutes = Math.max(1, Math.ceil(seconds / 60));
+        setError(`Too many attempts. Please wait ${minutes} minute${minutes === 1 ? '' : 's'}.`);
+        setSupportCode('');
+      } else {
+        const errMsg = getApiErrorMessage(err);
+        setError(errMsg);
+        const sCode =
+          err?.response?.data?.supportCode ||
+          err?.response?.headers?.['x-support-code'] ||
+          (err?.response?.status >= 500
+            ? generateSupportCode(err?.response?.data?.requestId || err?.response?.headers?.['x-request-id'])
+            : '');
+        setSupportCode(sCode || '');
+      }
     } finally {
       setLoading(false);
     }
@@ -368,7 +414,28 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
       navigate(destination, { replace: true });
     } catch (err: any) {
       setPassword('');
-      setError(getApiErrorMessage(err));
+      if (err?.response?.status === 429) {
+        const retryHeader = err?.response?.headers?.['retry-after'];
+        const retryData = err?.response?.data?.retryAfter;
+        let seconds = parseInt(String(retryHeader || retryData), 10);
+        if (isNaN(seconds) || seconds <= 0) {
+          seconds = 900;
+        }
+        setRetryAfterSeconds(seconds);
+        const minutes = Math.max(1, Math.ceil(seconds / 60));
+        setError(`Too many attempts. Please wait ${minutes} minute${minutes === 1 ? '' : 's'}.`);
+        setSupportCode('');
+      } else {
+        const errMsg = getApiErrorMessage(err);
+        setError(errMsg);
+        const sCode =
+          err?.response?.data?.supportCode ||
+          err?.response?.headers?.['x-support-code'] ||
+          (err?.response?.status >= 500
+            ? generateSupportCode(err?.response?.data?.requestId || err?.response?.headers?.['x-request-id'])
+            : '');
+        setSupportCode(sCode || '');
+      }
     } finally {
       setLoading(false);
     }
@@ -399,7 +466,25 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
         {error && (
           <div className="p-3.5 rounded-[10px] bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-[14px] font-medium flex items-start gap-2.5" role="alert">
             <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
-            <span>{error}</span>
+            <div className="flex-1">
+              <span>{error}</span>
+              {!isSupportCodeHidden() && supportCode && (
+                <div data-testid="select-company-support-code" className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-mono">
+                  <span>Support code: <span className="font-bold select-all">{supportCode}</span></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(supportCode);
+                      setCopiedSupportCode(true);
+                      setTimeout(() => setCopiedSupportCode(false), 2000);
+                    }}
+                    className="text-[11px] px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700/70 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors cursor-pointer"
+                  >
+                    {copiedSupportCode ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -436,10 +521,12 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
 
           <button
             type="submit"
-            disabled={loading || isMaintenanceMode || !selectedCompanyCode}
+            disabled={loading || isMaintenanceMode || !selectedCompanyCode || retryAfterSeconds > 0}
             className="w-full h-[48px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none text-[16px] font-semibold text-white shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus:ring-[3px] focus:ring-blue-500/30"
           >
-            {loading ? (
+            {retryAfterSeconds > 0 ? (
+              <span>Try again in {formatCountdown(retryAfterSeconds)}</span>
+            ) : loading ? (
               <>
                 <RefreshCw size={18} className="animate-spin" />
                 <span>Signing in...</span>
@@ -608,7 +695,24 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
           >
             <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
             <div className="flex-1">
-              <span>{error}</span>
+              <span>{retryAfterSeconds > 0 ? `Too many attempts. Please wait ${Math.max(1, Math.ceil(retryAfterSeconds / 60))} minute${Math.max(1, Math.ceil(retryAfterSeconds / 60)) === 1 ? '' : 's'}.` : error}</span>
+              {!isSupportCodeHidden() && supportCode && (
+                <div data-testid="login-support-code" className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-mono">
+                  <span>Support code: <span className="font-bold select-all">{supportCode}</span></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(supportCode);
+                      setCopiedSupportCode(true);
+                      setTimeout(() => setCopiedSupportCode(false), 2000);
+                    }}
+                    className="text-[11px] px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700/70 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors cursor-pointer"
+                    data-testid="copy-support-code-btn"
+                  >
+                    {copiedSupportCode ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              )}
               {/* Step 5: Wrong Portal Help */}
               {isPlatform && error.toLowerCase().includes('invalid credentials') && (
                 <div className="mt-1 text-[12px] text-slate-700 dark:text-slate-300">
@@ -795,10 +899,12 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
         <div className="pt-1.5">
           <button
             type="submit"
-            disabled={loading || isMaintenanceMode}
+            disabled={loading || isMaintenanceMode || retryAfterSeconds > 0}
             className="w-full h-[44px] rounded-[10px] bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-600 dark:disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none text-[15px] font-semibold text-white shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus:ring-[3px] focus:ring-blue-500/30"
           >
-            {loading ? (
+            {retryAfterSeconds > 0 ? (
+              <span>Try again in {formatCountdown(retryAfterSeconds)}</span>
+            ) : loading ? (
               <>
                 <RefreshCw size={18} className="animate-spin" />
                 <span>Signing in...</span>

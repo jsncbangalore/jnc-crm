@@ -19,6 +19,7 @@ import {
   Database,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { generateSupportCode, isSupportCodeHidden } from '../../utils/supportCode';
 
 export interface UnifiedErrorProps {
   error?: any;
@@ -29,6 +30,7 @@ export interface UnifiedErrorProps {
   page?: string;
   recordType?: string;
   referenceId?: string;
+  supportCode?: string;
   status?: number;
   onRetry?: () => void;
   onAction?: () => void;
@@ -46,6 +48,7 @@ export function UnifiedErrorComponent({
   page,
   recordType,
   referenceId: propReferenceId,
+  supportCode: propSupportCode,
   status: propStatus,
   onRetry,
   onAction,
@@ -62,16 +65,20 @@ export function UnifiedErrorComponent({
   const status = propStatus || error?.response?.status || errData?.statusCode || 500;
   const code = propCode || errData?.code || 'ERROR';
   const field = propField || errData?.field || (errData?.fieldErrors?.[0]?.field);
-  const referenceId =
-    propReferenceId && propReferenceId !== 'N/A'
-      ? propReferenceId
-      : errData?.requestId ||
-        error?.requestId ||
-        error?.response?.headers?.['x-request-id'] ||
-        error?.response?.headers?.['X-Request-Id'] ||
-        error?.config?.headers?.['x-request-id'] ||
-        error?.config?.headers?.['X-Request-Id'] ||
-        (typeof crypto !== 'undefined' && crypto.randomUUID ? `req_${crypto.randomUUID().slice(0, 8)}` : `req_${Date.now()}`);
+  const rawRequestId =
+    errData?.requestId ||
+    error?.requestId ||
+    error?.response?.headers?.['x-request-id'] ||
+    error?.response?.headers?.['X-Request-Id'] ||
+    propReferenceId;
+
+  // Short support code (e.g. K7F-29Q) derived deterministically; UUID is never shown on screen
+  const supportCode =
+    propSupportCode ||
+    errData?.supportCode ||
+    error?.supportCode ||
+    error?.response?.headers?.['x-support-code'] ||
+    generateSupportCode(rawRequestId);
 
   const isAdmin =
     user?.role === 'admin' ||
@@ -80,11 +87,19 @@ export function UnifiedErrorComponent({
     user?.role === 'platform_admin' ||
     (user as any)?.isPlatformAdmin === true;
 
-  // Derive plain-words message
-  let displayMessage = customMessage || errData?.message || error?.message || 'An unexpected problem occurred.';
+  // Derive plain-words friendly message
+  // serverMessage || `The system needs an update`
+  // Reference: ${rawRequestId}
+  const serverMessage = customMessage || (typeof errData?.message === 'string' && errData.message.trim() ? errData.message.trim() : null) || (typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : null);
 
-  if (code === 'SCHEMA_OUT_OF_DATE' || status === 503) {
-    displayMessage = `The system needs an update. Nothing was lost. Ask your administrator (reference ${referenceId}).`;
+  let displayMessage = serverMessage || 'We could not complete your request right now. Please try again in a few minutes.';
+
+  if (code === 'SCHEMA_OUT_OF_DATE' || code === 'SERVER_UPDATE_PENDING' || status === 503) {
+    displayMessage = 'The system is being updated. Please try again in a few minutes.';
+  } else if (status === 429) {
+    displayMessage = 'Too many attempts. Please wait a few minutes.';
+  } else if (status >= 500) {
+    displayMessage = 'We could not complete your request right now. Please try again in a few minutes.';
   } else if (code === 'DUPLICATE') {
     displayMessage = field
       ? `A record with this ${field.toLowerCase()} already exists in the system.`
@@ -122,7 +137,7 @@ export function UnifiedErrorComponent({
     const details = {
       code,
       module: page || 'CRM',
-      referenceId,
+      supportCode,
       status,
       field,
       recordType,
@@ -147,10 +162,33 @@ export function UnifiedErrorComponent({
             <p className="text-xs font-bold text-slate-900 dark:text-white">
               {displayMessage}
             </p>
-            <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-              <span>Where: <span className="font-semibold text-slate-700 dark:text-slate-300">{whereLocation}</span></span>
-              <span>•</span>
-              <span className="font-mono">Ref: {referenceId}</span>
+            <div className="flex flex-col gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+              <div className="flex items-center gap-2">
+                <span>Where: <span className="font-semibold text-slate-700 dark:text-slate-300">{whereLocation}</span></span>
+                {!isSupportCodeHidden() && supportCode && (
+                  <>
+                    <span>•</span>
+                    <span data-testid="error-support-code">Support code: <span className="font-mono font-bold text-slate-700 dark:text-slate-200 select-all">{supportCode}</span></span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(supportCode);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="px-1.5 py-0.5 text-[10px] rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 transition cursor-pointer"
+                      data-testid="copy-support-code-btn"
+                    >
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  </>
+                )}
+              </div>
+              {!isSupportCodeHidden() && supportCode && (
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                  If this keeps happening, contact support and quote this reference.
+                </p>
+              )}
             </div>
           </div>
           {effectiveActionHandler && (
@@ -191,11 +229,38 @@ export function UnifiedErrorComponent({
         {displayMessage}
       </p>
 
-      {/* Where & Reference number */}
-      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400 mb-5">
-        <span>Location: <span className="font-semibold text-slate-700 dark:text-slate-300">{whereLocation}</span></span>
-        <span>•</span>
-        <span className="font-mono select-all">Ref: <span className="font-bold text-slate-700 dark:text-slate-200">{referenceId}</span></span>
+      {/* Where & Support Code */}
+      <div className="flex flex-col items-center justify-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mb-5">
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+          <span>Location: <span className="font-semibold text-slate-700 dark:text-slate-300">{whereLocation}</span></span>
+          {!isSupportCodeHidden() && supportCode && (
+            <>
+              <span>•</span>
+              <span data-testid="error-support-code">Support code: <span className="font-mono font-bold text-slate-700 dark:text-slate-200 select-all">{supportCode}</span></span>
+              {rawRequestId && !/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i.test(rawRequestId) && (
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">(Ref: {rawRequestId})</span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  // navigator.clipboard.writeText(referenceId)
+                  navigator.clipboard.writeText(supportCode);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="px-1.5 py-0.5 text-[10px] rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 transition cursor-pointer"
+                data-testid="copy-support-code-btn"
+              >
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </>
+          )}
+        </div>
+        {!isSupportCodeHidden() && supportCode && (
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">
+            If this keeps happening, contact support and quote this reference.
+          </p>
+        )}
       </div>
 
       {/* Action Buttons */}
@@ -255,7 +320,7 @@ export function UnifiedErrorComponent({
                 </button>
               </div>
               <div className="text-slate-600 dark:text-slate-400">Module: {page || 'CRM Core'}</div>
-              <div className="text-slate-600 dark:text-slate-400">Request ID: {referenceId}</div>
+              <div className="text-slate-600 dark:text-slate-400">Support Code: {supportCode}</div>
               {field && <div className="text-slate-600 dark:text-slate-400">Field: {field}</div>}
               {recordType && <div className="text-slate-600 dark:text-slate-400">Record: {recordType}</div>}
             </div>

@@ -111,7 +111,12 @@ export function mapTwoFactorError(rawError: any): string {
     message.toLowerCase().includes('too many') ||
     message.toLowerCase().includes('locked')
   ) {
-    return 'Too many failed attempts. Please wait 10 minutes before trying again.';
+    if (message && message.toLowerCase().includes('too many attempts')) {
+      return message;
+    }
+    const retry = rawError?.response?.headers?.['retry-after'] || rawError?.response?.data?.retryAfter;
+    const mins = retry ? Math.max(1, Math.ceil(parseInt(String(retry), 10) / 60)) : 10;
+    return `Too many attempts. Try again in ${mins} minute${mins === 1 ? '' : 's'}.`;
   }
 
   return message || 'An unexpected error occurred. Please try again.';
