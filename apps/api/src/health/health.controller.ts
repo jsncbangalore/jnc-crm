@@ -75,6 +75,76 @@ export class HealthController {
       };
     } catch {}
 
+    const isHealthy =
+      database &&
+      migrationCounts.pendingCount === 0 &&
+      migrationCounts.failedCount === 0;
+
+    const isProd = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
+
+    if (isProd) {
+      return {
+        status: isHealthy ? 'ok' : 'degraded',
+        version: API_VERSION,
+        database: database ? 'ok' : 'down',
+        migrations: {
+          total: migrationCounts.total,
+          applied: migrationCounts.applied,
+          pending: migrationCounts.pendingCount,
+          failed: migrationCounts.failedCount,
+        },
+      };
+    }
+
+    return {
+      status: isHealthy ? 'ok' : 'degraded',
+      version: API_VERSION,
+      commitId: resolveApiCommitId(),
+      database: database ? 'ok' : 'down',
+      features: ['c2pa', 'auth', 'audit'],
+      migrations: {
+        total: migrationCounts.total,
+        applied: migrationCounts.applied,
+        pending: migrationCounts.pendingCount,
+        failed: migrationCounts.failedCount,
+      },
+    };
+  }
+
+  @Get('platform')
+  @UseGuards(AuthGuard('jwt'))
+  async getPlatformHealth(@Req() req: Request) {
+    const user = (req as any).user;
+    if (!user || (!['platform_super_admin', 'platform_admin', 'super_admin'].includes(user.role) && !user.isPlatformAdmin)) {
+      throw new ForbiddenException('Platform administrator access required');
+    }
+
+    let database = false;
+    try {
+      await this.prisma.$queryRawUnsafe('SELECT 1');
+      database = true;
+    } catch {
+      database = false;
+    }
+
+    let migrationCounts = {
+      total: 0,
+      applied: 0,
+      pendingCount: 0,
+      failedCount: 0,
+    };
+
+    let migrationStatusObj: any = null;
+    try {
+      migrationStatusObj = await getMigrationStatus(this.prisma);
+      migrationCounts = {
+        total: migrationStatusObj.total,
+        applied: migrationStatusObj.applied,
+        pendingCount: migrationStatusObj.pending.length,
+        failedCount: (migrationStatusObj.failedList || []).length,
+      };
+    } catch {}
+
     let emailHealth: any = { status: 'ok' };
     try {
       emailHealth = await this.notificationsService.getEmailHealthStatus();
@@ -87,34 +157,20 @@ export class HealthController {
       emailHealth.status !== 'down';
 
     return {
-      status: isHealthy ? (emailHealth.status === 'degraded' ? 'degraded' : 'ok') : 'degraded',
-      email: emailHealth.status,
-      emailDiagnostics: emailHealth,
+      status: isHealthy ? 'ok' : 'degraded',
       version: API_VERSION,
-      apiVersion: API_VERSION,
       commitId: resolveApiCommitId(),
-      buildTime: process.env.BUILD_TIME || STARTED_AT,
-      timestamp: new Date().toISOString(),
-      uptime: Math.round(process.uptime()),
-      database: database ? 'connected' : 'disconnected',
-      isDatabaseConnected: database,
-      migrations: migrationCounts,
-      migrationState: {
+      database: database ? 'ok' : 'down',
+      migrations: {
         total: migrationCounts.total,
-        appliedCount: migrationCounts.applied,
-        pendingList: migrationStatusObj?.pending || [],
-        failedList: migrationStatusObj?.failedList || [],
+        applied: migrationCounts.applied,
+        pending: migrationCounts.pendingCount,
+        failed: migrationCounts.failedCount,
       },
-      features: [
-        'auth',
-        'rbac',
-        'password-reset-flow',
-        'two-factor-auth',
-        'device-sessions',
-        'web-form-settings',
-        'meta-whatsapp-webhooks',
-        'indiamart-webhooks',
-      ],
+      migrationDetails: migrationStatusObj,
+      emailDiagnostics: emailHealth,
+      uptime: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -122,6 +178,8 @@ export class HealthController {
   @Public()
   async getReady(@Res({ passthrough: true }) res: Response) {
     const status = await getMigrationStatus(this.prisma);
+    const isProd = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
+
     if (!status.isReady) {
       res.status(HttpStatus.SERVICE_UNAVAILABLE);
       return {
@@ -132,7 +190,7 @@ export class HealthController {
           total: status.total,
           applied: status.applied,
           pendingCount: status.pending.length,
-          pending: status.pending,
+          ...(isProd ? {} : { pending: status.pending }),
         },
       };
     }

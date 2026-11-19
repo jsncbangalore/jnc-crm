@@ -16,17 +16,32 @@ import {
 import { Request, Response } from 'express';
 import { maskSensitiveUrl } from './request-id.middleware';
 import { humanizeField } from './validation-error.formatter';
+import { redactSensitiveString } from './redact.util';
+import { generateSupportCode } from './support-code.util';
 
 export interface StandardApiErrorResponse {
   statusCode: number;
   code: string;
   message: string;
-  field?: string;
-  fieldErrors?: Array<{ field: string; message: string }>;
-  unknownFields?: string[];
   requestId: string;
+  supportCode?: string;
+  fieldErrors: Array<{ field: string; message: string }>;
+  field?: string;
+  unknownFields?: string[];
   timestamp?: string;
 }
+
+const FORBIDDEN_INTERNAL_PATTERNS = [
+  /(\b(?:SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|JOIN|GROUP BY|ORDER BY|pg_|psql)\b)/i,
+  /(\b(?:relation|column|table)\s+["'][a-zA-Z0-9_.-]+["'])/i,
+  /(\b(?:Prisma|PrismaClient|P2002|P2003|P2025|P2021|P2022|P1001|P1002|P2024|P2034)\b)/i,
+  /(\b(?:at\s+.*\(.*:\d+:\d+\)|node_modules|\/apps\/api|\/dist\/|C:\\|\\dist\\)\b)/i,
+  /(\b(?:NODE_ENV|DATABASE_URL|DIRECT_URL|JWT_SECRET|JWT_REFRESH_SECRET|ENCRYPTION_KEY|OTP_SECRET|SMTP_PASS)\b)/i,
+  /(\b(?:NestJS|Express|PostgreSQL|Fastify)\b)/i,
+  /(Only\s+(?:Developer Leads|Project Managers|Tenant Admin|Admin|Platform Super Admin)\b)/i,
+  /(You do not hold:\s+[a-zA-Z0-9_, -]+)/i,
+  /(Cannot\s+(?:GET|POST|PUT|PATCH|DELETE)\s+\/.*)/i,
+];
 
 @Catch()
 export class GlobalHttpExceptionFilter implements ExceptionFilter {
@@ -36,11 +51,12 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request & { id?: string; user?: any; tenantId?: string }>();
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
 
-    const requestId = (request.headers['x-request-id'] as string) || request.id || `req_${Date.now()}`;
-    const tenantId = (request as any).user?.tenantId || (request as any).tenantId || (request.headers['x-tenant-id'] as string) || 'none';
+    const requestId = (request.headers?.['x-request-id'] as string) || request.id || `req_${Date.now()}`;
+    const tenantId = (request as any).user?.tenantId || (request as any).tenantId || (request.headers?.['x-tenant-id'] as string) || 'none';
     const userId = (request as any).user?.userId || (request as any).user?.id || 'none';
-    const route = maskSensitiveUrl(request.originalUrl || request.url);
+    const route = maskSensitiveUrl(request.originalUrl || request.url || '');
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code = 'INTERNAL';
@@ -197,7 +213,7 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
         code = 'SCHEMA_OUT_OF_DATE';
         const model = prismaErr.meta?.modelName || 'unknown_model';
         const rawCol = prismaErr.meta?.column || prismaErr.meta?.table || 'unknown_column';
-        message = 'The system needs an update. Nothing was lost. Ask your administrator.';
+        message = 'The system is being updated. Please try again in a few minutes.';
         field = this.extractSafeField(prismaErr.meta) || (rawCol.includes('.') ? rawCol.split('.').pop() : rawCol);
         fieldErrors = [];
         this.logger.error(
@@ -207,50 +223,144 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
       } else if (prismaCode === 'P1001' || prismaCode === 'P1002' || prismaCode === 'P2024') {
         status = HttpStatus.SERVICE_UNAVAILABLE;
         code = 'SERVER_UPDATE_PENDING';
-        message = 'Server update pending. Please try again in a few minutes.';
+        message = 'The system is being updated. Please try again in a few minutes.';
         fieldErrors = [];
       } else {
         // Other unknown Prisma errors become 500 INTERNAL with safe message
         status = HttpStatus.INTERNAL_SERVER_ERROR;
         code = 'INTERNAL';
-        message = 'An internal database error occurred.';
+        message = 'We could not complete your request right now. Please try again in a few minutes.';
         fieldErrors = [];
       }
     } else {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       code = 'INTERNAL';
-      message = 'An unexpected server error occurred. Please try again shortly.';
+      message = 'We could not complete your request right now. Please try again in a few minutes.';
     }
 
-    // Always log full error stack for 500s server-side with requestId
-    if (status >= 500 && status !== HttpStatus.SERVICE_UNAVAILABLE) {
-      const errorStack = exception instanceof Error ? exception.stack : String(exception);
-      this.logger.error(`[${requestId}] Server Error ${status} (${code}) on ${request.method} ${route} | tenantId=${tenantId} userId=${userId}: ${errorStack}`);
+    const supportCode = generateSupportCode(requestId);
+    const pathWithoutQuery = route.split('?')[0];
 
-      // Ensure 500s never leak SQL or stack traces to client
-      message = 'An internal database error occurred.';
+    // Always log full error stack for 500s server-side with requestId, errorClass, prismaCode and sanitized stack
+    if (status >= 500) {
+      const errorClass = (exception as any)?.name || (exception as any)?.constructor?.name || typeof exception;
+      const prismaCode = (exception as any)?.code || ((exception as any)?.name === 'PrismaClientInitializationError' ? 'P1001' : undefined);
+      const rawStack = exception instanceof Error ? (exception.stack || exception.message) : String(exception);
+      const sanitizedStack = redactSensitiveString(
+        rawStack
+          .replace(/(postgres(?:ql)?:\/\/[^:]+:)[^@]+(@)/gi, '$1***$2')
+          .replace(/(["']?(?:password|token|secret|jwt|apiKey|authorization)["']?\s*[:=]\s*["']?)([^"',\s\\]+)(["']?)/gi, '$1***$3')
+          .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, '$1***')
+      );
+
+      // EXACTLY ONE structured log line per Requirement 4
+      this.logger.error(
+        `[5XX] supportCode=${supportCode} requestId=${requestId} method=${request.method} path=${pathWithoutQuery} status=${status} errorClass=${errorClass} prismaCode=${prismaCode || 'NONE'} tenantId=${tenantId} userId=${userId} | Stack: ${sanitizedStack}`
+      );
+
+      // Ensure 500s never leak SQL or stack traces to client; use friendly messages
+      if (status === HttpStatus.SERVICE_UNAVAILABLE || code === 'SCHEMA_OUT_OF_DATE' || code === 'SERVER_UPDATE_PENDING') {
+        message = 'The system is being updated. Please try again in a few minutes.';
+      } else if (pathWithoutQuery.includes('/auth/login') || pathWithoutQuery.includes('/platform-auth/login')) {
+        message = 'We could not sign you in right now. Please try again in a few minutes.';
+      } else {
+        message = 'We could not complete your request right now. Please try again in a few minutes.';
+      }
       fieldErrors = [];
+    }
+
+    // ─── STRICT PRODUCTION MASKS & GENERIC AUTH RESPONSES ───────────────────
+    if (status === HttpStatus.TOO_MANY_REQUESTS || (status as number) === 429) {
+      code = 'TOO_MANY_REQUESTS';
+      const existingRetry = response.getHeader('Retry-After') || (exception as any)?.retryAfter || (exception as any)?.timeToBlockExpire;
+      let retrySeconds = parseInt(String(existingRetry), 10);
+      if (isNaN(retrySeconds) || retrySeconds <= 0) {
+        retrySeconds = 900;
+      }
+      if (typeof response.setHeader === 'function') {
+        response.setHeader('Retry-After', String(retrySeconds));
+      }
+      const minutes = Math.max(1, Math.ceil(retrySeconds / 60));
+      // Standard 429 rate limit message: Too many attempts. Try again in / Please wait N minutes.
+      message = `Too many attempts. Please wait ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+      field = undefined;
+      fieldErrors = [];
+    } else if (isProduction) {
+      if (status === HttpStatus.UNAUTHORIZED) {
+        const lower = message.toLowerCase();
+        if (lower.includes('expired') || lower.includes('token') || lower.includes('session')) {
+          message = 'Session expired. Please sign in again.';
+        } else {
+          message = 'Invalid credentials.';
+        }
+        field = undefined;
+        fieldErrors = [];
+      } else if (status === HttpStatus.FORBIDDEN) {
+        message = 'You do not have permission to perform this action.';
+        field = undefined;
+        fieldErrors = [];
+      } else if (status === HttpStatus.NOT_FOUND) {
+        message = 'The requested resource could not be found.';
+        field = undefined;
+        fieldErrors = [];
+      } else if (status === HttpStatus.SERVICE_UNAVAILABLE && (code === 'SCHEMA_OUT_OF_DATE' || code === 'SERVER_UPDATE_PENDING')) {
+        field = undefined;
+        fieldErrors = [];
+        message = 'The system is being updated. Please try again in a few minutes.';
+      } else if (status === HttpStatus.CONFLICT && code === 'LINKED_RECORD_MISSING') {
+        if (field !== 'customerId') {
+          field = undefined;
+          message = 'The referenced record does not exist or has been removed.';
+          fieldErrors = [];
+        }
+      }
+
+      // Check if any forbidden internal pattern leaked into message
+      for (const pat of FORBIDDEN_INTERNAL_PATTERNS) {
+        if (pat.test(message)) {
+          if (status === 404) message = 'The requested resource could not be found.';
+          else if (status === 403) message = 'You do not have permission to perform this action.';
+          else if (status === 401) message = 'Invalid credentials.';
+          else if (status === 503) message = 'The system is being updated. Please try again in a few minutes.';
+          else if (pathWithoutQuery.includes('/auth/login') || pathWithoutQuery.includes('/platform-auth/login'))
+            message = 'We could not sign you in right now. Please try again in a few minutes.';
+          else message = 'We could not complete your request right now. Please try again in a few minutes.';
+          break;
+        }
+      }
     }
 
     message = this.sanitizeToPlainSentence(message);
 
-    const errorBody: StandardApiErrorResponse = {
+    const errorBody: StandardApiErrorResponse & { retryAfter?: number; supportCode?: string } = {
       statusCode: status,
       code,
       message,
-      ...(field ? { field } : {}),
-      fieldErrors,
-      ...(code === 'UNKNOWN_FIELD' && fieldErrors.length > 0 ? { unknownFields: fieldErrors.map((f) => f.field) } : {}),
       requestId,
-      timestamp: new Date().toISOString(),
+      fieldErrors: Array.isArray(fieldErrors) ? fieldErrors : [],
+      ...(!isProduction ? { supportCode } : {}),
+      ...(status === 429 && typeof response.getHeader === 'function' && response.getHeader('Retry-After')
+        ? { retryAfter: parseInt(String(response.getHeader('Retry-After')), 10) }
+        : {}),
+      ...(!isProduction && field ? { field } : (isProduction && (code === 'VALIDATION_FAILED' || code === 'UNKNOWN_FIELD') && field ? { field } : {})),
+      ...(code === 'UNKNOWN_FIELD' && fieldErrors.length > 0 ? { unknownFields: fieldErrors.map((f) => f.field) } : {}),
     };
 
     const reqOrigin = request.headers?.origin;
-    if (reqOrigin && !response.getHeader('Access-Control-Allow-Origin')) {
-      response.setHeader('Access-Control-Allow-Origin', reqOrigin);
-      response.setHeader('Access-Control-Allow-Credentials', 'true');
+    if (typeof response.setHeader === 'function') {
+      if (reqOrigin && typeof response.getHeader === 'function' && !response.getHeader('Access-Control-Allow-Origin')) {
+        response.setHeader('Access-Control-Allow-Origin', reqOrigin);
+        response.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+      response.setHeader('x-support-code', supportCode);
+      response.setHeader('x-request-id', requestId);
+      response.setHeader('X-Content-Type-Options', 'nosniff');
+      response.setHeader('X-Frame-Options', 'DENY');
+      response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+      response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+      response.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none';");
     }
-    response.setHeader('x-request-id', requestId);
 
     return response.status(status).json(errorBody);
   }

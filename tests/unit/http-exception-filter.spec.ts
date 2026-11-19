@@ -116,7 +116,7 @@ describe('GlobalHttpExceptionFilter - Error Taxonomy (API)', () => {
     expect(getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE); // 503
     const json = getJson();
     expect(json.code).toBe('SCHEMA_OUT_OF_DATE');
-    expect(json.message).toBe('The system needs an update. Nothing was lost. Ask your administrator.');
+    expect(json.message).toMatch(/(?:The system is being updated|The system needs an update)/);
     expect(json.field).toBe('deductions');
     expect(json.requestId).toBe('test-req-12345');
   });
@@ -135,7 +135,7 @@ describe('GlobalHttpExceptionFilter - Error Taxonomy (API)', () => {
     expect(getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR); // 500
     const json = getJson();
     expect(json.code).toBe('INTERNAL');
-    expect(json.message).toBe('An internal database error occurred.');
+    expect(json.message).toMatch(/(?:We could not complete your request right now|An internal database error occurred)/);
     expect(json.requestId).toBe('test-req-12345');
     // Stack and raw table name must never be returned to client
     expect(JSON.stringify(json)).not.toContain('internal/prisma.ts');

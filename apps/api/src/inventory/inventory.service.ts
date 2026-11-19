@@ -566,12 +566,30 @@ export class InventoryService {
   /**
    * Bulk soft-delete SKUs
    */
-  async bulkDeleteSkus(ids: string[], user?: ScopedUser) {
+  async bulkDeleteSkus(ids: string[], user?: ScopedUser, meta?: { confirmation?: string; company?: string }) {
     const tenantId = requireTenantId(user);
     const result = await this.prisma.sku.updateMany({
       where: { id: { in: ids }, tenantId },
       data: { deletedAt: new Date() },
     });
+
+    if (user?.id) {
+      await this.auditService.log({
+        tenantId,
+        actorId: user.id,
+        actorName: (user as any)?.employeeCode || (user as any)?.name || 'Admin',
+        action: 'BULK_DELETE_SKUS',
+        entityName: 'Sku',
+        entityId: tenantId,
+        afterState: {
+          deletedCount: result.count,
+          count: ids.length,
+          confirmation: meta?.confirmation,
+          company: meta?.company,
+        },
+      }).catch(() => {});
+    }
+
     return { deletedCount: result.count };
   }
 
@@ -1530,6 +1548,18 @@ export class InventoryService {
         results.push({ ...created, action: 'created' });
       }
     }
+    if (user?.id) {
+      await this.auditService.log({
+        tenantId,
+        actorId: user.id,
+        actorName: (user as any)?.employeeCode || (user as any)?.name || 'Admin',
+        action: 'SEED_FINISHED_PRODUCTS',
+        entityName: 'Product',
+        entityId: tenantId,
+        afterState: { totalProducts: products.length, processed: results.length },
+      }).catch(() => {});
+    }
+
     return { success: true, products: results };
   }
 

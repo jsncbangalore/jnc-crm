@@ -4,19 +4,20 @@ import { HealthController } from '../../apps/api/src/health/health.controller';
 import * as migrationUtil from '../../apps/api/src/common/migration-status.util';
 
 describe('HealthController - /health, /health/ready, /health/schema', () => {
-  it('returns ok for /health liveness probe', () => {
-    const mockPrisma = {} as any;
-    const controller = new HealthController(mockPrisma);
+  const mockNotifications = { getEmailHealthStatus: async () => ({ status: 'ok' }) } as any;
 
-    const res = controller.getHealth();
+  it('returns ok for /health/live liveness probe', () => {
+    const mockPrisma = {} as any;
+    const controller = new HealthController(mockPrisma, mockNotifications);
+
+    const res = controller.getLive();
     expect(res.status).toBe('ok');
-    expect(res.features).toBeDefined();
     expect(res.uptime).toBeGreaterThanOrEqual(0);
   });
 
   it('returns 200 ready when all migrations are applied', async () => {
     const mockPrisma = {} as any;
-    const controller = new HealthController(mockPrisma);
+    const controller = new HealthController(mockPrisma, mockNotifications);
 
     vi.spyOn(migrationUtil, 'getMigrationStatus').mockResolvedValue({
       total: 28,
@@ -39,7 +40,7 @@ describe('HealthController - /health, /health/ready, /health/schema', () => {
 
   it('returns 503 not ready when migrations differ or are pending', async () => {
     const mockPrisma = {} as any;
-    const controller = new HealthController(mockPrisma);
+    const controller = new HealthController(mockPrisma, mockNotifications);
 
     vi.spyOn(migrationUtil, 'getMigrationStatus').mockResolvedValue({
       total: 28,
@@ -64,7 +65,7 @@ describe('HealthController - /health, /health/ready, /health/schema', () => {
 
   it('rejects /health/schema with 403 Forbidden for non-admin users', async () => {
     const mockPrisma = {} as any;
-    const controller = new HealthController(mockPrisma);
+    const controller = new HealthController(mockPrisma, mockNotifications);
 
     const mockReq = {
       user: { role: 'sales_rep', id: 'user-1' },
@@ -75,7 +76,7 @@ describe('HealthController - /health, /health/ready, /health/schema', () => {
 
   it('returns ok for /health/schema when admin requests and migrations are up to date', async () => {
     const mockPrisma = {} as any;
-    const controller = new HealthController(mockPrisma);
+    const controller = new HealthController(mockPrisma, mockNotifications);
 
     vi.spyOn(migrationUtil, 'getMigrationStatus').mockResolvedValue({
       total: 28,
@@ -97,7 +98,7 @@ describe('HealthController - /health, /health/ready, /health/schema', () => {
 
   it('returns missing migrations for /health/schema when migrations are pending', async () => {
     const mockPrisma = {} as any;
-    const controller = new HealthController(mockPrisma);
+    const controller = new HealthController(mockPrisma, mockNotifications);
 
     vi.spyOn(migrationUtil, 'getMigrationStatus').mockResolvedValue({
       total: 28,

@@ -66,8 +66,35 @@ export function sanitizeObject(data: any, seen = new WeakSet(), depth = 0): any 
 @Injectable()
 export class SanitizeResponseInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const http = context.switchToHttp();
+    const req = http.getRequest<any>();
+    const res = http.getResponse<any>();
+
+    const requestId =
+      (req?.headers?.['x-request-id'] as string) ||
+      req?.id ||
+      (typeof req?.id === 'string' ? req.id : undefined);
+
+    if (requestId && res && typeof res.setHeader === 'function') {
+      res.setHeader('x-request-id', requestId);
+    }
+
     return next.handle().pipe(
-      map((data) => sanitizeObject(data)),
+      map((data) => {
+        const cleaned = sanitizeObject(data);
+        if (
+          cleaned &&
+          typeof cleaned === 'object' &&
+          !Array.isArray(cleaned) &&
+          !Buffer.isBuffer(cleaned) &&
+          !(cleaned instanceof Date) &&
+          requestId &&
+          cleaned.requestId === undefined
+        ) {
+          cleaned.requestId = requestId;
+        }
+        return cleaned;
+      }),
     );
   }
 }

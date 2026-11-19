@@ -301,6 +301,13 @@ export class LedgerController {
     // Dry run by default
     const dryRun = body?.dryRun !== false;
 
+    if (!dryRun && process.env.NODE_ENV === 'production') {
+      const isPlatformAdmin = ['platform_super_admin', 'platform_admin'].includes(user.role);
+      if (!isPlatformAdmin) {
+        throw new ForbiddenException('Mutating ledger history rebuild in production is restricted to platform administrators.');
+      }
+    }
+
     const result = await this.postingService.rebuildLedgerHistory(tenantId, {
       dryRun,
     });
@@ -342,6 +349,15 @@ export class LedgerController {
       throw new ForbiddenException('Reset demo data is strictly disabled in production.');
     }
     const tenantId = requireTenantId(user);
-    return this.ledgerService.resetDemoData(tenantId, user);
+    const result = await this.ledgerService.resetDemoData(tenantId, user);
+    await this.auditService.log({
+      tenantId,
+      actorId: user.id,
+      actorName: (user as any).employeeCode || (user as any).name || 'Platform Admin',
+      action: 'RESET_DEMO_DATA',
+      entityName: 'LedgerEntry',
+      entityId: tenantId,
+    }).catch(() => {});
+    return result;
   }
 }

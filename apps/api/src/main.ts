@@ -63,7 +63,7 @@ import { validateEnvironmentOrExit } from './common/env-validation';
 validateEnvironmentOrExit();
 
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, BadRequestException, PayloadTooLargeException } from '@nestjs/common';
+import { ValidationPipe, BadRequestException, PayloadTooLargeException, HttpStatus } from '@nestjs/common';
 import { formatValidationErrors } from './common/validation-error.formatter';
 import { AppModule } from './app.module';
 import { json, urlencoded } from 'express';
@@ -163,15 +163,64 @@ async function bootstrap() {
 
   // 2. Behind proxy: configure Express trust proxy so Throttler, audit logs, and rate limiters identify client IP correctly
   const expressApp = app.getHttpAdapter().getInstance();
-  const isProd = process.env.NODE_ENV === 'production';
+  const isProd = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
   const trustProxyHops = parseTrustProxy(process.env.TRUST_PROXY, isProd);
   expressApp.set('trust proxy', trustProxyHops);
+  expressApp.disable('x-powered-by');
+
+  // Strip server signatures & ensure security headers on all responses
+  app.use((_req: any, res: any, next: any) => {
+    res.removeHeader('X-Powered-By');
+    res.removeHeader('Server');
+    res.removeHeader('x-powered-by');
+    res.removeHeader('server');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none';");
+    next();
+  });
 
   // Root health endpoints for Cloudflare / Render health checks (ensures HEAD / and GET / return 200 OK)
   expressApp.get('/', (_req: any, res: any) => res.status(200).json({ status: 'ok', service: 'crm-api' }));
   expressApp.head('/', (_req: any, res: any) => res.status(200).end());
 
-  // 3. HTTP Security via Helmet: HSTS, strict CSP, noSniff, frameguard deny, strict-origin-when-cross-origin
+  // Block Swagger / API docs / debug / metrics endpoints in production unless authenticated platform admin
+  app.use((req: any, res: any, next: any) => {
+    const rawUrl = (req.originalUrl || req.url || '').toLowerCase().split('?')[0];
+    const isDocOrDebugOrMetric =
+      rawUrl === '/swagger' ||
+      rawUrl.startsWith('/swagger/') ||
+      rawUrl === '/docs' ||
+      rawUrl.startsWith('/docs/') ||
+      rawUrl === '/api-docs' ||
+      rawUrl.startsWith('/api-docs/') ||
+      rawUrl === '/api/v1/docs' ||
+      rawUrl.startsWith('/api/v1/docs/') ||
+      rawUrl === '/debug' ||
+      rawUrl.startsWith('/debug/') ||
+      rawUrl === '/metrics' ||
+      rawUrl.startsWith('/metrics/');
+
+    if (isDocOrDebugOrMetric && isProd) {
+      const user = (req as any).user;
+      const isPlatformAdmin = user && (user.role === 'platform_super_admin' || user.isPlatformAdmin);
+      if (!isPlatformAdmin) {
+        return res.status(HttpStatus.NOT_FOUND).json({
+          statusCode: 404,
+          code: 'NOT_FOUND',
+          message: 'The requested resource could not be found.',
+          requestId: req.headers?.['x-request-id'] || req.id || `req_${Date.now()}`,
+          fieldErrors: [],
+        });
+      }
+    }
+    next();
+  });
+
+  // 3. HTTP Security via Helmet: HSTS, strict CSP for API, noSniff, frameguard deny, strict-origin-when-cross-origin
   app.use(
     helmet({
       hsts: {
@@ -182,14 +231,8 @@ async function bootstrap() {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'none'"],
-          scriptSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          imgSrc: ["'self'", 'data:', 'blob:'],
-          fontSrc: ["'self'", 'data:'],
-          connectSrc: ["'self'"],
-          objectSrc: ["'none'"],
           frameAncestors: ["'none'"],
-          baseUri: ["'self'"],
+          baseUri: ["'none'"],
         },
       },
       crossOriginResourcePolicy: { policy: 'same-site' },

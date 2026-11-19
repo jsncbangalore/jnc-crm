@@ -22,20 +22,8 @@ import { Roles } from '../auth/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { IsString, IsNotEmpty, IsOptional, MaxLength } from 'class-validator';
 import { SanitizeText, TrimString } from './validation.transformers';
-
-function stripPersonalData(text?: string | null): string {
-  if (!text) return '';
-  return text
-    // Strip emails
-    .replace(/[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/g, '[REDACTED_EMAIL]')
-    // Strip JWT tokens and bearer tokens
-    .replace(/Bearer\s+[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*/gi, 'Bearer [REDACTED_TOKEN]')
-    .replace(/eyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*/g, '[REDACTED_JWT]')
-    // Strip passwords in key-value pairs or query strings
-    .replace(/(password|secret|pass|token)["']?\s*[:=]\s*["']?[^"',\s}]+/gi, '$1=[REDACTED]')
-    // Strip credit card numbers (13-19 digits)
-    .replace(/\b(?:\d{4}[-\s]?){3}\d{4}\b/g, '[REDACTED_CARD]');
-}
+import { redactSensitiveString, cleanUrlPath } from './redact.util';
+import { generateSupportCode } from './support-code.util';
 
 export class ReportClientErrorDto {
   @TrimString()
@@ -43,6 +31,12 @@ export class ReportClientErrorDto {
   @IsNotEmpty()
   @MaxLength(100)
   id: string;
+
+  @TrimString()
+  @IsString()
+  @IsOptional()
+  @MaxLength(10)
+  method?: string;
 
   @TrimString()
   @IsString()
@@ -55,6 +49,9 @@ export class ReportClientErrorDto {
   @IsOptional()
   @MaxLength(100)
   page?: string;
+
+  @IsOptional()
+  status?: number | string;
 
   @SanitizeText()
   @IsString()
@@ -133,34 +130,56 @@ export class ClientErrorsController {
       if (exists) validUserId = exists.id;
     }
 
-    const cleanId = (dto.id || `ERR-${Date.now().toString(36).toUpperCase()}`).trim();
-    const safeMessage = stripPersonalData(dto.message);
-    const safeStack = stripPersonalData(dto.componentStack);
+    const cleanId = (dto.id || (req.headers['x-request-id'] as string) || `ERR-${Date.now().toString(36).toUpperCase()}`).trim();
+
+    // Enforce storing only method, URL path without query, status, requestId, page and a short message
+    let method = (dto.method || '').trim().toUpperCase();
+    let rawPath = dto.route || '';
+    const routeParts = rawPath.split(/\s+/);
+    if (!method && routeParts.length > 1 && /^(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)$/i.test(routeParts[0])) {
+      method = routeParts[0].toUpperCase();
+      rawPath = routeParts.slice(1).join(' ');
+    }
+    const safeUrlPath = cleanUrlPath(rawPath);
+    const storedRoute = method ? `${method} ${safeUrlPath}` : safeUrlPath;
+    const safePage = dto.page ? cleanUrlPath(dto.page) : null;
+
+    let status = dto.status ? String(dto.status) : '';
+    if (!status) {
+      const statusMatch = dto.message.match(/Status\s*:?\s*(\d{3})/i);
+      if (statusMatch) status = statusMatch[1];
+    }
+
+    // Short message, redacted of all personal data, tokens, passwords, emails, bank accounts
+    const firstLine = (dto.message || '').split('\n')[0].trim();
+    const safeMessage = redactSensitiveString(firstLine).slice(0, 255);
+    const supportCode = generateSupportCode(cleanId);
+    const conciseMetadata = [status ? `Status: ${status}` : null, `SupportCode: ${supportCode}`].filter(Boolean).join(' | ');
 
     try {
       await this.prisma.clientError.upsert({
         where: { id: cleanId },
         update: {
           message: safeMessage,
-          route: dto.route,
-          page: dto.page || null,
-          componentStack: safeStack || null,
+          route: storedRoute,
+          page: safePage,
+          componentStack: conciseMetadata,
           buildVersion: dto.buildVersion || null,
         },
         create: {
           id: cleanId,
           tenantId: validTenantId,
           userId: validUserId,
-          route: dto.route,
-          page: dto.page || null,
+          route: storedRoute,
+          page: safePage,
           message: safeMessage,
-          componentStack: safeStack || null,
+          componentStack: conciseMetadata,
           buildVersion: dto.buildVersion || '1.0.0',
         },
       });
 
-      this.logger.log(`[CLIENT ERROR SAVED] [${cleanId}] Route=${dto.route} Page=${dto.page || 'N/A'}: ${safeMessage.slice(0, 150)}`);
-      return { ok: true, id: cleanId };
+      this.logger.log(`[CLIENT ERROR SAVED] supportCode=${supportCode} requestId=${cleanId} Route=${storedRoute} Page=${safePage || 'N/A'}: ${safeMessage}`);
+      return { ok: true, id: cleanId, supportCode };
     } catch (err: any) {
       this.logger.error(`Failed to save client error [${cleanId}]: ${err.message}`);
       return { ok: false, error: 'Failed to record error.' };

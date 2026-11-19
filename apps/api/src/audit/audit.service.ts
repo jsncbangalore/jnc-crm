@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 import { parsePagination } from '../common/pagination.util';
+import { redactSensitiveObject } from '../common/redact.util';
 
 export interface CreateAuditLogDto {
   tenantId?: string;
@@ -44,6 +45,8 @@ export class AuditService {
         console.warn('AuditLog creation warning: tenantId missing or invalid, skipping audit log');
         return null;
       }
+      const safeBefore = dto.beforeState ? JSON.stringify(redactSensitiveObject(dto.beforeState)) : null;
+      const safeAfter = dto.afterState ? JSON.stringify(redactSensitiveObject(dto.afterState)) : null;
       const client = customTx || this.prisma;
       return await client.auditLog.create({
         data: {
@@ -53,8 +56,8 @@ export class AuditService {
           action: dto.action,
           entityName: dto.entityName,
           entityId: dto.entityId,
-          beforeState: dto.beforeState ? JSON.stringify(dto.beforeState) : null,
-          afterState: dto.afterState ? JSON.stringify(dto.afterState) : null,
+          beforeState: safeBefore,
+          afterState: safeAfter,
           ipAddress: dto.ipAddress || '127.0.0.1',
         },
       });

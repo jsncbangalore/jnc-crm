@@ -138,8 +138,42 @@ export class InventoryController {
 
   @Post('skus/bulk-delete')
   @Roles('tenant_admin', 'admin')
-  bulkDeleteSkus(@Body() body: BulkDeleteSkusDto, @CurrentUser() user: ScopedUser) {
-    return this.inventoryService.bulkDeleteSkus(body.ids, user);
+  async bulkDeleteSkus(@Body() body: BulkDeleteSkusDto, @CurrentUser() user: ScopedUser) {
+    const trimmedConf = body.confirmation?.trim();
+
+    // 1. Refuse auto-filled generic confirmation keywords
+    const genericConfirmations = ['CONFIRM_DELETE', 'DELETE', 'CONFIRM', 'TRUE', 'YES', 'OK', 'FORCE', 'CONFIRMED'];
+    if (!trimmedConf || genericConfirmations.includes(trimmedConf.toUpperCase())) {
+      throw new BadRequestException('Bulk SKU deletion requires explicit typed confirmation phrase (e.g., "DELETE <count> PRODUCTS"), not an auto-filled generic keyword.');
+    }
+
+    // 2. Validate count parameter
+    if (typeof body.count !== 'number' || body.count !== body.ids?.length) {
+      throw new BadRequestException(`Bulk SKU deletion count mismatch: provided count (${body.count}) does not match ids length (${body.ids?.length || 0}).`);
+    }
+
+    // 3. Typed confirmation must match count pattern (e.g., "DELETE 12 PRODUCTS" or "DELETE 12 SKUS")
+    const expectedCountPattern = new RegExp(`\\b${body.count}\\b`);
+    if (!expectedCountPattern.test(trimmedConf) || !/^DELETE\s+\d+\s+(PRODUCTS|SKUS|ITEMS)/i.test(trimmedConf)) {
+      throw new BadRequestException(`Typed confirmation must follow format "DELETE ${body.count} PRODUCTS".`);
+    }
+
+    // 4. Validate company match
+    const userCompany = user.tenant?.name || '';
+    const userSlug = user.tenant?.slug || '';
+    const bodyCompany = (body.company || '').trim();
+
+    if (!bodyCompany && !trimmedConf.toLowerCase().includes(userCompany.toLowerCase())) {
+      throw new BadRequestException('Bulk SKU deletion requires company confirmation matching your company name.');
+    }
+
+    if (bodyCompany && userCompany) {
+      if (bodyCompany.toLowerCase() !== userCompany.toLowerCase() && bodyCompany.toLowerCase() !== userSlug.toLowerCase()) {
+        throw new BadRequestException(`Provided company "${bodyCompany}" does not match authorized company.`);
+      }
+    }
+
+    return this.inventoryService.bulkDeleteSkus(body.ids, user, { confirmation: trimmedConf, company: bodyCompany || userCompany });
   }
 
   /**
@@ -442,6 +476,9 @@ export class InventoryController {
   @Post('clear-all')
   @Roles('tenant_admin')
   async clearAllInventory(@Body() body: ClearAllInventoryDto, @CurrentUser() user: ScopedUser) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Clear all inventory is strictly disabled in production.');
+    }
     return this.inventoryService.clearAllInventory(body.confirmPhrase, body.password, user);
   }
 
@@ -465,6 +502,9 @@ export class InventoryController {
   @Post('seed-products')
   @Roles('tenant_admin', 'admin')
   async seedProducts(@CurrentUser() user: ScopedUser) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Product seeding is strictly disabled in production.');
+    }
     return this.inventoryService.seedFinishedProducts(user);
   }
 

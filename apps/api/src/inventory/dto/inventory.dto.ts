@@ -11,6 +11,7 @@ import {
   IsOptional,
   IsNumber,
   IsArray,
+  ArrayMinSize,
   IsBoolean,
   Min,
   Max,
@@ -328,8 +329,21 @@ export class UpdateSkuDto {
 
 export class BulkDeleteSkusDto {
   @IsArray()
+  @ArrayMinSize(1)
   @IsString({ each: true })
   ids: string[];
+
+  @IsString()
+  @IsNotEmpty()
+  confirmation: string;
+
+  @IsNumber()
+  @Min(1)
+  count: number;
+
+  @IsString()
+  @IsNotEmpty()
+  company: string;
 }
 
 export class ImportInventoryDto {

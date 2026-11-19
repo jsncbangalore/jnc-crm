@@ -7,6 +7,7 @@
 
 import { Logger } from '@nestjs/common';
 import { isInternalHostname } from './ssrf.util';
+import { deriveAesKey } from './encryption.util';
 
 export type EnvCategory = 'REQUIRED' | 'FEATURE-GATED' | 'OPTIONAL';
 
@@ -180,7 +181,7 @@ export function validateEnvironment(
 
   const isProduction = env.NODE_ENV?.toLowerCase() === 'production';
 
-  if (isProduction || mailProvider === 'smtp') {
+  if (mailProvider === 'smtp') {
     for (const key of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS']) {
       if (!requiredKeys.includes(key)) requiredKeys.push(key);
     }
@@ -206,10 +207,10 @@ export function validateEnvironment(
   }
 
   // Strict SMTP verification in production: refuses start if missing or invalid
-  if (isProduction) {
+  if (isProduction && mailProvider === 'smtp') {
     const smtpHost = (env.SMTP_HOST || '').trim();
     if (!smtpHost) {
-      invalidVariables.push('SMTP_HOST is required and cannot be empty in production.');
+      invalidVariables.push('SMTP_HOST is required and cannot be empty in production when using SMTP.');
     } else if (
       smtpHost.toLowerCase() === 'localhost' ||
       smtpHost === '127.0.0.1' ||
@@ -233,7 +234,9 @@ export function validateEnvironment(
     if (!smtpPass || KNOWN_DEFAULT_SECRETS.includes(smtpPass.toLowerCase())) {
       invalidVariables.push('SMTP_PASS is required and cannot be a default or placeholder in production.');
     }
+  }
 
+  if (isProduction) {
     const fromEmail = (env.EMAIL_FROM || '').trim();
     if (!fromEmail || !fromEmail.includes('@') || !fromEmail.includes('.')) {
       invalidVariables.push(`EMAIL_FROM must be a valid email address in production, received '${fromEmail}'.`);
@@ -304,25 +307,27 @@ export function validateEnvironment(
     if (!env.EMAIL_FROM || !env.EMAIL_FROM.trim()) {
       invalidVariables.push('EMAIL_FROM is required in production mode.');
     }
-    if (!env.SMTP_HOST || !env.SMTP_HOST.trim()) {
-      invalidVariables.push('SMTP_HOST is required in production mode.');
-    }
-    if (!env.SMTP_PORT || !String(env.SMTP_PORT).trim()) {
-      invalidVariables.push('SMTP_PORT is required in production mode.');
-    }
-    if (!env.SMTP_USER || !env.SMTP_USER.trim()) {
-      invalidVariables.push('SMTP_USER is required in production mode.');
-    }
-    if (!env.SMTP_PASS || !env.SMTP_PASS.trim()) {
-      invalidVariables.push('SMTP_PASS is required in production mode.');
-    }
-    if (env.EMAIL_FROM && env.SMTP_USER) {
-      const canonicalFrom = env.EMAIL_FROM.trim().toLowerCase();
-      const canonicalUser = env.SMTP_USER.trim().toLowerCase();
-      if (canonicalFrom !== canonicalUser) {
-        invalidVariables.push(
-          `EMAIL_FROM ('${env.EMAIL_FROM}') must match SMTP_USER ('${env.SMTP_USER}') in production mode.`
-        );
+    if (mailProvider === 'smtp') {
+      if (!env.SMTP_HOST || !env.SMTP_HOST.trim()) {
+        invalidVariables.push('SMTP_HOST is required in production mode when using SMTP.');
+      }
+      if (!env.SMTP_PORT || !String(env.SMTP_PORT).trim()) {
+        invalidVariables.push('SMTP_PORT is required in production mode when using SMTP.');
+      }
+      if (!env.SMTP_USER || !env.SMTP_USER.trim()) {
+        invalidVariables.push('SMTP_USER is required in production mode when using SMTP.');
+      }
+      if (!env.SMTP_PASS || !env.SMTP_PASS.trim()) {
+        invalidVariables.push('SMTP_PASS is required in production mode when using SMTP.');
+      }
+      if (env.EMAIL_FROM && env.SMTP_USER) {
+        const canonicalFrom = env.EMAIL_FROM.trim().toLowerCase();
+        const canonicalUser = env.SMTP_USER.trim().toLowerCase();
+        if (canonicalFrom !== canonicalUser) {
+          invalidVariables.push(
+            `EMAIL_FROM ('${env.EMAIL_FROM}') must match SMTP_USER ('${env.SMTP_USER}') in production mode when using SMTP.`
+          );
+        }
       }
     }
     if (!env.OTP_SECRET && env.JWT_SECRET && env.JWT_SECRET.trim().length >= 32) {
@@ -446,18 +451,20 @@ export function validateEnvironment(
   }
 
   if (env.ENCRYPTION_KEY) {
-    const key = env.ENCRYPTION_KEY;
-    try {
-      const buf = Buffer.from(key, 'base64');
-      if (buf.length !== 32) {
-        if (key.length === 64 && /^[0-9a-fA-F]+$/.test(key)) {
-          // Allowed: 32 bytes hex encoded
-        } else {
-          invalidVariables.push(`ENCRYPTION_KEY must be exactly 32 bytes when base64-decoded (got ${buf.length} bytes).`);
+    const key = env.ENCRYPTION_KEY.trim();
+    if (key.length < 32) {
+      invalidVariables.push(`ENCRYPTION_KEY must be at least 32 characters in length (got ${key.length} characters).`);
+    } else if (KNOWN_DEFAULT_SECRETS.includes(key.toLowerCase())) {
+      invalidVariables.push('ENCRYPTION_KEY cannot use known weak or default values.');
+    } else {
+      try {
+        const derived = deriveAesKey(key);
+        if (!derived || !Buffer.isBuffer(derived) || derived.length !== 32) {
+          invalidVariables.push(`ENCRYPTION_KEY derived key must be strictly 32 bytes (got ${derived ? derived.length : 0} bytes).`);
         }
+      } catch (err: any) {
+        invalidVariables.push(`ENCRYPTION_KEY could not be converted to 32-byte AES-256 key: ${err.message}`);
       }
-    } catch {
-      invalidVariables.push('ENCRYPTION_KEY is not a valid base64-encoded string.');
     }
   }
 
