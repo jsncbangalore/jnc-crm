@@ -65,11 +65,37 @@ ALTER TABLE "WebFormSettings" ALTER COLUMN "updatedAt" DROP DEFAULT;
 ALTER TABLE "webhook_deliveries" ALTER COLUMN "updatedAt" DROP DEFAULT;
 ALTER INDEX IF EXISTS "PartyOpeningBalance_tenantId_partyType_partyId_financialYear_ke" RENAME TO "PartyOpeningBalance_tenantId_partyType_partyId_financialYea_key";
 
--- Safe widening for deprecated columns preserved in schema.prisma:
-ALTER TABLE "Invoice" ALTER COLUMN "shippingAddress" SET DATA TYPE TEXT;
-ALTER TABLE "Quotation" ALTER COLUMN "shippingAddress" SET DATA TYPE TEXT;
-ALTER TABLE "Sku" ALTER COLUMN "description" SET DATA TYPE TEXT;
-ALTER TABLE "Sku" ALTER COLUMN "unit" SET DATA TYPE TEXT;
+-- Safe widening for deprecated columns preserved in schema.prisma (only if columns exist):
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'Invoice' AND column_name = 'shippingAddress'
+  ) THEN
+    ALTER TABLE "Invoice" ALTER COLUMN "shippingAddress" SET DATA TYPE TEXT;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'Quotation' AND column_name = 'shippingAddress'
+  ) THEN
+    ALTER TABLE "Quotation" ALTER COLUMN "shippingAddress" SET DATA TYPE TEXT;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'Sku' AND column_name = 'description'
+  ) THEN
+    ALTER TABLE "Sku" ALTER COLUMN "description" SET DATA TYPE TEXT;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'Sku' AND column_name = 'unit'
+  ) THEN
+    ALTER TABLE "Sku" ALTER COLUMN "unit" SET DATA TYPE TEXT;
+  END IF;
+END $$;
 
 -- Index on StockMovement(skuId) for fast movement lookup:
 CREATE INDEX IF NOT EXISTS "StockMovement_skuId_idx" ON "StockMovement"("skuId");

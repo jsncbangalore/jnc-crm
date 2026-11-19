@@ -52,6 +52,18 @@ if (process.env.DATABASE_URL && process.env.SKIP_MIGRATE !== 'true') {
   const { execSync } = require('child_process');
 
   try {
+    // Auto-resolve any failed drift sync migration record if a previous deploy was interrupted
+    try {
+      execSync('npx prisma migrate resolve --rolled-back "20261119130000_sync_schema_drift"', {
+        stdio: 'pipe',
+        cwd: __dirname,
+        env: process.env,
+      });
+      console.log('[STARTUP] Marked previous failed migration 20261119130000_sync_schema_drift as rolled back for clean re-apply.');
+    } catch (_) {
+      // Ignore if it was not in a failed state
+    }
+
     console.log('[STARTUP] Applying database migrations via prisma migrate deploy...');
     execSync('npx prisma migrate deploy', {
       stdio: 'inherit',
