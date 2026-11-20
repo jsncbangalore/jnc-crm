@@ -545,13 +545,20 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       ? (configuredFrom.includes('<') ? configuredFrom : `"${senderName || PRODUCT_NAME}" <${configuredFrom}>`)
       : (senderName ? `"${senderName}" <${fromEmail}>` : fromEmail);
 
-    const payload = {
+    const htmlBody = options.html?.trim() || (options.text?.trim() ? `<p>${options.text.replace(/\n/g, '<br/>')}</p>` : undefined);
+    const textBody = options.text?.trim() || (options.html?.trim() ? options.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : undefined);
+
+    if (!htmlBody && !textBody) {
+      return { success: false, error: 'Email body is empty (missing both html and text fields)', reason: 'missing_configuration' };
+    }
+
+    const payload: any = {
       from: fromFormatted,
       to: [options.to],
-      subject: options.subject,
-      html: options.html,
-      text: options.text || undefined,
+      subject: options.subject || '(No Subject)',
     };
+    if (htmlBody) payload.html = htmlBody;
+    if (textBody) payload.text = textBody;
 
     try {
       let res = await fetch('https://api.resend.com/emails', {
@@ -677,6 +684,19 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       ? (tenantTransporterInfo.senderName || branding.companyDisplayName)
       : PRODUCT_NAME;
     const mailProvider = this.getMailProvider();
+
+    // Prevent sending empty emails that break downstream APIs (Resend, Brevo, SMTP)
+    if (!options.html?.trim() && !options.text?.trim()) {
+      this.logger.warn(`[MAIL DISPATCH SKIPPED] Email to ${options.to} has no body content (missing html and text).`);
+      return {
+        status: 'failed',
+        reason: 'missing_configuration',
+        provider: mailProvider,
+        recipient: options.to,
+        error: 'Missing html or text field in email options',
+        success: false,
+      };
+    }
 
     let status: MailDeliveryStatus = 'failed';
     let errorMessage: string | null = null;
@@ -1101,6 +1121,16 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     try {
       const item = await this.prisma.emailOutbox.findUnique({ where: { id: outboxId } });
       if (!item || item.isDecoy || item.status !== 'pending') return;
+
+      // Discard corrupted or empty outbox records so they do not fail repeatedly in loops
+      if (!item.html?.trim() && !item.text?.trim()) {
+        this.logger.warn(`[EMAIL_OUTBOX] Discarding empty outbox item ${item.id} (no html or text body)`);
+        await this.prisma.emailOutbox.update({
+          where: { id: item.id },
+          data: { status: 'failed', lastError: 'Missing html or text body in outbox record' },
+        });
+        return;
+      }
 
       let deliveryError: string | null = null;
       try {

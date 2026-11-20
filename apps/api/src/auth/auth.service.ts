@@ -715,6 +715,16 @@ export class AuthService {
       const item = await this.prisma.emailOutbox.findUnique({ where: { id: outboxId } });
       if (!item || item.isDecoy || item.status !== 'pending') return;
 
+      // Discard empty outbox records so they do not fail repeatedly
+      if (!item.html?.trim() && !item.text?.trim()) {
+        this.logger.warn(`[EMAIL_OUTBOX] Discarding empty outbox item ${item.id} (no html or text body)`);
+        await this.prisma.emailOutbox.update({
+          where: { id: item.id },
+          data: { status: 'failed', lastError: 'Missing html or text body in outbox record' },
+        });
+        return;
+      }
+
       let deliveryError: string | null = null;
       try {
         if (this.notificationsService) {
