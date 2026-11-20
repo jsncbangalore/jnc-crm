@@ -33,7 +33,8 @@ import DataTable, { ColumnDef } from '../components/common/DataTable';
 export default function QuotationsPage() {
   const { user } = useAuth();
   const { branding } = useBranding();
-  const { hasPage } = useAllowedPages();
+  const { hasPage, canCreateEdit } = useAllowedPages();
+  const canManage = canCreateEdit('quotations');
   const [searchParams] = useSearchParams();
 
   const [quotations, setQuotations] = useState<any[]>([]);
@@ -299,12 +300,14 @@ export default function QuotationsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button type="button"
-            onClick={() => setShowCreateModal(true)}
-            className="btn bg-crm-amber hover:bg-crm-amber-hover text-black font-bold text-xs gap-1.5 shadow-glow-amber"
-          >
-            <Plus size={15} /> Create Quotation
-          </button>
+          {canManage && (
+            <button type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="btn bg-crm-amber hover:bg-crm-amber-hover text-black font-bold text-xs gap-1.5 shadow-glow-amber"
+            >
+              <Plus size={15} /> Create Quotation
+            </button>
+          )}
 
           <button type="button" onClick={fetchQuotations} className="btn-ghost text-xs gap-1" title="Refresh">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
@@ -498,15 +501,15 @@ export default function QuotationsPage() {
               const normalizedStatus = currentStatus === 'accepted' ? 'approved' : currentStatus;
               const isConverted = normalizedStatus === 'converted' || Boolean(q.order);
 
-              if (isConverted) {
+              const statusObj = QUOTATION_STATUSES.find((s) => s.value === normalizedStatus) || QUOTATION_STATUSES[0];
+
+              if (!canManage || isConverted) {
                 return (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-sm bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-400 border-purple-300 dark:border-purple-500/30 whitespace-nowrap">
-                    Converted
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-sm whitespace-nowrap ${isConverted ? 'bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-400 border-purple-300 dark:border-purple-500/30' : statusObj.color}`}>
+                    {isConverted ? 'Converted' : statusObj.label}
                   </span>
                 );
               }
-
-              const statusObj = QUOTATION_STATUSES.find((s) => s.value === normalizedStatus) || QUOTATION_STATUSES[0];
               const isUpdating = updatingStatusId === q.id;
 
               return (
@@ -584,7 +587,7 @@ export default function QuotationsPage() {
                     <Printer size={13} />
                   </button>
 
-                  {isApproved && !q.order && hasPage('orders') && (
+                  {canManage && isApproved && !q.order && hasPage('orders') && (
                     <button type="button"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -658,7 +661,7 @@ export default function QuotationsPage() {
                   >
                     <Printer size={13} />
                   </button>
-                  {isApproved && !q.order && (
+                  {canManage && isApproved && !q.order && (
                     <button type="button"
                       onClick={() => handleConvertToOrder(q.id)}
                       className="p-1.5 rounded-lg bg-emerald-600 text-white"

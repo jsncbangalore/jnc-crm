@@ -6,6 +6,15 @@
  * ----------------------------------------------------- */
 
 export type Role =
+  | 'administrator'
+  | 'sub_administrator'
+  | 'project_manager'
+  | 'developer_lead'
+  | 'store_inventory_manager'
+  | 'finance_specialist'
+  | 'accountant'
+  | 'sales_representative'
+  | 'developer'
   | 'platform_super_admin'
   | 'platform_admin'
   | 'platform_support'
@@ -17,11 +26,7 @@ export type Role =
   | 'employee'
   | 'sales'
   | 'store_manager'
-  | 'project_manager'
-  | 'developer_lead'
-  | 'developer'
   | 'finance'
-  | 'accountant'
   | 'client'
   | 'customer';
 export type LeadSource = 'indiamart' | 'web' | 'whatsapp' | 'manual';

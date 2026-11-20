@@ -315,40 +315,12 @@ export const STANDARD_TEMPLATES: Record<string, { name: string; pages: string[] 
   },
 };
 
+import { getRoleDefaultPermissions } from './roles-permissions';
+
 export function getLegacyPagesForRole(role?: string): string[] {
-  switch (role) {
-    case 'tenant_admin':
-    case 'admin':
-      return Object.keys(COMPANY_PAGE_REGISTRY);
-    case 'sub_admin':
-      return [
-        'dashboard',
-        'leads',
-        'lead_flow',
-        'quotations',
-        'orders',
-        'invoices',
-        'inventory',
-        'suppliers',
-        'bills',
-        'shipments',
-        'daily_activities',
-        'notifications',
-      ];
-    case 'project_manager':
-    case 'developer_lead':
-    case 'developer':
-      return ['daily_activities', 'notifications'];
-    case 'store_manager':
-      return ['dashboard', 'orders', 'inventory', 'suppliers', 'bills', 'shipments', 'notifications'];
-    case 'finance':
-    case 'accountant':
-      return ['dashboard', 'quotations', 'orders', 'invoices', 'bills', 'ledger', 'suppliers', 'notifications'];
-    case 'employee':
-      return ['dashboard', 'leads', 'lead_flow', 'quotations', 'orders', 'notifications'];
-    default:
-      return ['dashboard', 'notifications'];
-  }
+  if (!role) return ['dashboard', 'notifications'];
+  const perms = getRoleDefaultPermissions(role);
+  return Object.keys(perms).filter((k) => k in COMPANY_PAGE_REGISTRY);
 }
 
 

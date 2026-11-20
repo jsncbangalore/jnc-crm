@@ -27,6 +27,7 @@ interface OrderRowActionsProps {
   isGeneratingInvoice?: boolean;
   activeInv?: any;
   hasInvoicesPage: boolean;
+  canEdit?: boolean;
 }
 
 function OrderRowActions({
@@ -38,6 +39,7 @@ function OrderRowActions({
   isGeneratingInvoice,
   activeInv,
   hasInvoicesPage,
+  canEdit = true,
 }: OrderRowActionsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -77,33 +79,37 @@ function OrderRowActions({
           <span className="text-slate-400">Actions</span>
         </div>
 
-        {/* Record Payment */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsOpen(false);
-            onPay(order);
-          }}
-          className="w-full flex items-center gap-2.5 px-3 py-2 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors font-medium cursor-pointer"
-        >
-          <CreditCard size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-          <span>Pay</span>
-        </button>
+        {canEdit && (
+          <>
+            {/* Record Payment */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsOpen(false);
+                onPay(order);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors font-medium cursor-pointer"
+            >
+              <CreditCard size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>Pay</span>
+            </button>
 
-        {/* Edit Order */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsOpen(false);
-            onEdit(order);
-          }}
-          className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors font-medium cursor-pointer"
-        >
-          <Edit3 size={14} className="text-crm-blue shrink-0" />
-          <span>Edit</span>
-        </button>
+            {/* Edit Order */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsOpen(false);
+                onEdit(order);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors font-medium cursor-pointer"
+            >
+              <Edit3 size={14} className="text-crm-blue shrink-0" />
+              <span>Edit</span>
+            </button>
+          </>
+        )}
 
         {/* View / Generate Invoice */}
         {activeInv ? (
@@ -141,7 +147,9 @@ function OrderRowActions({
 
 export default function OrdersPage() {
   const { user } = useAuth();
-  const { hasPage } = useAllowedPages();
+  const { hasPage, canCreateEdit } = useAllowedPages();
+  const canCreate = canCreateEdit('orders');
+  const canEdit = canCreateEdit('orders');
   const [searchParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -251,12 +259,14 @@ export default function OrdersPage() {
             {orders.length} Confirmed orders with automated stock reservation & {user?.tenant?.state ? `${user.tenant.state} ` : ''}GST invoices
           </p>
         </div>
-        <button type="button"
-          onClick={() => setShowCreateModal(true)}
-          className="btn-primary text-xs gap-1.5 shadow-glow-blue"
-        >
-          <Plus size={15} /> New Order
-        </button>
+        {canCreate && (
+          <button type="button"
+            onClick={() => setShowCreateModal(true)}
+            className="btn-primary text-xs gap-1.5 shadow-glow-blue"
+          >
+            <Plus size={15} /> New Order
+          </button>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -491,6 +501,7 @@ export default function OrdersPage() {
                   isGeneratingInvoice={generatingOrderId === order.id}
                   activeInv={activeInv}
                   hasInvoicesPage={hasPage('invoices')}
+                  canEdit={canEdit}
                 />
               );
             },
@@ -541,6 +552,7 @@ export default function OrdersPage() {
                     isGeneratingInvoice={generatingOrderId === order.id}
                     activeInv={activeInv}
                     hasInvoicesPage={hasPage('invoices')}
+                    canEdit={canEdit}
                   />
                 </div>
               </div>
@@ -566,12 +578,14 @@ export default function OrdersPage() {
             emptyTitle="No orders found"
             emptySubtitle="No orders found matching the filter criteria. Confirm an order to generate GST invoices."
             emptyAction={
-              <button type="button"
-                onClick={() => setShowCreateModal(true)}
-                className="btn-primary text-xs gap-1.5"
-              >
-                <Plus size={14} /> New Order
-              </button>
+              canCreate ? (
+                <button type="button"
+                  onClick={() => setShowCreateModal(true)}
+                  className="btn-primary text-xs gap-1.5"
+                >
+                  <Plus size={14} /> New Order
+                </button>
+              ) : undefined
             }
             cardRenderer={renderOrderCard}
             renderDetailRow={(order) =>

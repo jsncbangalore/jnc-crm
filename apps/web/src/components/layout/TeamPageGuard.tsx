@@ -6,7 +6,7 @@
  * ----------------------------------------------------- */
 
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { ShieldAlert, LogOut, ArrowRight, Lock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAllowedPages } from '../../hooks/useAllowedPages';
@@ -56,6 +56,11 @@ export default function TeamPageGuard({ pageKey, children }: { pageKey: string |
   const keys = Array.isArray(pageKey) ? pageKey : [pageKey];
   const hasAccess = keys.some((k) => hasPage(k));
   if (!hasAccess) {
+    // If the blocked page is dashboard, seamlessly redirect to user's home landing page
+    if (keys.includes('dashboard') && homePageRoute && homePageRoute !== '/dashboard') {
+      return <Navigate to={homePageRoute} replace />;
+    }
+
     const primaryKey = keys[0];
     const canonicalKey = primaryKey === 'purchase_bills' ? 'bills' : primaryKey;
     const pageLabel = COMPANY_PAGE_REGISTRY[canonicalKey]?.label || COMPANY_PAGE_REGISTRY[primaryKey]?.label || primaryKey;

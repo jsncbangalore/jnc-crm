@@ -26,9 +26,42 @@ import { parseExcelSafely } from '../common/safe-excel-parser';
 @Controller('activities')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @PageAccess('daily_activities')
-@Roles('platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead', 'developer', 'employee')
+@Roles(
+  'platform_super_admin',
+  'platform_admin',
+  'tenant_admin',
+  'administrator',
+  'admin',
+  'sub_administrator',
+  'sub_admin',
+  'project_manager',
+  'developer_lead',
+  'store_inventory_manager',
+  'store_manager',
+  'finance_specialist',
+  'finance',
+  'accountant',
+  'sales_representative',
+  'employee',
+  'developer',
+)
 export class ActivitiesController {
   constructor(private readonly activitiesService: ActivitiesService) {}
+
+  @Get('daily-activities/template')
+  async getTodayTemplate(@CurrentUser() user: ScopedUser) {
+    return this.activitiesService.getTodayTemplate(user);
+  }
+
+  @Post('daily-activities/template/upload')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async uploadTodayTemplate(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() body: any,
+    @CurrentUser() user: ScopedUser,
+  ) {
+    return this.activitiesService.uploadTodayTemplate(user, file, body);
+  }
 
   // ─── Projects ────────────────────────────────────────────────────────────────
 

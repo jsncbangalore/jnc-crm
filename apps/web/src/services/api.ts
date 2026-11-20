@@ -1019,9 +1019,12 @@ api.interceptors.response.use(
       notifyUserActivity();
     }
 
-    // Trigger 3: No silent identity change anywhere: if /auth/me or any API response returns a user id different from the one stored for this tab, treat it as SESSION_CHANGED.
-    const incomingUser = res?.data?.user || (res?.config?.url?.includes('/auth/me') ? res?.data : null);
-    const incomingUserId = incomingUser?.id || (res?.data && typeof res.data === 'object' && res.data.userId ? res.data.userId : null);
+    // Check for identity change ONLY on authenticated caller profile endpoints (/auth/me, /platform-auth/me)
+    // General API responses (such as creating/editing another user) must NEVER be treated as session identity changes!
+    const reqUrl = String(res?.config?.url || '');
+    const isCallerProfileEndpoint = reqUrl.includes('/auth/me') || reqUrl.includes('/platform-auth/me');
+    const incomingUser = isCallerProfileEndpoint ? (res?.data?.user || res?.data) : null;
+    const incomingUserId = incomingUser?.id || null;
 
     if (incomingUserId) {
       const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
@@ -1029,7 +1032,7 @@ api.interceptors.response.use(
         const isImpersonating = typeof window !== 'undefined' && (
           sessionStorage.getItem('crm_tab_impersonating') === 'true' ||
           getImpersonationAccessToken() !== null ||
-          String(res.config?.url || '').includes('/impersonate')
+          reqUrl.includes('/impersonate')
         );
         if (!isImpersonating) {
           const currentTabId = getCurrentTabUserId();
@@ -1070,12 +1073,11 @@ api.interceptors.response.use(
     const url: string = original?.url || '';
     const status = err.response?.status;
 
-    // Trigger 4: Handle 409 Conflict: tab identity mismatch or session conflict on a normal API call. Do NOT wipe server cookies!
+    // Trigger 4: Handle 409 Conflict: ONLY real SESSION_CHANGED triggers cross-tab logout.
+    // Standard data / resource conflicts (unique constraints, duplicate entries) must NEVER log the user out!
     if (status === 409 && (
       err.response?.data?.code === 'SESSION_CHANGED' ||
-      err.response?.data?.code === 'CONFLICT' ||
-      err.response?.data?.message?.includes('Session changed') ||
-      err.response?.data?.message?.includes('conflict')
+      err.response?.data?.message?.includes('Session changed')
     )) {
       setStaffAccessToken(null);
       setPlatformAccessToken(null);
@@ -2015,6 +2017,12 @@ export const activitiesApi = {
     }),
   deleteLog: (projectId: string, logId: string) =>
     api.delete(`/activities/projects/${projectId}/logs/${logId}`),
+
+  getTodayTemplate: () => api.get('/activities/daily-activities/template'),
+  uploadTodayTemplate: (formData: FormData) =>
+    api.post('/activities/daily-activities/template/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 };
 
 // ─── Webhooks & Ingestion Configuration ─────────────────────────────────────

@@ -9,6 +9,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { getEffectivePagesForUser } from './effective-page-access';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -78,6 +79,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       (user as any).impersonatorAdminId = payload.impersonatorAdminId || payload.impersonatedByPlatformAdminId || 'platform-admin';
       (user as any).impersonatedTenantName = payload.impersonatedTenantName;
       (user as any).impersonatedTenantCode = payload.impersonatedTenantCode;
+    }
+
+    try {
+      (user as any).effectivePages = await getEffectivePagesForUser(this.prisma, user);
+    } catch {
+      (user as any).effectivePages = [];
     }
 
     return user;

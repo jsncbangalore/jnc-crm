@@ -49,14 +49,22 @@ const STATUS_COLORS: Record<string, string> = {
 
 const ROLE_LABEL: Record<string, string> = {
   platform_super_admin: 'Super Admin',
-  tenant_admin: 'Company Admin',
-  admin: 'Admin',
-  sub_admin: 'Sub Admin',
+  platform_admin: 'Platform Admin',
+  tenant_admin: 'Administrator',
+  administrator: 'Administrator',
+  admin: 'Administrator',
+  sub_administrator: 'Sub-Administrator',
+  sub_admin: 'Sub-Administrator',
   project_manager: 'PM / Manager',
   developer_lead: 'Dev Lead',
+  store_inventory_manager: 'Store / Inventory Manager',
+  store_manager: 'Store / Inventory Manager',
+  finance_specialist: 'Finance Specialist',
+  finance: 'Finance Specialist',
+  accountant: 'Accountant',
+  sales_representative: 'Sales Representative',
+  employee: 'Sales Representative',
   developer: 'Developer',
-  employee: 'Employee',
-  store_manager: 'Store Manager',
 };
 
 export default function DailyActivitiesPage() {
@@ -64,9 +72,31 @@ export default function DailyActivitiesPage() {
   const { showAlert } = usePopup();
 
   // Role permissions
-  const canCreateProject = ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager'].includes(user?.role || '');
-  const canAssignMembers = ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager', 'developer_lead'].includes(user?.role || '');
-  const isIndividualDev = user?.role === 'developer';
+  const isManagerOrAdmin = [
+    'platform_super_admin',
+    'platform_admin',
+    'tenant_admin',
+    'administrator',
+    'admin',
+    'sub_administrator',
+    'sub_admin',
+    'project_manager',
+    'developer_lead',
+  ].includes(user?.role || '');
+
+  const canCreateProject = [
+    'platform_super_admin',
+    'platform_admin',
+    'tenant_admin',
+    'administrator',
+    'admin',
+    'sub_administrator',
+    'sub_admin',
+    'project_manager',
+  ].includes(user?.role || '');
+
+  const canAssignMembers = isManagerOrAdmin;
+  const isIndividualDev = !isManagerOrAdmin;
 
   // ─── State ────────────────────────────────────────────────────────────────────
   const [projects, setProjects] = useState<Project[]>([]);
@@ -117,6 +147,122 @@ export default function DailyActivitiesPage() {
     logs: [],
     loading: false,
   });
+
+  // Today's Attendance / Activity Sheet Modal
+  const [sheetModal, setSheetModal] = useState(false);
+  const [sheetFile, setSheetFile] = useState<File | null>(null);
+  const [sheetUploading, setSheetUploading] = useState(false);
+  const [sheetDownloading, setSheetDownloading] = useState(false);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+  const [sheetSuccess, setSheetSuccess] = useState<string | null>(null);
+  const [sheetRows, setSheetRows] = useState<any[]>([]);
+
+  const handleDownloadTemplate = async () => {
+    setSheetDownloading(true);
+    setSheetError(null);
+    try {
+      const res = await activitiesApi.getTodayTemplate();
+      const { filename, base64 } = res.data;
+      const byteCharacters = atob(base64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || `daily_activity_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setSheetError(err.response?.data?.message || err.message || 'Failed to download template');
+    } finally {
+      setSheetDownloading(false);
+    }
+  };
+
+  const handleSheetFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSheetFile(file);
+    setSheetError(null);
+    setSheetSuccess(null);
+
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target?.result;
+        const wb = XLSX.read(data, { type: 'binary' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const parsed: any[] = XLSX.utils.sheet_to_json(sheet) || [];
+        setSheetRows(parsed);
+
+        for (let i = 0; i < parsed.length; i++) {
+          const row = parsed[i];
+          const rawDate = row['Date (YYYY-MM-DD)'] ?? row['Date'] ?? row['date'] ?? row['logDate'];
+          let dStr = '';
+          if (rawDate instanceof Date) {
+            dStr = format(rawDate, 'yyyy-MM-dd');
+          } else if (rawDate) {
+            const s = String(rawDate).trim();
+            if (/^\d{4}-\d{2}-\d{2}/.test(s)) dStr = s.substring(0, 10);
+            else if (/^\d{2}[-/]\d{2}[-/]\d{4}/.test(s)) {
+              const p = s.split(/[-/]/);
+              dStr = `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+            } else dStr = s;
+          }
+          if (dStr && dStr !== todayStr) {
+            setSheetError(`Only today's date (${todayStr}) is allowed. Row ${i + 1} has date '${rawDate}'. Yesterday or past dates cannot be entered.`);
+            break;
+          }
+        }
+      } catch {
+        setSheetError('Failed to parse Excel file preview');
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleUploadSheet = async () => {
+    if (!sheetFile) {
+      setSheetError('Please choose an Excel file to upload.');
+      return;
+    }
+    if (sheetError && sheetError.includes('Only today')) {
+      return;
+    }
+    setSheetUploading(true);
+    setSheetError(null);
+    setSheetSuccess(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', sheetFile);
+      if (selectedProject?.id) {
+        formData.append('projectId', selectedProject.id);
+      }
+      const res = await activitiesApi.uploadTodayTemplate(formData);
+      setSheetSuccess(res.data?.message || 'Activity sheet uploaded successfully!');
+      setSheetFile(null);
+      setSheetRows([]);
+      await fetchProjects();
+      if (selectedProject?.id) {
+        await fetchLogs(selectedProject.id);
+      }
+      setTimeout(() => {
+        setSheetModal(false);
+        setSheetSuccess(null);
+      }, 1500);
+    } catch (err: any) {
+      setSheetError(err.response?.data?.message || err.message || 'Failed to upload sheet');
+    } finally {
+      setSheetUploading(false);
+    }
+  };
 
   // ─── Fetch Projects ───────────────────────────────────────────────────────────
   const fetchProjects = async () => {
@@ -398,6 +544,18 @@ export default function DailyActivitiesPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button type="button"
+            onClick={() => {
+              setSheetFile(null);
+              setSheetError(null);
+              setSheetSuccess(null);
+              setSheetRows([]);
+              setSheetModal(true);
+            }}
+            className="btn bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1.5 px-4 shadow-sm flex items-center rounded-xl cursor-pointer"
+          >
+            <Calendar size={14} /> Today's Attendance / Activity Sheet
+          </button>
           {canCreateProject && (
             <button type="button"
               onClick={openCreateProject}
@@ -1194,6 +1352,181 @@ export default function DailyActivitiesPage() {
                 >
                   Close
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Today's Attendance / Activity Sheet Modal ──────────────────────────── */}
+      <AnimatePresence>
+        {sheetModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="p-5 border-b border-slate-200 dark:border-[#2A3042] flex items-center justify-between bg-slate-50/50 dark:bg-[#141722]">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
+                    <Calendar size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                      Today's Attendance & Activity Sheet
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Date: <span className="font-bold text-indigo-600 dark:text-indigo-400">{format(new Date(), 'dd MMMM yyyy')}</span> (Only today's activities allowed)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSheetModal(false)}
+                  className="w-8 h-8 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-400 hover:text-slate-600 dark:hover:text-white flex items-center justify-center transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 overflow-y-auto space-y-6">
+                {/* Step 1: Download Template */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-[#2A3042] bg-slate-50/50 dark:bg-[#151824] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                        1. Download Daily Template
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Get the official Excel template pre-filled with today's date ({format(new Date(), 'yyyy-MM-dd')}).
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleDownloadTemplate}
+                      disabled={sheetDownloading}
+                      className="btn bg-white dark:bg-[#1F2433] border border-slate-300 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-200 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-2 cursor-pointer shadow-sm"
+                    >
+                      <Download size={14} className="text-indigo-600" />
+                      {sheetDownloading ? 'Generating...' : 'Download Template (.xlsx)'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Step 2: Upload Completed Sheet */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                    2. Upload Completed Sheet
+                  </h4>
+                  <div className="border-2 border-dashed border-slate-200 dark:border-[#2A3042] rounded-xl p-6 text-center hover:border-indigo-500/50 transition-colors">
+                    <input
+                      type="file"
+                      id="daily-sheet-file-input"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleSheetFileChange}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="daily-sheet-file-input"
+                      className="cursor-pointer flex flex-col items-center justify-center"
+                    >
+                      <FileSpreadsheet size={32} className="text-indigo-500 mb-2" />
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">
+                        {sheetFile ? sheetFile.name : 'Click to select today\'s Excel sheet'}
+                      </span>
+                      <span className="text-[11px] text-slate-400 mt-1">
+                        Accepts .xlsx, .xls, .csv. Strict validation: only today's date ({format(new Date(), 'yyyy-MM-dd')}) is accepted.
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Validation Alerts */}
+                {sheetError && (
+                  <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 flex items-start gap-2.5 text-xs text-red-700 dark:text-red-300">
+                    <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                    <div className="font-medium leading-relaxed">{sheetError}</div>
+                  </div>
+                )}
+
+                {sheetSuccess && (
+                  <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 flex items-start gap-2.5 text-xs text-emerald-700 dark:text-emerald-300">
+                    <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+                    <div className="font-medium leading-relaxed">{sheetSuccess}</div>
+                  </div>
+                )}
+
+                {/* Sheet Rows Preview */}
+                {sheetRows.length > 0 && !sheetError && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-700 dark:text-slate-300">
+                        Spreadsheet Preview ({sheetRows.length} row{sheetRows.length !== 1 ? 's' : ''})
+                      </span>
+                      <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                        <CheckCircle2 size={12} /> Today's Date Verified
+                      </span>
+                    </div>
+                    <div className="border border-slate-200 dark:border-[#2A3042] rounded-xl overflow-x-auto max-h-48">
+                      <table className="w-full text-[11px] text-left">
+                        <thead className="bg-slate-100 dark:bg-[#141722] text-slate-500 uppercase tracking-wider sticky top-0">
+                          <tr>
+                            {Object.keys(sheetRows[0] || {}).slice(0, 6).map((col) => (
+                              <th key={col} className="px-3 py-2 border-b border-slate-200 dark:border-[#2A3042] font-semibold whitespace-nowrap">
+                                {col}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-[#2A3042]/50">
+                          {sheetRows.slice(0, 5).map((row, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-[#1c2130]">
+                              {Object.keys(sheetRows[0] || {}).slice(0, 6).map((col) => (
+                                <td key={col} className="px-3 py-2 text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                                  {String(row[col] ?? '')}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {sheetRows.length > 5 && (
+                      <p className="text-[10px] text-slate-400 text-right">
+                        Showing first 5 of {sheetRows.length} rows
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 bg-slate-50 dark:bg-[#141722] border-t border-slate-200 dark:border-[#2A3042] flex items-center justify-between">
+                <span className="text-xs text-slate-400">
+                  {selectedProject ? `Submitting to: ${selectedProject.name}` : 'Submitting to: General Daily Activities'}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSheetModal(false)}
+                    className="btn-ghost text-xs px-4"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUploadSheet}
+                    disabled={!sheetFile || sheetUploading || Boolean(sheetError && sheetError.includes('Only today'))}
+                    className="btn bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs px-5 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Upload size={14} />
+                    {sheetUploading ? 'Uploading...' : 'Save & Record Activities'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

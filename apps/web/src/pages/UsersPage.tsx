@@ -16,7 +16,7 @@ import { format } from 'date-fns';
 import { NameField, PhoneField } from '../components/common/forms';
 import TeamsTab from './TeamsTab';
 import { getProductName } from '../config/brand';
-import { ROLE_RANKS, ROLE_LABELS, getAllowedAssignableRoles, isPlatformOwner } from '../utils/roles';
+import { ROLE_RANKS, ROLE_LABELS, ROLE_DESCRIPTIONS, getAllowedAssignableRoles, isPlatformOwner } from '../utils/roles';
 import {
   ALL_COMPANY_PAGE_KEYS,
   COMPANY_PAGE_REGISTRY,
@@ -27,15 +27,26 @@ import {
   PageDefinition,
   PageGroup,
 } from '../config/page-registry';
+import { getDefaultHomePageForRole } from '../config/roles-permissions';
 
 const ROLE_CODE_MAP: Record<string, string> = {
   platform_super_admin: 'PSA',
-  tenant_admin: 'TAD',
+  platform_admin: 'PSA',
+  tenant_admin: 'ADM',
+  administrator: 'ADM',
   admin: 'ADM',
+  sub_administrator: 'SUB',
   sub_admin: 'SUB',
   project_manager: 'PM',
+  developer_lead: 'LEAD',
+  store_inventory_manager: 'STM',
   store_manager: 'STM',
+  finance_specialist: 'FIN',
+  finance: 'FIN',
+  accountant: 'ACC',
+  sales_representative: 'EMP',
   employee: 'EMP',
+  developer: 'DEV',
 };
 
 const safeFormatDate = (dateVal: any, formatStr = 'dd MMM yyyy, HH:mm') => {
@@ -87,7 +98,8 @@ function UserPagePermissionsSelector({
     if (targetPages) {
       onChangePages(targetPages);
       if (!targetPages.includes(homePage)) {
-        onChangeHomePage(targetPages[0] || '');
+        const fallbackHome = targetPages.find(p => p !== 'notifications') || targetPages[0] || '';
+        onChangeHomePage(fallbackHome);
       }
     }
   };
@@ -215,13 +227,15 @@ function UserPagePermissionsSelector({
                         const nextPages = selectedPages.filter((k) => !groupKeys.includes(k));
                         onChangePages(nextPages);
                         if (!nextPages.includes(homePage)) {
-                          onChangeHomePage(nextPages[0] || '');
+                          const fallbackHome = nextPages.find((p) => p !== 'notifications') || nextPages[0] || '';
+                          onChangeHomePage(fallbackHome);
                         }
                       } else {
                         const nextPages = Array.from(new Set([...selectedPages, ...groupKeys]));
                         onChangePages(nextPages);
-                        if (!homePage) {
-                          onChangeHomePage(nextPages[0] || '');
+                        if (!homePage || !nextPages.includes(homePage)) {
+                          const fallbackHome = nextPages.find((p) => p !== 'notifications') || nextPages[0] || '';
+                          onChangeHomePage(fallbackHome);
                         }
                       }
                     }}
@@ -256,7 +270,8 @@ function UserPagePermissionsSelector({
                           }
                           onChangePages(nextPages);
                           if (!nextPages.includes(homePage)) {
-                            onChangeHomePage(nextPages[0] || '');
+                            const fallbackHome = nextPages.find((p) => p !== 'notifications') || nextPages[0] || '';
+                            onChangeHomePage(fallbackHome);
                           }
                         }}
                         className="mt-0.5 rounded border-slate-300 text-crm-blue focus:ring-crm-blue"
@@ -348,17 +363,40 @@ export default function UsersPage() {
   // Create User Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [createPages, setCreatePages] = useState<string[]>(() => getLegacyPagesForRole(assignableRoles[0] || 'employee'));
-  const [createHomePage, setCreateHomePage] = useState<string>('dashboard');
+  const defaultInitialRole = (assignableRoles[0] || 'employee') as Role;
+  const defaultInitialPages = getLegacyPagesForRole(defaultInitialRole);
+  const defaultInitialHome = getDefaultHomePageForRole(defaultInitialRole);
+  const [createPages, setCreatePages] = useState<string[]>(defaultInitialPages);
+  const [createHomePage, setCreateHomePage] = useState<string>(
+    defaultInitialPages.includes(defaultInitialHome) ? defaultInitialHome : (defaultInitialPages.find(p => p !== 'notifications') || defaultInitialPages[0] || '')
+  );
   const [createTemplateId, setCreateTemplateId] = useState<string>('');
   const [createForm, setCreateForm] = useState({
     name: '',
     email: '',
     phone: '',
-    role: (assignableRoles[0] || 'employee') as Role,
+    role: defaultInitialRole,
     teamId: '',
     warehouseId: '',
   });
+
+  const handleOpenCreateModal = () => {
+    const role = (assignableRoles[0] || 'employee') as Role;
+    const pages = getLegacyPagesForRole(role);
+    const home = getDefaultHomePageForRole(role);
+    setCreateForm({
+      name: '',
+      email: '',
+      phone: '',
+      role,
+      teamId: '',
+      warehouseId: '',
+    });
+    setCreateTemplateId('');
+    setCreatePages(pages);
+    setCreateHomePage(pages.includes(home) ? home : (pages.find(p => p !== 'notifications') || pages[0] || ''));
+    setShowCreateModal(true);
+  };
 
   // Credential Fallback Display Modal State
   const [createdCredentialModal, setCreatedCredentialModal] = useState<{
@@ -790,7 +828,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     if (searchParams.get('action') === 'create') {
-      setShowCreateModal(true);
+      handleOpenCreateModal();
     }
     if (searchParams.get('tab') === 'teams') {
       setActiveTab('teams');
@@ -831,16 +869,19 @@ export default function UsersPage() {
         tempPassword: data.tempPassword,
         message: data.message,
       });
+      const defaultRole = (assignableRoles[0] || 'employee') as Role;
+      const defPages = getLegacyPagesForRole(defaultRole);
+      const defHome = getDefaultHomePageForRole(defaultRole);
       setCreateForm({
         name: '',
         email: '',
         phone: '',
-        role: 'employee',
+        role: defaultRole,
         teamId: '',
         warehouseId: 'WH-MAIN',
       });
-      setCreatePages(getLegacyPagesForRole('employee'));
-      setCreateHomePage('dashboard');
+      setCreatePages(defPages);
+      setCreateHomePage(defPages.includes(defHome) ? defHome : (defPages.find(p => p !== 'notifications') || defPages[0] || ''));
       setCreateTemplateId('');
       await fetchUsers();
     } catch (err: any) {
@@ -1391,7 +1432,7 @@ export default function UsersPage() {
 
           {activeTab === 'users' && (
             <button type="button"
-              onClick={() => setShowCreateModal(true)}
+              onClick={handleOpenCreateModal}
               className="btn-primary text-xs gap-1.5 shadow-glow-blue"
             >
               <UserPlus size={15} /> Create New User
@@ -1814,14 +1855,22 @@ export default function UsersPage() {
 
                   const roleBadgeColors: Record<string, string> = {
                     platform_super_admin: 'bg-purple-500/10 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/20 dark:border-purple-500/30',
+                    platform_admin: 'bg-purple-500/10 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/20 dark:border-purple-500/30',
                     tenant_admin: 'bg-red-500/10 dark:bg-crm-coral/15 text-red-600 dark:text-crm-coral border-red-500/20 dark:border-crm-coral/30',
-                    admin: 'bg-crm-blue/10 dark:bg-crm-blue/15 text-crm-blue dark:text-crm-blue border-crm-blue/20 dark:border-crm-blue/30',
+                    administrator: 'bg-red-500/10 dark:bg-crm-coral/15 text-red-600 dark:text-crm-coral border-red-500/20 dark:border-crm-coral/30',
+                    admin: 'bg-red-500/10 dark:bg-crm-coral/15 text-red-600 dark:text-crm-coral border-red-500/20 dark:border-crm-coral/30',
+                    sub_administrator: 'bg-indigo-500/10 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/20 dark:border-indigo-500/30',
                     sub_admin: 'bg-indigo-500/10 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/20 dark:border-indigo-500/30',
-                    store_manager: 'bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20 dark:border-amber-500/30',
                     project_manager: 'bg-cyan-500/10 dark:bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border-cyan-500/20 dark:border-cyan-500/30',
                     developer_lead: 'bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/20 dark:border-blue-500/30',
-                    developer: 'bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/20 dark:border-sky-500/30',
+                    store_inventory_manager: 'bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20 dark:border-amber-500/30',
+                    store_manager: 'bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20 dark:border-amber-500/30',
+                    finance_specialist: 'bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 dark:border-emerald-500/30',
+                    finance: 'bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 dark:border-emerald-500/30',
+                    accountant: 'bg-lime-500/10 dark:bg-lime-500/15 text-lime-600 dark:text-lime-400 border-lime-500/20 dark:border-lime-500/30',
+                    sales_representative: 'bg-teal-500/10 dark:bg-crm-teal/15 text-teal-600 dark:text-crm-teal border-teal-500/20 dark:border-crm-teal/30',
                     employee: 'bg-teal-500/10 dark:bg-crm-teal/15 text-teal-600 dark:text-crm-teal border-teal-500/20 dark:border-crm-teal/30',
+                    developer: 'bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/20 dark:border-sky-500/30',
                   };
 
                   return (
@@ -2151,7 +2200,12 @@ export default function UsersPage() {
                       if (!createTemplateId) {
                         const defaultPages = getLegacyPagesForRole(newRole);
                         setCreatePages(defaultPages);
-                        setCreateHomePage(defaultPages[0] || 'dashboard');
+                        const defaultHome = getDefaultHomePageForRole(newRole);
+                        setCreateHomePage(
+                          defaultPages.includes(defaultHome)
+                            ? defaultHome
+                            : (defaultPages.find(p => p !== 'notifications') || defaultPages[0] || '')
+                        );
                       }
                     }}
                     required
@@ -2162,9 +2216,37 @@ export default function UsersPage() {
                       </option>
                     ))}
                   </select>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    Role sets job title and administrative powers. Specific module pages are configured below.
+                  <p className="text-[11px] font-medium text-blue-600 dark:text-blue-400 mt-1">
+                    {ROLE_DESCRIPTIONS[createForm.role] || 'Standard organizational role capabilities.'}
                   </p>
+                </div>
+
+                {/* Live Role Capabilities & Granted Pages Preview */}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/10 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Shield size={13} className="text-crm-blue" />
+                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                        Granted Pages Preview ({createPages.length})
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      Landing: <span className="font-semibold text-crm-blue">{COMPANY_PAGE_REGISTRY[createHomePage]?.label || createHomePage || 'None'}</span>
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1.5 rounded-lg bg-white dark:bg-black/20 border border-slate-200/60 dark:border-white/5">
+                    {createPages.map((pgKey) => {
+                      const pageDef = COMPANY_PAGE_REGISTRY[pgKey];
+                      return (
+                        <span
+                          key={pgKey}
+                          className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10"
+                        >
+                          {pageDef?.label || pgKey}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Live Auto-Generated ID Preview */}
@@ -2397,10 +2479,23 @@ export default function UsersPage() {
                   <select
                     className="input text-xs font-medium"
                     value={editingUser.role}
-                    onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as Role })}
+                    onChange={(e) => {
+                      const newRole = e.target.value as Role;
+                      setEditingUser({ ...editingUser, role: newRole });
+                      if (!editTemplateId) {
+                        const defaultPages = getLegacyPagesForRole(newRole);
+                        setEditPages(defaultPages);
+                        const defaultHome = getDefaultHomePageForRole(newRole);
+                        setEditHomePage(
+                          defaultPages.includes(defaultHome)
+                            ? defaultHome
+                            : (defaultPages.find(p => p !== 'notifications') || defaultPages[0] || '')
+                        );
+                      }
+                    }}
                     disabled={editingUser.id === currentUser?.id || (!isPlatform && currentUser?.role !== 'tenant_admin' && (ROLE_RANKS[currentUser?.role || ''] || 0) <= (ROLE_RANKS[editingUser.role] || 0))}
                   >
-                    {!assignableRoles.includes(editingUser.role) && (
+                    {!assignableRoles.includes(editingUser.role as any) && (
                       <option value={editingUser.role}>
                         {ROLE_LABELS[editingUser.role] || editingUser.role}
                       </option>
@@ -2411,9 +2506,37 @@ export default function UsersPage() {
                       </option>
                     ))}
                   </select>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    Role sets job title and administrative powers. Specific module pages are configured below.
+                  <p className="text-[11px] font-medium text-blue-600 dark:text-blue-400 mt-1">
+                    {ROLE_DESCRIPTIONS[editingUser.role] || 'Standard organizational role capabilities.'}
                   </p>
+                </div>
+
+                {/* Live Role Capabilities & Granted Pages Preview */}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/10 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Shield size={13} className="text-crm-blue" />
+                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                        Granted Pages Preview ({editPages.length})
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      Landing: <span className="font-semibold text-crm-blue">{COMPANY_PAGE_REGISTRY[editHomePage]?.label || editHomePage || 'None'}</span>
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1.5 rounded-lg bg-white dark:bg-black/20 border border-slate-200/60 dark:border-white/5">
+                    {editPages.map((pgKey) => {
+                      const pageDef = COMPANY_PAGE_REGISTRY[pgKey];
+                      return (
+                        <span
+                          key={pgKey}
+                          className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10"
+                        >
+                          {pageDef?.label || pgKey}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

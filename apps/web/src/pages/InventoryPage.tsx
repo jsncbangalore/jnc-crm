@@ -46,6 +46,7 @@ import { inventoryApi, fetchPrivateFileBlobUrl } from '../services/api';
 import { Sku, ProjectStockPosition } from '../types';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import { useAuth } from '../contexts/AuthContext';
+import { useAllowedPages } from '../hooks/useAllowedPages';
 import { AddComponentModal } from '../components/inventory/AddComponentModal';
 import { EditComponentModal } from '../components/inventory/EditComponentModal';
 import { BulkEditComponentsModal } from '../components/inventory/BulkEditComponentsModal';
@@ -71,8 +72,9 @@ export interface BuyListItem {
 
 export default function InventoryPage() {
   const { user } = useAuth();
-  const canDelete = user?.role === 'tenant_admin' || user?.role === 'admin';
-  const canManage = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
+  const { canCreateEdit, canDelete: canDeletePerm } = useAllowedPages();
+  const canManage = canCreateEdit('inventory');
+  const canDelete = canDeletePerm('inventory');
 
   // Active View Tab: 'master_stock' | 'buy_list'
   const [activeTab, setActiveTab] = useState<'master_stock' | 'buy_list'>('master_stock');

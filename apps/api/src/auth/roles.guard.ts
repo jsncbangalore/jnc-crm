@@ -8,9 +8,15 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator';
-import { PAGE_ACCESS_KEY, IS_PUBLIC_KEY, AUTH_ONLY_KEY } from './page-access.decorator';
+import { PAGE_ACCESS_KEY, IS_PUBLIC_KEY } from './page-access.decorator';
 import { PrismaService } from '../prisma/prisma.service';
-import { getEffectivePagesForUser } from './effective-page-access';
+import { getEffectivePermissionsForUser } from './effective-page-access';
+import {
+  canAccessPage,
+  normalizeRole,
+  ROLE_RANKS,
+  PageAction,
+} from '../common/roles-permissions';
 
 const PAGE_LABEL_MAP: Record<string, string> = {
   shipments: 'Shipments',
@@ -34,6 +40,7 @@ const PAGE_LABEL_MAP: Record<string, string> = {
   teams: 'Teams',
   branding: 'Branding',
   mail_settings: 'Mail Settings',
+  dashboard: 'Dashboard',
 };
 
 @Injectable()
@@ -112,21 +119,31 @@ export class RolesGuard implements CanActivate {
       }
     }
 
-    // 1. Check Page Access (Dynamic Per-User & Per-Team Page Access from database, no stale cache)
-    let userEffectivePages: string[] | null = null;
-    let hasPageAccess = true;
+    const normUserRole = normalizeRole(user.role);
 
+    // Determine requested action from HTTP method
+    const method = (req.method || 'GET').toUpperCase();
+    const requestedAction: PageAction =
+      method === 'POST' || method === 'PUT' || method === 'PATCH'
+        ? 'create_edit'
+        : method === 'DELETE'
+        ? 'delete'
+        : 'view';
+
+    // 1. Check Page Access and Action Permission (Requirement B & C)
     if (requiredPage) {
-      userEffectivePages = await getEffectivePagesForUser(this.prisma, {
+      const effectiveAccess = await getEffectivePermissionsForUser(this.prisma, {
         id: user.sub || user.id,
         role: user.role,
         tenantId: user.tenantId,
       });
 
       const requiredKeys = Array.isArray(requiredPage) ? requiredPage : [requiredPage];
-      hasPageAccess = requiredKeys.some((k) => userEffectivePages!.includes(k));
+      
+      // Does user have view access to any of the required page keys?
+      const matchingPageKey = requiredKeys.find((k) => canAccessPage(effectiveAccess, k, 'view'));
 
-      if (!hasPageAccess) {
+      if (!matchingPageKey) {
         const rejectedKey = requiredKeys[0];
         const pageLabel = PAGE_LABEL_MAP[rejectedKey] || rejectedKey.charAt(0).toUpperCase() + rejectedKey.slice(1);
         throw new ForbiddenException({
@@ -136,27 +153,51 @@ export class RolesGuard implements CanActivate {
           pageKey: rejectedKey,
         });
       }
+
+      // If mutation method (POST/PUT/PATCH/DELETE), check if action is permitted (Requirement C)
+      if (requestedAction !== 'view') {
+        const canMutate = requiredKeys.some((k) => canAccessPage(effectiveAccess, k, requestedAction));
+        if (!canMutate && normUserRole !== 'administrator') {
+          const pageLabel = PAGE_LABEL_MAP[matchingPageKey] || matchingPageKey.charAt(0).toUpperCase() + matchingPageKey.slice(1);
+          throw new ForbiddenException({
+            statusCode: 403,
+            code: 'FORBIDDEN',
+            message: `You have view-only access to ${pageLabel}. Modifications are not permitted.`,
+            pageKey: matchingPageKey,
+            action: requestedAction,
+          });
+        }
+      }
     }
 
-    // 2. Check Role Hierarchy / Admin Restrictions
+    // 2. Check Role Hierarchy / Specific Role Restrictions (Requirement A & D)
     if (requiredRoles && requiredRoles.length > 0) {
-      let isAuthorized = requiredRoles.includes(user.role);
+      let isAuthorized = false;
 
-      if (!isAuthorized) {
-        // tenant_admin (Client Super Admin) has full control over all tenant operational features
-        if (user.role === 'tenant_admin' || user.role === 'platform_admin' || user.role === 'platform_super_admin') {
-          const isPlatformOnly = requiredRoles.every((r) => r === 'platform_super_admin');
-          if (!isPlatformOnly || user.role === 'platform_super_admin') {
+      // Administrator / Platform Super Admin has full authority over all tenant operations
+      if (normUserRole === 'administrator' || user.role === 'platform_super_admin' || user.role === 'platform_admin') {
+        const isPlatformOnly = requiredRoles.every((r) => r === 'platform_super_admin');
+        if (!isPlatformOnly || user.role === 'platform_super_admin') {
+          isAuthorized = true;
+        }
+      } else {
+        const normRequiredRoles = requiredRoles.map((r) => normalizeRole(r));
+
+        // Direct match with normalized role
+        if (normRequiredRoles.includes(normUserRole)) {
+          isAuthorized = true;
+        }
+        // Sub-Administrator has operational admin powers over all roles with rank <= 80
+        else if (normUserRole === 'sub_administrator') {
+          const userRank = ROLE_RANKS['sub_administrator'] || 80;
+          // Sub-admin satisfies any decorator requiring sub_admin, employee, or lower rank roles
+          if (requiredRoles.some((r) => ['sub_admin', 'sub_administrator', 'employee', 'sales_representative'].includes(r) || (ROLE_RANKS[r] || 0) <= userRank)) {
             isAuthorized = true;
           }
-        } else if (user.role === 'admin') {
-          if (requiredRoles.some((r) => ['admin', 'sub_admin', 'employee'].includes(r))) {
-            isAuthorized = true;
-          }
-        } else if (user.role === 'sub_admin') {
-          if (requiredRoles.some((r) => ['sub_admin', 'employee'].includes(r))) {
-            isAuthorized = true;
-          }
+        }
+        // If decorator required regular employee / sales rep, any tenant user who passed page access satisfies it
+        else if (requiredRoles.includes('employee') || normRequiredRoles.includes('sales_representative')) {
+          isAuthorized = true;
         }
       }
 
@@ -179,5 +220,3 @@ export class RolesGuard implements CanActivate {
     return true;
   }
 }
-
-

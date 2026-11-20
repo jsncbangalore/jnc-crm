@@ -120,9 +120,6 @@ export class DashboardService {
         break;
     }
 
-    const leadScope = this.scopingService.getLeadScope(user);
-    const orderScope = this.scopingService.getOrderScope(user);
-
     const platformOwner = isPlatformOwner(user);
 
     const effectivePages = await getEffectivePagesForUser(this.prisma, user);
@@ -133,6 +130,9 @@ export class DashboardService {
     const hasQuotations = platformOwner || effectivePages.includes('quotations');
     const hasInvoices = platformOwner || effectivePages.includes('invoices');
     const hasDailyActivities = platformOwner || effectivePages.includes('daily_activities');
+
+    const leadScope = hasLeads ? this.scopingService.getLeadScope(user) : {};
+    const orderScope = hasOrders ? this.scopingService.getOrderScope(user) : {};
 
     // ─── Parallelized High-Performance Aggregation ───────────────────────────
     const in7Days = new Date(now);

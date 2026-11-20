@@ -16,11 +16,13 @@ import {
 } from '@crm/shared-validation';
 import { NameField, PhoneField, StateCityField } from '../components/common/forms';
 import { parseApiError } from '../utils/errorHelper';
+import { useAllowedPages } from '../hooks/useAllowedPages';
 
 export default function SuppliersPage() {
   const { user } = useAuth();
-  const canDelete = user?.role === 'tenant_admin' || user?.role === 'admin';
-  const canManage = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
+  const { canCreateEdit, canDelete: canDeletePerm } = useAllowedPages();
+  const canDelete = canDeletePerm('suppliers');
+  const canManage = canCreateEdit('suppliers');
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);

@@ -20,6 +20,7 @@ import { leadsApi, usersApi } from '../services/api';
 import { Lead, LeadStatus, User as UserType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { usePopup } from '../contexts/PopupContext';
+import { useAllowedPages } from '../hooks/useAllowedPages';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import { CompactLeadCard, formatIndianCurrency } from '../components/leads/CompactLeadCard';
 import { LeadDrawer } from '../components/leads/LeadDrawer';
@@ -511,8 +512,10 @@ export default function LeadsPage() {
     return filtered;
   }, [boardData.stages, summaryBoxFilter]);
 
-  // Can import check
-  const canImport = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin';
+  // Permissions check
+  const { canCreateEdit } = useAllowedPages();
+  const canCreate = canCreateEdit('leads');
+  const canImport = canCreate && (user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin' || user?.role === 'administrator');
 
   const handleSummaryFilterSelect = (filterKey: string | null) => {
     if (!filterKey || filterKey === summaryBoxFilter) {
@@ -595,14 +598,16 @@ export default function LeadsPage() {
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => setShowCreateLeadModal(true)}
-            className="h-7 px-3 rounded-md bg-crm-blue hover:bg-crm-blue/90 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
-          >
-            <Plus size={13} />
-            <span>New lead</span>
-          </button>
+          {canCreate && (
+            <button
+              type="button"
+              onClick={() => setShowCreateLeadModal(true)}
+              className="h-7 px-3 rounded-md bg-crm-blue hover:bg-crm-blue/90 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+            >
+              <Plus size={13} />
+              <span>New lead</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -981,6 +986,7 @@ export default function LeadsPage() {
         }}
         salesReps={boardData.salesReps}
         onCreateQuote={handleCreateQuote}
+        canEditLead={canCreate}
         onConvertToOrder={(lead) => {
           showAlert('Convert to Order', `Converting quotation for ${lead.customerName} to official Sales Order...`);
         }}

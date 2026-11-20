@@ -23,17 +23,38 @@ export function getCustomerListScope(): CustomerListScope {
   return envVal === 'company' ? 'company' : 'own';
 }
 
+export const ROLE_CANONICAL_MAP: Record<string, RoleName> = {
+  administrator: 'admin',
+  admin: 'admin',
+  tenant_admin: 'tenant_admin',
+  platform_super_admin: 'platform_super_admin',
+  platform_admin: 'platform_admin',
+  sub_administrator: 'sub_admin',
+  sub_admin: 'sub_admin',
+  project_manager: 'project_manager',
+  developer_lead: 'developer_lead',
+  store_inventory_manager: 'store_manager',
+  store_manager: 'store_manager',
+  finance_specialist: 'finance',
+  finance: 'finance',
+  accountant: 'accountant',
+  sales_representative: 'employee',
+  employee: 'employee',
+  sales: 'employee',
+  developer: 'developer',
+};
+
 export const VISIBILITY_TABLE_OWN: Record<RoleName, Record<ModelName, VisibilityLevel>> = {
   platform_super_admin: { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
   platform_admin:       { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
   tenant_admin:         { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
   admin:                { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
   sub_admin:            { Lead:'team', Company:'team', Contact:'team', Quotation:'team', Order:'team', Invoice:'team', Supplier:'all', Inventory:'all', Activity:'team' },
-  employee:             { Lead:'own', Company:'own', Contact:'own', Quotation:'own', Order:'own', Invoice:'own', Supplier:'none', Inventory:'all', Activity:'own' },
-  store_manager:        { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'all', Inventory:'all', Activity:'own' },
-  project_manager:      { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'team' },
-  developer_lead:       { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'team' },
-  developer:            { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'own' },
+  employee:             { Lead:'own', Company:'own', Contact:'own', Quotation:'own', Order:'own', Invoice:'own', Supplier:'own', Inventory:'all', Activity:'own' },
+  store_manager:        { Lead:'none', Company:'none', Contact:'none', Quotation:'team', Order:'all', Invoice:'team', Supplier:'all', Inventory:'all', Activity:'own' },
+  project_manager:      { Lead:'team', Company:'all', Contact:'all', Quotation:'team', Order:'team', Invoice:'team', Supplier:'all', Inventory:'all', Activity:'team' },
+  developer_lead:       { Lead:'own', Company:'own', Contact:'own', Quotation:'team', Order:'team', Invoice:'team', Supplier:'team', Inventory:'team', Activity:'team' },
+  developer:            { Lead:'own', Company:'own', Contact:'own', Quotation:'own', Order:'own', Invoice:'own', Supplier:'own', Inventory:'own', Activity:'own' },
   finance:              { Lead:'team', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'team' },
   accountant:           { Lead:'team', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'team' },
 };
@@ -44,11 +65,11 @@ export const VISIBILITY_TABLE_COMPANY: Record<RoleName, Record<ModelName, Visibi
   tenant_admin:         { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
   admin:                { Lead:'all', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'all' },
   sub_admin:            { Lead:'team', Company:'team', Contact:'team', Quotation:'team', Order:'team', Invoice:'team', Supplier:'all', Inventory:'all', Activity:'team' },
-  employee:             { Lead:'own', Company:'all', Contact:'all', Quotation:'own', Order:'own', Invoice:'own', Supplier:'none', Inventory:'all', Activity:'own' },
-  store_manager:        { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'all', Inventory:'all', Activity:'own' },
-  project_manager:      { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'team' },
-  developer_lead:       { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'team' },
-  developer:            { Lead:'none', Company:'none', Contact:'none', Quotation:'none', Order:'none', Invoice:'none', Supplier:'none', Inventory:'none', Activity:'own' },
+  employee:             { Lead:'own', Company:'all', Contact:'all', Quotation:'own', Order:'own', Invoice:'own', Supplier:'own', Inventory:'all', Activity:'own' },
+  store_manager:        { Lead:'none', Company:'none', Contact:'none', Quotation:'team', Order:'all', Invoice:'team', Supplier:'all', Inventory:'all', Activity:'own' },
+  project_manager:      { Lead:'team', Company:'all', Contact:'all', Quotation:'team', Order:'team', Invoice:'team', Supplier:'all', Inventory:'all', Activity:'team' },
+  developer_lead:       { Lead:'own', Company:'own', Contact:'own', Quotation:'team', Order:'team', Invoice:'team', Supplier:'team', Inventory:'team', Activity:'team' },
+  developer:            { Lead:'own', Company:'own', Contact:'own', Quotation:'own', Order:'own', Invoice:'own', Supplier:'own', Inventory:'own', Activity:'own' },
   finance:              { Lead:'team', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'team' },
   accountant:           { Lead:'team', Company:'all', Contact:'all', Quotation:'all', Order:'all', Invoice:'all', Supplier:'all', Inventory:'all', Activity:'team' },
 };
@@ -66,11 +87,17 @@ export const VISIBILITY_TABLE: Record<RoleName, Record<ModelName, VisibilityLeve
 });
 
 export function getVisibility(role: string, model: ModelName, scopeMode?: CustomerListScope): VisibilityLevel {
-  if (role === 'platform_admin' || role === 'platform_super_admin' || role === 'tenant_admin' || role === 'admin') {
+  const normalized = (role && ROLE_CANONICAL_MAP[role.toLowerCase().trim()]) || role;
+  if (
+    normalized === 'platform_admin' ||
+    normalized === 'platform_super_admin' ||
+    normalized === 'tenant_admin' ||
+    normalized === 'admin'
+  ) {
     return 'all';
   }
   const table = getVisibilityTable(scopeMode);
-  const row = table[role as RoleName];
+  const row = table[normalized as RoleName];
   if (!row) return 'none';
   return row[model] ?? 'none';
 }

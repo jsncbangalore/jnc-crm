@@ -424,6 +424,11 @@ runLayer('AF', 'Secrets, Storage & Repository Hygiene Suite', (assert) => {
   runDedicatedSuite('AF', 'Secrets, Storage & Repository Hygiene', 'scripts/test-secrets-storage-suite.js', 29, assert);
 });
 
+// ─── LAYER AG: 9 ROLES & PERMISSIONS SYSTEM SPECIFICATION (59 tests) ─
+runLayer('AG', '9 Roles, Permissions & Multi-Tab Isolation Suite', (assert) => {
+  runDedicatedSuite('AG', '9 Roles & Permissions System', 'scripts/test-roles-permissions-suite.js', 59, assert);
+});
+
 // ─── REPORT GENERATION ───────────────────────────────────────────────────────
 const jsonReportPath = path.join(REPORT_DIR, 'test-all-report.json');
 fs.writeFileSync(jsonReportPath, JSON.stringify(report, null, 2), 'utf8');
@@ -530,6 +535,7 @@ const comparisonRows = [
   { suite: 'Browser Console Hygiene & Fonts', file: 'scripts/test-browser-console-hygiene-suite.js', expected: 42, layer: 'AD' },
   { suite: 'Public Protection, Friendly Messages & Support Code', file: 'scripts/test-public-leak-and-support-code-suite.js', expected: 33, layer: 'AE' },
   { suite: 'Secrets, Storage & Repository Hygiene', file: 'scripts/test-secrets-storage-suite.js', expected: 29, layer: 'AF' },
+  { suite: '9 Roles & Permissions System Specification', file: 'scripts/test-roles-permissions-suite.js', expected: 59, layer: 'AG' },
 ];
 
 console.log('\n========================================================================================');

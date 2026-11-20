@@ -9,6 +9,18 @@ import { Injectable, ForbiddenException } from '@nestjs/common';
 import { requireTenantId } from '../common/tenant.util';
 import { getVisibility, getCustomerListScope, ModelName, CustomerListScope } from './data-visibility';
 
+export const MODEL_TO_PAGE_MAP: Record<ModelName, string> = {
+  Lead: 'leads',
+  Company: 'leads',
+  Contact: 'leads',
+  Quotation: 'quotations',
+  Order: 'orders',
+  Invoice: 'invoices',
+  Supplier: 'suppliers',
+  Inventory: 'inventory',
+  Activity: 'daily_activities',
+};
+
 export interface ScopedUser {
   id: string;
   tenantId?: string | null;
@@ -17,6 +29,7 @@ export interface ScopedUser {
   teamId?: string | null;
   warehouseId?: string | null;
   tenant?: { id: string; code: string; name: string; slug: string; status: string } | null;
+  effectivePages?: string[];
 }
 
 @Injectable()
@@ -39,7 +52,14 @@ export class ScopingService {
    */
   getScope(user: ScopedUser, model: ModelName, overrideScope?: CustomerListScope): Record<string, any> {
     const tenantFilter = this.getTenantScope(user);
-    const level = getVisibility(user.role, model, overrideScope);
+    let level = getVisibility(user.role, model, overrideScope);
+
+    // If level is 'none', check if user has access granted in effectivePages
+    const pageKey = MODEL_TO_PAGE_MAP[model];
+    const effectivePages = (user as any)?.effectivePages;
+    if (level === 'none' && Array.isArray(effectivePages) && pageKey && effectivePages.includes(pageKey)) {
+      level = 'team';
+    }
 
     if (level === 'none') {
       throw new ForbiddenException(`Your role does not have access to ${model} records.`);
@@ -78,7 +98,11 @@ export class ScopingService {
 
   getInventoryScope(user: ScopedUser) {
     const tenantFilter = this.getTenantScope(user);
-    const level = getVisibility(user.role, 'Inventory');
+    let level = getVisibility(user.role, 'Inventory');
+    const effectivePages = (user as any)?.effectivePages;
+    if (level === 'none' && Array.isArray(effectivePages) && effectivePages.includes('inventory')) {
+      level = 'all';
+    }
     if (level === 'none') throw new ForbiddenException('Your role does not have access to Inventory records.');
     if (user.role === 'sub_admin' && user.warehouseId) return { ...tenantFilter, warehouseId: user.warehouseId };
     return { ...tenantFilter };

@@ -4548,15 +4548,15 @@ export class AuthService {
       let targetEmail: string | null = null;
       if (['platform_owner', 'platform_super_admin'].includes(targetRole)) {
         targetEmail = 'platform_owner@demo.test';
-      } else if (['admin', 'company_admin', 'tenant_admin'].includes(targetRole)) {
+      } else if (['admin', 'administrator', 'company_admin', 'tenant_admin', 'sub_admin', 'sub_administrator', 'project_manager'].includes(targetRole)) {
         targetEmail = 'admin@demo.test';
-      } else if (['sales', 'sales_rep', 'sales_user'].includes(targetRole)) {
+      } else if (['sales', 'sales_rep', 'sales_representative', 'sales_user', 'employee'].includes(targetRole)) {
         targetEmail = 'sales@demo.test';
-      } else if (['accountant', 'accounts'].includes(targetRole)) {
+      } else if (['accountant', 'accounts', 'finance', 'finance_specialist'].includes(targetRole)) {
         targetEmail = 'accountant@demo.test';
-      } else if (['store_manager', 'store', 'inventory'].includes(targetRole)) {
+      } else if (['store_manager', 'store_inventory_manager', 'store', 'inventory', 'inventory_manager'].includes(targetRole)) {
         targetEmail = 'store@demo.test';
-      } else if (['viewer', 'readonly', 'read_only'].includes(targetRole)) {
+      } else if (['viewer', 'readonly', 'read_only', 'developer', 'developer_lead'].includes(targetRole)) {
         targetEmail = 'viewer@demo.test';
       }
 

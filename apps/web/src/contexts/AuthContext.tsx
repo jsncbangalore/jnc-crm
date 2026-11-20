@@ -738,15 +738,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // Only trigger if THIS tab had an active or recently-active user session
-        const tabUserToCheck = currentId || lastKnownId;
-        if (!tabUserToCheck && !staffUser && !platformUser) {
+        const tabUserToCheck = currentId || lastKnownId || (isPlatform ? platformUser?.id : staffUser?.id);
+        if (!tabUserToCheck) {
           return;
         }
 
         // Same user check: signing in again as the SAME user in another tab must NEVER raise conflict
-        const isSameUser = tabUserToCheck === event.userId && (
-          !event.tenantId || !currentTenantId || event.tenantId === currentTenantId
-        );
+        const isSameUser = tabUserToCheck === event.userId;
         if (isSameUser) {
           return;
         }
@@ -796,7 +794,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           clearStaleTabKeys();
           return;
         }
-        const currentId = getCurrentTabUserId(isPlatform);
+        const currentId = getCurrentTabUserId(isPlatform) || (isPlatform ? platformUser?.id : staffUser?.id);
         if (event.userId && currentId === event.userId) {
           return;
         }

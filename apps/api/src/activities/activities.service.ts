@@ -2,8 +2,11 @@ import {
   Injectable,
   ForbiddenException,
   NotFoundException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
+import * as XLSX from 'xlsx';
+import { parseExcelSafely } from '../common/safe-excel-parser';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
@@ -22,14 +25,28 @@ export class ActivitiesService {
     this.requireProjectAccessRole(user);
     const tenantId = requireTenantId(user);
 
-    // Individual Developers see ONLY projects they are assigned to within tenant
-    if (user.role === 'developer') {
+    const isManagerOrAdmin = [
+      'platform_super_admin',
+      'platform_admin',
+      'tenant_admin',
+      'administrator',
+      'admin',
+      'sub_administrator',
+      'sub_admin',
+      'project_manager',
+      'developer_lead',
+    ].includes(user.role);
+
+    // Individual contributors see assigned projects or general team projects
+    if (!isManagerOrAdmin) {
       return this.prisma.project.findMany({
         where: {
           tenantId,
-          assignments: {
-            some: { userId: user.id },
-          },
+          OR: [
+            { assignments: { some: { userId: user.id } } },
+            { createdById: user.id },
+            { name: 'General Daily Activities' },
+          ],
         },
         orderBy: { createdAt: 'desc' },
         include: {
@@ -180,8 +197,20 @@ export class ActivitiesService {
     this.requireProjectAccessRole(user);
     await this.findProjectOrFail(projectId, user);
 
-    // Individual Developer can ONLY see their own uploaded logs
-    if (user.role === 'developer') {
+    const isManagerOrAdmin = [
+      'platform_super_admin',
+      'platform_admin',
+      'tenant_admin',
+      'administrator',
+      'admin',
+      'sub_administrator',
+      'sub_admin',
+      'project_manager',
+      'developer_lead',
+    ].includes(user.role);
+
+    // Individual contributors can ONLY see their own uploaded logs (privacy protection)
+    if (!isManagerOrAdmin) {
       return this.prisma.projectDailyLog.findMany({
         where: {
           projectId,
@@ -253,16 +282,179 @@ export class ActivitiesService {
     return this.prisma.projectDailyLog.deleteMany({ where: { id: logId, projectId } });
   }
 
+  // ─── Today's Attendance & Activity Template / Upload ──────────────────────────
+
+  async getTodayTemplate(user: ScopedUser) {
+    this.requireProjectAccessRole(user);
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    const sampleRows = [
+      {
+        'Date (YYYY-MM-DD)': todayStr,
+        'Employee Code': user.employeeCode || '',
+        'Task Summary': 'Completed daily operations and task assignments',
+        'Hours Spent': 8,
+        'Status': 'Completed',
+        'Remarks': 'On schedule',
+      },
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(sampleRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Daily Activities');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    return {
+      filename: `daily_activity_template_${todayStr}.xlsx`,
+      date: todayStr,
+      base64: (buf as Buffer).toString('base64'),
+    };
+  }
+
+  async uploadTodayTemplate(
+    user: ScopedUser,
+    file: Express.Multer.File | undefined,
+    body?: any,
+  ) {
+    this.requireProjectAccessRole(user);
+    const tenantId = requireTenantId(user);
+
+    let rows: any[] = [];
+    const fileName = file?.originalname || 'daily_activity.xlsx';
+
+    if (file) {
+      rows = parseExcelSafely(file, { maxSizeBytes: 10 * 1024 * 1024, maxRows: 5000, maxColumns: 100 });
+    } else if (body?.records && Array.isArray(body.records)) {
+      rows = body.records;
+    } else {
+      throw new BadRequestException('Please select an Excel file or provide activity rows to upload.');
+    }
+
+    if (rows.length === 0) {
+      throw new BadRequestException('The spreadsheet has no data rows.');
+    }
+
+    // Verify Date: ONLY today's date is allowed!
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`; // YYYY-MM-DD
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rawDate = row['Date (YYYY-MM-DD)'] ?? row['Date'] ?? row['date'] ?? row['logDate'];
+      if (!rawDate) {
+        throw new BadRequestException(`Row ${i + 1} is missing a Date. Only today's date (${todayStr}) is allowed.`);
+      }
+
+      let parsedDateStr = '';
+      if (rawDate instanceof Date) {
+        const ry = rawDate.getFullYear();
+        const rm = String(rawDate.getMonth() + 1).padStart(2, '0');
+        const rd = String(rawDate.getDate()).padStart(2, '0');
+        parsedDateStr = `${ry}-${rm}-${rd}`;
+      } else {
+        const s = String(rawDate).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+          parsedDateStr = s.substring(0, 10);
+        } else if (/^\d{2}[-/]\d{2}[-/]\d{4}/.test(s)) {
+          const parts = s.split(/[-/]/);
+          if (parts[2].length === 4) {
+            parsedDateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          }
+        } else {
+          parsedDateStr = s;
+        }
+      }
+
+      if (parsedDateStr !== todayStr) {
+        throw new BadRequestException(
+          `Only today's date (${todayStr}) is allowed. Row ${i + 1} has date '${rawDate}'. Yesterday or past dates cannot be entered.`,
+        );
+      }
+    }
+
+    // Find or create default project
+    let projectId = body?.projectId;
+    if (projectId) {
+      await this.findProjectOrFail(projectId, user);
+    } else {
+      let defaultProject = await this.prisma.project.findFirst({
+        where: { tenantId, name: 'General Daily Activities' },
+      });
+      if (!defaultProject) {
+        defaultProject = await this.prisma.project.create({
+          data: {
+            tenantId,
+            name: 'General Daily Activities',
+            description: 'Daily team attendance and activity tracking',
+            status: 'active',
+            createdById: user.id,
+          },
+        });
+      }
+      projectId = defaultProject.id;
+    }
+
+    const taskSummary =
+      body?.taskSummary ||
+      rows
+        .map((r: any) => r['Task Summary'] || r['Summary'] || r['Task'] || '')
+        .filter(Boolean)
+        .slice(0, 3)
+        .join('; ') ||
+      `Daily Attendance & Activity for ${todayStr}`;
+
+    const log = await this.prisma.projectDailyLog.create({
+      data: {
+        projectId,
+        uploadedById: user.id,
+        fileName,
+        taskSummary: sanitizeHtml(taskSummary),
+        recordsJson: JSON.stringify(rows),
+        rawPayload: JSON.stringify({ uploadedBy: user.employeeCode, rows: rows.length, date: todayStr }),
+      },
+      include: {
+        uploadedBy: { select: { id: true, name: true, employeeCode: true, role: true } },
+      },
+    });
+
+    this.logger.log(
+      `Daily attendance sheet uploaded for project ${projectId} by ${user.employeeCode} (${user.role}) - ${rows.length} rows for ${todayStr}`,
+    );
+
+    return {
+      success: true,
+      message: `Successfully recorded ${rows.length} activity row(s) for today (${todayStr}).`,
+      log,
+    };
+  }
+
   // ─── Role Guards ──────────────────────────────────────────────────────────────
 
   private requireProjectAccessRole(user: ScopedUser) {
     const allowed = [
       'platform_super_admin',
+      'platform_admin',
       'tenant_admin',
+      'administrator',
       'admin',
+      'sub_administrator',
       'sub_admin',
       'project_manager',
       'developer_lead',
+      'store_inventory_manager',
+      'store_manager',
+      'finance_specialist',
+      'finance',
+      'accountant',
+      'sales_representative',
+      'employee',
       'developer',
     ];
     if (!allowed.includes(user.role)) {

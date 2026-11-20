@@ -14,6 +14,11 @@ import {
   PageDefinition,
   PlatformPageDefinition,
 } from '../config/page-registry';
+import {
+  resolveEffectivePageAccess,
+  canAccessPage,
+  isViewOnlyPage,
+} from '../config/roles-permissions';
 import { isPlatformOwner } from '../utils/roles';
 import {
   LayoutDashboard,
@@ -136,67 +141,54 @@ export function useAllowedPages() {
     isPlatformOwner(user) || (user?.role === 'platform_super_admin' && !user?.tenantId)
   );
 
-  // Derive canonical allowed keys
-  const allowedKeys = useMemo<string[]>(() => {
-    if (!user) return [];
+  // Derive canonical effective access using the unified resolution engine (Requirement D)
+  const effectiveAccess = useMemo(() => {
+    if (!user) return { pages: [], permissions: {} };
 
-    if (isPlatform) {
-      return Object.keys(PLATFORM_PAGE_REGISTRY);
-    }
-
-    // Admins always get all company pages
-    if (
-      user.role === 'tenant_admin' ||
-      user.role === 'admin' ||
-      user.role === 'platform_super_admin' ||
-      user.role === 'platform_admin'
-    ) {
-      return Object.keys(COMPANY_PAGE_REGISTRY);
-    }
-
-    // Explicit effectivePages takes precedence
-    if (Array.isArray(user.effectivePages)) {
-      const normalized = user.effectivePages.map((k) => (k === 'purchase_bills' ? 'bills' : k));
-      return normalized.filter((k) => k in COMPANY_PAGE_REGISTRY);
-    }
-
-    // Team allowedPages fallback
-    if (user.teamId && user.teamRef) {
+    let parsedTeamPages: string[] | null = null;
+    if (user.teamRef?.allowedPages) {
       try {
-        const parsed =
-          typeof user.teamRef.allowedPages === 'string'
-            ? JSON.parse(user.teamRef.allowedPages || '[]')
-            : user.teamRef.allowedPages || [];
-        if (Array.isArray(parsed)) {
-          const normalized = parsed.map((k: string) => (k === 'purchase_bills' ? 'bills' : k));
-          return normalized.filter((k: string) => k in COMPANY_PAGE_REGISTRY);
-        }
+        const parsed = typeof user.teamRef.allowedPages === 'string'
+          ? JSON.parse(user.teamRef.allowedPages || '[]')
+          : user.teamRef.allowedPages;
+        if (Array.isArray(parsed)) parsedTeamPages = parsed;
       } catch {}
     }
 
-    return [];
+    return resolveEffectivePageAccess({
+      role: user.role,
+      userPages: Array.isArray(user.effectivePages) && user.effectivePages.length > 0 ? user.effectivePages : null,
+      teamAllowedPages: parsedTeamPages,
+      isPlatform,
+    });
   }, [user, isPlatform]);
+
+  const allowedKeys = effectiveAccess.pages;
 
   const hasPage = (key: string): boolean => {
     if (!user) return false;
     if (isPlatform) {
       return key in PLATFORM_PAGE_REGISTRY || key.startsWith('platform');
     }
-    // Admins always get all company pages
-    if (
-      user.role === 'tenant_admin' ||
-      user.role === 'admin' ||
-      user.role === 'platform_super_admin' ||
-      user.role === 'platform_admin'
-    ) {
-      return true;
-    }
-    const canonicalKey = key === 'purchase_bills' ? 'bills' : key;
-    return (
-      allowedKeys.includes(canonicalKey) ||
-      (key === 'bills' && allowedKeys.includes('purchase_bills')) ||
-      allowedKeys.includes(key)
-    );
+    return canAccessPage(effectiveAccess, key, 'view');
+  };
+
+  const canCreateEdit = (key: string): boolean => {
+    if (!user) return false;
+    if (isPlatform) return true;
+    return canAccessPage(effectiveAccess, key, 'create_edit');
+  };
+
+  const canDelete = (key: string): boolean => {
+    if (!user) return false;
+    if (isPlatform) return true;
+    return canAccessPage(effectiveAccess, key, 'delete');
+  };
+
+  const isViewOnly = (key: string): boolean => {
+    if (!user) return false;
+    if (isPlatform) return false;
+    return isViewOnlyPage(effectiveAccess, key);
   };
 
   const hasAnyPage = (keys: string[]): boolean => {
@@ -216,53 +208,52 @@ export function useAllowedPages() {
       .map((k) => COMPANY_PAGE_REGISTRY[k]);
   }, [isPlatform, allowedKeys]);
 
-  // Structured navigation items ready for rendering
+  // Structured navigation items ready for rendering (Sidebar only shows pages user can open)
   const navItems = useMemo<AllowedNavItem[]>(() => {
-    return allowedPages.map((page) => {
-      const icon = PAGE_ICON_MAP[page.key] || LayoutDashboard;
-      const to = PAGE_KEY_TO_ROUTE[page.key] || page.frontendRoutes[0] || '/';
-      const subItems = PAGE_SUB_ITEMS[page.key];
-      return {
-        key: page.key,
-        label: page.label,
-        to,
-        icon,
-        group: 'group' in page ? page.group : 'Platform',
-        description: page.description,
-        subItems,
-      };
-    });
-  }, [allowedPages]);
+    if (isPlatform) {
+      return Object.keys(PLATFORM_PAGE_REGISTRY).map((k) => {
+        const def = PLATFORM_PAGE_REGISTRY[k];
+        return {
+          key: def.key,
+          label: def.label,
+          to: def.frontendRoutes[0] || '/platform',
+          icon: PAGE_ICON_MAP[def.key] || Building2,
+          description: def.description,
+        };
+      });
+    }
 
-  // Mobile dock primary tabs: up to 4 granted pages in registry order
+    const items: AllowedNavItem[] = [];
+
+    for (const key of Object.keys(COMPANY_PAGE_REGISTRY)) {
+      if (allowedKeys.includes(key)) {
+        const def = COMPANY_PAGE_REGISTRY[key];
+        const route = PAGE_KEY_TO_ROUTE[key] || def.frontendRoutes[0];
+        if (route) {
+          items.push({
+            key: def.key,
+            label: def.label,
+            to: route,
+            icon: PAGE_ICON_MAP[def.key] || LayoutDashboard,
+            group: def.group,
+            description: def.description,
+            subItems: PAGE_SUB_ITEMS[def.key],
+          });
+        }
+      }
+    }
+
+    return items;
+  }, [isPlatform, allowedKeys]);
+
   const mobilePrimaryTabs = useMemo<AllowedNavItem[]>(() => {
     return navItems.slice(0, 4);
   }, [navItems]);
 
-  // Mobile drawer items: remaining granted pages beyond the first 4
   const mobileDrawerItems = useMemo<AllowedNavItem[]>(() => {
     return navItems.slice(4);
   }, [navItems]);
 
-  // Home page resolution: user preferred homePage if granted, otherwise first granted page
-  const homePageKey = useMemo<string | null>(() => {
-    if (isPlatform) return 'platform_companies';
-    if (allowedPages.length === 0) return null;
-
-    const preferred = (user as any)?.homePage;
-    if (preferred && allowedKeys.includes(preferred)) {
-      return preferred;
-    }
-    return allowedPages[0]?.key || null;
-  }, [isPlatform, allowedPages, allowedKeys, user]);
-
-  const homePageRoute = useMemo<string>(() => {
-    if (isPlatform) return '/platform/companies';
-    if (!homePageKey) return user ? '/' : '/login';
-    return PAGE_KEY_TO_ROUTE[homePageKey] || '/';
-  }, [isPlatform, homePageKey, user]);
-
-  // Granted modules that are searchable
   const searchableModules = useMemo(() => {
     return navItems.map((item) => ({
       key: item.key,
@@ -271,6 +262,34 @@ export function useAllowedPages() {
       subItems: item.subItems,
     }));
   }, [navItems]);
+
+  const homePageKey = useMemo<string | null>(() => {
+    if (isPlatform) return 'platform_companies';
+    if (!user) return null;
+    if (user.homePage && hasPage(user.homePage)) return user.homePage;
+    const nonNotif = allowedKeys.find((k) => k !== 'notifications');
+    return nonNotif || allowedKeys[0] || null;
+  }, [isPlatform, user, allowedKeys]);
+
+  const homePageRoute = useMemo<string>(() => {
+    if (isPlatform) return '/platform/companies';
+    if (!user) return '/login';
+    if (user.homePage && hasPage(user.homePage) && PAGE_KEY_TO_ROUTE[user.homePage]) {
+      return PAGE_KEY_TO_ROUTE[user.homePage];
+    }
+    if (allowedKeys.length > 0) {
+      for (const k of Object.keys(COMPANY_PAGE_REGISTRY)) {
+        if (k !== 'notifications' && allowedKeys.includes(k) && PAGE_KEY_TO_ROUTE[k]) {
+          return PAGE_KEY_TO_ROUTE[k];
+        }
+      }
+      if (allowedKeys.includes('notifications') && PAGE_KEY_TO_ROUTE['notifications']) {
+        return PAGE_KEY_TO_ROUTE['notifications'];
+      }
+      return PAGE_KEY_TO_ROUTE[allowedKeys[0]] || '/';
+    }
+    return '/';
+  }, [isPlatform, user, allowedKeys]);
 
   return {
     user,
@@ -281,10 +300,14 @@ export function useAllowedPages() {
     mobilePrimaryTabs,
     mobileDrawerItems,
     searchableModules,
-    hasPage,
-    hasAnyPage,
-    hasZeroPages,
     homePageKey,
     homePageRoute,
+    hasPage,
+    hasAnyPage,
+    canCreateEdit,
+    canDelete,
+    isViewOnly,
+    hasZeroPages,
+    effectiveAccess,
   };
 }

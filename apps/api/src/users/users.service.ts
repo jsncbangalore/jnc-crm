@@ -19,7 +19,7 @@ import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
 import { parsePagination } from '../common/pagination.util';
 import { ROLE_RANKS, isPlatformOwner, ALL_ROLES, UserRole } from '../auth/roles';
-import { getEffectivePagesForUser, getLegacyPagesForRole } from '../auth/effective-page-access';
+import { getEffectivePagesForUser, getLegacyPagesForRole, invalidateUserAccessCache } from '../auth/effective-page-access';
 import { ALL_COMPANY_PAGE_KEYS, isPlatformPageKey, isValidCompanyPageKey } from '../auth/page-registry';
 import { runUserPageAccessMigration } from '../auth/migration-helper';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -70,14 +70,20 @@ export function generateSecurePassword(length = 14): string {
 
 const ROLE_CODE_MAP: Record<string, string> = {
   platform_super_admin: 'PSA',
-  tenant_admin: 'TAD',
+  platform_admin: 'PSA',
+  tenant_admin: 'ADM',
+  administrator: 'ADM',
   admin: 'ADM',
+  sub_administrator: 'SUB',
   sub_admin: 'SUB',
   project_manager: 'PM',
   developer_lead: 'LEAD',
+  store_inventory_manager: 'STM',
   store_manager: 'STM',
+  finance_specialist: 'FIN',
   finance: 'FIN',
   accountant: 'ACC',
+  sales_representative: 'EMP',
   employee: 'EMP',
   developer: 'DEV',
 };
@@ -213,15 +219,23 @@ export class UsersService {
     // Role Hierarchy Check
     const creatorRank = ROLE_RANKS[creator.role] || 0;
     const targetRank = ROLE_RANKS[dto.role] || 0;
-    if (targetRank >= creatorRank && !isPlatform) {
-      throw new ForbiddenException(
-        `You cannot create a user with role "${dto.role}". Your role must be strictly higher in rank.`,
-      );
-    }
+    const isCompanyAdmin = creator.role === 'administrator' || creator.role === 'tenant_admin' || creator.role === 'admin';
 
-    // Only platform_super_admin can create tenant_admin
-    if (dto.role === 'tenant_admin' && !isPlatform) {
-      throw new ForbiddenException('Only Platform Super Admins can create Company Administrators (Tenant Admins).');
+    if (!isPlatform) {
+      if ((dto.role as string) === 'platform_super_admin' || dto.role === 'platform_admin') {
+        throw new ForbiddenException('Only Platform Super Admins can create platform administrators.');
+      }
+      if (isCompanyAdmin) {
+        if (targetRank > creatorRank) {
+          throw new ForbiddenException(`You cannot create a user with a higher role rank than your own.`);
+        }
+      } else {
+        if (targetRank >= creatorRank) {
+          throw new ForbiddenException(
+            `You cannot create a user with role "${dto.role}". Your role must be strictly higher in rank.`,
+          );
+        }
+      }
     }
 
     const tenantId = requireTenantId(creator);
@@ -681,21 +695,30 @@ export class UsersService {
     if (dto.role && dto.role !== user.role) {
       const newRank = ROLE_RANKS[dto.role] || 0;
       const modifierRank = ROLE_RANKS[modifier.role] || 0;
-      if (newRank >= modifierRank && !isPlatform) {
-        throw new ForbiddenException(`You do not have permission to assign role "${dto.role}".`);
-      }
-      if (dto.role === 'tenant_admin' && !isPlatform) {
-        throw new ForbiddenException('Only Platform Super Admins can assign the Company Administrator role.');
+      const isCompanyAdmin = modifier.role === 'administrator' || modifier.role === 'tenant_admin' || modifier.role === 'admin';
+      if (!isPlatform) {
+        if (dto.role === 'platform_super_admin' || dto.role === 'platform_admin') {
+          throw new ForbiddenException('Only Platform Super Admins can assign platform roles.');
+        }
+        if (isCompanyAdmin) {
+          if (newRank > modifierRank) {
+            throw new ForbiddenException(`You do not have permission to assign role "${dto.role}".`);
+          }
+        } else {
+          if (newRank >= modifierRank) {
+            throw new ForbiddenException(`You do not have permission to assign role "${dto.role}".`);
+          }
+        }
       }
     }
 
-    // Rule: The last active tenant_admin cannot be demoted, deactivated or deleted
-    if (user.role === 'tenant_admin' && user.tenantId) {
-      const isDemoting = dto.role && dto.role !== 'tenant_admin';
+    // Rule: The last active administrator/tenant_admin cannot be demoted, deactivated or deleted
+    if ((user.role === 'tenant_admin' || user.role === 'administrator') && user.tenantId) {
+      const isDemoting = dto.role && dto.role !== 'administrator' && (dto.role as string) !== 'tenant_admin';
       const isDeactivating = dto.isActive === false && user.isActive;
       if (isDemoting || isDeactivating) {
         const activeAdminsCount = await this.prisma.user.count({
-          where: { tenantId: user.tenantId, role: 'tenant_admin', isActive: true, deletedAt: null },
+          where: { tenantId: user.tenantId, role: { in: ['tenant_admin', 'administrator', 'admin'] }, isActive: true, deletedAt: null },
         });
         if (activeAdminsCount <= 1) {
           throw new BadRequestException('Cannot demote or deactivate the last active Company Administrator of this company.');
@@ -778,6 +801,24 @@ export class UsersService {
         createdAt: true,
       },
     });
+
+    if (dto.role && dto.role !== user.role && user.tenantId) {
+      const defaultPages = getLegacyPagesForRole(dto.role);
+      const defaultHomePage = defaultPages[0] || null;
+      await this.prisma.userPageAccess.upsert({
+        where: { userId: user.id },
+        create: {
+          userId: user.id,
+          tenantId: user.tenantId,
+          pages: JSON.stringify({ pages: defaultPages, homePage: defaultHomePage }),
+        },
+        update: {
+          pages: JSON.stringify({ pages: defaultPages, homePage: defaultHomePage }),
+        },
+      });
+    }
+
+    invalidateUserAccessCache(user.id);
 
     await this.auditService.log({
       tenantId: user.tenantId || requireTenantId(modifier),
@@ -961,6 +1002,8 @@ export class UsersService {
       },
     });
 
+    invalidateUserAccessCache(user.id);
+
     await this.auditService.log({
       tenantId: user.tenantId || requireTenantId(modifier),
       actorId: modifier.id,
@@ -1019,6 +1062,8 @@ export class UsersService {
         tokenVersion: { increment: 1 },
       },
     });
+
+    invalidateUserAccessCache(user.id);
 
     await this.auditService.log({
       tenantId: user.tenantId || requireTenantId(modifier),
@@ -1804,6 +1849,7 @@ export class UsersService {
       afterState: payload,
     });
 
+    invalidateUserAccessCache(targetUser.id);
     const effectivePages = await getEffectivePagesForUser(this.prisma, targetUser);
 
     return {
@@ -1877,6 +1923,7 @@ export class UsersService {
       afterState: JSON.stringify({ pages: 'INHERIT_TEAM' }),
     });
 
+    invalidateUserAccessCache(targetUser.id);
     const effectivePages = await getEffectivePagesForUser(this.prisma, targetUser);
 
     return {

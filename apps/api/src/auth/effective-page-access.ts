@@ -11,80 +11,133 @@ import {
   ALL_PLATFORM_PAGE_KEYS,
   isValidCompanyPageKey,
 } from './page-registry';
+import {
+  resolveEffectivePageAccess,
+  getRoleDefaultPermissions,
+  EffectiveAccessResult,
+  normalizeRole,
+} from '../common/roles-permissions';
+
+// Short in-memory cache for performance (5-second TTL). Changes take effect within seconds without relogin.
+interface CacheEntry {
+  result: EffectiveAccessResult;
+  timestamp: number;
+}
+const accessCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 5000;
+
+export function invalidateUserAccessCache(userId: string): void {
+  accessCache.delete(userId);
+}
 
 /**
- * Computes the exact effective page access list for a user.
+ * Computes the exact effective page access and permissions for a user.
  * 
- * Rules:
- * 1. platform_super_admin: platform pages (or all company pages when impersonating a tenant)
- * 2. tenant_admin: all company pages
- * 3. others:
- *    a) User's own UserPageAccess list if record exists
- *    b) else Team's allowedPages if user has a team assigned
- *    c) else [] empty list (no team means NO ACCESS)
+ * Rules (Requirement B & D):
+ * 1. Administrator: ALL pages, ALL actions, no restriction. Team restrictions never apply.
+ * 2. Effective access = role default, then the user/team changes.
+ * 3. An empty team page list does NOT block everything; it uses role defaults.
+ * 4. Dashboard and notifications are always allowed for every role.
+ */
+export async function getEffectivePermissionsForUser(
+  prisma: PrismaService,
+  user: { id: string; role?: string; tenantId?: string | null },
+): Promise<EffectiveAccessResult> {
+  if (!user || !user.id) {
+    return { pages: [], permissions: {} };
+  }
+
+  const now = Date.now();
+  const cached = accessCache.get(user.id);
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.result;
+  }
+
+  // 1. Platform Super Admin / Platform Admin without tenant
+  if ((user.role === 'platform_super_admin' || user.role === 'platform_admin') && !user.tenantId) {
+    const res = resolveEffectivePageAccess({
+      role: user.role,
+      isPlatform: true,
+    });
+    accessCache.set(user.id, { result: res, timestamp: now });
+    return res;
+  }
+
+  // 2. Administrator has full access to all company modules
+  const normalizedRole = normalizeRole(user.role);
+  if (normalizedRole === 'administrator') {
+    const res = resolveEffectivePageAccess({
+      role: 'administrator',
+    });
+    accessCache.set(user.id, { result: res, timestamp: now });
+    return res;
+  }
+
+  // 3. Query UserPageAccess and Team.allowedPages from Database
+  let userPages: string[] | null = null;
+  let teamAllowedPages: string[] | null = null;
+
+  try {
+    const [userAccess, dbUser] = await Promise.all([
+      prisma.userPageAccess.findUnique({
+        where: { userId: user.id },
+      }),
+      prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+          role: true,
+          teamId: true,
+          teamRef: { select: { allowedPages: true } },
+        },
+      }),
+    ]);
+
+    if (userAccess && userAccess.pages) {
+      const parsed = typeof userAccess.pages === 'string' ? JSON.parse(userAccess.pages) : userAccess.pages;
+      if (Array.isArray(parsed)) {
+        userPages = parsed.map((k: string) => (k === 'purchase_bills' ? 'bills' : k));
+      } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.pages)) {
+        userPages = parsed.pages.map((k: string) => (k === 'purchase_bills' ? 'bills' : k));
+      }
+    }
+
+    if (dbUser && dbUser.teamRef && dbUser.teamRef.allowedPages) {
+      const parsedTeam = typeof dbUser.teamRef.allowedPages === 'string'
+        ? JSON.parse(dbUser.teamRef.allowedPages)
+        : dbUser.teamRef.allowedPages;
+      if (Array.isArray(parsedTeam)) {
+        teamAllowedPages = parsedTeam.map((k: string) => (k === 'purchase_bills' ? 'bills' : k));
+      }
+    }
+
+    const effectiveRole = dbUser?.role || user.role;
+
+    const res = resolveEffectivePageAccess({
+      role: effectiveRole,
+      userPages,
+      teamAllowedPages,
+    });
+
+    accessCache.set(user.id, { result: res, timestamp: now });
+    return res;
+  } catch (err) {
+    // If DB fails, fallback cleanly to role defaults
+    const res = resolveEffectivePageAccess({
+      role: user.role,
+    });
+    return res;
+  }
+}
+
+/**
+ * Returns string array of granted page keys for backward compatibility.
  */
 export async function getEffectivePagesForUser(
   prisma: PrismaService,
   user: { id: string; role?: string; tenantId?: string | null },
 ): Promise<string[]> {
-  if (!user || !user.id) {
-    return [];
-  }
-
-  // 1. Platform Super Admin & Platform Admin
-  if (user.role === 'platform_super_admin' || user.role === 'platform_admin') {
-    if (user.tenantId) {
-      return [...ALL_COMPANY_PAGE_KEYS];
-    }
-    return [...ALL_PLATFORM_PAGE_KEYS];
-  }
-
-  // 2. Tenant Admin has full access to all company modules
-  if (user.role === 'tenant_admin' || user.role === 'admin') {
-    return [...ALL_COMPANY_PAGE_KEYS];
-  }
-
-  // 3. Check User's explicit UserPageAccess record
-  try {
-    const userAccess = await prisma.userPageAccess.findUnique({
-      where: { userId: user.id },
-    });
-
-    if (userAccess && userAccess.pages) {
-      const parsed = typeof userAccess.pages === 'string' ? JSON.parse(userAccess.pages) : userAccess.pages;
-      if (Array.isArray(parsed)) {
-        return parsed.map((k: string) => (k === 'purchase_bills' ? 'bills' : k)).filter((key: string) => isValidCompanyPageKey(key));
-      } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.pages)) {
-        return parsed.pages.map((k: string) => (k === 'purchase_bills' ? 'bills' : k)).filter((key: string) => isValidCompanyPageKey(key));
-      }
-    }
-  } catch (err) {
-    // If table doesn't exist yet, continue to team fallback
-  }
-
-  // 4. Fallback to Team allowedPages if user has an assigned team
-  try {
-    const dbUser = await prisma.user.findUnique({
-      where: { id: user.id },
-      include: { teamRef: true },
-    });
-
-    if (dbUser && dbUser.teamId && dbUser.teamRef && dbUser.teamRef.allowedPages) {
-      const parsedTeam =
-        typeof dbUser.teamRef.allowedPages === 'string'
-          ? JSON.parse(dbUser.teamRef.allowedPages)
-          : dbUser.teamRef.allowedPages;
-      if (Array.isArray(parsedTeam)) {
-        return parsedTeam.map((k: string) => (k === 'purchase_bills' ? 'bills' : k)).filter((key: string) => isValidCompanyPageKey(key));
-      }
-    }
-  } catch (err) {
-    // DB query error, fail closed
-    return [];
-  }
-
-  // 5. Default: No team and no custom access means empty list (no page access)
-  return [];
+  const perms = await getEffectivePermissionsForUser(prisma, user);
+  return perms.pages;
 }
 
 /**
@@ -121,9 +174,9 @@ export async function getHomePageForUser(
     }
   } catch {}
 
-  // Fallback: first granted page in registry order
+  // Fallback: first granted page in registry order (prefer non-notification)
   for (const key of ALL_COMPANY_PAGE_KEYS) {
-    if (effective.includes(key)) {
+    if (key !== 'notifications' && effective.includes(key)) {
       return key;
     }
   }
@@ -132,65 +185,9 @@ export async function getHomePageForUser(
 }
 
 /**
- * Returns default legacy page permissions for an existing role.
- * Used exclusively by the migration helper script to backfill existing users.
+ * Returns default page list for a role.
  */
 export function getLegacyPagesForRole(role: string): string[] {
-  switch (role) {
-    case 'tenant_admin':
-    case 'admin':
-      return [...ALL_COMPANY_PAGE_KEYS];
-    case 'sub_admin':
-      return [
-        'dashboard',
-        'leads',
-        'lead_flow',
-        'quotations',
-        'orders',
-        'invoices',
-        'inventory',
-        'suppliers',
-        'bills',
-        'shipments',
-        'daily_activities',
-        'notifications',
-      ].filter((k) => isValidCompanyPageKey(k));
-    case 'project_manager':
-    case 'developer_lead':
-    case 'developer':
-      return ['daily_activities', 'notifications'].filter((k) => isValidCompanyPageKey(k));
-    case 'store_manager':
-      return [
-        'dashboard',
-        'orders',
-        'inventory',
-        'suppliers',
-        'bills',
-        'shipments',
-        'notifications',
-      ].filter((k) => isValidCompanyPageKey(k));
-    case 'finance':
-    case 'accountant':
-      return [
-        'dashboard',
-        'quotations',
-        'orders',
-        'invoices',
-        'bills',
-        'ledger',
-        'suppliers',
-        'notifications',
-      ].filter((k) => isValidCompanyPageKey(k));
-    case 'employee':
-      return [
-        'dashboard',
-        'leads',
-        'lead_flow',
-        'quotations',
-        'orders',
-        'notifications',
-      ].filter((k) => isValidCompanyPageKey(k));
-    default:
-      return ['dashboard', 'notifications'].filter((k) => isValidCompanyPageKey(k));
-  }
+  const perms = getRoleDefaultPermissions(role);
+  return Object.keys(perms).filter((k) => isValidCompanyPageKey(k));
 }

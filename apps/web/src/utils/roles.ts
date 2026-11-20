@@ -1,52 +1,29 @@
+/* --- C2PA CONTENT CREDENTIALS & PROVENANCE NOTICE ---
+ * c2pa.action: 'c2pa.created'
+ * c2pa.ai_training: 'disallowed'
+ * c2pa.do_not_train: true
+ * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
+ * ----------------------------------------------------- */
+
 /**
  * Centralized Role Definitions & Hierarchy (Frontend)
  */
 
+export * from '../config/roles-permissions';
+
+import {
+  ALL_ROLE_KEYS,
+  TENANT_ROLE_KEYS,
+  ROLE_RANKS,
+  ROLE_LABELS,
+  RoleKey,
+  TenantRoleKey,
+  normalizeRole,
+} from '../config/roles-permissions';
 import { PAGE_KEY_TO_ROUTE, COMPANY_PAGE_REGISTRY } from '../config/page-registry';
 
-export const ALL_ROLES = [
-  'platform_super_admin',
-  'tenant_admin',
-  'admin',
-  'sub_admin',
-  'project_manager',
-  'developer_lead',
-  'store_manager',
-  'finance',
-  'accountant',
-  'employee',
-  'developer',
-] as const;
-
-export type UserRole = (typeof ALL_ROLES)[number];
-
-export const ROLE_RANKS: Record<string, number> = {
-  platform_super_admin: 100,
-  tenant_admin: 80,
-  admin: 60,
-  sub_admin: 50,
-  project_manager: 40,
-  developer_lead: 35,
-  store_manager: 30,
-  finance: 25,
-  accountant: 25,
-  employee: 20,
-  developer: 15,
-};
-
-export const ROLE_LABELS: Record<string, string> = {
-  platform_super_admin: 'Platform Super Administrator',
-  tenant_admin: 'Company Administrator (Tenant Admin)',
-  admin: 'Administrator',
-  sub_admin: 'Sub-Administrator',
-  project_manager: 'Project Manager',
-  developer_lead: 'Developer Lead',
-  store_manager: 'Store / Inventory Manager',
-  finance: 'Finance Specialist',
-  accountant: 'Accountant',
-  employee: 'Employee / Sales Representative',
-  developer: 'Developer',
-};
+export const ALL_ROLES = ALL_ROLE_KEYS;
+export type UserRole = RoleKey;
 
 /**
  * Returns true if the user is the Platform Owner (vendor super admin with no tenant)
@@ -82,21 +59,20 @@ export function getRoleRedirectPath(user?: { role?: string; tenantId?: string | 
     return PAGE_KEY_TO_ROUTE[pages[0]] || '/';
   }
 
-  switch (user.role) {
-    case 'tenant_admin':
-    case 'platform_admin':
-    case 'admin':
-    case 'sub_admin':
+  const norm = normalizeRole(user.role);
+  switch (norm) {
+    case 'administrator':
+    case 'sub_administrator':
       return '/dashboard';
-    case 'employee':
+    case 'sales_representative':
       return '/leads';
     case 'developer':
     case 'developer_lead':
     case 'project_manager':
       return '/daily-activities';
-    case 'store_manager':
+    case 'store_inventory_manager':
       return '/inventory';
-    case 'finance':
+    case 'finance_specialist':
     case 'accountant':
       return '/invoices';
     default:
@@ -104,15 +80,3 @@ export function getRoleRedirectPath(user?: { role?: string; tenantId?: string | 
   }
 }
 
-/**
- * Returns roles that actor can assign (strictly lower rank; only platform_super_admin can create tenant_admin)
- */
-export function getAllowedAssignableRoles(actorRole?: string): string[] {
-  if (!actorRole) return [];
-  const actorRank = ROLE_RANKS[actorRole] || 0;
-  return ALL_ROLES.filter((role) => {
-    if (role === 'platform_super_admin') return false;
-    if (role === 'tenant_admin' && actorRole !== 'platform_super_admin') return false;
-    return (ROLE_RANKS[role] || 0) < actorRank;
-  });
-}

@@ -35,6 +35,7 @@ export interface LeadDrawerProps {
   onCreateQuote?: (lead: Lead) => void;
   onConvertToOrder?: (lead: Lead) => void;
   onShareLead?: (lead: Lead) => void;
+  canEditLead?: boolean;
 }
 
 export const LeadDrawer: React.FC<LeadDrawerProps> = ({
@@ -47,6 +48,7 @@ export const LeadDrawer: React.FC<LeadDrawerProps> = ({
   onCreateQuote,
   onConvertToOrder,
   onShareLead,
+  canEditLead = true,
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'timeline' | 'quotes_orders' | 'notes'>('details');
   const [isEditing, setIsEditing] = useState(false);
@@ -326,13 +328,15 @@ export const LeadDrawer: React.FC<LeadDrawerProps> = ({
                   Lead Information
                 </span>
                 {!isEditing ? (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditing(true)}
-                    className="text-xs text-crm-blue font-bold hover:underline"
-                  >
-                    Edit Fields
-                  </button>
+                  canEditLead ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditing(true)}
+                      className="text-xs text-crm-blue font-bold hover:underline"
+                    >
+                      Edit Fields
+                    </button>
+                  ) : null
                 ) : (
                   <div className="flex items-center gap-2">
                     <button
