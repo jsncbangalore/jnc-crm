@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { isAdminUser } from '../../utils/roles';
 import {
   Search,
   Filter,
@@ -54,12 +55,13 @@ export const LeadsFilterRow: React.FC<LeadsFilterRowProps> = ({
 }) => {
   const [showCollapsedPopover, setShowCollapsedPopover] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const canFilterBySalesRep = isAdminUser(currentUser);
 
   // Calculate active filter count for the badge under 1280px
   let activeFilterCount = 0;
   if (source && source !== 'all') activeFilterCount++;
   if (urgency && urgency !== 'all') activeFilterCount++;
-  if (assignedToId && assignedToId !== 'all') activeFilterCount++;
+  if (canFilterBySalesRep && assignedToId && assignedToId !== 'all') activeFilterCount++;
   if (search.trim()) activeFilterCount++;
 
   // Close popover on outside click
@@ -162,30 +164,32 @@ export const LeadsFilterRow: React.FC<LeadsFilterRowProps> = ({
           })}
         </div>
 
-        {/* Sales Rep Select */}
-        <div className="relative">
-          <select
-            value={assignedToId}
-            onChange={(e) => onAssignedToIdChange(e.target.value)}
-            aria-label="Filter by sales representative"
-            id="sales-rep-filter-select"
-            className="h-7 px-2 pr-6 text-[11px] font-medium rounded-md border border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#181B26] text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-crm-blue appearance-none cursor-pointer"
-          >
-            <option value="all">All Sales Reps</option>
-            {currentUser && currentUser.id && (
-              <option value={currentUser.id}>My Leads Only</option>
-            )}
-            {salesReps.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name || r.email}
-              </option>
-            ))}
-          </select>
-          <ChevronDown
-            size={11}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-          />
-        </div>
+        {/* Sales Rep Select (Admins and Project Managers only) */}
+        {canFilterBySalesRep && (
+          <div className="relative">
+            <select
+              value={assignedToId}
+              onChange={(e) => onAssignedToIdChange(e.target.value)}
+              aria-label="Filter by sales representative"
+              id="sales-rep-filter-select"
+              className="h-7 px-2 pr-6 text-[11px] font-medium rounded-md border border-slate-200 dark:border-[#2A3042] bg-slate-50 dark:bg-[#181B26] text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-crm-blue appearance-none cursor-pointer"
+            >
+              <option value="all">All Sales Reps</option>
+              {currentUser && currentUser.id && (
+                <option value={currentUser.id}>My Leads Only</option>
+              )}
+              {salesReps.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name || r.email}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={11}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            />
+          </div>
+        )}
       </div>
 
       {/* ─── COLLAPSED FILTERS BUTTON (< 1280px) ──────────────────────────── */}
@@ -259,26 +263,28 @@ export const LeadsFilterRow: React.FC<LeadsFilterRowProps> = ({
               </select>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                Sales Rep
-              </label>
-              <select
-                value={assignedToId}
-                onChange={(e) => onAssignedToIdChange(e.target.value)}
-                className="w-full h-7 px-2 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-              >
-                <option value="all">All Sales Reps</option>
-                {currentUser && currentUser.id && (
-                  <option value={currentUser.id}>My Leads</option>
-                )}
-                {salesReps.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name || r.email}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {canFilterBySalesRep && (
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Sales Rep
+                </label>
+                <select
+                  value={assignedToId}
+                  onChange={(e) => onAssignedToIdChange(e.target.value)}
+                  className="w-full h-7 px-2 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                >
+                  <option value="all">All Sales Reps</option>
+                  {currentUser && currentUser.id && (
+                    <option value={currentUser.id}>My Leads</option>
+                  )}
+                  {salesReps.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name || r.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         )}
       </div>

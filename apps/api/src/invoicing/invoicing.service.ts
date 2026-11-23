@@ -463,12 +463,6 @@ export class InvoicingService {
       }
     }
 
-    if (dto.poDate && dto.invoiceDate) {
-      const poDateObj = new Date(dto.poDate);
-      if (!isNaN(poDateObj.getTime()) && !isNaN(invoiceDateObj.getTime()) && poDateObj > invoiceDateObj) {
-        fieldErrors.poDate = 'PO date cannot be later than invoice date';
-      }
-    }
 
     if (Object.keys(fieldErrors).length > 0) {
       throw new BadRequestException({

@@ -34,6 +34,25 @@ export function isPlatformOwner(user?: { role?: string; tenantId?: string | null
 }
 
 /**
+ * Returns true if user has administrative oversight (can see all team leads/reps, users, and settings).
+ */
+export function isAdminUser(user?: { role?: string; tenantId?: string | null } | null): boolean {
+  if (!user) return false;
+  if (isPlatformOwner(user)) return true;
+  const norm = normalizeRole(user.role);
+  return [
+    'platform_super_admin',
+    'platform_admin',
+    'administrator',
+    'tenant_admin',
+    'admin',
+    'sub_administrator',
+    'sub_admin',
+    'project_manager',
+  ].includes(norm);
+}
+
+/**
  * Determines redirect path based on user role and tenant
  */
 export function getRoleRedirectPath(user?: { role?: string; tenantId?: string | null; effectivePages?: string[]; homePage?: string | null } | null): string {

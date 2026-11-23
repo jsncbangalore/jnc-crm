@@ -18,6 +18,7 @@ import { getEffectivePagesForUser } from '../auth/effective-page-access';
 import { isPlatformOwner } from '../auth/roles';
 import { normalizeToE164, comparePhoneNumbers } from '../common/shared-validation';
 import { DocumentSeriesService } from '../common/document-series.service';
+import { ROLE_CANONICAL_MAP } from '../auth/data-visibility';
 
 @Injectable()
 export class LeadsService {
@@ -384,6 +385,14 @@ export class LeadsService {
     page?: number;
     limit?: number;
   } = {}) {
+    const normRole = (user.role && (ROLE_CANONICAL_MAP[user.role.toLowerCase().trim()] || user.role)) || '';
+    const isAdmin = ['platform_super_admin', 'platform_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager'].includes(normRole);
+
+    // Non-admin roles (sales rep, employee, developer) can only access their own leads
+    if (!isAdmin) {
+      query.assignedToId = user.id;
+    }
+
     const scopeWhere = this.scopingService.getLeadScope(user);
     const where: any = {
       ...scopeWhere,
@@ -889,6 +898,14 @@ export class LeadsService {
       endDate?: string;
     } = {},
   ) {
+    const normRole = (user.role && (ROLE_CANONICAL_MAP[user.role.toLowerCase().trim()] || user.role)) || '';
+    const isAdmin = ['platform_super_admin', 'platform_admin', 'tenant_admin', 'admin', 'sub_admin', 'project_manager'].includes(normRole);
+
+    // Non-admin roles (sales rep, employee, developer) can only access their own leads
+    if (!isAdmin) {
+      query.assignedToId = user.id;
+    }
+
     const scopeWhere = this.scopingService.getLeadScope(user);
     const tenantId = requireTenantId(user);
     const baseWhere: any = {

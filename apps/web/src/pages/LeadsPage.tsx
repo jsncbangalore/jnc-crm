@@ -19,6 +19,7 @@ import {
 import { leadsApi, usersApi } from '../services/api';
 import { Lead, LeadStatus, User as UserType } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { isAdminUser } from '../utils/roles';
 import { usePopup } from '../contexts/PopupContext';
 import { useAllowedPages } from '../hooks/useAllowedPages';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
@@ -103,23 +104,34 @@ export default function LeadsPage() {
   const initialUrgency = searchParams.get('urgency') || 'all';
   const initialSearch = searchParams.get('search') || '';
 
-  // Sales rep default: 'My leads' for sales role, 'All' for admins; persisted in localStorage
-  const defaultRep = useMemo(() => {
+  const isAdmin = useMemo(() => isAdminUser(user), [user]);
+
+  // Sales rep filter: non-admins are strictly scoped to their own leads; admins can switch across sales reps
+  const effectiveAssignedTo = useMemo(() => {
+    if (!isAdmin) {
+      return user?.id || '';
+    }
+    const param = searchParams.get('assignedToId');
+    if (param) return param;
     const saved = localStorage.getItem('crm_leads_sales_rep_filter');
     if (saved) return saved;
-    if (user?.role === 'sales' || user?.role === 'employee') return user.id || 'all';
     return 'all';
-  }, [user]);
-
-  const initialAssignedTo = searchParams.get('assignedToId') || defaultRep;
+  }, [isAdmin, user, searchParams]);
 
   const [view, setView] = useState<'kanban' | 'list'>(initialView);
   const [density, setDensity] = useState<'compact' | 'comfortable'>(initialDensity);
   const [search, setSearch] = useState<string>(initialSearch);
   const [sourceFilter, setSourceFilter] = useState<string>(initialSource);
   const [urgencyFilter, setUrgencyFilter] = useState<string>(initialUrgency);
-  const [assignedToId, setAssignedToId] = useState<string>(initialAssignedTo);
+  const [assignedToId, setAssignedToId] = useState<string>(effectiveAssignedTo);
   const [summaryBoxFilter, setSummaryBoxFilter] = useState<string | null>(null);
+
+  // Keep non-admin assignedToId locked to their own user id
+  useEffect(() => {
+    if (!isAdmin && user?.id && assignedToId !== user.id) {
+      setAssignedToId(user.id);
+    }
+  }, [isAdmin, user?.id, assignedToId]);
 
   // Board Data state
   const [boardData, setBoardData] = useState<{
@@ -211,12 +223,13 @@ export default function LeadsPage() {
     setApiError(null);
 
     try {
+      const targetRepId = isAdmin ? assignedToId : (user?.id || assignedToId);
       let data: any;
       try {
         const res = await leadsApi.getPipelineBoard({
           source: sourceFilter,
           urgency: urgencyFilter,
-          assignedToId: assignedToId,
+          assignedToId: targetRepId,
           search: search.trim() || undefined,
         });
         data = res.data;
@@ -229,7 +242,7 @@ export default function LeadsPage() {
               limit: 500,
               source: sourceFilter !== 'all' ? sourceFilter : undefined,
               urgency: urgencyFilter !== 'all' ? urgencyFilter : undefined,
-              assignedToId: assignedToId !== 'all' ? assignedToId : undefined,
+              assignedToId: targetRepId !== 'all' ? targetRepId : undefined,
               search: search.trim() || undefined,
             }),
             usersApi.getAssignees().catch(() => ({ data: [] })),
@@ -623,8 +636,10 @@ export default function LeadsPage() {
           onUrgencyChange={setUrgencyFilter}
           assignedToId={assignedToId}
           onAssignedToIdChange={(id) => {
-            setAssignedToId(id);
-            localStorage.setItem('crm_leads_sales_rep_filter', id);
+            if (isAdmin) {
+              setAssignedToId(id);
+              localStorage.setItem('crm_leads_sales_rep_filter', id);
+            }
           }}
           salesReps={boardData.salesReps}
           view={view}

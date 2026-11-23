@@ -491,11 +491,6 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
       setFieldErrors({ dueDate: 'Due date cannot be earlier than document date' });
       return;
     }
-    if (poDate && invoiceDate && poDate > invoiceDate) {
-      setFormError('PO date cannot be later than invoice date.');
-      setFieldErrors({ poDate: 'PO date cannot be later than document date' });
-      return;
-    }
     if (!customerName.trim()) {
       setFormError('Please enter customer or company name.');
       setFieldErrors({ customerName: 'Customer name is required' });
@@ -878,8 +873,8 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <div className="relative">
                   <input
                     type="text"
-                    name="doc_number"
-                    autoComplete="off"
+                    name="inv_seq_code"
+                    autoComplete="one-time-code"
                     autoCorrect="off"
                     spellCheck={false}
                     data-lpignore="true"
@@ -994,8 +989,8 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">{isDC ? 'PO Order No.' : isCreditNote ? 'Buyer PO Ref' : isPO ? 'Internal Ref' : "Buyer's Order No. / PO"}</label>
                 <input
                   type="text"
-                  name="doc_buyerpo"
-                  autoComplete="off"
+                  name="inv_order_ref"
+                  autoComplete="one-time-code"
                   data-lpignore="true"
                   data-1p-ignore="true"
                   data-form-type="other"
@@ -1008,7 +1003,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
 
               <FullCalendarPicker
                 label={isDC ? 'Order-Dated' : 'PO-Dated'}
-                name="doc_podate"
+                name="inv_podate"
                 value={poDate}
                 onChange={(val) => setPoDate(val)}
                 placeholder="Optional PO date"
@@ -1021,8 +1016,8 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 <label className="label">{isCreditNote ? 'Original Invoice No. & Date *' : 'Reference No. & Date'}</label>
                 <input
                   type="text"
-                  name="doc_refnum"
-                  autoComplete="off"
+                  name="inv_audit_ref"
+                  autoComplete="one-time-code"
                   data-lpignore="true"
                   data-1p-ignore="true"
                   data-form-type="other"
@@ -1269,13 +1264,15 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
               </div>
 
               <div>
-                <label className="label">GST Number (GSTIN)</label>
+                <label className="label">
+                  GST Number (GSTIN) <span className="text-[10px] text-slate-400 font-normal">(Optional for unregistered / B2C)</span>
+                </label>
                 <input
                   ref={customerGstinInputRef}
                   type="text"
                   name="cust_company_gstin"
                   id="customerGstinInput"
-                  autoComplete="off"
+                  autoComplete="one-time-code"
                   data-lpignore="true"
                   data-1p-ignore="true"
                   data-form-type="other"

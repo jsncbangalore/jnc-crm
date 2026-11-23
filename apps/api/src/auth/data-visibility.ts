@@ -39,9 +39,13 @@ export const ROLE_CANONICAL_MAP: Record<string, RoleName> = {
   finance: 'finance',
   accountant: 'accountant',
   sales_representative: 'employee',
+  'sales representative': 'employee',
+  'employee / sales representative': 'employee',
+  sales_rep: 'employee',
   employee: 'employee',
   sales: 'employee',
   developer: 'developer',
+  dev: 'developer',
 };
 
 export const VISIBILITY_TABLE_OWN: Record<RoleName, Record<ModelName, VisibilityLevel>> = {

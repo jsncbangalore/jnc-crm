@@ -58,7 +58,7 @@ export class ScopingService {
     const pageKey = MODEL_TO_PAGE_MAP[model];
     const effectivePages = (user as any)?.effectivePages;
     if (level === 'none' && Array.isArray(effectivePages) && pageKey && effectivePages.includes(pageKey)) {
-      level = 'team';
+      level = model === 'Lead' ? 'own' : 'team';
     }
 
     if (level === 'none') {
