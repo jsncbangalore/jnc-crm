@@ -33,6 +33,7 @@ export default function AppLayout({ children }: { children?: React.ReactNode } =
 
   useEffect(() => {
     const isPlatformOrTenantAdmin =
+      user?.role === 'administrator' ||
       user?.role === 'tenant_admin' ||
       user?.role === 'platform_super_admin' ||
       user?.role === 'platform_admin' ||

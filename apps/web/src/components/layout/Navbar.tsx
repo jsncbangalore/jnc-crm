@@ -22,6 +22,7 @@ import CreateLeadModal from '../leads/CreateLeadModal';
 import CreateQuotationModal from '../quotations/CreateQuotationModal';
 import DropdownPortal from '../common/DropdownPortal';
 import { useAllowedPages, PAGE_SUB_ITEMS } from '../../hooks/useAllowedPages';
+import { isAdminUser } from '../../utils/roles';
 import { LAYERS } from '../../constants/layers';
 import BrandLogo from '../common/BrandLogo';
 import { PRODUCT_NAME } from '../../config/brand';
@@ -165,8 +166,7 @@ export default function Navbar() {
   // Setup Studio Access: Admins with matching permissions
   const canAccessSetupStudio =
     !isPlatformOwner &&
-    (user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'platform_super_admin') &&
-    (hasPage('lead_setup') || hasPage('lead_flow'));
+    (isAdminUser(user) || user?.role === 'administrator' || user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'platform_super_admin');
 
   // Measure container width dynamically via ResizeObserver
   useEffect(() => {
