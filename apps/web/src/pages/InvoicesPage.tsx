@@ -3,9 +3,9 @@ import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Plus, FileText, Printer, Mail, Ban, RefreshCw, ShieldCheck,
-  Truck, FileSpreadsheet, Layers, Filter, CheckCircle2, DollarSign,
+  Truck, FileSpreadsheet, Layers, Filter, CheckCircle2,
   Calendar, Eye, ArrowUpRight, Check, Download, Edit3, ChevronLeft,
-  ChevronRight, ChevronsLeft, ChevronsRight, X, BarChart2, Link as LinkIcon,
+  ChevronRight, ChevronsLeft, ChevronsRight, X, Link as LinkIcon,
   MoreVertical, Info
 } from 'lucide-react';
 import { invoicesApi, ledgerApi, companiesApi, api } from '../services/api';
@@ -251,26 +251,6 @@ export default function InvoicesPage() {
   const [accountCustomerId, setAccountCustomerId] = useState<string | null>(null);
   const [accountCustomerName, setAccountCustomerName] = useState<string | null>(null);
 
-  // KPI display toggle (persisted if consented)
-  const [showKpis, setShowKpis] = useState<boolean>(() => {
-    if (canStore('preferences')) {
-      return localStorage.getItem('crm_show_invoices_kpis') !== 'false';
-    }
-    return true;
-  });
-
-  const toggleKpis = () => {
-    setShowKpis((prev) => {
-      const next = !prev;
-      if (canStore('preferences')) {
-        try {
-          localStorage.setItem('crm_show_invoices_kpis', String(next));
-        } catch {}
-      }
-      return next;
-    });
-  };
-
   // Modals & Edit State
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -400,43 +380,6 @@ export default function InvoicesPage() {
     setShowUnlinkedModal(true);
   };
 
-  // Aggregate Metrics: Count only issued Tax and SEZ Invoices (matches Ledger)
-  const issuedInvoices = invoices.filter(
-    (inv) =>
-      !inv.isVoided &&
-      (inv.docType as string) !== 'delivery_challan' &&
-      !String(inv.docType || '').includes('challan') &&
-      (inv.docType as string) !== 'proforma_invoice' &&
-      (inv.docType as string) !== 'proforma' &&
-      !String(inv.docType || '').includes('proforma') &&
-      inv.docType !== 'purchase_order' &&
-      inv.docType !== 'credit_note'
-  );
-
-  const totalIssuedDocs = issuedInvoices.length;
-  const totalTaxable = issuedInvoices.reduce((acc, inv) => acc + (inv.subtotal || 0), 0);
-  const totalGst = issuedInvoices.reduce((acc, inv) => {
-    if (inv.isSez || inv.docType === 'sez_invoice') {
-      return acc + (inv.igstAmount || 0);
-    }
-    const stored = (inv.igstAmount || 0) + (inv.cgstAmount || 0) + (inv.sgstAmount || 0);
-    return acc + (stored > 0 ? stored : Math.max(0, (inv.totalAmount || 0) - (inv.subtotal || 0)));
-  }, 0);
-  const totalAmount = issuedInvoices.reduce((acc, inv) => acc + (inv.totalAmount || 0), 0);
-
-  const formatCompactInr = (amount: number): string => {
-    if (amount >= 10_000_000) {
-      return `${(amount / 10_000_000).toFixed(2).replace(/\.00$/, '')} Cr`;
-    }
-    if (amount >= 100_000) {
-      return `${(amount / 100_000).toFixed(2).replace(/\.00$/, '')} L`;
-    }
-    if (amount >= 1_000) {
-      return `${(amount / 1_000).toFixed(1).replace(/\.0$/, '')} K`;
-    }
-    return amount.toLocaleString('en-IN');
-  };
-
   const getDocBadge = (type?: DocumentType, isSez?: boolean) => {
     if (type === 'delivery_challan') {
       return (
@@ -563,19 +506,6 @@ export default function InvoicesPage() {
           )}
 
           <button type="button"
-            onClick={toggleKpis}
-            className={`btn text-xs py-2 px-2.5 gap-1.5 shadow-sm border transition-all ${
-              showKpis
-                ? 'bg-white dark:bg-[#181B26] text-slate-700 dark:text-slate-300 border-slate-300 dark:border-[#2A3042] hover:bg-slate-100'
-                : 'bg-blue-50 dark:bg-crm-blue/15 text-crm-blue border-blue-300 dark:border-crm-blue/30 font-bold'
-            }`}
-            title={showKpis ? 'Hide summary boxes' : 'Show summary boxes'}
-          >
-            <BarChart2 size={14} />
-            <span>{showKpis ? 'Hide Stats' : 'Stats'}</span>
-          </button>
-
-          <button type="button"
             onClick={fetchInvoices}
             className="btn bg-white dark:bg-[#181B26] hover:bg-slate-100 dark:hover:bg-[#202534] border border-slate-300 dark:border-[#2A3042] text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white text-xs p-2.5 shadow-sm"
             title="Refresh documents"
@@ -608,114 +538,6 @@ export default function InvoicesPage() {
           </button>
         </div>
       </div>
-
-      {/* ─── OVERVIEW METRICS CARDS (COMPACT & REMOVABLE) ─────────────── */}
-      {showKpis && (
-        <div className="relative group max-w-full min-w-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 max-w-full min-w-0">
-            {/* Card 1: Issued Invoices */}
-            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2 whitespace-nowrap min-w-0">
-              <div className="flex items-center gap-2 min-w-0 shrink-0">
-                <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-transparent">
-                  <FileText size={13} />
-                </div>
-                <div className="shrink-0">
-                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block whitespace-nowrap">
-                    Issued Invoices
-                  </span>
-                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block whitespace-nowrap">
-                    Tax & SEZ Invoices
-                  </span>
-                </div>
-              </div>
-              <div
-                className="text-base sm:text-lg font-black text-slate-950 dark:text-white font-mono tabular-nums shrink-0 ml-1 whitespace-nowrap"
-                title={`${totalIssuedDocs} issued document(s)`}
-              >
-                {totalIssuedDocs}
-              </div>
-            </div>
-
-            {/* Card 2: Taxable Subtotal */}
-            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2 whitespace-nowrap min-w-0">
-              <div className="flex items-center gap-2 min-w-0 shrink-0">
-                <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-crm-blue/15 text-crm-blue flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-transparent">
-                  <Layers size={13} />
-                </div>
-                <div className="shrink-0">
-                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block whitespace-nowrap">
-                    Taxable Subtotal
-                  </span>
-                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block whitespace-nowrap">
-                    Base Goods & Services
-                  </span>
-                </div>
-              </div>
-              <div
-                className="text-base sm:text-lg font-black text-blue-700 dark:text-crm-blue-light font-mono tabular-nums shrink-0 ml-1 whitespace-nowrap"
-                title={`₹${totalTaxable.toLocaleString('en-IN')}`}
-              >
-                ₹{formatCompactInr(totalTaxable)}
-              </div>
-            </div>
-
-            {/* Card 3: GST Managed */}
-            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2 whitespace-nowrap min-w-0">
-              <div className="flex items-center gap-2 min-w-0 shrink-0">
-                <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-crm-amber flex items-center justify-center shrink-0 border border-amber-200/60 dark:border-transparent">
-                  <ShieldCheck size={13} />
-                </div>
-                <div className="shrink-0">
-                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block whitespace-nowrap">
-                    GST Managed
-                  </span>
-                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block whitespace-nowrap">
-                    CGST + SGST & IGST
-                  </span>
-                </div>
-              </div>
-              <div
-                className="text-base sm:text-lg font-black text-amber-700 dark:text-crm-amber font-mono tabular-nums shrink-0 ml-1 whitespace-nowrap"
-                title={`₹${totalGst.toLocaleString('en-IN')}`}
-              >
-                ₹{formatCompactInr(totalGst)}
-              </div>
-            </div>
-
-            {/* Card 4: Grand Total Billed */}
-            <div className="p-2.5 px-3 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] shadow-sm flex items-center justify-between gap-2 whitespace-nowrap min-w-0">
-              <div className="flex items-center gap-2 min-w-0 shrink-0">
-                <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200/60 dark:border-transparent">
-                  <DollarSign size={13} />
-                </div>
-                <div className="shrink-0">
-                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block whitespace-nowrap">
-                    Total Billed
-                  </span>
-                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500 hidden sm:block whitespace-nowrap">
-                    Matches Ledger
-                  </span>
-                </div>
-              </div>
-              <div
-                className="text-base sm:text-lg font-black text-emerald-700 dark:text-emerald-400 font-mono tabular-nums shrink-0 ml-1 whitespace-nowrap"
-                title={`₹${totalAmount.toLocaleString('en-IN')}`}
-              >
-                ₹{formatCompactInr(totalAmount)}
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Remove / Dismiss button */}
-          <button type="button"
-            onClick={toggleKpis}
-            className="absolute -top-2.5 -right-2 w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 dark:bg-[#2A3042] dark:hover:bg-[#343B52] text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] shadow-sm transition-all border border-slate-300 dark:border-slate-600"
-            title="Remove summary boxes"
-          >
-            <X size={11} />
-          </button>
-        </div>
-      )}
 
       {/* ─── FILTERS & SEARCH BAR ────────────────────────────────────── */}
       <div className="p-3 sm:p-4 rounded-xl bg-white dark:bg-[#181B26] border border-slate-200 dark:border-[#2A3042] flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-sm max-w-full min-w-0">
