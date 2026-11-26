@@ -6,6 +6,7 @@
  * ----------------------------------------------------- */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Users,
   Search,
@@ -51,6 +52,7 @@ interface DuplicateCluster {
 }
 
 export default function CustomersPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [customers, setCustomers] = useState<UnifiedCustomer[]>([]);
   const [possibleDuplicates, setPossibleDuplicates] = useState<DuplicateCluster[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +85,16 @@ export default function CustomersPage() {
 
   // Toast message
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get('action') === 'create') {
+      setShowRegisterModal(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      next.delete('_t');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // In-App Archive Confirmation Modal State (replaces native window.confirm)
   const [customerToArchive, setCustomerToArchive] = useState<UnifiedCustomer | null>(null);

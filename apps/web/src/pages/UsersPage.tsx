@@ -300,7 +300,7 @@ function UserPagePermissionsSelector({
 }
 
 export default function UsersPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user: currentUser, updateUser } = useAuth();
   const isPlatform = isPlatformOwner(currentUser);
@@ -827,7 +827,8 @@ export default function UsersPage() {
   }, [activeTab]);
 
   useEffect(() => {
-    if (searchParams.get('action') === 'create') {
+    const action = searchParams.get('action');
+    if (action === 'create') {
       handleOpenCreateModal();
     }
     if (searchParams.get('tab') === 'teams') {
@@ -837,7 +838,13 @@ export default function UsersPage() {
     } else if (searchParams.get('tab') === 'signins' || searchParams.get('tab') === 'audit') {
       setActiveTab('signins');
     }
-  }, [searchParams]);
+    if (action || searchParams.has('_t')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      next.delete('_t');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // If user is not Super Admin or Admin, block view
   if (!canManageUsers) {

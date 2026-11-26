@@ -144,7 +144,7 @@ export default function LedgerPage() {
     user?.role === 'platform_admin';
 
   const [partyType, setPartyType] = useState<'customer' | 'supplier'>('customer');
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     const tabParam = searchParams.get('tab');
@@ -153,14 +153,21 @@ export default function LedgerPage() {
     } else if (tabParam === 'customers' || tabParam === 'customer') {
       setPartyType('customer');
     }
-    if (searchParams.get('action') === 'payment') {
+    const action = searchParams.get('action');
+    if (action === 'payment') {
       setShowPaymentModal(true);
     }
     const pId = searchParams.get('partyId') || searchParams.get('customerId') || searchParams.get('party');
     if (pId) {
       setSelectedPartyId(pId);
     }
-  }, [searchParams]);
+    if (action || searchParams.has('_t')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      next.delete('_t');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [currentFY] = useState<string>(() => computeCurrentIndianFY());
   const [selectedFY, setSelectedFY] = useState<string>(() => computeCurrentIndianFY());
   const [parties, setParties] = useState<LedgerParty[]>([]);

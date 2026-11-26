@@ -238,6 +238,13 @@ export default function Navbar() {
     navigate('/login');
   };
 
+  const handleQuickNav = useCallback((to: string) => {
+    setActiveTabDropdown(null);
+    setQuickCreateOpen(false);
+    const sep = to.includes('?') ? '&' : '?';
+    navigate(`${to}${sep}_t=${Date.now()}`);
+  }, [navigate]);
+
   // Filter searchable items strictly from granted modules
   const searchResults = useMemo(() => {
     return searchableModules
@@ -423,7 +430,10 @@ export default function Navbar() {
                   <NavLink
                     role="menuitem"
                     to="/invoices?action=create"
-                    onClick={() => setQuickCreateOpen(false)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleQuickNav('/invoices?action=create');
+                    }}
                     className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-emerald-500/10 text-slate-800 dark:text-slate-200 hover:text-emerald-600 transition-colors"
                   >
                     <Receipt size={14} className="text-emerald-500 shrink-0" />
@@ -448,7 +458,10 @@ export default function Navbar() {
                   <NavLink
                     role="menuitem"
                     to="/orders?action=create"
-                    onClick={() => setQuickCreateOpen(false)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleQuickNav('/orders?action=create');
+                    }}
                     className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-amber-500/10 text-slate-800 dark:text-slate-200 hover:text-amber-600 transition-colors"
                   >
                     <ShoppingCart size={14} className="text-amber-500 shrink-0" />
@@ -473,7 +486,10 @@ export default function Navbar() {
                   <NavLink
                     role="menuitem"
                     to="/inventory?action=create"
-                    onClick={() => setQuickCreateOpen(false)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleQuickNav('/inventory?action=create');
+                    }}
                     className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-purple-500/10 text-slate-800 dark:text-slate-200 hover:text-purple-600 transition-colors"
                   >
                     <Package size={14} className="text-purple-500 shrink-0" />
@@ -484,7 +500,10 @@ export default function Navbar() {
                   <NavLink
                     role="menuitem"
                     to="/users?action=create"
-                    onClick={() => setQuickCreateOpen(false)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleQuickNav('/users?action=create');
+                    }}
                     className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-blue-500/10 text-slate-800 dark:text-slate-200 hover:text-blue-600 transition-colors border-t border-slate-100 dark:border-white/5 pt-2"
                   >
                     <UserPlus size={14} className="text-blue-500 shrink-0" />
@@ -825,7 +844,10 @@ export default function Navbar() {
                                 key={sIdx}
                                 role="menuitem"
                                 to={sub.to}
-                                onClick={() => setActiveTabDropdown(null)}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  handleQuickNav(sub.to);
+                                }}
                                 className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all ${
                                   sub.isAction
                                     ? 'font-bold bg-crm-blue/10 text-crm-blue hover:bg-crm-blue hover:text-white dark:bg-crm-blue/20 dark:hover:bg-crm-blue dark:text-white shadow-2xs'

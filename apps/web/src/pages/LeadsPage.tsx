@@ -199,6 +199,53 @@ export default function LeadsPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Handle Quick Menu action & filter query parameters
+  useEffect(() => {
+    const action = searchParams.get('action');
+    const filter = searchParams.get('filter');
+    let shouldClean = false;
+
+    if (action === 'create') {
+      setShowCreateLeadModal(true);
+      shouldClean = true;
+    }
+
+    if (filter === 'my') {
+      if (user?.id) {
+        setAssignedToId(user.id);
+      }
+      setSummaryBoxFilter(null);
+      shouldClean = true;
+    } else if (filter === 'converted') {
+      setSummaryBoxFilter('converted');
+      setActiveStageTab('won');
+      shouldClean = true;
+    } else if (searchParams.has('_t') && !action) {
+      setSummaryBoxFilter(null);
+      if (isAdmin) {
+        setAssignedToId('all');
+      }
+      setSourceFilter('all');
+      setUrgencyFilter('all');
+      setSearch('');
+      shouldClean = true;
+    }
+
+    if (searchParams.has('_t')) {
+      shouldClean = true;
+    }
+
+    if (shouldClean) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('action');
+        next.delete('filter');
+        next.delete('_t');
+        return next;
+      }, { replace: true });
+    }
+  }, [searchParams, user?.id, setSearchParams]);
+
   // Update URL search parameters when filters change
   const updateUrlParams = useCallback(() => {
     const params = new URLSearchParams();
@@ -517,6 +564,9 @@ export default function LeadsPage() {
           }
           if (summaryBoxFilter === 'followup_today') {
             return lead.nextFollowUpAt && new Date(lead.nextFollowUpAt) <= new Date(new Date().setHours(23, 59, 59, 999));
+          }
+          if (summaryBoxFilter === 'converted') {
+            return stKey === 'won' || lead.status === 'won';
           }
           return true;
         }),

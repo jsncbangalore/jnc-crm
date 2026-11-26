@@ -35,7 +35,7 @@ export default function QuotationsPage() {
   const { branding } = useBranding();
   const { hasPage, canCreateEdit } = useAllowedPages();
   const canManage = canCreateEdit('quotations');
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [quotations, setQuotations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,17 +131,29 @@ export default function QuotationsPage() {
     return () => clearTimeout(t);
   }, [search, statusFilter]);
 
-  // Check URL params from Lead "Quote" button
+  // Check URL params from Lead "Quote" button or Quick Menu
   useEffect(() => {
     const urlLeadId = searchParams.get('leadId');
     const urlName = searchParams.get('name');
-    if (urlLeadId || urlName || searchParams.get('action') === 'create') {
+    const action = searchParams.get('action');
+    const filter = searchParams.get('filter');
+
+    if (urlLeadId || urlName || action === 'create') {
       setShowCreateModal(true);
     }
-    if (searchParams.get('filter') === 'pending') {
+    if (filter === 'pending') {
       setStatusFilter('draft');
+    } else if (!filter && !urlLeadId && !urlName && !action) {
+      setStatusFilter('all');
     }
-  }, [searchParams]);
+
+    if (action || searchParams.has('_t')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      next.delete('_t');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const handleConvertToOrder = async (quoteId: string) => {
     setInAppPopup({

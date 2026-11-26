@@ -150,7 +150,7 @@ export default function OrdersPage() {
   const { hasPage, canCreateEdit } = useAllowedPages();
   const canCreate = canCreateEdit('orders');
   const canEdit = canCreateEdit('orders');
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string; isNetworkError: boolean; referenceId?: string; code?: string } | null>(null);
@@ -164,14 +164,27 @@ export default function OrdersPage() {
 
   useEffect(() => {
     const f = searchParams.get('filter');
-    if (f === 'pending') setStatusFilter('processing');
-    if (f === 'ready') setStatusFilter('dispatched');
-    if (searchParams.get('action') === 'create') {
+    const action = searchParams.get('action');
+    if (f === 'pending') {
+      setStatusFilter('processing');
+    } else if (f === 'ready') {
+      setStatusFilter('dispatched');
+    } else if (!f && !action && !searchParams.has('search')) {
+      setStatusFilter('');
+    }
+    if (action === 'create') {
       setShowCreateModal(true);
     }
     const q = searchParams.get('search');
     if (q != null) setSearch(q);
-  }, [searchParams]);
+
+    if (action || searchParams.has('_t')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      next.delete('_t');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Customer Account Modal State & Expanded Chain
   const [accountCustomerId, setAccountCustomerId] = useState<string | null>(null);

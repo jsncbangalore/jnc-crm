@@ -198,7 +198,7 @@ function InvoiceRowActions({
 export default function InvoicesPage() {
   const { user } = useAuth();
   const canAdmin = user?.role === 'tenant_admin' || user?.role === 'admin';
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -218,10 +218,23 @@ export default function InvoicesPage() {
     const q = searchParams.get('search') || searchParams.get('invoiceNumber');
     if (q != null) setSearch(q);
     const filter = searchParams.get('filter');
-    if (filter === 'unpaid') setStatusFilter('unpaid');
-    if (filter === 'lut') setDocTypeFilter('sez_invoice');
-    if (searchParams.get('action') === 'create') {
+    const action = searchParams.get('action');
+    if (filter === 'unpaid') {
+      setStatusFilter('unpaid');
+    } else if (filter === 'lut') {
+      setDocTypeFilter('sez_invoice');
+    } else if (!filter && !action && !q && !searchParams.get('invoiceId')) {
+      setStatusFilter('all');
+      setDocTypeFilter('all');
+    }
+    if (action === 'create') {
       setShowCreateModal(true);
+    }
+    if (action || searchParams.has('_t')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      next.delete('_t');
+      setSearchParams(next, { replace: true });
     }
 
     // Direct invoice opening from ledger or URL link

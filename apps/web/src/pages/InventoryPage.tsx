@@ -166,7 +166,7 @@ export default function InventoryPage() {
   };
 
   // Modals & Navigation
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [showAddComponentModal, setShowAddComponentModal] = useState(false);
 
@@ -182,10 +182,17 @@ export default function InventoryPage() {
   }, [searchParams, navigate]);
 
   useEffect(() => {
-    if (searchParams.get('action') === 'create') {
+    const action = searchParams.get('action');
+    if (action === 'create') {
       setShowAddComponentModal(true);
     }
-  }, [searchParams]);
+    if (action || searchParams.has('_t')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      next.delete('_t');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [restockItem, setRestockItem] = useState<any | null>(null);
   const [showRestockModal, setShowRestockModal] = useState(false);

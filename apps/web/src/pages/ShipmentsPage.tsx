@@ -21,7 +21,7 @@ import { safeUpper } from '../utils/safeFormat';
 
 export default function ShipmentsPage() {
   const { user } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [shipments, setShipments] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [ordersError, setOrdersError] = useState<string | null>(null);
@@ -89,14 +89,27 @@ export default function ShipmentsPage() {
 
   useEffect(() => {
     const f = searchParams.get('filter');
-    if (f === 'transit') setStatusFilter('in_transit');
-    if (f === 'delivered') setStatusFilter('delivered');
-    if (searchParams.get('action') === 'create') {
+    const action = searchParams.get('action');
+    if (f === 'transit') {
+      setStatusFilter('in_transit');
+    } else if (f === 'delivered') {
+      setStatusFilter('delivered');
+    } else if (!f && !action && !searchParams.has('search')) {
+      setStatusFilter('all');
+    }
+    if (action === 'create') {
       handleOpenCreateModal();
     }
     const q = searchParams.get('search');
     if (q != null) setSearch(q);
-  }, [searchParams]);
+
+    if (action || searchParams.has('_t')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      next.delete('_t');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const handleOpenEditModal = (s: any) => {
     setEditingShipment(s);

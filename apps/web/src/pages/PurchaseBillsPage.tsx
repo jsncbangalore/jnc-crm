@@ -6,16 +6,23 @@ import { RecordComponentPurchaseModal } from '../components/inventory/RecordComp
 import { inventoryApi } from '../services/api';
 
 export default function PurchaseBillsPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showRecordPurchaseModal, setShowRecordPurchaseModal] = useState(false);
   const [existingProjects, setExistingProjects] = useState<string[]>(['General Inventory']);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    if (searchParams.get('action') === 'create') {
+    const action = searchParams.get('action');
+    if (action === 'create') {
       setShowRecordPurchaseModal(true);
     }
-  }, [searchParams]);
+    if (action || searchParams.has('_t')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      next.delete('_t');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     inventoryApi.getProjectStock().then((res: any) => {
