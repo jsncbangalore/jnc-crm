@@ -47,9 +47,13 @@ export default function BrandingSettingsPage() {
   const navigate = useNavigate();
 
   const isAdmin =
+    user?.role === 'administrator' ||
     user?.role === 'tenant_admin' ||
     user?.role === 'admin' ||
-    user?.role === 'platform_super_admin';
+    user?.role === 'sub_administrator' ||
+    user?.role === 'sub_admin' ||
+    user?.role === 'platform_super_admin' ||
+    user?.role === 'platform_admin';
 
   // Form State
   const [companyName, setCompanyName] = useState(branding.companyDisplayName || '');

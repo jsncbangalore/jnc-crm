@@ -53,7 +53,7 @@ import {
   RegenerateBackupCodesDto,
   DisableTwoFactorDto,
 } from './dto/login.dto';
-import { getRoleRedirectPath } from './roles';
+import { getRoleRedirectPath, getDefaultHomePageForRole } from './roles';
 import { validatePasswordPolicy, needsRehash, getPasswordPolicy, PasswordPolicyDto } from '../common/password-policy';
 import { isAllowedOrigin } from '../common/cors-config';
 import { parseDeviceLabel } from '../common/device.util';
@@ -3168,7 +3168,7 @@ export class AuthService {
         where: { email: rawLookup, isActive: true, deletedAt: null },
         select: { id: true, role: true, email: true },
       });
-      if (existingUser && ['platform_super_admin', 'tenant_admin', 'admin'].includes(existingUser.role)) {
+      if (existingUser && ['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin'].includes(existingUser.role)) {
         this.logger.warn(
           `[AUDIT] Legacy forgot-password rejected for privileged role '${existingUser.role}' (user ${existingUser.id}) from IP ${clientIp || 'unknown'}`,
         );
@@ -3202,7 +3202,7 @@ export class AuthService {
       });
 
       if (resetRecord && resetRecord.user) {
-        if (['platform_super_admin', 'tenant_admin', 'admin'].includes(resetRecord.user.role)) {
+        if (['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin'].includes(resetRecord.user.role)) {
           this.logger.warn(
             `[AUDIT] Legacy reset-password rejected for privileged role '${resetRecord.user.role}' (user ${resetRecord.user.id}) from IP ${ipAddress || 'unknown'}`,
           );
@@ -4425,6 +4425,11 @@ export class AuthService {
       return COMPANY_PAGE_REGISTRY[resolvedHomePage].frontendRoutes[0] || '/';
     }
 
+    const roleDefaultHome = getDefaultHomePageForRole(user.role);
+    if (roleDefaultHome && pages.includes(roleDefaultHome) && COMPANY_PAGE_REGISTRY[roleDefaultHome]) {
+      return COMPANY_PAGE_REGISTRY[roleDefaultHome].frontendRoutes[0] || '/';
+    }
+
     for (const key of ALL_COMPANY_PAGE_KEYS) {
       if (pages.includes(key) && COMPANY_PAGE_REGISTRY[key]) {
         return COMPANY_PAGE_REGISTRY[key].frontendRoutes[0] || '/';
@@ -4523,87 +4528,6 @@ export class AuthService {
         timestamp: log.timestamp,
       };
     });
-  }
-
-  /** Local development only demo login — skips 2FA, OTP, and password reset strictly for demo accounts */
-  async devDemoLogin(dto: { role?: string; roleKey?: string; email?: string }, clientIp?: string, userAgent?: string) {
-    if (process.env.NODE_ENV !== 'development' || process.env.DEV_DEMO_LOGIN !== 'true') {
-      throw new NotFoundException();
-    }
-    try {
-      const parsed = new URL(process.env.DATABASE_URL || '');
-      const dbHost = parsed.hostname.toLowerCase();
-      const dbName = parsed.pathname.replace(/^\//, '');
-      if (!['localhost', '127.0.0.1', '::1'].includes(dbHost) || !dbName.startsWith('jnc_crm_dev')) {
-        throw new NotFoundException();
-      }
-    } catch {
-      throw new NotFoundException();
-    }
-
-    const role = dto?.role || dto?.roleKey;
-    const email = dto?.email;
-    let user: any = null;
-
-    if (email) {
-      user = await this.prisma.user.findFirst({
-        where: {
-          email: email.toLowerCase().trim(),
-          isDemo: true,
-        },
-        include: { tenant: true },
-      });
-    } else if (role) {
-      const targetRole = role.toLowerCase().trim();
-      let targetEmail: string | null = null;
-      if (['platform_owner', 'platform_super_admin'].includes(targetRole)) {
-        targetEmail = 'platform_owner@demo.test';
-      } else if (['admin', 'administrator', 'company_admin', 'tenant_admin', 'sub_admin', 'sub_administrator', 'project_manager'].includes(targetRole)) {
-        targetEmail = 'admin@demo.test';
-      } else if (['sales', 'sales_rep', 'sales_representative', 'sales_user', 'employee'].includes(targetRole)) {
-        targetEmail = 'sales@demo.test';
-      } else if (['accountant', 'accounts', 'finance', 'finance_specialist'].includes(targetRole)) {
-        targetEmail = 'accountant@demo.test';
-      } else if (['store_manager', 'store_inventory_manager', 'store', 'inventory', 'inventory_manager'].includes(targetRole)) {
-        targetEmail = 'store@demo.test';
-      } else if (['viewer', 'readonly', 'read_only', 'developer', 'developer_lead'].includes(targetRole)) {
-        targetEmail = 'viewer@demo.test';
-      }
-
-      if (targetEmail) {
-        user = await this.prisma.user.findFirst({
-          where: {
-            email: targetEmail,
-            isDemo: true,
-          },
-          include: { tenant: true },
-        });
-      } else {
-        user = await this.prisma.user.findFirst({
-          where: {
-            role: targetRole,
-            isDemo: true,
-          },
-          include: { tenant: true },
-        });
-      }
-    }
-
-    if (!user || user.isDemo !== true || !user.email?.toLowerCase().endsWith('@demo.test')) {
-      this.logger.warn(`[DEV-DEMO-LOGIN] Rejected: user invalid. exists=${!!user}, isDemo=${user?.isDemo}, email=${user?.email}`);
-      throw new NotFoundException();
-    }
-
-    const portal = user.role === 'platform_super_admin' && !user.tenantId ? 'platform' : 'company';
-    return this._buildLoginResponse(
-      user,
-      clientIp,
-      undefined,
-      true, // keepSignedIn
-      userAgent,
-      portal,
-      true, // bypass2Fa = true
-    );
   }
 
   private async _buildLoginResponse(
@@ -4994,7 +4918,7 @@ export class AuthService {
 
   isUserTwoFactorEnforced(user: any): boolean {
     if (!user) return false;
-    if (user.role === 'platform_super_admin' || user.role === 'tenant_admin') {
+    if (['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin'].includes(user.role)) {
       return true;
     }
     if (user.tenant?.requireTwoFactor === true) {
@@ -5376,7 +5300,7 @@ export class AuthService {
       const rawToken = crypto.randomBytes(32).toString('hex');
       const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
       const deviceLabel = parseDeviceLabel(userAgent);
-      const isAdmin = user.role === 'platform_super_admin' || user.role === 'tenant_admin';
+      const isAdmin = ['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin'].includes(user.role);
       const maxAgeMs = isAdmin ? TRUSTED_DEVICE_ADMIN_MAX_AGE_MS : TRUSTED_DEVICE_MAX_AGE_MS;
       const expiresAt = new Date(Date.now() + maxAgeMs);
 
@@ -6092,7 +6016,7 @@ export class AuthService {
       const rawToken = crypto.randomBytes(32).toString('hex');
       const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
       const deviceLabel = parseDeviceLabel(userAgent);
-      const isAdmin = user.role === 'platform_super_admin' || user.role === 'tenant_admin';
+      const isAdmin = ['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin'].includes(user.role);
       const maxAgeMs = isAdmin ? TRUSTED_DEVICE_ADMIN_MAX_AGE_MS : TRUSTED_DEVICE_MAX_AGE_MS;
       const expiresAt = new Date(Date.now() + maxAgeMs);
 
@@ -6311,11 +6235,12 @@ export class AuthService {
       throw new ForbiddenException('Platform administrator 2-step verification cannot be reset via web console.');
     }
 
-    if (actor.role === 'tenant_admin' && actor.tenantId !== targetUser.tenantId) {
+    const actorIsAdmin = ['administrator', 'tenant_admin', 'admin'].includes(actor.role);
+    if (actorIsAdmin && actor.tenantId !== targetUser.tenantId) {
       throw new ForbiddenException('Cannot reset 2-step verification for users in another company.');
     }
 
-    if (actor.role !== 'tenant_admin' && actor.role !== 'platform_super_admin') {
+    if (!actorIsAdmin && actor.role !== 'platform_super_admin') {
       throw new ForbiddenException('Insufficient permissions to reset 2-step verification.');
     }
 

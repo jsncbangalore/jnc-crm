@@ -76,7 +76,6 @@ export class OrdersController {
   }
 
   @Patch(':id/status')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
@@ -115,7 +114,6 @@ export class OrdersController {
 
   @Patch('shipments/:id/status')
   @PageAccess('shipments')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   updateShipmentStatus(
     @Param('id') id: string,
     @Body() body: UpdateShipmentStatusDto,

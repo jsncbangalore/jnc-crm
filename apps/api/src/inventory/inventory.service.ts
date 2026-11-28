@@ -46,7 +46,7 @@ export class InventoryService {
     this.scopingService.getInventoryScope(user);
     const tenantId = requireTenantId(user);
     const { page, limit, skip, take } = parsePagination(query, 50, 100);
-    const canSeeCostPrice = user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin';
+    const canSeeCostPrice = ['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin', 'store_inventory_manager', 'accountant', 'finance_specialist'].includes(user.role);
 
     // Build SKU filter scoped by tenant (never return soft-deleted SKUs)
     const skuWhere: any = { deletedAt: null, tenantId };
@@ -234,7 +234,7 @@ export class InventoryService {
 
   async getSkus(user: ScopedUser, search?: string) {
     const tenantId = requireTenantId(user);
-    const canSeeCostPrice = user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin';
+    const canSeeCostPrice = ['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin', 'store_inventory_manager', 'accountant', 'finance_specialist'].includes(user.role);
     const skus = await this.prisma.sku.findMany({
       where: {
         deletedAt: null,
@@ -262,7 +262,7 @@ export class InventoryService {
 
   async getSkuById(id: string, user: ScopedUser) {
     const tenantId = requireTenantId(user);
-    const canSeeCostPrice = user.role === 'platform_super_admin' || user.role === 'tenant_admin' || user.role === 'admin';
+    const canSeeCostPrice = ['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin', 'store_inventory_manager', 'accountant', 'finance_specialist'].includes(user.role);
     const sku = await this.prisma.sku.findFirst({
       where: { id, tenantId },
       include: {

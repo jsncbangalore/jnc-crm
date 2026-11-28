@@ -19,6 +19,7 @@ import {
   RoleKey,
   TenantRoleKey,
   normalizeRole,
+  getDefaultHomePageForRole,
 } from '../config/roles-permissions';
 import { PAGE_KEY_TO_ROUTE, COMPANY_PAGE_REGISTRY } from '../config/page-registry';
 
@@ -69,6 +70,10 @@ export function getRoleRedirectPath(user?: { role?: string; tenantId?: string | 
     const pages = user.effectivePages.map((k) => (k === 'purchase_bills' ? 'bills' : k));
     if (user.homePage && pages.includes(user.homePage) && PAGE_KEY_TO_ROUTE[user.homePage]) {
       return PAGE_KEY_TO_ROUTE[user.homePage];
+    }
+    const normHome = getDefaultHomePageForRole(user.role);
+    if (normHome && pages.includes(normHome) && PAGE_KEY_TO_ROUTE[normHome]) {
+      return PAGE_KEY_TO_ROUTE[normHome];
     }
     for (const key of Object.keys(COMPANY_PAGE_REGISTRY)) {
       if (pages.includes(key) && PAGE_KEY_TO_ROUTE[key]) {

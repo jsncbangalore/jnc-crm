@@ -197,7 +197,12 @@ function InvoiceRowActions({
 
 export default function InvoicesPage() {
   const { user } = useAuth();
-  const canAdmin = user?.role === 'tenant_admin' || user?.role === 'admin';
+  const canAdmin =
+    user?.role === 'administrator' ||
+    user?.role === 'tenant_admin' ||
+    user?.role === 'admin' ||
+    user?.role === 'platform_super_admin' ||
+    user?.role === 'platform_admin';
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);

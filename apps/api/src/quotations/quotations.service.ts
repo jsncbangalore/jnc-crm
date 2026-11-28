@@ -476,8 +476,8 @@ export class QuotationsService {
       });
 
       if (dto.leadId) {
-        await tx.lead.update({
-          where: { id: dto.leadId },
+        await tx.lead.updateMany({
+          where: { id: dto.leadId, tenantId },
           data: { status: 'quoted' },
         }).catch(() => {});
       }

@@ -23,6 +23,8 @@ import { validateLutStatus } from './lut-validator';
 import { sanitizeHtml } from '../common/html-sanitize.util';
 import { decryptAtRest } from '../common/encryption.util';
 import { getCompanyProfileCompleteness, getUnifiedCompanyProfile, updateUnifiedCompanyProfile } from '../common/company-profile.util';
+import { canAccessPage, isAdminOrSubAdminRole, isTenantAdminRole, normalizeRole } from '../common/roles-permissions';
+import { getEffectivePermissionsForUser } from '../auth/effective-page-access';
 import { validateDocumentAmountLimits, isPlaceholderCustomerName } from '../common/shared-validation';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -523,7 +525,7 @@ export class InvoicingService {
       const isManualNumber = Boolean((dto as any).isManualNumber);
 
       if (isManualNumber && invoiceNumber) {
-        const canManualOverride = ['platform_super_admin', 'tenant_admin', 'admin'].includes(user.role);
+        const canManualOverride = isTenantAdminRole(user.role);
         if (!canManualOverride) {
           throw new ForbiddenException('Only administrators can manually override document numbering.');
         }
@@ -621,8 +623,7 @@ export class InvoicingService {
         if (!isConfirmedHigh) {
           throw new BadRequestException('This document is above the high-value limit. Please confirm.');
         }
-        const allowedHighValueRoles = ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin'];
-        if (!allowedHighValueRoles.includes(user.role)) {
+        if (!isAdminOrSubAdminRole(user.role)) {
           throw new ForbiddenException('Your role is not authorized to approve high-value documents.');
         }
       }
@@ -1383,8 +1384,9 @@ export class InvoicingService {
       }
     }
 
+    const settingKey = tenantId ? `tenant:${tenantId}:invoice_signatory_config` : 'invoice_signatory_config';
     const setting = await this.prisma.systemSetting.findUnique({
-      where: { key: 'invoice_signatory_config' },
+      where: { key: settingKey },
     });
 
     const defaultCompanyName = (process.env.PRODUCT_NAME || '').trim() || 'Company';
@@ -1432,11 +1434,12 @@ export class InvoicingService {
       stampImage?: string | null;
     },
   ) {
-    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+    const perms = await getEffectivePermissionsForUser(this.prisma, user);
+    if (!isAdminOrSubAdminRole(user.role) && !canAccessPage(perms, 'branding', 'create_edit')) {
       throw new ForbiddenException('Only Administrators can modify Invoice Signatory and Stamp settings.');
     }
 
-    const tenantId = user.tenantId || (user.role === 'platform_super_admin' ? (await this.prisma.tenant.findFirst())?.id : undefined);
+    const tenantId = requireTenantId(user);
 
     const defaultCompanyName = (process.env.PRODUCT_NAME || '').trim() || 'Company';
     let resolvedCompanyName = dto.companyName?.trim() || defaultCompanyName;
@@ -1468,10 +1471,11 @@ export class InvoicingService {
       stampImage: dto.stampImage || null,
     };
 
+    const settingKey = `tenant:${tenantId}:invoice_signatory_config`;
     await this.prisma.systemSetting.upsert({
-      where: { key: 'invoice_signatory_config' },
+      where: { key: settingKey },
       update: { value: JSON.stringify(payload) },
-      create: { key: 'invoice_signatory_config', value: JSON.stringify(payload) },
+      create: { key: settingKey, value: JSON.stringify(payload) },
     });
 
     return payload;
@@ -1481,7 +1485,8 @@ export class InvoicingService {
    * Update Tenant Legal Company Invoicing Profile & Bank Details
    */
   async updateCompanyProfile(user: ScopedUser, dto: any) {
-    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+    const perms = await getEffectivePermissionsForUser(this.prisma, user);
+    if (!isAdminOrSubAdminRole(user.role) && !canAccessPage(perms, 'branding', 'create_edit')) {
       throw new ForbiddenException('Only Administrators can modify Company Profile and Invoicing settings.');
     }
 
@@ -1701,8 +1706,8 @@ export class InvoicingService {
    * Void an invoice (Admin & Super Admin only)
    */
   async voidInvoice(id: string, reason: string, user: ScopedUser, reversePayments = false) {
-    const allowedRoles = ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin', 'finance', 'accountant'];
-    if (!allowedRoles.includes(user.role)) {
+    const allowedNorm = ['platform_super_admin', 'platform_admin', 'administrator', 'sub_administrator', 'finance_specialist', 'accountant'];
+    if (!allowedNorm.includes(normalizeRole(user.role))) {
       throw new ForbiddenException('Only Administrators, Finance, and Accountants can void invoices.');
     }
 
@@ -1993,6 +1998,7 @@ export class InvoicingService {
 
     // Send email with attached binary PDF
     await this.notificationsService.sendEmail({
+      tenantId: invoice.tenantId || requireTenantId(user),
       to: targetRecipient,
       subject: `${documentTitle} ${invoice.invoiceNumber} from ${companyDisplayName}`,
       html: emailHtml,
@@ -2065,6 +2071,9 @@ export class InvoicingService {
 
     // Resolve target printer: user selected -> default printer -> 'Brother DCP-T520W Printer'
     let targetPrinter = dto.printerName?.trim();
+    if (targetPrinter && !/^[\w\s\-.()\\\/]{1,128}$/.test(targetPrinter)) {
+      throw new BadRequestException('Invalid printer name characters.');
+    }
     if (!targetPrinter) {
       try {
         const def = await ptp.getDefaultPrinter();

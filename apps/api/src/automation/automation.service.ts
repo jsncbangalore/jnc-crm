@@ -554,7 +554,7 @@ export class AutomationService implements OnModuleInit {
           if (config.recipient === 'admin') {
             const admin = await this.prisma.user.findFirst({
               where: {
-                role: { in: ['tenant_admin', 'admin'] },
+                role: { in: ['administrator', 'tenant_admin', 'admin'] },
                 isActive: true,
                 tenantId,
               },
@@ -614,7 +614,7 @@ export class AutomationService implements OnModuleInit {
             if (config.recipient === 'admin') {
               const admin = await this.prisma.user.findFirst({
                 where: {
-                  role: { in: ['tenant_admin', 'admin'] },
+                  role: { in: ['administrator', 'tenant_admin', 'admin'] },
                   isActive: true,
                   tenantId,
                 },
@@ -903,7 +903,7 @@ export class AutomationService implements OnModuleInit {
     const tenantId = user?.tenantId;
     const admins = await this.prisma.user.findMany({
       where: {
-        role: { in: ['tenant_admin', 'admin'] },
+        role: { in: ['administrator', 'tenant_admin', 'admin'] },
         isActive: true,
         ...(tenantId ? { tenantId } : {}),
       },

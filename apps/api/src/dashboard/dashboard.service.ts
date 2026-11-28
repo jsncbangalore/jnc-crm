@@ -529,7 +529,7 @@ export class DashboardService {
       actionLink: string;
     }> = [];
 
-    const isAdminRole = user.role === 'tenant_admin' || user.role === 'admin' || platformOwner;
+    const isAdminRole = ['administrator', 'tenant_admin', 'admin', 'sub_administrator', 'sub_admin'].includes(user.role) || platformOwner;
     if (isAdminRole && !isSetupComplete && user.tenantId) {
       needsAttention.push({
         id: 'setup',

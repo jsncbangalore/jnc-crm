@@ -14,6 +14,7 @@ import {
 import {
   resolveEffectivePageAccess,
   getRoleDefaultPermissions,
+  getDefaultHomePageForRole,
   EffectiveAccessResult,
   normalizeRole,
 } from '../common/roles-permissions';
@@ -173,6 +174,12 @@ export async function getHomePageForUser(
       }
     }
   } catch {}
+
+  // Role default home screen (when granted and no custom override saved)
+  const roleDefaultHome = getDefaultHomePageForRole(user.role);
+  if (roleDefaultHome && effective.includes(roleDefaultHome)) {
+    return roleDefaultHome;
+  }
 
   // Fallback: first granted page in registry order (prefer non-notification)
   for (const key of ALL_COMPANY_PAGE_KEYS) {

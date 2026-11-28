@@ -21,8 +21,8 @@ import { executeDirectPrint } from '../../utils/directPrint';
 
 export default function ProjectStockPositionView() {
   const { user } = useAuth();
-  const canManage = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'sub_admin' || user?.role === 'platform_super_admin';
-  const canDelete = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'platform_super_admin';
+  const canManage = ['administrator', 'tenant_admin', 'admin', 'sub_administrator', 'sub_admin', 'store_inventory_manager', 'store_manager', 'platform_super_admin', 'platform_admin'].includes(user?.role || '');
+  const canDelete = ['administrator', 'tenant_admin', 'admin', 'store_inventory_manager', 'platform_super_admin', 'platform_admin'].includes(user?.role || '');
 
   const [positions, setPositions] = useState<ProjectStockPosition[]>([]);
   const [projectsList, setProjectsList] = useState<string[]>([]);

@@ -590,7 +590,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       .replace(/(Temporary Password:\s*(?:<\/strong>\s*)?<code>)([^<]+)(<\/code>)/gi, '$1[REDACTED_FOR_SECURITY]$3')
       .replace(/(Password:\s*(?:<\/strong>\s*)?<code>)([^<]+)(<\/code>)/gi, '$1[REDACTED_FOR_SECURITY]$3')
       .replace(/(Temporary Password:\s*)([^\s<]+)/gi, '$1[REDACTED_FOR_SECURITY]')
-      .replace(/(Password:\s*)([^\s<]+)/gi, '$1[REDACTED_FOR_SECURITY]');
+      .replace(/(Password:\s*)([^\s<]+)/gi, '$1[REDACTED_FOR_SECURITY]')
+      .replace(/(verification\s*code|passcode|otp)([^<\d]{0,40})(\d{4,8})/gi, '$1$2[REDACTED_OTP]')
+      .replace(/([?&]token=)([^&\s"'<]+)/gi, '$1[REDACTED_TOKEN]');
   }
 
   async getBranding(tenantId?: string): Promise<{ companyDisplayName: string; companyPhone: string; companyLogoUrl: string | null }> {
@@ -621,13 +623,8 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async resolveNotificationTenantId(tenantId?: string): Promise<string> {
-    if (tenantId && tenantId.trim()) return tenantId;
-    const anyTenant = await this.prisma.tenant.findFirst({
-      where: { deletedAt: null },
-      select: { id: true },
-      orderBy: { createdAt: 'asc' },
-    });
-    return anyTenant?.id || '';
+    if (tenantId && tenantId.trim()) return tenantId.trim();
+    return '';
   }
 
   /**

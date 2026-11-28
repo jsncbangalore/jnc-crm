@@ -5,6 +5,16 @@
  * rights: 'All rights reserved by original author. Automated AI scraping without license is prohibited.'
  * ----------------------------------------------------- */
 
+import {
+  ALL_CANONICAL_PAGES,
+  TENANT_ROLE_KEYS,
+  getRoleDefaultPermissions,
+  getDefaultHomePageForRole,
+  isTenantAdminRole,
+  normalizeRole,
+  normalizeCompanyPageKey,
+} from './roles-permissions';
+
 /** Maps a pageKey to its route path so we never redirect blindly to "/" */
 export const PAGE_KEY_TO_ROUTE: Record<string, string> = {
   dashboard: '/dashboard',
@@ -34,40 +44,30 @@ export const PAGE_KEY_TO_ROUTE: Record<string, string> = {
   platform_backup: '/platform/backup',
 };
 
-/** Roles restricted to a specific page (single page locked roles) */
-export const ROLE_ONLY_PAGE: Record<string, string> = {
-  project_manager: 'daily_activities',
-  developer_lead: 'daily_activities',
-  developer: 'daily_activities',
-};
+/** Deprecated single-page lockouts removed: all roles use unified roles-permissions defaults + mandatory Daily Activities */
+export const ROLE_ONLY_PAGE: Record<string, string> = {};
 
-/** Strict role-to-page baseline access rules */
-export const ROLE_ALLOWED_PAGES: Record<string, string[]> = {
-  tenant_admin: ['dashboard', 'leads', 'lead_flow', 'lead_setup', 'quotations', 'orders', 'invoices', 'bills', 'purchase_bills', 'ledger', 'inventory', 'suppliers', 'shipments', 'daily_activities', 'notifications', 'custom_objects', 'automation', 'audit_logs', 'users', 'teams', 'branding', 'mail_settings'],
-  admin: ['dashboard', 'leads', 'lead_flow', 'lead_setup', 'quotations', 'orders', 'invoices', 'bills', 'purchase_bills', 'ledger', 'inventory', 'suppliers', 'shipments', 'daily_activities', 'notifications', 'custom_objects', 'automation', 'audit_logs', 'users', 'teams', 'branding', 'mail_settings'],
-  sub_admin: ['dashboard', 'leads', 'lead_flow', 'quotations', 'orders', 'invoices', 'inventory', 'suppliers', 'bills', 'purchase_bills', 'shipments', 'daily_activities', 'notifications'],
-  employee: ['dashboard', 'leads', 'lead_flow', 'quotations', 'orders', 'notifications'],
-  store_manager: ['dashboard', 'orders', 'inventory', 'suppliers', 'bills', 'purchase_bills', 'shipments', 'notifications'],
-  finance: ['dashboard', 'quotations', 'orders', 'invoices', 'bills', 'purchase_bills', 'ledger', 'suppliers', 'notifications'],
-  accountant: ['dashboard', 'quotations', 'orders', 'invoices', 'bills', 'purchase_bills', 'ledger', 'suppliers', 'notifications'],
-  developer: ['daily_activities', 'notifications'],
-  developer_lead: ['daily_activities', 'notifications'],
-  project_manager: ['daily_activities', 'notifications'],
-};
+/** Canonical role-to-page baseline access derived directly from roles-permissions */
+export const ROLE_ALLOWED_PAGES: Record<string, string[]> = (() => {
+  const map: Record<string, string[]> = {};
+  for (const roleKey of [...TENANT_ROLE_KEYS, 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager', 'finance']) {
+    map[roleKey] = Object.keys(getRoleDefaultPermissions(roleKey));
+  }
+  map.administrator = [...ALL_CANONICAL_PAGES];
+  map.tenant_admin = [...ALL_CANONICAL_PAGES];
+  map.admin = [...ALL_CANONICAL_PAGES];
+  return map;
+})();
 
-/** Default landing route per role upon login */
-export const ROLE_DEFAULT_LANDING: Record<string, string> = {
-  tenant_admin: '/',
-  admin: '/',
-  sub_admin: '/',
-  employee: '/leads',
-  store_manager: '/inventory',
-  finance: '/invoices',
-  accountant: '/invoices',
-  developer: '/daily-activities',
-  developer_lead: '/daily-activities',
-  project_manager: '/daily-activities',
-};
+/** Default landing route per role upon login derived from ROLE_DEFAULT_HOME_PAGE */
+export const ROLE_DEFAULT_LANDING: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  for (const roleKey of [...TENANT_ROLE_KEYS, 'tenant_admin', 'admin', 'sub_admin', 'employee', 'store_manager', 'finance']) {
+    const homeKey = getDefaultHomePageForRole(roleKey);
+    map[roleKey] = PAGE_KEY_TO_ROUTE[homeKey] || '/dashboard';
+  }
+  return map;
+})();
 
 export interface NavigationDecision {
   action: 'allow' | 'redirect' | 'no_pages';
@@ -93,13 +93,8 @@ export function resolveTeamNavigation(user: any, pageKey: string): NavigationDec
     return { action: 'redirect', targetRoute: '/platform/companies' };
   }
 
-  // Tenant admin and admin have full access to all company pages
-  if (
-    user.role === 'tenant_admin' ||
-    user.role === 'admin' ||
-    user.role === 'platform_super_admin' ||
-    user.role === 'platform_admin'
-  ) {
+  // Tenant admin / Administrator has full access to all company pages
+  if (isTenantAdminRole(user.role)) {
     return { action: 'allow' };
   }
 
@@ -109,8 +104,10 @@ export function resolveTeamNavigation(user: any, pageKey: string): NavigationDec
       return { action: 'no_pages' };
     }
 
+    const canonPage = normalizeCompanyPageKey(pageKey);
     const hasKey =
       user.effectivePages.includes(pageKey) ||
+      user.effectivePages.includes(canonPage) ||
       (pageKey === 'bills' && user.effectivePages.includes('purchase_bills')) ||
       (pageKey === 'purchase_bills' && user.effectivePages.includes('bills'));
     if (hasKey) {
@@ -119,7 +116,7 @@ export function resolveTeamNavigation(user: any, pageKey: string): NavigationDec
 
     // Direct access to a page without access: redirect or show no access with first allowed page
     const firstAllowedKey = user.effectivePages.find((k: string) => PAGE_KEY_TO_ROUTE[k]);
-    const firstAllowedRoute = firstAllowedKey ? PAGE_KEY_TO_ROUTE[firstAllowedKey] : '/';
+    const firstAllowedRoute = firstAllowedKey ? PAGE_KEY_TO_ROUTE[firstAllowedKey] : (ROLE_DEFAULT_LANDING[normalizeRole(user.role)] || '/daily-activities');
     return {
       action: 'redirect',
       targetRoute: firstAllowedRoute,
@@ -138,23 +135,25 @@ export function resolveTeamNavigation(user: any, pageKey: string): NavigationDec
       allowedPages = [];
     }
 
-    if (allowedPages.length === 0) {
-      return { action: 'no_pages' };
-    }
-
-    const hasAccess = allowedPages.includes(pageKey);
-    if (!hasAccess) {
-      const firstAllowed = allowedPages.find((p) => PAGE_KEY_TO_ROUTE[p]);
-      const targetRoute = PAGE_KEY_TO_ROUTE[firstAllowed || ''] || '/';
-      return { action: 'redirect', targetRoute, firstAllowedRoute: targetRoute };
+    if (allowedPages.length > 0) {
+      const canonPage = normalizeCompanyPageKey(pageKey);
+      const hasAccess = allowedPages.includes(pageKey) || allowedPages.includes(canonPage);
+      if (!hasAccess) {
+        const firstAllowed = allowedPages.find((p) => PAGE_KEY_TO_ROUTE[p]);
+        const targetRoute = PAGE_KEY_TO_ROUTE[firstAllowed || ''] || ROLE_DEFAULT_LANDING[normalizeRole(user.role)] || '/daily-activities';
+        return { action: 'redirect', targetRoute, firstAllowedRoute: targetRoute };
+      }
+      return { action: 'allow' };
     }
   }
 
   // Fallback to role-allowed pages if no team is set
-  const roleAllowed = ROLE_ALLOWED_PAGES[user.role || ''];
+  const normRole = normalizeRole(user.role);
+  const roleAllowed = ROLE_ALLOWED_PAGES[normRole] || ROLE_ALLOWED_PAGES[user.role || ''];
   if (roleAllowed) {
-    if (!roleAllowed.includes(pageKey)) {
-      const defaultLanding = ROLE_DEFAULT_LANDING[user.role || ''] || '/';
+    const canonPage = normalizeCompanyPageKey(pageKey);
+    if (!roleAllowed.includes(pageKey) && !roleAllowed.includes(canonPage)) {
+      const defaultLanding = ROLE_DEFAULT_LANDING[normRole] || ROLE_DEFAULT_LANDING[user.role || ''] || '/daily-activities';
       return { action: 'redirect', targetRoute: defaultLanding, firstAllowedRoute: defaultLanding };
     }
   }

@@ -292,7 +292,7 @@ export class LedgerController {
     @CurrentUser() user: ScopedUser,
     @Body() body?: { dryRun?: boolean }
   ) {
-    const allowedRoles = ['platform_super_admin', 'platform_admin', 'tenant_admin', 'admin'];
+    const allowedRoles = ['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin'];
     if (!allowedRoles.includes(user.role)) {
       throw new ForbiddenException('Only administrators can rebuild ledger history.');
     }

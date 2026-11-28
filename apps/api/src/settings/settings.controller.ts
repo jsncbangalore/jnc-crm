@@ -101,7 +101,6 @@ export class SettingsController {
   @Post('branding/logo')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('branding')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
@@ -126,7 +125,6 @@ export class SettingsController {
   @Post('branding/favicon')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('branding')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
@@ -166,7 +164,6 @@ export class SettingsController {
   @Post('branding')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('branding')
-  @Roles('tenant_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   async updateBranding(
     @Body() body: UpdateBrandingDto,
@@ -195,8 +192,7 @@ export class SettingsController {
    */
   @Get('company-profile')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @PageAccess('branding')
-  @Roles('tenant_admin', 'admin')
+  @PageAccess('branding', 'invoices', 'quotations')
   async getCompanyProfile(@CurrentUser() user: ScopedUser) {
     return this.settingsService.getCompanyProfile(user);
   }
@@ -208,7 +204,6 @@ export class SettingsController {
   @Post('company-profile')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('branding')
-  @Roles('tenant_admin', 'admin')
   @HttpCode(HttpStatus.OK)
   async updateCompanyProfile(
     @Body() body: UpdateCompanyProfileDto,
@@ -222,7 +217,6 @@ export class SettingsController {
   @Get('mail-accounts')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('mail_settings')
-  @Roles('platform_super_admin', 'tenant_admin')
   async getMailAccounts(@CurrentUser() user: ScopedUser) {
     return this.settingsService.getMailAccounts(user);
   }
@@ -230,7 +224,6 @@ export class SettingsController {
   @Post('mail-accounts')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('mail_settings')
-  @Roles('platform_super_admin', 'tenant_admin')
   async createMailAccount(
     @Body() body: CreateMailAccountDto,
     @CurrentUser() user: ScopedUser,
@@ -241,7 +234,6 @@ export class SettingsController {
   @Put('mail-accounts/:id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('mail_settings')
-  @Roles('platform_super_admin', 'tenant_admin')
   async updateMailAccount(
     @Param('id') id: string,
     @Body() body: UpdateMailAccountDto,
@@ -253,7 +245,6 @@ export class SettingsController {
   @Delete('mail-accounts/:id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('mail_settings')
-  @Roles('platform_super_admin', 'tenant_admin')
   async deleteMailAccount(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.settingsService.deleteMailAccount(user, id);
   }
@@ -261,7 +252,6 @@ export class SettingsController {
   @Post('mail-accounts/detect')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('mail_settings')
-  @Roles('platform_super_admin', 'tenant_admin')
   @HttpCode(HttpStatus.OK)
   async detectMailProvider(@Body() body: DetectMailProviderDto) {
     return this.settingsService.detectMailProvider(body.email);
@@ -270,7 +260,6 @@ export class SettingsController {
   @Post('mail-accounts/test')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('mail_settings')
-  @Roles('platform_super_admin', 'tenant_admin')
   @HttpCode(HttpStatus.OK)
   async testMailAccount(
     @CurrentUser() user: ScopedUser,
@@ -282,7 +271,6 @@ export class SettingsController {
   @Get('mail-accounts/:id/domain-health')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('mail_settings')
-  @Roles('platform_super_admin', 'tenant_admin')
   async getDomainHealth(
     @Param('id') id: string,
     @CurrentUser() user: ScopedUser,
@@ -292,12 +280,11 @@ export class SettingsController {
 
   /**
    * GET /settings/web-form
-   * Retrieve tenant-specific web form settings (tenant_admin, admin, platform_super_admin)
+   * Retrieve tenant-specific web form settings
    */
   @Get('web-form')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @PageAccess('lead_setup')
-  @Roles('tenant_admin', 'admin', 'platform_super_admin')
+  @PageAccess('lead_setup', 'leads')
   async getWebFormSettings(@CurrentUser() user: ScopedUser) {
     const tenantId = requireTenantId(user);
     return this.settingsService.getWebFormSettings(tenantId);
@@ -305,16 +292,54 @@ export class SettingsController {
 
   /**
    * PUT /settings/web-form
-   * Update tenant-specific web form settings (tenant_admin or admin only)
+   * Update tenant-specific web form settings
    */
   @Put('web-form')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @PageAccess('lead_setup')
-  @Roles('tenant_admin', 'admin')
   async updateWebFormSettings(
     @CurrentUser() user: ScopedUser,
     @Body() body: UpdateWebFormSettingsDto,
   ) {
     return this.settingsService.updateWebFormSettings(user, body);
+  }
+
+  /**
+   * GET /settings/form-presets?module=quotation|invoice|order|lead|purchase_bill
+   * Retrieve saved one-click autofill form presets for the tenant.
+   */
+  @Get('form-presets')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  async getFormPresets(
+    @CurrentUser() user: ScopedUser,
+    @Query('module') moduleName?: string,
+  ) {
+    return this.settingsService.getFormPresets(user, moduleName);
+  }
+
+  /**
+   * POST /settings/form-presets
+   * Save reusable autofill preset for a form module.
+   */
+  @Post('form-presets')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @HttpCode(HttpStatus.OK)
+  async saveFormPreset(
+    @CurrentUser() user: ScopedUser,
+    @Body() body: { module: string; name: string; payload: Record<string, any> },
+  ) {
+    return this.settingsService.saveFormPreset(user, body);
+  }
+
+  /**
+   * DELETE /settings/form-presets/:id
+   */
+  @Delete('form-presets/:id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  async deleteFormPreset(
+    @CurrentUser() user: ScopedUser,
+    @Param('id') id: string,
+  ) {
+    return this.settingsService.deleteFormPreset(user, id);
   }
 }

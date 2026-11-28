@@ -16,10 +16,12 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { ScopedUser } from '../auth/scoping.service';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { PageAccess } from '../auth/page-access.decorator';
 import { AuthGuard } from '@nestjs/passport';
 
 @Controller()
 @UseGuards(AuthGuard('jwt'), RolesGuard)
+@PageAccess('ledger', 'invoices', 'orders')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 

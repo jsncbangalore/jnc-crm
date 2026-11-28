@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAllowedPages } from './hooks/useAllowedPages';
 import AppLayout from './components/layout/AppLayout';
 import StandaloneLayout from './components/layout/StandaloneLayout';
+import StandalonePageShell from './components/layout/StandalonePageShell';
 import TeamPageGuard from './components/layout/TeamPageGuard';
 import ForcePasswordResetPage from './pages/ForcePasswordResetPage';
 import { isPlatformOwner, getRoleRedirectPath } from './utils/roles';
@@ -20,16 +21,15 @@ import SuppliersPage from './pages/SuppliersPage';
 import PurchaseBillsPage from './pages/PurchaseBillsPage';
 import ShipmentsPage from './pages/ShipmentsPage';
 import QuotationsPage from './pages/QuotationsPage';
-import AutomationPage from './pages/AutomationPage';
+
 import UsersPage from './pages/UsersPage';
-import ObjectManagerPage from './pages/ObjectManagerPage';
-import CustomObjectRecordsPage from './pages/CustomObjectRecordsPage';
 import PublicInquiryPage from './pages/PublicInquiryPage';
 import InvoicesPage from './pages/InvoicesPage';
 import LedgerPage from './pages/LedgerPage';
 import CustomersPage from './pages/CustomersPage';
 import BrandingSettingsPage from './pages/BrandingSettingsPage';
-import AdminSettingsPage from './pages/AdminSettingsPage';
+import AuditLogsPage from './pages/AuditLogsPage';
+import MailAccountsPage from './pages/MailAccountsPage';
 import SharedCartPage from './pages/SharedCartPage';
 import DailyActivitiesPage from './pages/DailyActivitiesPage';
 import LeadsAnalyticsPage from './pages/analytics/LeadsAnalyticsPage';
@@ -47,6 +47,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import MyAccountPage from './pages/MyAccountPage';
 import SystemErrorsPage from './pages/SystemErrorsPage';
+import NotFoundPage from './pages/NotFoundPage';
 import CookieConsentPage from './pages/CookieConsentPage';
 import FeaturesPage from './pages/FeaturesPage';
 import SolutionsPage from './pages/SolutionsPage';
@@ -278,13 +279,19 @@ function AppRoutes() {
         path="/users"
         element={
           <ProtectedRoute>
-            <TeamPageGuard pageKey="users">
+            <TeamPageGuard pageKey={['users', 'teams']}>
               <CrmRouteGuard>
-                <AdminSettingsPage initialTab="users" />
+                <StandalonePageShell title="User Accounts & Access Teams">
+                  <UsersPage />
+                </StandalonePageShell>
               </CrmRouteGuard>
             </TeamPageGuard>
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/teams"
+        element={<Navigate to="/users?tab=teams" replace />}
       />
       <Route
         path="/audit-logs"
@@ -292,7 +299,9 @@ function AppRoutes() {
           <ProtectedRoute>
             <TeamPageGuard pageKey="audit_logs">
               <CrmRouteGuard>
-                <AdminSettingsPage initialTab="audit" />
+                <StandalonePageShell title="Security & Audit Logs">
+                  <AuditLogsPage />
+                </StandalonePageShell>
               </CrmRouteGuard>
             </TeamPageGuard>
           </ProtectedRoute>
@@ -308,7 +317,9 @@ function AppRoutes() {
           <ProtectedRoute>
             <TeamPageGuard pageKey="branding">
               <CrmRouteGuard>
-                <AdminSettingsPage initialTab="branding" />
+                <StandalonePageShell title="Company Branding, GST & Banking">
+                  <BrandingSettingsPage />
+                </StandalonePageShell>
               </CrmRouteGuard>
             </TeamPageGuard>
           </ProtectedRoute>
@@ -320,7 +331,9 @@ function AppRoutes() {
           <ProtectedRoute>
             <TeamPageGuard pageKey="mail_settings">
               <CrmRouteGuard>
-                <AdminSettingsPage initialTab="mail" />
+                <StandalonePageShell title="Mail Accounts">
+                  <MailAccountsPage />
+                </StandalonePageShell>
               </CrmRouteGuard>
             </TeamPageGuard>
           </ProtectedRoute>
@@ -328,27 +341,11 @@ function AppRoutes() {
       />
       <Route
         path="/settings/mail-accounts"
-        element={
-          <ProtectedRoute>
-            <TeamPageGuard pageKey="mail_settings">
-              <CrmRouteGuard>
-                <AdminSettingsPage initialTab="mail" />
-              </CrmRouteGuard>
-            </TeamPageGuard>
-          </ProtectedRoute>
-        }
+        element={<Navigate to="/settings/mail" replace />}
       />
       <Route
         path="/setup"
-        element={
-          <ProtectedRoute>
-            <TeamPageGuard pageKey="users">
-              <CrmRouteGuard>
-                <AdminSettingsPage initialTab="users" />
-              </CrmRouteGuard>
-            </TeamPageGuard>
-          </ProtectedRoute>
-        }
+        element={<Navigate to="/users" replace />}
       />
 
       {/* Standalone KPI Analytics Layout (No Navbar, No Global Search, Standalone Header) */}
@@ -394,18 +391,16 @@ function AppRoutes() {
         <Route path="/platform/companies" element={<PlatformOwnerGuard><PlatformCompaniesPage /></PlatformOwnerGuard>} />
         <Route path="/platform/admins" element={<PlatformOwnerGuard><PlatformAdminsPage /></PlatformOwnerGuard>} />
         <Route path="/platform/audit-logs" element={<PlatformOwnerGuard><PlatformAuditLogsPage /></PlatformOwnerGuard>} />
-        <Route path="/automation" element={<TeamPageGuard pageKey="automation"><CrmRouteGuard><AutomationPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="/setup/objects" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="/setup/objects/:objectId" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><ObjectManagerPage /></CrmRouteGuard></TeamPageGuard>} />
-        <Route path="/objects/:objectApiName" element={<TeamPageGuard pageKey="custom_objects"><CrmRouteGuard><CustomObjectRecordsPage /></CrmRouteGuard></TeamPageGuard>} />
+
+
         <Route path="/daily-activities" element={<TeamPageGuard pageKey="daily_activities"><CrmRouteGuard><DailyActivitiesPage /></CrmRouteGuard></TeamPageGuard>} />
         <Route path="/account" element={<MyAccountPage />} />
         <Route path="/system-errors" element={<SystemErrorsPage />} />
         <Route path="/admin/system-errors" element={<SystemErrorsPage />} />
       </Route>
 
-      {/* Fallback route outside of ProtectedRoute to prevent unauthorized bounce to login */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      {/* Fallback 404 Error Page */}
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }

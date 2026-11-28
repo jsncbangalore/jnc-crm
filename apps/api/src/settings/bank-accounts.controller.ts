@@ -58,7 +58,6 @@ export class BankAccountsController {
    */
   @Post()
   @PageAccess('branding', 'ledger')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async create(@CurrentUser() user: ScopedUser, @Body() body: CreateBankAccountDto) {
     const tenantId = requireTenantId(user);
     return this.bankAccountsService.create(tenantId, body, user);
@@ -69,7 +68,6 @@ export class BankAccountsController {
    */
   @Put(':id')
   @PageAccess('branding', 'ledger')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async update(
     @CurrentUser() user: ScopedUser,
     @Param('id') id: string,
@@ -84,7 +82,6 @@ export class BankAccountsController {
    */
   @Patch(':id/default')
   @PageAccess('branding', 'ledger')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async setDefault(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
     const tenantId = requireTenantId(user);
     return this.bankAccountsService.setDefault(tenantId, id);
@@ -95,7 +92,6 @@ export class BankAccountsController {
    */
   @Patch(':id/document-default')
   @PageAccess('branding', 'ledger')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async setDocumentDefault(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
     const tenantId = requireTenantId(user);
     return this.bankAccountsService.setDocumentDefault(tenantId, id);
@@ -106,7 +102,6 @@ export class BankAccountsController {
    */
   @Patch(':id/deactivate')
   @PageAccess('branding', 'ledger')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async deactivate(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
     const tenantId = requireTenantId(user);
     return this.bankAccountsService.deactivate(tenantId, id);
@@ -117,7 +112,6 @@ export class BankAccountsController {
    */
   @Patch(':id/activate')
   @PageAccess('branding', 'ledger')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
   async activate(@CurrentUser() user: ScopedUser, @Param('id') id: string) {
     const tenantId = requireTenantId(user);
     return this.bankAccountsService.activate(tenantId, id);

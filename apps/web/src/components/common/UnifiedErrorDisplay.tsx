@@ -73,6 +73,7 @@ export function UnifiedErrorDisplay({
     generateSupportCode(rawRequestId);
 
   const isAdmin =
+    user?.role === 'administrator' ||
     user?.role === 'admin' ||
     user?.role === 'tenant_admin' ||
     user?.role === 'platform_super_admin' ||

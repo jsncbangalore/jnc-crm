@@ -11,6 +11,8 @@ import { ScopedUser } from '../auth/scoping.service';
 import { requireTenantId } from '../common/tenant.util';
 import { encryptAtRest, decryptAtRest } from '../common/encryption.util';
 import { getCompanyProfileCompleteness, getUnifiedCompanyProfile } from '../common/company-profile.util';
+import { canAccessPage, isAdminOrSubAdminRole } from '../common/roles-permissions';
+import { getEffectivePermissionsForUser } from '../auth/effective-page-access';
 import { BRAND_CONFIG, PRODUCT_NAME } from '../common/brand';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -178,7 +180,8 @@ export class SettingsService {
     }
     const tenantId = user.tenantId;
 
-    if (user.role !== 'tenant_admin' && user.role !== 'admin') {
+    const perms = await getEffectivePermissionsForUser(this.prisma, user);
+    if (!isAdminOrSubAdminRole(user.role) && !canAccessPage(perms, 'branding', 'create_edit')) {
       throw new ForbiddenException('Only Administrators are authorized to modify Company Branding settings.');
     }
 
@@ -366,33 +369,35 @@ export class SettingsService {
     if (!file || !file.buffer) {
       throw new BadRequestException('Invalid file upload. Buffer is missing.');
     }
-
+    const tenantId = requireTenantId(user);
     const MAX_SIZE = 2 * 1024 * 1024; // 2 MB
     if (file.size > MAX_SIZE || (file.buffer && file.buffer.length > MAX_SIZE)) {
       throw new BadRequestException('The logo is too large. Maximum 2 MB.');
     }
 
-    const destinations = [
-      path.resolve(process.cwd(), 'apps/web/public/favicon.ico'),
-      path.resolve(process.cwd(), 'apps/web/public/favicon.png'),
-    ];
-
-    for (const dest of destinations) {
-      try {
-        const dir = path.dirname(dest);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(dest, file.buffer);
-      } catch (e: any) {
-        this.logger.warn(`Could not write favicon to ${dest}: ${e.message}`);
-      }
-    }
+    const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+    await (this.prisma as any).brandingAsset.upsert({
+      where: { tenantId_assetType: { tenantId, assetType: 'favicon' } },
+      create: {
+        tenantId,
+        assetType: 'favicon',
+        contentHash: hash,
+        mimeType: file.mimetype || 'image/png',
+        byteSize: file.buffer.length,
+        data: file.buffer,
+      },
+      update: {
+        contentHash: hash,
+        mimeType: file.mimetype || 'image/png',
+        byteSize: file.buffer.length,
+        data: file.buffer,
+      },
+    });
 
     return {
       success: true,
       message: 'Favicon uploaded successfully',
-      faviconUrl: '/favicon.ico',
+      faviconUrl: `/api/v1/settings/branding/favicon/${tenantId}`,
     };
   }
 
@@ -432,7 +437,8 @@ export class SettingsService {
     }
     const tenantId = user.tenantId;
 
-    if (user.role !== 'tenant_admin' && user.role !== 'admin') {
+    const perms = await getEffectivePermissionsForUser(this.prisma, user);
+    if (!isAdminOrSubAdminRole(user.role) && !canAccessPage(perms, 'branding', 'create_edit')) {
       throw new ForbiddenException('Only Administrators can update Company Invoicing & Tax Profile.');
     }
 
@@ -757,7 +763,8 @@ export class SettingsService {
   async getMailAccounts(user: ScopedUser) {
     const tenantId = requireTenantId(user);
 
-    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin') {
+    const perms = await getEffectivePermissionsForUser(this.prisma, user);
+    if (!isAdminOrSubAdminRole(user.role) && !canAccessPage(perms, 'mail_settings', 'view')) {
       throw new ForbiddenException('Only Company Administrators can access Mail Account settings.');
     }
 
@@ -806,7 +813,8 @@ export class SettingsService {
   ) {
     const tenantId = requireTenantId(user);
 
-    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin') {
+    const perms = await getEffectivePermissionsForUser(this.prisma, user);
+    if (!isAdminOrSubAdminRole(user.role) && !canAccessPage(perms, 'mail_settings', 'create_edit')) {
       throw new ForbiddenException('Only Company Administrators can configure Mail Accounts.');
     }
 
@@ -879,7 +887,8 @@ export class SettingsService {
   ) {
     const tenantId = requireTenantId(user);
 
-    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin') {
+    const perms = await getEffectivePermissionsForUser(this.prisma, user);
+    if (!isAdminOrSubAdminRole(user.role) && !canAccessPage(perms, 'mail_settings', 'create_edit')) {
       throw new ForbiddenException('Only Company Administrators can modify Mail Accounts.');
     }
 
@@ -959,7 +968,8 @@ export class SettingsService {
   async deleteMailAccount(user: ScopedUser, id: string) {
     const tenantId = requireTenantId(user);
 
-    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin') {
+    const perms = await getEffectivePermissionsForUser(this.prisma, user);
+    if (!isAdminOrSubAdminRole(user.role) && !canAccessPage(perms, 'mail_settings', 'delete')) {
       throw new ForbiddenException('Only Company Administrators can delete Mail Accounts.');
     }
 
@@ -1139,7 +1149,8 @@ export class SettingsService {
    * Test SMTP Mail Account Connection & Credentials
    */
   async testMailAccount(user: ScopedUser, dto: TestMailAccountDto) {
-    if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin') {
+    const perms = await getEffectivePermissionsForUser(this.prisma, user);
+    if (!isAdminOrSubAdminRole(user.role) && !canAccessPage(perms, 'mail_settings', 'create_edit')) {
       throw new ForbiddenException('Only Company Administrators can test Mail Accounts.');
     }
 
@@ -1642,7 +1653,8 @@ export class SettingsService {
     dto: UpdateWebFormSettingsDto,
   ): Promise<WebFormSettingsData> {
     const tenantId = requireTenantId(user);
-    if (user.role !== 'tenant_admin' && user.role !== 'admin') {
+    const perms = await getEffectivePermissionsForUser(this.prisma, user);
+    if (!isAdminOrSubAdminRole(user.role) && !canAccessPage(perms, 'lead_setup', 'create_edit')) {
       throw new ForbiddenException('Only Administrators are authorized to modify Web Form settings.');
     }
 
@@ -1672,6 +1684,98 @@ export class SettingsService {
     }
 
     return saveFallbackWebFormSettings(tenantId, validated);
+  }
+
+  async getFormPresets(user: ScopedUser, moduleName?: string) {
+    const tenantId = requireTenantId(user);
+    const key = `tenant:${tenantId}:form_presets`;
+    const record = await this.prisma.systemSetting.findUnique({ where: { key } });
+    let items: any[] = [];
+    if (record?.value) {
+      try {
+        const parsed = JSON.parse(record.value);
+        if (Array.isArray(parsed)) items = parsed;
+      } catch {}
+    }
+    if (moduleName && moduleName.trim()) {
+      const cleanMod = moduleName.trim().toLowerCase();
+      items = items.filter((p) => String(p.module || '').toLowerCase() === cleanMod);
+    }
+    return { items };
+  }
+
+  async saveFormPreset(
+    user: ScopedUser,
+    dto: { module: string; name: string; payload: Record<string, any> },
+  ) {
+    const tenantId = requireTenantId(user);
+    const mod = String(dto?.module || '').trim().toLowerCase();
+    const name = String(dto?.name || '').trim();
+    if (!mod || !name) {
+      throw new BadRequestException('Preset module and name are required.');
+    }
+    if (!dto?.payload || typeof dto.payload !== 'object') {
+      throw new BadRequestException('Preset data payload is required.');
+    }
+
+    const key = `tenant:${tenantId}:form_presets`;
+    const record = await this.prisma.systemSetting.findUnique({ where: { key } });
+    let items: any[] = [];
+    if (record?.value) {
+      try {
+        const parsed = JSON.parse(record.value);
+        if (Array.isArray(parsed)) items = parsed;
+      } catch {}
+    }
+
+    const existingIdx = items.findIndex(
+      (p) => String(p.module || '').toLowerCase() === mod && String(p.name || '').toLowerCase() === name.toLowerCase(),
+    );
+    const entry = {
+      id: existingIdx >= 0 ? items[existingIdx].id : crypto.randomUUID(),
+      module: mod,
+      name: name.slice(0, 80),
+      payload: dto.payload,
+      createdBy: (user as any).name || user.employeeCode || user.id,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (existingIdx >= 0) {
+      items[existingIdx] = entry;
+    } else {
+      items.unshift(entry);
+    }
+
+    // Keep up to 60 presets per tenant cleanly
+    items = items.slice(0, 60);
+
+    await this.prisma.systemSetting.upsert({
+      where: { key },
+      create: { key, value: JSON.stringify(items) },
+      update: { value: JSON.stringify(items) },
+    });
+
+    return { item: entry };
+  }
+
+  async deleteFormPreset(user: ScopedUser, presetId: string) {
+    const tenantId = requireTenantId(user);
+    const key = `tenant:${tenantId}:form_presets`;
+    const record = await this.prisma.systemSetting.findUnique({ where: { key } });
+    let items: any[] = [];
+    if (record?.value) {
+      try {
+        const parsed = JSON.parse(record.value);
+        if (Array.isArray(parsed)) items = parsed;
+      } catch {}
+    }
+    const next = items.filter((p) => p.id !== presetId);
+    await this.prisma.systemSetting.upsert({
+      where: { key },
+      create: { key, value: JSON.stringify(next) },
+      update: { value: JSON.stringify(next) },
+    });
+    return { success: true };
   }
 }
 

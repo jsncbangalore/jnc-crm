@@ -9,6 +9,7 @@ import { ordersApi, inventoryApi } from '../../services/api';
 import CustomerSelectWithModal, { CustomerData } from '../common/CustomerSelectWithModal';
 import { Sku, Order } from '../../types';
 import { AccessibleModal } from '../common/AccessibleModal';
+import SavedPresetPicker from '../common/SavedPresetPicker';
 import {
   FormField,
   filterPhoneInput,
@@ -283,6 +284,29 @@ export default function CreateOrderModal({
       maxWidth="max-w-3xl"
     >
       <form onSubmit={(e) => handleSubmit(e, 'close')} className="p-4 sm:p-6 space-y-4 text-left" noValidate>
+        <SavedPresetPicker
+          moduleName="order"
+          defaultSuggestedName={() => customerName.trim() ? `${customerName.trim()} Order` : 'Order Template'}
+          getCurrentPayload={() => ({
+            customerId,
+            customerName,
+            customerPhone,
+            customerEmail,
+            shippingAddress,
+            notes,
+            lines,
+          })}
+          onApplyPreset={(p) => {
+            if (p.customerId !== undefined) setCustomerId(p.customerId || null);
+            if (p.customerName !== undefined) setCustomerName(p.customerName || '');
+            if (p.customerPhone !== undefined) setCustomerPhone(p.customerPhone || '');
+            if (p.customerEmail !== undefined) setCustomerEmail(p.customerEmail || '');
+            if (p.shippingAddress !== undefined) setShippingAddress(p.shippingAddress || '');
+            if (p.notes !== undefined) setNotes(p.notes || '');
+            if (Array.isArray(p.lines) && p.lines.length > 0) setLines(p.lines);
+            setErrors({});
+          }}
+        />
         {errors.form && (
           <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
             <AlertCircle size={14} className="shrink-0" />

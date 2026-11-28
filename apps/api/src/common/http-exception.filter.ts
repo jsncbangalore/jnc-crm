@@ -19,6 +19,7 @@ import { maskSensitiveUrl } from './request-id.middleware';
 import { humanizeField } from './validation-error.formatter';
 import { redactSensitiveString } from './redact.util';
 import { generateSupportCode } from './support-code.util';
+import { isAllowedOrigin } from './cors-config';
 
 export interface StandardApiErrorResponse {
   statusCode: number;
@@ -404,9 +405,10 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
 
     const reqOrigin = request.headers?.origin;
     if (typeof response.setHeader === 'function') {
-      if (reqOrigin && typeof response.getHeader === 'function' && !response.getHeader('Access-Control-Allow-Origin')) {
+      if (reqOrigin && isAllowedOrigin(reqOrigin) && typeof response.getHeader === 'function' && !response.getHeader('Access-Control-Allow-Origin')) {
         response.setHeader('Access-Control-Allow-Origin', reqOrigin);
         response.setHeader('Access-Control-Allow-Credentials', 'true');
+        response.setHeader('Vary', 'Origin');
       }
       if (!isPublicRoute) {
         response.setHeader('x-support-code', supportCode);

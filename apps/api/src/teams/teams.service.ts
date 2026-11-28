@@ -29,7 +29,7 @@ export class TeamsService {
   ) {}
 
   async findAll(creator: ScopedUser) {
-    if (creator.role !== 'platform_super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
+    if (!['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin'].includes(creator.role)) {
       throw new ForbiddenException('Access denied.');
     }
 
@@ -53,7 +53,7 @@ export class TeamsService {
   }
 
   async createTeam(dto: CreateTeamDto, creator: ScopedUser) {
-    if (creator.role !== 'platform_super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
+    if (!['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin'].includes(creator.role)) {
       throw new ForbiddenException('Access denied.');
     }
 
@@ -81,7 +81,7 @@ export class TeamsService {
   }
 
   async updateTeam(id: string, dto: UpdateTeamDto, creator: ScopedUser) {
-    if (creator.role !== 'platform_super_admin' && creator.role !== 'tenant_admin' && creator.role !== 'admin') {
+    if (!['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin'].includes(creator.role)) {
       throw new ForbiddenException('Access denied.');
     }
 

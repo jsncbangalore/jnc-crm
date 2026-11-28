@@ -144,7 +144,7 @@ export default function DashboardPage() {
     (key: string): boolean => {
       if (kpis?.isPlatformOwner) return true;
       if (!user) return false;
-      if (user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'platform_super_admin' || user.role === 'platform_admin') return true;
+      if (user.role === 'administrator' || user.role === 'tenant_admin' || user.role === 'admin' || user.role === 'platform_super_admin' || user.role === 'platform_admin') return true;
       if (!user.effectivePages || user.effectivePages.length === 0) return true;
       return user.effectivePages.includes(key);
     },

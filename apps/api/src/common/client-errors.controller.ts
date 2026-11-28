@@ -195,7 +195,7 @@ export class ClientErrorsController {
     @Query('limit') limitStr?: string,
   ) {
     const user = (req as any).user;
-    if (!user || (!['admin', 'super_admin', 'platform_super_admin'].includes(user.role) && !user.isPlatformAdmin)) {
+    if (!user || (!['admin', 'administrator', 'tenant_admin', 'super_admin', 'platform_super_admin', 'platform_admin'].includes(user.role) && !user.isPlatformAdmin)) {
       throw new ForbiddenException('Admin access required to view system errors');
     }
 

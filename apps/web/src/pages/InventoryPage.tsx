@@ -958,7 +958,7 @@ export default function InventoryPage() {
                 </>
               )}
 
-              {user?.role === 'tenant_admin' && (
+              {(user?.role === 'administrator' || user?.role === 'tenant_admin' || user?.role === 'admin') && (
                 <button type="button"
                   onClick={() => {
                     setWipeConfirmText('');

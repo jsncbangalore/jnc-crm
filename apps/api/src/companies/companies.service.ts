@@ -384,8 +384,8 @@ export class CompaniesService {
     const { skip, take } = parsePagination(query, 100, 100);
 
     const effectivePages = await getEffectivePagesForUser(this.prisma, user);
-    const hasInvoices = isPlatformOwner(user) || user.role === 'tenant_admin' || effectivePages.includes('invoices');
-    const hasLeads = isPlatformOwner(user) || user.role === 'tenant_admin' || effectivePages.includes('leads');
+    const hasInvoices = isPlatformOwner(user) || ['administrator', 'tenant_admin', 'admin'].includes(user.role) || effectivePages.includes('invoices');
+    const hasLeads = isPlatformOwner(user) || ['administrator', 'tenant_admin', 'admin'].includes(user.role) || effectivePages.includes('leads');
 
     const companies = await this.prisma.company.findMany({
       where,
@@ -420,8 +420,8 @@ export class CompaniesService {
   async findOne(id: string, user: ScopedUser) {
     const scope = this.scopingService.getCompanyScope(user);
     const effectivePages = await getEffectivePagesForUser(this.prisma, user);
-    const hasInvoices = isPlatformOwner(user) || user.role === 'tenant_admin' || effectivePages.includes('invoices');
-    const hasLeads = isPlatformOwner(user) || user.role === 'tenant_admin' || effectivePages.includes('leads');
+    const hasInvoices = isPlatformOwner(user) || ['administrator', 'tenant_admin', 'admin'].includes(user.role) || effectivePages.includes('invoices');
+    const hasLeads = isPlatformOwner(user) || ['administrator', 'tenant_admin', 'admin'].includes(user.role) || effectivePages.includes('leads');
 
     const company: any = await this.prisma.company.findFirst({
       where: { id, ...scope, deletedAt: null },

@@ -6,7 +6,7 @@ import {
   Calendar, Check, Sparkles, AlertCircle, AlertTriangle, Loader2
 } from 'lucide-react';
 import { DocumentType, Invoice } from '../../types';
-import { invoicesApi, inventoryApi, companiesApi, paymentsApi, bankAccountsApi } from '../../services/api';
+import { invoicesApi, inventoryApi, companiesApi, paymentsApi, bankAccountsApi, notificationsApi } from '../../services/api';
 import CustomerSelectWithModal, { CustomerData } from '../common/CustomerSelectWithModal';
 import { numberToIndianWords } from './InvoiceModal';
 import { validateLutStatus } from '../../utils/lut-validator';
@@ -16,6 +16,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import FullCalendarPicker from '../common/FullCalendarPicker';
 import FormFeedback from '../common/FormFeedback';
 import { PhoneField, QuantityField } from '../common/forms';
+import SavedPresetPicker from '../common/SavedPresetPicker';
 
 const STANDARD_UNITS = ['Nos', 'Kg', 'Mtr', 'Set', 'Box', 'Ltr', 'Hrs', 'Sqft', 'Pair'];
 
@@ -97,7 +98,9 @@ const COMMON_HSN = [
 export default function CreateDocumentModal({ isOpen, onClose, onCreated, editInvoice }: CreateDocumentModalProps) {
   const { hasPage } = useAllowedPages();
   const { user } = useAuth();
-  const isAdmin = Boolean(user && ['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin'].includes(user.role));
+  const isAdmin = Boolean(user && ['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin', 'sub_administrator', 'sub_admin'].includes(user.role));
+  const [notifyingAdmin, setNotifyingAdmin] = useState(false);
+  const [adminNotifiedMsg, setAdminNotifiedMsg] = useState<string | null>(null);
   const [docType, setDocType] = useState<DocumentType>('tax_invoice');
   const [loadingNumber, setLoadingNumber] = useState(false);
   const [isManualNumber, setIsManualNumber] = useState(false);
@@ -473,6 +476,13 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
     }
 
     if (missingCompanyFields.length > 0) {
+      setFormError(
+        `Company GST / Bank setup is incomplete (Missing: ${missingCompanyFields.join(', ')}). ${
+          hasPage('branding')
+            ? 'Open Branding & GST Profile to fill in your company details.'
+            : 'Click "Notify Administrator" below so your admin can complete Company Setup.'
+        }`,
+      );
       return;
     }
 
@@ -757,7 +767,7 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               {hasPage('branding') ? (
                 <button
                   type="button"
@@ -769,8 +779,32 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
                   Open Branding & GST Profile
                 </button>
               ) : (
-                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-200/60 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200">
-                  Ask an administrator
+                <button
+                  type="button"
+                  disabled={notifyingAdmin}
+                  onClick={async () => {
+                    setNotifyingAdmin(true);
+                    setAdminNotifiedMsg(null);
+                    try {
+                      const res = await notificationsApi.requestCompanySetup({
+                        documentType: docType === 'tax_invoice' ? 'Tax Invoice' : docType,
+                        missingFields: missingCompanyFields,
+                      });
+                      setAdminNotifiedMsg(res.data?.message || 'Administrator notified to complete Company Setup!');
+                    } catch {
+                      setAdminNotifiedMsg('Notification logged for your Company Administrator.');
+                    } finally {
+                      setNotifyingAdmin(false);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-semibold text-xs shadow-xs transition-all whitespace-nowrap cursor-pointer"
+                >
+                  {notifyingAdmin ? 'Notifying Admin...' : 'Notify Administrator to Complete Setup'}
+                </button>
+              )}
+              {adminNotifiedMsg && (
+                <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                  {adminNotifiedMsg}
                 </span>
               )}
             </div>
@@ -784,6 +818,40 @@ export default function CreateDocumentModal({ isOpen, onClose, onCreated, editIn
           data-1p-ignore="true"
           data-form-type="other"
         >
+          <SavedPresetPicker
+            moduleName="invoice"
+            defaultSuggestedName={() => customerName.trim() ? `${customerName.trim()} Billing` : 'Invoice Template'}
+            getCurrentPayload={() => ({
+              docType,
+              paymentTerms,
+              customerId,
+              customerName,
+              customerPhone,
+              customerEmail,
+              customerGstin,
+              customerState,
+              billingAddress,
+              deliveryAddress,
+              notes,
+              lines,
+            })}
+            onApplyPreset={(p) => {
+              if (p.docType) setDocType(p.docType);
+              if (p.paymentTerms) setPaymentTerms(p.paymentTerms);
+              if (p.customerId !== undefined) setCustomerId(p.customerId || null);
+              if (p.customerName !== undefined) setCustomerName(p.customerName || '');
+              if (p.customerPhone !== undefined) setCustomerPhone(p.customerPhone || '');
+              if (p.customerEmail !== undefined) setCustomerEmail(p.customerEmail || '');
+              if (p.customerGstin !== undefined) setCustomerGstin(p.customerGstin || '');
+              if (p.customerState) setCustomerState(p.customerState);
+              if (p.billingAddress !== undefined) setBillingAddress(p.billingAddress || '');
+              if (p.deliveryAddress !== undefined) setDeliveryAddress(p.deliveryAddress || '');
+              if (p.notes !== undefined) setNotes(p.notes || '');
+              if (Array.isArray(p.lines) && p.lines.length > 0) setLines(p.lines);
+              setFieldErrors({});
+              setFormError(null);
+            }}
+          />
           {/* 1. DOCUMENT TYPE SELECTOR */}
           <div>
             <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-2 block">

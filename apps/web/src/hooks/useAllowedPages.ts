@@ -18,6 +18,7 @@ import {
   resolveEffectivePageAccess,
   canAccessPage,
   isViewOnlyPage,
+  getDefaultHomePageForRole,
 } from '../config/roles-permissions';
 import { isPlatformOwner } from '../utils/roles';
 import {
@@ -267,6 +268,8 @@ export function useAllowedPages() {
     if (isPlatform) return 'platform_companies';
     if (!user) return null;
     if (user.homePage && hasPage(user.homePage)) return user.homePage;
+    const roleDefaultHome = getDefaultHomePageForRole(user.role);
+    if (roleDefaultHome && hasPage(roleDefaultHome)) return roleDefaultHome;
     const nonNotif = allowedKeys.find((k) => k !== 'notifications');
     return nonNotif || allowedKeys[0] || null;
   }, [isPlatform, user, allowedKeys]);
@@ -276,6 +279,10 @@ export function useAllowedPages() {
     if (!user) return '/login';
     if (user.homePage && hasPage(user.homePage) && PAGE_KEY_TO_ROUTE[user.homePage]) {
       return PAGE_KEY_TO_ROUTE[user.homePage];
+    }
+    const roleDefaultHome = getDefaultHomePageForRole(user.role);
+    if (roleDefaultHome && hasPage(roleDefaultHome) && PAGE_KEY_TO_ROUTE[roleDefaultHome]) {
+      return PAGE_KEY_TO_ROUTE[roleDefaultHome];
     }
     if (allowedKeys.length > 0) {
       for (const k of Object.keys(COMPANY_PAGE_REGISTRY)) {

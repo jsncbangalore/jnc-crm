@@ -681,7 +681,7 @@ export default function DailyActivitiesPage() {
                         Edit
                       </button>
                     )}
-                    {['platform_super_admin', 'tenant_admin', 'admin', 'sub_admin'].includes(user?.role || '') && (
+                    {['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin', 'sub_administrator', 'sub_admin'].includes(user?.role || '') && (
                       <button type="button"
                         onClick={() => deleteProject(p)}
                         className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border border-slate-200 dark:border-[#2A3042] transition-colors cursor-pointer"
@@ -756,7 +756,7 @@ export default function DailyActivitiesPage() {
                         </td>
                         <td className="px-4 py-3.5">
                           <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
-                            ['admin', 'tenant_admin', 'platform_super_admin'].includes(m.user.role)
+                            ['admin', 'administrator', 'tenant_admin', 'platform_super_admin'].includes(m.user.role)
                               ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
                               : m.user.role === 'project_manager'
                               ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
@@ -882,7 +882,7 @@ export default function DailyActivitiesPage() {
                                 <Download size={13} />
                               </button>
                             )}
-                            {(user?.role === 'tenant_admin' || user?.role === 'admin') && (
+                            {(user?.role === 'administrator' || user?.role === 'tenant_admin' || user?.role === 'admin') && (
                               <button type="button"
                                 onClick={() => deleteLog(log)}
                                 className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"

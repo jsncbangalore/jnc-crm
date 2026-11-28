@@ -42,11 +42,19 @@ export function LeadSetupView({
   const { user } = useAuth();
   const { showAlert } = usePopup();
 
+const escapeSnippetHtml = (val: unknown): string =>
+  String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
   const [activeTab, setActiveTab] = useState<'indiamart' | 'website' | 'whatsapp' | 'routing' | 'pipeline'>(initialTab);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [employees, setEmployees] = useState<UserType[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [tenantWebhookKey, setTenantWebhookKey] = useState<string>(() => localStorage.getItem('crm_tenant_webhook_key') || '');
+  const [tenantWebhookKey, setTenantWebhookKey] = useState<string>('');
   const [webhookVerifyToken, setWebhookVerifyToken] = useState<string>('meta_verify_token');
 
   // Form states for routing configuration
@@ -143,11 +151,11 @@ export function LeadSetupView({
       })
       .catch(() => {});
 
+    try { localStorage.removeItem('crm_tenant_webhook_key'); } catch {}
     webhooksApi.getConfig()
       .then((res: any) => {
         if (res.data?.webhookKey) {
           setTenantWebhookKey(res.data.webhookKey);
-          localStorage.setItem('crm_tenant_webhook_key', res.data.webhookKey);
         }
         if (res.data?.verifyToken) {
           setWebhookVerifyToken(res.data.verifyToken);
@@ -165,17 +173,17 @@ export function LeadSetupView({
 ></iframe>`;
 
   const standaloneHtmlCode = `<!-- ==========================================
-     ${generatorCompany} Web-to-Lead Form
-     Live Ingestion Endpoint: ${liveSubmitUrl}
+     ${escapeSnippetHtml(generatorCompany)} Web-to-Lead Form
+     Live Ingestion Endpoint: ${escapeSnippetHtml(liveSubmitUrl)}
 ========================================== -->
 <div id="crm-lead-form-wrapper" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 640px; margin: 20px auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); color: #0f172a; box-sizing: border-box;">
   <div style="margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 16px;">
-    <h3 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800; color: #0f172a;">${generatorCompany}</h3>
+    <h3 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800; color: #0f172a;">${escapeSnippetHtml(generatorCompany)}</h3>
     <p style="margin: 0; font-size: 13px; color: #64748b;">Request an official commercial quotation or project consultation.</p>
     ${generatorPhone || generatorEmail ? `
     <div style="margin-top: 8px; font-size: 12px; color: #64748b; display: flex; gap: 14px; flex-wrap: wrap;">
-      ${generatorPhone ? `<span><strong>Phone:</strong> ${generatorPhone}</span>` : ''}
-      ${generatorEmail ? `<span><strong>Email:</strong> ${generatorEmail}</span>` : ''}
+      ${generatorPhone ? `<span><strong>Phone:</strong> ${escapeSnippetHtml(generatorPhone)}</span>` : ''}
+      ${generatorEmail ? `<span><strong>Email:</strong> ${escapeSnippetHtml(generatorEmail)}</span>` : ''}
     </div>` : ''}
   </div>
 

@@ -373,13 +373,15 @@ export class BankAccountsService {
    * Set an account as default payment receiving account.
    */
   async setDefault(tenantId: string, id: string) {
+    const owned = await this.prisma.companyBankAccount.findFirst({ where: { id, tenantId } });
+    if (!owned) throw new NotFoundException('Bank account not found');
     return this.prisma.$transaction(async (tx) => {
       await tx.companyBankAccount.updateMany({
         where: { tenantId },
         data: { isDefault: false },
       });
       const updated = await tx.companyBankAccount.update({
-        where: { id },
+        where: { id: owned.id },
         data: { isDefault: true, isActive: true },
       });
 
@@ -403,13 +405,15 @@ export class BankAccountsService {
    * Set an account as document default (printed on invoices, quotations).
    */
   async setDocumentDefault(tenantId: string, id: string) {
+    const owned = await this.prisma.companyBankAccount.findFirst({ where: { id, tenantId } });
+    if (!owned) throw new NotFoundException('Bank account not found');
     return this.prisma.$transaction(async (tx) => {
       await tx.companyBankAccount.updateMany({
         where: { tenantId },
         data: { isDocumentDefault: false },
       });
       const updated = await tx.companyBankAccount.update({
-        where: { id },
+        where: { id: owned.id },
         data: { isDocumentDefault: true, isActive: true },
       });
 
@@ -433,9 +437,11 @@ export class BankAccountsService {
    * Deactivate a bank account.
    */
   async deactivate(tenantId: string, id: string) {
+    const owned = await this.prisma.companyBankAccount.findFirst({ where: { id, tenantId } });
+    if (!owned) throw new NotFoundException('Bank account not found');
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.companyBankAccount.update({
-        where: { id },
+        where: { id: owned.id },
         data: { isActive: false, isDefault: false, isDocumentDefault: false },
       });
 
@@ -482,6 +488,8 @@ export class BankAccountsService {
    * Activate a bank account.
    */
   async activate(tenantId: string, id: string) {
+    const owned = await this.prisma.companyBankAccount.findFirst({ where: { id, tenantId } });
+    if (!owned) throw new NotFoundException('Bank account not found');
     return this.prisma.$transaction(async (tx) => {
       const activeCount = await tx.companyBankAccount.count({
         where: { tenantId, isActive: true },
@@ -489,7 +497,7 @@ export class BankAccountsService {
       const isFirst = activeCount === 0;
 
       const updated = await tx.companyBankAccount.update({
-        where: { id },
+        where: { id: owned.id },
         data: {
           isActive: true,
           ...(isFirst ? { isDefault: true, isDocumentDefault: true } : {}),

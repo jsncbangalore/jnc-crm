@@ -15,7 +15,7 @@ import {
   LayoutDashboard, Users, ShoppingCart, Package, Truck, LogOut,
   Building2, FileText, Bell, ChevronDown, ShieldCheck,
   Receipt, Sun, Moon, ClipboardList, Search, Plus,
-  Sparkles, UserPlus, Sliders, User, Mail, Database, Zap, Layers, BookOpen,
+  Sparkles, UserPlus, Sliders, User, Mail, Database, BookOpen,
   ArrowRight, BarChart3, Cookie,
 } from 'lucide-react';
 import CreateLeadModal from '../leads/CreateLeadModal';
@@ -152,6 +152,7 @@ export default function Navbar() {
       { key: 'ledger', label: 'Ledger', to: '/ledger', icon: BookOpen, subItems: PAGE_SUB_ITEMS.ledger },
       { key: 'suppliers', label: 'Suppliers', to: '/suppliers', icon: Building2 },
       { key: 'bills', label: 'Bills', to: '/bills', icon: Receipt, subItems: PAGE_SUB_ITEMS.bills },
+
       { key: 'daily_activities', label: 'Daily Activities', to: '/daily-activities', icon: ClipboardList },
     ];
 
@@ -622,26 +623,6 @@ export default function Navbar() {
                 </div>
               ) : (
                 <div className="space-y-0.5 mb-1 pb-1 border-b border-slate-100 dark:border-white/5">
-                  {canAccessSetupStudio && (
-                    <NavLink
-                      role="menuitem"
-                      to="/start-setup"
-                      onClick={() => setProfileOpen(false)}
-                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-crm-blue/10 hover:text-crm-blue dark:hover:bg-white/5 transition-colors group"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Sliders
-                          size={13}
-                          className="text-crm-blue shrink-0 group-hover:rotate-45 transition-transform"
-                        />
-                        <span>Setup Studio</span>
-                      </div>
-                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-crm-blue/10 text-crm-blue font-bold">
-                        Admin
-                      </span>
-                    </NavLink>
-                  )}
-
                   {hasPage('users') && (
                     <NavLink
                       role="menuitem"
@@ -697,6 +678,18 @@ export default function Navbar() {
                       <span>Mail Accounts</span>
                     </NavLink>
                   )}
+                  {hasPage('lead_setup') && (
+                    <NavLink
+                      role="menuitem"
+                      to="/start-setup"
+                      onClick={() => setProfileOpen(false)}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                    >
+                      <Sliders size={13} className="text-emerald-500 shrink-0" />
+                      <span>Lead Setup & Forms</span>
+                    </NavLink>
+                  )}
+
                 </div>
               )}
 

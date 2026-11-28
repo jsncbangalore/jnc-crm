@@ -14,8 +14,10 @@ import { getEffectivePermissionsForUser } from './effective-page-access';
 import {
   canAccessPage,
   normalizeRole,
+  normalizeCompanyPageKey,
   ROLE_RANKS,
   PageAction,
+  EffectiveAccessResult,
 } from '../common/roles-permissions';
 
 const PAGE_LABEL_MAP: Record<string, string> = {
@@ -130,9 +132,12 @@ export class RolesGuard implements CanActivate {
         ? 'delete'
         : 'view';
 
+    let effectiveAccess: EffectiveAccessResult | null = null;
+    let matchingPageKey: string | undefined;
+
     // 1. Check Page Access and Action Permission (Requirement B & C)
     if (requiredPage) {
-      const effectiveAccess = await getEffectivePermissionsForUser(this.prisma, {
+      effectiveAccess = await getEffectivePermissionsForUser(this.prisma, {
         id: user.sub || user.id,
         role: user.role,
         tenantId: user.tenantId,
@@ -141,7 +146,7 @@ export class RolesGuard implements CanActivate {
       const requiredKeys = Array.isArray(requiredPage) ? requiredPage : [requiredPage];
       
       // Does user have view access to any of the required page keys?
-      const matchingPageKey = requiredKeys.find((k) => canAccessPage(effectiveAccess, k, 'view'));
+      matchingPageKey = requiredKeys.find((k) => canAccessPage(effectiveAccess!, k, 'view'));
 
       if (!matchingPageKey) {
         const rejectedKey = requiredKeys[0];
@@ -156,7 +161,7 @@ export class RolesGuard implements CanActivate {
 
       // If mutation method (POST/PUT/PATCH/DELETE), check if action is permitted (Requirement C)
       if (requestedAction !== 'view') {
-        const canMutate = requiredKeys.some((k) => canAccessPage(effectiveAccess, k, requestedAction));
+        const canMutate = requiredKeys.some((k) => canAccessPage(effectiveAccess!, k, requestedAction));
         if (!canMutate && normUserRole !== 'administrator') {
           const pageLabel = PAGE_LABEL_MAP[matchingPageKey] || matchingPageKey.charAt(0).toUpperCase() + matchingPageKey.slice(1);
           throw new ForbiddenException({
@@ -198,6 +203,21 @@ export class RolesGuard implements CanActivate {
         // If decorator required regular employee / sales rep, any tenant user who passed page access satisfies it
         else if (requiredRoles.includes('employee') || normRequiredRoles.includes('sales_representative')) {
           isAuthorized = true;
+        }
+
+        // Honor explicit Admin Extra Access grants for operational modules (non-platform, non-user/team privilege escalation, non-destructive wipe)
+        if (!isAuthorized && matchingPageKey && effectiveAccess?.explicitPages) {
+          const canonMatch = normalizeCompanyPageKey(matchingPageKey);
+          const reqPath = String(req.path || req.url || '').toLowerCase();
+          const isPlatformOnly = requiredRoles.every((r) => r === 'platform_super_admin');
+          const isPrivilegedControlRoute =
+            canonMatch === 'users' ||
+            canonMatch === 'teams' ||
+            reqPath.includes('clear-all') ||
+            reqPath.includes('reset-demo');
+          if (!isPlatformOnly && !isPrivilegedControlRoute && effectiveAccess.explicitPages.includes(canonMatch)) {
+            isAuthorized = true;
+          }
         }
       }
 

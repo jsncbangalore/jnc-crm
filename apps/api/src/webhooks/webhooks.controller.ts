@@ -285,8 +285,11 @@ export class WebhooksController {
       throw new NotFoundException('Unknown tenant webhook key');
     }
 
-    // 2. Validate X-Hub-Signature-256 against META_APP_SECRET
+    // 2. Validate X-Hub-Signature-256 against META_APP_SECRET (mandatory when configured)
     const appSecret = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET;
+    if (appSecret && !signatureHeader && process.env.NODE_ENV === 'production') {
+      throw new UnauthorizedException('Missing X-Hub-Signature-256 signature');
+    }
     if (signatureHeader) {
       if (!appSecret) {
         this.logger.warn(`Signature header present but META_APP_SECRET is not configured.`);
@@ -393,6 +396,7 @@ export class WebhooksController {
    */
   @Post('test-handshake')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('lead_setup')
   async testWebhookHandshake(
     @CurrentUser() user: ScopedUser,
     @Body() body: { url?: string; verifyToken?: string },
@@ -406,6 +410,7 @@ export class WebhooksController {
    */
   @Get('deliveries')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('lead_setup')
   async getWebhookDeliveries(@CurrentUser() user: ScopedUser) {
     const tenantId = requireTenantId(user);
     return this.webhooksService.getRecentDeliveries(tenantId, 20);
@@ -416,6 +421,7 @@ export class WebhooksController {
    */
   @Post('save-meta-credentials')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('lead_setup')
   async saveMetaCredentials(
     @CurrentUser() user: ScopedUser,
     @Body() body: { pageAccessToken?: string; wabaId?: string; phoneNumberId?: string },
@@ -432,6 +438,7 @@ export class WebhooksController {
    */
   @Get('facebook/oauth-url')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('lead_setup')
   async getFacebookOAuthUrl(
     @CurrentUser() user: ScopedUser,
     @Query('redirectUri') redirectUri?: string,
@@ -448,6 +455,7 @@ export class WebhooksController {
    */
   @Post('facebook/connect-page')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('lead_setup')
   async connectFacebookPage(
     @CurrentUser() user: ScopedUser,
     @Body() body: { accessToken: string; pageId?: string },
@@ -468,6 +476,7 @@ export class WebhooksController {
    */
   @Get('facebook/status')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('lead_setup')
   async getFacebookPageStatus(@CurrentUser() user: ScopedUser) {
     const tenantId = requireTenantId(user);
     return this.webhooksService.getFacebookPageConnectionStatus(tenantId);
@@ -478,6 +487,7 @@ export class WebhooksController {
    */
   @Post('facebook/disconnect')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('lead_setup')
   async disconnectFacebookPage(@CurrentUser() user: ScopedUser) {
     const tenantId = requireTenantId(user);
     await this.webhooksService.disconnectFacebookPage(tenantId);
@@ -564,7 +574,7 @@ export class WebhooksController {
       return this.handleMetaInboundWithKey(key, req, payload, hubSig);
     }
     if (provider === 'website') {
-      return this.handleWebsiteContactFormWithKey(key, payload, websiteToken);
+      return this.handleWebsiteContactFormWithKey(key, req, payload);
     }
     // Verify key first to return 404 for unknown key before checking provider
     await this.webhooksService.findTenantByWebhookKey(key);

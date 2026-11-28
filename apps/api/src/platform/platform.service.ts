@@ -468,7 +468,7 @@ export class PlatformService {
     // If tenant email or phone was updated, synchronize with primary Super Admin user
     if (email || phone) {
       const adminUser =
-        tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'admin') ||
+        tenant.users.find((u) => ['administrator', 'tenant_admin', 'admin'].includes(u.role)) ||
         tenant.users[0];
 
       if (adminUser) {
@@ -926,9 +926,9 @@ export class PlatformService {
       throw new ForbiddenException('This is the platform owner company and cannot be managed here.');
     }
 
-    // Prefer tenant_admin or admin or first active user
+    // Prefer administrator, tenant_admin, or admin, else first active user
     const targetUser =
-      tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'admin') ||
+      tenant.users.find((u) => ['administrator', 'tenant_admin', 'admin'].includes(u.role)) ||
       tenant.users[0];
 
     if (!targetUser) {
@@ -1097,7 +1097,7 @@ export class PlatformService {
 
     // Find primary admin user
     const adminUser =
-      tenant.users.find((u) => u.role === 'tenant_admin' || u.role === 'admin') ||
+      tenant.users.find((u) => ['administrator', 'tenant_admin', 'admin'].includes(u.role)) ||
       tenant.users[0];
 
     if (!adminUser) {

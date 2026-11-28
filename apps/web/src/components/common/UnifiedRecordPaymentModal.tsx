@@ -169,7 +169,7 @@ export default function UnifiedRecordPaymentModal({
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const { user } = useAuth();
   const canAddBankAccount = Boolean(
-    user && ['platform_super_admin', 'tenant_admin', 'admin'].includes(user.role)
+    user && ['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin', 'sub_administrator', 'sub_admin'].includes(user.role)
   );
 
   // Idempotency state: created ONCE per window open, reused across retries

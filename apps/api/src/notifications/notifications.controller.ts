@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PageAccess, Public } from '../auth/page-access.decorator';
 import { getEffectivePagesForUser } from '../auth/effective-page-access';
 import { isPlatformOwner } from '../auth/roles';
+import { isTenantAdminRole } from '../common/roles-permissions';
 
 @Controller('notifications')
 export class NotificationsController {
@@ -36,9 +37,9 @@ export class NotificationsController {
       where.tenantId = user.tenantId;
     }
 
-    if (!isPlatformOwner(user) && user.role !== 'tenant_admin') {
+    if (!isPlatformOwner(user) && !isTenantAdminRole(user.role)) {
       const effectivePages = await getEffectivePagesForUser(this.prisma, user);
-      const allowedEntityTypes: string[] = ['general', 'system'];
+      const allowedEntityTypes: string[] = ['general', 'system', 'voucher_notice', 'collection_notice', 'advance_notice', 'payment_advice', 'company_setup_request'];
       if (effectivePages.includes('leads') || effectivePages.includes('lead_flow')) allowedEntityTypes.push('lead');
       if (effectivePages.includes('orders')) allowedEntityTypes.push('order');
       if (effectivePages.includes('invoices')) allowedEntityTypes.push('invoice');
@@ -46,6 +47,7 @@ export class NotificationsController {
       if (effectivePages.includes('shipments')) allowedEntityTypes.push('shipment');
       if (effectivePages.includes('inventory')) allowedEntityTypes.push('sku', 'inventory');
       if (effectivePages.includes('suppliers') || effectivePages.includes('bills') || effectivePages.includes('purchase_bills')) allowedEntityTypes.push('supplier', 'purchase_bill');
+      if (effectivePages.includes('ledger')) allowedEntityTypes.push('ledger', 'payment', 'voucher_notice');
       if (effectivePages.includes('daily_activities')) allowedEntityTypes.push('daily_activity');
       if (effectivePages.includes('users')) allowedEntityTypes.push('user');
 
@@ -84,6 +86,57 @@ export class NotificationsController {
     return { items, total };
   }
 
+  @Post('request-company-setup')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  async requestCompanySetup(
+    @CurrentUser() user: ScopedUser,
+    @Body() body: { documentType?: string; missingFields?: string[] },
+  ) {
+    if (!user?.tenantId) {
+      return { success: false, message: 'No company workspace attached to account.' };
+    }
+
+    const admins = await this.prisma.user.findMany({
+      where: {
+        tenantId: user.tenantId,
+        role: { in: ['administrator', 'tenant_admin', 'admin'] },
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { id: true, name: true, email: true },
+    });
+
+    const missingText = Array.isArray(body?.missingFields) && body.missingFields.length > 0
+      ? body.missingFields.join(', ')
+      : 'Company Address, GSTIN, or Bank Details';
+    const requesterName = (user as any).name || (user as any).email || user.employeeCode || 'Team Member';
+    const docLabel = body?.documentType || 'Quotation / Tax Invoice';
+
+    const logs = await Promise.all(
+      (admins.length > 0 ? admins : [{ id: user.id, name: 'Administrator', email: process.env.EMAIL_FROM || 'admin@company.local' }]).map((admin) =>
+        this.prisma.messageLog.create({
+          data: {
+            tenantId: user.tenantId!,
+            channel: 'system_alert',
+            recipient: admin.email || admin.name || 'Administrator',
+            subject: `Company Profile Setup Needed for ${docLabel}`,
+            body: `${requesterName} could not complete ${docLabel} creation because Company Setup in Branding & GST is incomplete. Missing: ${missingText}. Please update /settings/branding.`,
+            status: 'sent',
+            relatedEntityType: 'company_setup_request',
+            relatedEntityId: user.tenantId,
+          },
+        }),
+      ),
+    );
+
+    return {
+      success: true,
+      notifiedAdmins: admins.length,
+      logIds: logs.map((l) => l.id),
+      message: `Notification sent to ${admins.length || 1} company administrator(s) to complete ${missingText}.`,
+    };
+  }
+
   /**
    * Sync incoming customer replies directly from GoDaddy IMAP
    */
@@ -98,8 +151,10 @@ export class NotificationsController {
    * Webhook endpoint to receive incoming email reply payload / forward from GoDaddy / email server
    */
   @Post('inbound-email')
-  @Public()
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @PageAccess('notifications')
   async handleInboundEmail(
+    @CurrentUser() user: ScopedUser,
     @Body()
     body: {
       from: string;
@@ -113,9 +168,10 @@ export class NotificationsController {
     const fromEmail = body.from || 'client@example.com';
     const cleanFrom = fromEmail.replace(/.*<([^>]+)>.*/, '$1').trim();
 
-    // Find matching lead by customerEmail or phone
+    // Find matching lead scoped strictly to user's tenant
     const lead = await this.prisma.lead.findFirst({
       where: {
+        ...(user?.tenantId ? { tenantId: user.tenantId } : {}),
         OR: [
           { customerEmail: { equals: cleanFrom } },
           body.leadNumber ? { leadNumber: { equals: body.leadNumber } } : undefined,
@@ -130,6 +186,7 @@ export class NotificationsController {
     // 1. Log inbound message in MessageLog
     const messageLog = await this.prisma.messageLog.create({
       data: {
+        tenantId: lead?.tenantId || user?.tenantId || 'default-tenant-id',
         channel: 'email_inbound',
         recipient: body.to || process.env.EMAIL_FROM || 'system-inbound',
         subject: body.subject || `Reply from ${cleanFrom}`,

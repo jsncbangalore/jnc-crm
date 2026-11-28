@@ -27,7 +27,7 @@ import {
   PageDefinition,
   PageGroup,
 } from '../config/page-registry';
-import { getDefaultHomePageForRole } from '../config/roles-permissions';
+import { getDefaultHomePageForRole, isTenantAdminRole, isAdminOrSubAdminRole, MANDATORY_COMPANY_PAGES, sanitizeCompanyPageKeys } from '../config/roles-permissions';
 
 const ROLE_CODE_MAP: Record<string, string> = {
   platform_super_admin: 'PSA',
@@ -248,11 +248,14 @@ function UserPagePermissionsSelector({
 
               <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2 bg-white dark:bg-[#141722]">
                 {pagesInGroup.map((page) => {
-                  const isChecked = selectedPages.includes(page.key);
+                  const isMandatory = (MANDATORY_COMPANY_PAGES as readonly string[]).includes(page.key);
+                  const isChecked = isMandatory || selectedPages.includes(page.key);
                   return (
                     <label
                       key={page.key}
-                      className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                      className={`flex items-start gap-2.5 p-2.5 rounded-lg border transition-colors ${
+                        isMandatory ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'
+                      } ${
                         isChecked
                           ? 'border-crm-blue/40 bg-crm-blue/5 dark:bg-crm-blue/10 text-slate-900 dark:text-white'
                           : 'border-slate-200 dark:border-[#2A3042] hover:bg-slate-50 dark:hover:bg-[#1E2230] text-slate-600 dark:text-slate-400'
@@ -261,12 +264,17 @@ function UserPagePermissionsSelector({
                       <input
                         type="checkbox"
                         checked={isChecked}
+                        disabled={isMandatory}
                         onChange={() => {
+                          if (isMandatory) return;
                           let nextPages: string[];
                           if (isChecked) {
                             nextPages = selectedPages.filter((k) => k !== page.key);
                           } else {
                             nextPages = [...selectedPages, page.key];
+                          }
+                          for (const mp of MANDATORY_COMPANY_PAGES) {
+                            if (!nextPages.includes(mp)) nextPages.push(mp);
                           }
                           onChangePages(nextPages);
                           if (!nextPages.includes(homePage)) {
@@ -274,11 +282,18 @@ function UserPagePermissionsSelector({
                             onChangeHomePage(fallbackHome);
                           }
                         }}
-                        className="mt-0.5 rounded border-slate-300 text-crm-blue focus:ring-crm-blue"
+                        className="mt-0.5 rounded border-slate-300 text-crm-blue focus:ring-crm-blue disabled:opacity-60"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
-                          <span className="text-xs font-bold leading-tight truncate">{page.label}</span>
+                          <span className="text-xs font-bold leading-tight truncate flex items-center gap-1.5">
+                            {page.label}
+                            {isMandatory && (
+                              <span className="text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                Mandatory
+                              </span>
+                            )}
+                          </span>
                           <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
                             {page.frontendRoutes[0]}
                           </span>
@@ -304,9 +319,9 @@ export default function UsersPage() {
   const navigate = useNavigate();
   const { user: currentUser, updateUser } = useAuth();
   const isPlatform = isPlatformOwner(currentUser);
-  const isTenantAdmin = currentUser?.role === 'tenant_admin';
-  const isAdmin = currentUser?.role === 'admin';
-  const canManageUsers = isPlatform || isTenantAdmin || isAdmin;
+  const isTenantAdmin = isTenantAdminRole(currentUser?.role);
+  const isAdmin = isTenantAdmin;
+  const canManageUsers = isPlatform || isAdminOrSubAdminRole(currentUser?.role);
   const assignableRoles = getAllowedAssignableRoles(currentUser?.role);
 
   const [users, setUsers] = useState<User[]>([]);
@@ -355,7 +370,7 @@ export default function UsersPage() {
 
   const usersWithNoPages = users.filter((u: any) =>
     u.hasZeroPages ||
-    (u.role !== 'tenant_admin' &&
+    (!isTenantAdminRole(u.role) &&
      u.role !== 'platform_super_admin' &&
      (u.pagesCount === 0 || (!u.pageAccess?.pages && !u.teamRef?.allowedPages)))
   );
@@ -618,13 +633,17 @@ export default function UsersPage() {
       fetchTemplates();
       const { data } = await usersApi.getUserAccess(targetUser.id);
       setAccessData(data);
-      const p = Array.isArray(data?.customPages)
+      const rawP = Array.isArray(data?.customPages)
         ? data.customPages
         : Array.isArray(data?.effectivePages)
         ? data.effectivePages
         : [];
-      setSelectedPages(p);
-      setAccessHomePage(data?.homePage || p[0] || 'dashboard');
+      const cleanedP = sanitizeCompanyPageKeys(rawP);
+      for (const mp of MANDATORY_COMPANY_PAGES) {
+        if (!cleanedP.includes(mp)) cleanedP.push(mp);
+      }
+      setSelectedPages(cleanedP);
+      setAccessHomePage(data?.homePage || cleanedP.find((x) => x !== 'notifications') || cleanedP[0] || getDefaultHomePageForRole(targetUser.role));
     } catch (err: any) {
       setAlertDialog({
         isOpen: true,
@@ -642,7 +661,8 @@ export default function UsersPage() {
     if (!accessUser) return;
     setSavingAccess(true);
     try {
-      await usersApi.updateUserAccess(accessUser.id, selectedPages, accessHomePage);
+      const payloadPages = Array.from(new Set([...sanitizeCompanyPageKeys(selectedPages), ...MANDATORY_COMPANY_PAGES]));
+      await usersApi.updateUserAccess(accessUser.id, payloadPages, accessHomePage);
       setAlertDialog({
         isOpen: true,
         title: 'Access Saved',
@@ -653,8 +673,9 @@ export default function UsersPage() {
       await fetchUsers();
       if (accessUser.id === currentUser?.id) {
         const { data: meData } = await authApi.me();
-        if (meData?.user) {
-          updateUser(meData.user);
+        const fresh = meData?.user || meData;
+        if (fresh) {
+          updateUser(fresh);
         }
       }
     } catch (err: any) {
@@ -671,12 +692,12 @@ export default function UsersPage() {
 
   const handleSaveAccess = async () => {
     if (!accessUser) return;
-    const isAdminRole = ['platform_admin', 'platform_super_admin', 'tenant_admin'].includes(accessUser.role);
+    const isAdminRole = isTenantAdminRole(accessUser.role);
     if (isAdminRole && (selectedPages.length === 0 || selectedPages.length < ALL_COMPANY_PAGE_KEYS.length)) {
       setAlertDialog({
         isOpen: true,
         title: 'Administrator Access Protected',
-        message: 'Administrators (platform_admin and tenant_admin) must retain access to all company pages and can never be left with 0 pages.',
+        message: 'Company Administrators must retain access to all company pages and can never be left with 0 pages.',
         variant: 'error',
       });
       return;
@@ -1333,7 +1354,7 @@ export default function UsersPage() {
       return;
     }
 
-    const isCompanyAdmin = isPlatform || currentUser?.role === 'tenant_admin';
+    const isCompanyAdmin = isPlatform || isTenantAdminRole(currentUser?.role);
     if (!isCompanyAdmin && (ROLE_RANKS[currentUser?.role || ''] || 0) <= (ROLE_RANKS[targetUser.role] || 0)) {
       setAlertDialog({
         isOpen: true,
@@ -1344,7 +1365,7 @@ export default function UsersPage() {
       return;
     }
 
-    if (currentUser?.role === 'tenant_admin' && targetUser.role === 'platform_super_admin') {
+    if (isTenantAdminRole(currentUser?.role) && targetUser.role === 'platform_super_admin') {
       setAlertDialog({
         isOpen: true,
         title: 'Action Blocked',
@@ -2500,7 +2521,7 @@ export default function UsersPage() {
                         );
                       }
                     }}
-                    disabled={editingUser.id === currentUser?.id || (!isPlatform && currentUser?.role !== 'tenant_admin' && (ROLE_RANKS[currentUser?.role || ''] || 0) <= (ROLE_RANKS[editingUser.role] || 0))}
+                    disabled={editingUser.id === currentUser?.id || (!isPlatform && !isTenantAdminRole(currentUser?.role) && (ROLE_RANKS[currentUser?.role || ''] || 0) <= (ROLE_RANKS[editingUser.role] || 0))}
                   >
                     {!assignableRoles.includes(editingUser.role as any) && (
                       <option value={editingUser.role}>
@@ -2587,7 +2608,7 @@ export default function UsersPage() {
                 </div>
 
                 <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-[#2A3042] sticky bottom-0 bg-white dark:bg-[#181B26] py-2">
-                  {editingUser.id !== currentUser?.id && (isPlatform || currentUser?.role === 'tenant_admin' || (ROLE_RANKS[currentUser?.role || ''] || 0) > (ROLE_RANKS[editingUser.role] || 0)) ? (
+                  {editingUser.id !== currentUser?.id && (isPlatform || isTenantAdminRole(currentUser?.role) || (ROLE_RANKS[currentUser?.role || ''] || 0) > (ROLE_RANKS[editingUser.role] || 0)) ? (
                     <button
                       type="button"
                       onClick={() => {
@@ -3283,7 +3304,7 @@ export default function UsersPage() {
                     </span>
                     <span className="text-slate-400">•</span>
                     <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-slate-200/60 dark:bg-[#2A3042] text-slate-700 dark:text-slate-300">
-                      {accessData?.inheritedFrom === 'tenant_admin'
+                      {(accessData?.inheritedFrom === 'tenant_admin' || accessData?.inheritedFrom === 'administrator')
                         ? 'Full Company Access (Tenant Admin)'
                         : accessData?.inheritedFrom === 'custom'
                         ? 'Custom User Overrides'
@@ -3322,7 +3343,7 @@ export default function UsersPage() {
                   {/* Toolbar Shortcuts: Select All, Clear, Copy from user, Apply template, Team shortcut */}
                   <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#141722] border border-slate-200 dark:border-[#2A3042] flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {['platform_admin', 'platform_super_admin', 'tenant_admin'].includes(accessUser?.role) && (
+                      {isTenantAdminRole(accessUser?.role) && (
                         <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
                           <Shield size={12} /> Administrators retain all {ALL_COMPANY_PAGE_KEYS.length} modules
                         </span>
@@ -3337,22 +3358,22 @@ export default function UsersPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          if (['platform_admin', 'platform_super_admin', 'tenant_admin'].includes(accessUser?.role)) {
+                          if (isTenantAdminRole(accessUser?.role)) {
                             setAlertDialog({
                               isOpen: true,
                               title: 'Action Blocked',
-                              message: 'Administrators (platform_admin and tenant_admin) must retain access to all company pages and can never be left with 0 pages.',
+                              message: 'Administrators must retain access to all company pages and can never be left with 0 pages.',
                               variant: 'error',
                             });
                             return;
                           }
-                          setSelectedPages([]);
+                          setSelectedPages([...MANDATORY_COMPANY_PAGES]);
                         }}
-                        disabled={['platform_admin', 'platform_super_admin', 'tenant_admin'].includes(accessUser?.role)}
+                        disabled={isTenantAdminRole(accessUser?.role)}
                         className="btn-ghost text-xs py-1.5 px-3 border border-slate-200 dark:border-[#2A3042] bg-white dark:bg-[#1A1D29] disabled:opacity-40 disabled:cursor-not-allowed"
-                        title={['platform_admin', 'platform_super_admin', 'tenant_admin'].includes(accessUser?.role) ? 'Administrators cannot be left with 0 pages' : 'Clear all pages'}
+                        title={isTenantAdminRole(accessUser?.role) ? 'Administrators cannot be left with 0 pages' : 'Reset optional pages (keeps mandatory Daily Activities & Notifications)'}
                       >
-                        <Square size={13} className="text-slate-400" /> Clear
+                        <Square size={13} className="text-slate-400" /> Clear Optional
                       </button>
 
                       {/* Reset to Team Inherit */}

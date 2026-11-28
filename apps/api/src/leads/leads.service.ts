@@ -53,7 +53,7 @@ export class LeadsService {
       employees = await this.prisma.user.findMany({
         where: {
           tenantId,
-          role: { in: ['sub_admin', 'tenant_admin', 'admin'] },
+          role: { in: ['sub_administrator', 'sub_admin', 'administrator', 'tenant_admin', 'admin'] },
           isActive: true,
           deletedAt: null,
         },
@@ -506,7 +506,7 @@ export class LeadsService {
     }
 
     const effectivePages = await getEffectivePagesForUser(this.prisma, user);
-    const hasQuotations = isPlatformOwner(user) || user.role === 'tenant_admin' || effectivePages.includes('quotations');
+    const hasQuotations = isPlatformOwner(user) || ['administrator', 'tenant_admin', 'admin'].includes(user.role) || effectivePages.includes('quotations');
     if (!hasQuotations) {
       (lead as any).quotations = [];
     }
@@ -664,7 +664,7 @@ export class LeadsService {
     const tenantId = requireTenantId(user);
 
     if (dto.type === 'email' && dto.sendEmailToCustomer && lead.customerEmail) {
-      if (user.role !== 'platform_super_admin' && user.role !== 'tenant_admin' && user.role !== 'admin') {
+      if (!['platform_super_admin', 'platform_admin', 'administrator', 'tenant_admin', 'admin', 'sub_administrator', 'sub_admin'].includes(user.role)) {
         throw new ForbiddenException('Only Administrators are authorized to send direct outward emails from the CRM.');
       }
       try {
@@ -852,6 +852,8 @@ export class LeadsService {
 
     if (
       actor.role !== 'platform_super_admin' &&
+      actor.role !== 'platform_admin' &&
+      actor.role !== 'administrator' &&
       actor.role !== 'tenant_admin' &&
       actor.role !== 'admin' &&
       lead.assignedToId !== actor.id

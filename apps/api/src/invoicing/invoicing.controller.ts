@@ -94,7 +94,7 @@ export class InvoicingController {
   }
 
   @Post('company-profile')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
+  @PageAccess('branding')
   async updateCompanyProfile(
     @Body() body: CompanyProfileDto,
     @CurrentUser() user: ScopedUser,
@@ -103,12 +103,13 @@ export class InvoicingController {
   }
 
   @Get('settings/company-profile')
+  @PageAccess('invoices', 'ledger', 'orders', 'quotations', 'branding')
   async getSettingsCompanyProfile(@CurrentUser() user: ScopedUser) {
     return this.invoicingService.getCompanyProfile(user);
   }
 
   @Post('settings/company-profile')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
+  @PageAccess('branding')
   async updateSettingsCompanyProfile(
     @Body() body: CompanyProfileDto,
     @CurrentUser() user: ScopedUser,
@@ -117,12 +118,13 @@ export class InvoicingController {
   }
 
   @Get('settings/signatory')
+  @PageAccess('invoices', 'ledger', 'orders', 'quotations', 'branding')
   async getSignatorySettings(@CurrentUser() user: ScopedUser) {
     return this.invoicingService.getSignatorySettings(user);
   }
 
   @Post('settings/signatory')
-  @Roles('platform_super_admin', 'tenant_admin', 'admin')
+  @PageAccess('branding')
   async updateSignatorySettings(
     @Body() body: SignatorySettingsDto,
     @CurrentUser() user: ScopedUser,

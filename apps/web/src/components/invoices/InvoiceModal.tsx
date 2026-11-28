@@ -30,7 +30,7 @@ interface InvoiceModalProps {
 export default function InvoiceModal({ invoice, onClose, onInvoiceUpdated, onEditInvoice }: InvoiceModalProps) {
   const { user } = useAuth();
   const { branding } = useBranding();
-  const canAdmin = user?.role === 'tenant_admin' || user?.role === 'admin' || user?.role === 'platform_super_admin';
+  const canAdmin = ['administrator', 'tenant_admin', 'admin', 'sub_administrator', 'sub_admin', 'platform_super_admin', 'platform_admin'].includes(user?.role || '');
 
   // Single Source of Truth Company Profile
   const [companyProfile, setCompanyProfile] = useState<CompanyInvoiceProfile | null>(

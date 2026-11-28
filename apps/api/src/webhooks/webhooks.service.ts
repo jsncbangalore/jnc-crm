@@ -17,6 +17,8 @@ import {
 import { LeadsService } from '../leads/leads.service';
 import { PrismaService } from '../prisma/prisma.service';
 import * as crypto from 'crypto';
+import * as dns from 'dns';
+import { isPrivateOrBlockedIp, isInternalHostname } from '../common/ssrf.util';
 import { sanitizeHtml, stripAllHtml } from '../common/html-sanitize.util';
 import {
   DEFAULT_WEB_FORM_FIELDS,
@@ -659,16 +661,43 @@ export class WebhooksService {
    */
   async testHandshake(tenantId: string, customUrl?: string, customVerifyToken?: string) {
     const config = await this.getTenantWebhookConfig(tenantId);
-    const plainVerifyToken = customVerifyToken || await this.getTenantVerifyToken(tenantId);
-    const targetUrlStr = customUrl || `${config.publicBaseUrl}/api/v1/webhooks/whatsapp/${config.webhookKey}`;
+    const defaultUrl = `${config.publicBaseUrl}/api/v1/webhooks/whatsapp/${config.webhookKey}`;
+    const targetUrlStr = customUrl ? customUrl.trim() : defaultUrl;
 
     const randomChallenge = 'crm_test_chal_' + Math.floor(100000 + Math.random() * 900000);
     const startTime = Date.now();
     try {
       const url = new URL(targetUrlStr);
+      const defaultOrigin = new URL(defaultUrl).origin;
+      const isCustomTarget = url.origin !== defaultOrigin;
+
+      // SSRF protection: block non-http(s), internal hostnames, and private/metadata IPs on custom URLs
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        throw new BadRequestException('Only HTTP/HTTPS webhook test URLs are allowed.');
+      }
+      if (isCustomTarget) {
+        if (isInternalHostname(url.hostname) || isPrivateOrBlockedIp(url.hostname)) {
+          throw new ForbiddenException('Internal or private network targets are not permitted for webhook tests.');
+        }
+        try {
+          const resolved = await dns.promises.lookup(url.hostname);
+          if (resolved?.address && isPrivateOrBlockedIp(resolved.address)) {
+            throw new ForbiddenException('Resolved target IP is private or blocked.');
+          }
+        } catch (dnsErr: any) {
+          if (dnsErr instanceof ForbiddenException) throw dnsErr;
+          throw new BadRequestException('Could not resolve custom webhook hostname.');
+        }
+      }
+
+      // Never transmit internal tenant verify token to an external third-party customUrl unless caller supplied one
+      const verifyTokenToSend = isCustomTarget
+        ? (customVerifyToken || 'external-handshake-test')
+        : (customVerifyToken || await this.getTenantVerifyToken(tenantId));
+
       url.searchParams.set('hub.mode', 'subscribe');
       url.searchParams.set('hub.challenge', randomChallenge);
-      url.searchParams.set('hub.verify_token', plainVerifyToken);
+      url.searchParams.set('hub.verify_token', verifyTokenToSend);
 
       const res = await fetch(url.toString(), {
         method: 'GET',
@@ -681,10 +710,10 @@ export class WebhooksService {
       return {
         ok,
         statusCode: res.status,
-        body,
+        body: body.slice(0, 500),
         expectedChallenge: randomChallenge,
         latencyMs,
-        targetUrl: targetUrlStr,
+        targetUrl: url.origin + url.pathname,
         message: ok
           ? `Webhook verified successfully in ${latencyMs}ms! Response matched hub.challenge.`
           : `Handshake failed with HTTP ${res.status}. Body: ${body.slice(0, 200)}`,

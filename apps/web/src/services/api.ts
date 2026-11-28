@@ -16,14 +16,16 @@ export const getApiBaseUrl = () => {
       const url = String((window as any).__CRM_API_URL__).trim().replace(/\/+$/, '');
       if (url) return url.endsWith('/api/v1') ? url : `${url}/api/v1`;
     }
-    // 2. Runtime localStorage override (for tests and local debugging)
-    try {
-      const stored = localStorage.getItem('crm_api_base_url');
-      if (stored && stored.trim().startsWith('http')) {
-        const url = stored.trim().replace(/\/+$/, '');
-        return url.endsWith('/api/v1') ? url : `${url}/api/v1`;
-      }
-    } catch {}
+    // 2. Runtime localStorage override (strictly DEV-only to prevent prod token exfiltration)
+    if (import.meta.env.DEV) {
+      try {
+        const stored = localStorage.getItem('crm_api_base_url');
+        if (stored && stored.trim().startsWith('http')) {
+          const url = stored.trim().replace(/\/+$/, '');
+          return url.endsWith('/api/v1') ? url : `${url}/api/v1`;
+        }
+      } catch {}
+    }
 
     const isTestTwoOrigin =
       window.location.port === '4173' &&
@@ -345,7 +347,6 @@ export const setAccessToken = (token: string | null, forcePlatform?: boolean) =>
 export const setStaffAccessToken = (token: string | null) => {
   _inMemoryStaffToken = token;
   if (typeof window !== 'undefined') {
-    (window as any).setStaffAccessToken = setStaffAccessToken;
     // Always clean up legacy localStorage key to ensure access token stays strictly in memory
     localStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
   }
@@ -371,10 +372,6 @@ export const getAccessToken = (forcePlatform?: boolean) => {
     return _inMemoryStaffToken;
   }
 };
-
-if (typeof window !== 'undefined') {
-  (window as any).getAccessToken = getAccessToken;
-}
 
 let _cookieBlockedOverride: boolean | null = null;
 let _cookieBlockedDetected: boolean = false;
@@ -942,7 +939,7 @@ export const checkAndPerformProactiveRefresh = async (): Promise<boolean> => {
   if (timeUntilExpiry === null) return false;
 
   const PROACTIVE_LEAD_TIME_MS = 2 * 60 * 1000; // 2 minutes
-  if (timeUntilExpiry > 0 && timeUntilExpiry <= PROACTIVE_LEAD_TIME_MS && isUserActiveRecently()) {
+  if (timeUntilExpiry > 0 && timeUntilExpiry <= PROACTIVE_LEAD_TIME_MS) {
     try {
       if (isPlatform) {
         await performPlatformRefresh();
@@ -1603,6 +1600,14 @@ export const notificationsApi = {
   list: (params?: Record<string, any>) => api.get('/notifications', { params }),
   syncGoDaddy: () => api.post('/notifications/sync-godaddy'),
   postInboundReply: (data: any) => api.post('/notifications/inbound-email', data),
+  requestCompanySetup: (data?: { documentType?: string; missingFields?: string[] }) =>
+    api.post('/notifications/request-company-setup', data || {}),
+};
+
+export const presetsApi = {
+  list: (moduleName?: string) => api.get('/settings/form-presets', { params: moduleName ? { module: moduleName } : undefined }),
+  save: (data: { module: string; name: string; payload: Record<string, any> }) => api.post('/settings/form-presets', data),
+  remove: (id: string) => api.delete(`/settings/form-presets/${id}`),
 };
 
 // ─── Leads ───────────────────────────────────────────────────────────────────

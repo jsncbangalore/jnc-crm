@@ -40,6 +40,7 @@ import {
 } from '../utils/crossTabSync';
 import { clearTabSessionUser, clearStaleTabKeys } from '../utils/sessionSync';
 import { isPlatformOwner } from '../utils/roles';
+import { isTenantAdminRole } from '../config/roles-permissions';
 import { Clock, AlertCircle } from 'lucide-react';
 import { PAGE_KEY_TO_ROUTE } from '../config/page-registry';
 
@@ -321,24 +322,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const freshUser = meRes.data;
         const oldPages = staffUser.effectivePages || [];
         const newPages = freshUser.effectivePages || [];
+        const homeChanged = (freshUser.homePage || null) !== (staffUser.homePage || null);
 
         const hasDiff =
+          homeChanged ||
           oldPages.length !== newPages.length ||
           oldPages.some((p: string) => !newPages.includes(p)) ||
           newPages.some((p: string) => !oldPages.includes(p));
 
         if (hasDiff) {
-          setStaffUser((prev) => {
+          setStaffUserWithStorage((prev) => {
             if (!prev) return freshUser;
             return {
               ...prev,
               ...freshUser,
               effectivePages: freshUser.effectivePages,
+              homePage: freshUser.homePage,
             };
           });
 
           // Only show notice when access is genuinely revoked or changed after initial load
-          if (oldPages.length > 0 && freshUser.role !== 'tenant_admin' && !isPlatformOwner(freshUser)) {
+          if (oldPages.length > 0 && !isTenantAdminRole(freshUser.role) && !isPlatformOwner(freshUser)) {
             setAccessChangedNotice(true);
             setTimeout(() => setAccessChangedNotice(false), 4000);
           }
@@ -517,30 +521,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    // Check 15-minute inactivity limit on startup
-    const storedLastActive = typeof window !== 'undefined' ? localStorage.getItem(ACTIVITY_STORAGE_KEY) : null;
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-    if (storedLastActive) {
-      const parsedTime = Number(storedLastActive);
-      if (!isNaN(parsedTime) && parsedTime > 0 && Date.now() - parsedTime >= getInactivityTimeoutMs()) {
-        // Inactivity limit exceeded while CRM was closed or idle
-        setStaffAccessToken(null);
-        setStoredRefreshToken(null, false);
-        setStaffUserWithStorage(null);
-        setPlatformAccessToken(null);
-        setStoredRefreshToken(null, true);
-        setPlatformUserWithStorage(null);
-        clearTabSessionUser();
-        clearStorageExceptTheme();
-        setIsLoading(false);
-        if (!isPublicPath(currentPath)) {
-          window.history.replaceState(null, '', '/login');
-          window.location.href = '/login';
-        }
-        return;
-      }
-    }
-    // CRM is active or restored within 15 minutes, update last activity timestamp
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(ACTIVITY_STORAGE_KEY, String(Date.now()));
@@ -824,151 +805,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [setStaffUserWithStorage, setPlatformUserWithStorage, staffUser, platformUser]);
 
-  // 2. Inactivity Tracking: exactly 15 minutes of inactivity triggers logout; 1-minute warning
+  // 2. Keep session alive via silent proactive token refresh (no inactivity auto-logout)
   const resetInactivityTimer = useCallback(() => {
-    const now = Date.now();
-    lastActivityRef.current = now;
-    lastUserInputRef.current = now;
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(ACTIVITY_STORAGE_KEY, String(now));
-        localStorage.setItem(USER_INPUT_STORAGE_KEY, String(now));
-      } catch {}
-    }
-    notifyUserActivity();
     setShowInactivityModal(false);
   }, []);
 
   useEffect(() => {
     if (!user) return;
 
-    const now = Date.now();
-    lastActivityRef.current = now;
-    lastUserInputRef.current = now;
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(ACTIVITY_STORAGE_KEY, String(now));
-        localStorage.setItem(USER_INPUT_STORAGE_KEY, String(now));
-      } catch {}
-    }
-
-    const activityEvents = [
-      'mousemove',
-      'mousedown',
-      'keydown',
-      'keyup',
-      'input',
-      'change',
-      'touchstart',
-      'scroll',
-      'click',
-      'wheel',
-      'beforeinput',
-      'paste',
-    ];
-    const handleActivity = () => {
-      const current = Date.now();
-      lastActivityRef.current = current;
-      lastUserInputRef.current = current;
-      notifyUserActivity();
-      if (current - lastStorageWriteRef.current > 3000) {
-        lastStorageWriteRef.current = current;
-        try {
-          localStorage.setItem(ACTIVITY_STORAGE_KEY, String(current));
-          localStorage.setItem(USER_INPUT_STORAGE_KEY, String(current));
-        } catch {}
-      }
-      if (showInactivityModal) {
-        setShowInactivityModal(false);
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        const current = Date.now();
-        lastActivityRef.current = current;
-        lastUserInputRef.current = current;
-        notifyUserActivity();
-        try {
-          localStorage.setItem(ACTIVITY_STORAGE_KEY, String(current));
-          localStorage.setItem(USER_INPUT_STORAGE_KEY, String(current));
-        } catch {}
-      }
-    };
-
-    activityEvents.forEach((evt) => window.addEventListener(evt, handleActivity, { passive: true }));
-    window.addEventListener('visibilitychange', handleVisibilityChange, { passive: true });
-    window.addEventListener('focus', handleActivity, { passive: true });
-
     timerRef.current = setInterval(() => {
-      // 1. Proactive Refresh: while active, check and refresh access token ~2 minutes before expiration
       checkAndPerformProactiveRefresh();
-
-      // 2. Unsaved changes or in-flight save guard:
-      // Cap the combined suppression at 30 extra minutes after the last real user input.
-      // Background polling requests (notifications, automation, health) never count as activity.
-      // Never exceed the refresh token life.
-      const isSaving = isSaveInProgress();
-      const hasRequests = hasInFlightRequests();
-      const hasUnsaved = hasUnsavedFormChanges();
-      const isSuppressionEligible = isSaving || hasRequests || hasUnsaved;
-
-      let lastUserInput = lastUserInputRef.current;
-      try {
-        const storedInput = localStorage.getItem(USER_INPUT_STORAGE_KEY);
-        if (storedInput) {
-          const parsed = Number(storedInput);
-          if (!isNaN(parsed) && parsed > 0) {
-            lastUserInput = Math.max(lastUserInput, parsed);
-          }
-        }
-      } catch {}
-
-      const current = Date.now();
-      const elapsedSinceUserInput = current - lastUserInput;
-      const baseTimeoutMs = getInactivityTimeoutMs();
-
-      if (isSuppressionEligible) {
-        // Combined suppression is capped at 30 extra minutes (e.g. 60m + 30m = 90m),
-        // and cannot exceed the refresh token life (12 hours).
-        const maxAllowedDuration = Math.min(
-          baseTimeoutMs + MAX_EXTRA_SUPPRESSION_MS,
-          REFRESH_TOKEN_MAX_LIFE_MS
-        );
-        const timeLeft = maxAllowedDuration - elapsedSinceUserInput;
-
-        if (timeLeft <= 0) {
-          setShowInactivityModal(false);
-          logout();
-        } else if (timeLeft <= WARNING_THRESHOLD_MS) {
-          setShowInactivityModal(true);
-          setSecondsRemaining(Math.max(1, Math.round(timeLeft / 1000)));
-        } else {
-          setShowInactivityModal(false);
-        }
-      } else {
-        // Standard inactivity timeout when no unsaved changes or active saves
-        const timeLeft = baseTimeoutMs - elapsedSinceUserInput;
-
-        if (timeLeft <= 0) {
-          setShowInactivityModal(false);
-          logout();
-        } else if (timeLeft <= WARNING_THRESHOLD_MS) {
-          setShowInactivityModal(true);
-          setSecondsRemaining(Math.max(1, Math.round(timeLeft / 1000)));
-        } else {
-          setShowInactivityModal(false);
-        }
-      }
-    }, 1000);
+    }, 30000);
 
     return () => {
-      activityEvents.forEach((evt) => window.removeEventListener(evt, handleActivity));
-      window.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleActivity);
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [user, logout, showInactivityModal]);
+  }, [user]);
 
   const login = async (
     identifier: string,
@@ -1328,43 +1180,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-
-      {/* Inactivity Warning Modal */}
-      {showInactivityModal && user && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
-            <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
-              <Clock className="w-6 h-6 animate-pulse" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Session Expiring Soon
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                You have been inactive. For your security, you will be logged out in{' '}
-                <span className="font-semibold text-amber-600 dark:text-amber-400">
-                  {secondsRemaining}s
-                </span>
-                .
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button type="button"
-                onClick={resetInactivityTimer}
-                className="flex-1 py-2 px-3 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm"
-              >
-                Stay Signed In
-              </button>
-              <button type="button"
-                onClick={() => logout()}
-                className="py-2 px-3 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Non-blocking Session Conflict Banner */}
       {sessionConflictBanner && (

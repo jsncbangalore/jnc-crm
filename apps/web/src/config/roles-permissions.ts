@@ -150,6 +150,42 @@ export function normalizeRole(role?: string | null): RoleKey {
   return ROLE_NORMALIZATION_MAP[lower] || 'sales_representative';
 }
 
+export function isTenantAdminRole(role?: string | null): boolean {
+  if (!role) return false;
+  const norm = normalizeRole(role);
+  return norm === 'administrator' || norm === 'platform_super_admin' || norm === 'platform_admin';
+}
+
+export function isAdminOrSubAdminRole(role?: string | null): boolean {
+  if (!role) return false;
+  const norm = normalizeRole(role);
+  return isTenantAdminRole(norm) || norm === 'sub_administrator';
+}
+
+export const MANDATORY_COMPANY_PAGES = ['notifications', 'daily_activities'] as const;
+
+const RETIRED_PAGE_KEYS = new Set(['reports', 'settings', 'analytics']);
+
+export function normalizeCompanyPageKey(key: string): string {
+  const clean = String(key || '').trim();
+  if (clean === 'purchase_bills') return 'bills';
+  return clean;
+}
+
+export function sanitizeCompanyPageKeys(keys: unknown): string[] {
+  if (!Array.isArray(keys)) return [];
+  const validSet = new Set<string>(ALL_CANONICAL_PAGES as readonly string[]);
+  const out: string[] = [];
+  for (const raw of keys) {
+    const mapped = normalizeCompanyPageKey(String(raw || ''));
+    if (!mapped || RETIRED_PAGE_KEYS.has(mapped)) continue;
+    if (validSet.has(mapped) && !out.includes(mapped)) {
+      out.push(mapped);
+    }
+  }
+  return out;
+}
+
 const FULL_ACTIONS: PageAction[] = ['view', 'create_edit', 'delete'];
 const VIEW_ONLY_ACTIONS: PageAction[] = ['view'];
 
@@ -316,6 +352,7 @@ export function getRoleDefaultPermissions(role: string): RolePagePermissionMap {
 
     default: {
       return {
+        daily_activities: [...FULL_ACTIONS],
         notifications: [...FULL_ACTIONS],
       };
     }
@@ -325,6 +362,7 @@ export function getRoleDefaultPermissions(role: string): RolePagePermissionMap {
 export interface EffectiveAccessResult {
   pages: string[];
   permissions: Record<string, PageAction[]>;
+  explicitPages?: string[];
 }
 
 /**
@@ -333,7 +371,7 @@ export interface EffectiveAccessResult {
  * 1. Administrator ALWAYS gets all pages and all actions. Team restrictions never apply.
  * 2. Effective access = role default, then the user/team changes.
  * 3. An empty team page list must NOT block everything; treat empty as 'use role defaults'.
- * 4. Dashboard and notifications are always allowed for every role.
+ * 4. Notifications and Daily Activities are mandatory and ALWAYS allowed for every role.
  */
 export function resolveEffectivePageAccess(params: {
   role?: string | null;
@@ -370,14 +408,13 @@ export function resolveEffectivePageAccess(params: {
   // 3. Start with role default permissions
   const defaultPerms = getRoleDefaultPermissions(norm);
   const permissions: Record<string, PageAction[]> = { ...defaultPerms };
+  const explicitSet = new Set<string>();
 
   // 4. Team Customizations (if assigned and non-empty)
-  if (Array.isArray(params.teamAllowedPages) && params.teamAllowedPages.length > 0) {
-    const teamSet = new Set(
-      params.teamAllowedPages.map((k) => (k === 'purchase_bills' ? 'bills' : k)),
-    );
-    // Add any pages granted by team
-    for (const p of teamSet) {
+  const sanitizedTeamPages = sanitizeCompanyPageKeys(params.teamAllowedPages);
+  if (sanitizedTeamPages.length > 0) {
+    for (const p of sanitizedTeamPages) {
+      explicitSet.add(p);
       if (!permissions[p]) {
         permissions[p] = [...FULL_ACTIONS];
       }
@@ -385,32 +422,34 @@ export function resolveEffectivePageAccess(params: {
   }
 
   // 5. User-level Customizations (if explicitly set)
-  if (Array.isArray(params.userPages) && params.userPages.length > 0) {
-    const userSet = new Set(
-      params.userPages.map((k) => (k === 'purchase_bills' ? 'bills' : k)),
-    );
+  const sanitizedUserPages = sanitizeCompanyPageKeys(params.userPages);
+  if (sanitizedUserPages.length > 0) {
+    const userSet = new Set<string>(sanitizedUserPages);
     // Explicit user page list defines granted pages
     for (const p of userSet) {
+      explicitSet.add(p);
       if (!permissions[p]) {
         permissions[p] = [...FULL_ACTIONS];
       }
     }
-    // Remove pages not in userSet (notifications is always granted for system alerts)
+    // Remove pages not in userSet, keeping mandatory pages (notifications & daily_activities) always enabled
     for (const p of Object.keys(permissions)) {
-      if (!userSet.has(p) && p !== 'notifications') {
+      if (!userSet.has(p) && p !== 'notifications' && p !== 'daily_activities') {
         delete permissions[p];
       }
     }
   }
 
-  // 6. Guarantee notifications is ALWAYS present
+  // 6. Guarantee notifications & daily_activities are ALWAYS mandatory for every role
   if (!permissions.notifications) permissions.notifications = [...FULL_ACTIONS];
+  if (!permissions.daily_activities) permissions.daily_activities = [...FULL_ACTIONS];
 
   const pages = Object.keys(permissions);
 
   return {
     pages,
     permissions,
+    explicitPages: Array.from(explicitSet),
   };
 }
 

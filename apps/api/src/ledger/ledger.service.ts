@@ -204,8 +204,12 @@ export class LedgerService {
   async setLockDate(tenantId: string, lockedUntil: string | null | undefined, user: ScopedUser) {
     if (
       user.role !== 'platform_super_admin' &&
+      user.role !== 'platform_admin' &&
+      user.role !== 'administrator' &&
       user.role !== 'tenant_admin' &&
       user.role !== 'admin' &&
+      user.role !== 'finance_specialist' &&
+      user.role !== 'finance' &&
       user.role !== 'accountant'
     ) {
       throw new ForbiddenException('Only administrators and accountants can set period lock dates.');
@@ -1582,9 +1586,12 @@ export class LedgerService {
   ) {
     if (
       user.role !== 'platform_super_admin' &&
+      user.role !== 'platform_admin' &&
+      user.role !== 'administrator' &&
       user.role !== 'tenant_admin' &&
       user.role !== 'admin' &&
       user.role !== 'accountant' &&
+      user.role !== 'finance_specialist' &&
       user.role !== 'finance'
     ) {
       throw new ForbiddenException('Only accountants and administrators can post manual ledger entries.');

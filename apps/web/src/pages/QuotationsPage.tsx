@@ -21,7 +21,7 @@ import { useBranding } from '../contexts/BrandingContext';
 import { BRAND_CONFIG } from '../config/brand';
 import { format } from 'date-fns';
 import { safeStatus } from '../utils/safeFormat';
-import { executeDirectPrint } from '../utils/directPrint';
+import { executeDirectPrint, escapePrintHtml } from '../utils/directPrint';
 import { openDedicatedPrintTab, POPUP_BLOCKED_MESSAGE } from '../utils/printHelper';
 import { ErrorStateCard, parseApiError } from '../components/common/ErrorStateCard';
 import CreateQuotationModal from '../components/quotations/CreateQuotationModal';
@@ -202,15 +202,15 @@ export default function QuotationsPage() {
                 }
                 return '';
               })()}
-              <h1 style="font-size: 18px; font-weight: 900; color: #2E5EFF; margin: 0;">${(q.tenant?.name || branding?.companyDisplayName || BRAND_CONFIG.displayName).toUpperCase()}</h1>
+              <h1 style="font-size: 18px; font-weight: 900; color: #2E5EFF; margin: 0;">${escapePrintHtml((q.tenant?.name || branding?.companyDisplayName || BRAND_CONFIG.displayName).toUpperCase())}</h1>
             </div>
             ${(q.tenant?.email || q.tenant?.website) ? `
-              <div style="font-size: 11px; color: #555;">${q.tenant?.email ? `Email: ${q.tenant.email}` : ''}${q.tenant?.email && q.tenant?.website ? ' | ' : ''}${q.tenant?.website ? `Web: ${q.tenant.website}` : ''}</div>
+              <div style="font-size: 11px; color: #555;">${q.tenant?.email ? `Email: ${escapePrintHtml(q.tenant.email)}` : ''}${q.tenant?.email && q.tenant?.website ? ' | ' : ''}${q.tenant?.website ? `Web: ${escapePrintHtml(q.tenant.website)}` : ''}</div>
             ` : ''}
           </div>
           <div style="text-align: right;">
             <h2 style="margin: 0; font-size: 16px; color: #333;">PRICE QUOTATION</h2>
-            <div style="font-weight: bold; color: #2E5EFF; margin-top: 4px;">${q.quoteNumber}</div>
+            <div style="font-weight: bold; color: #2E5EFF; margin-top: 4px;">${escapePrintHtml(q.quoteNumber)}</div>
             <div style="font-size: 11px; color: #666;">Date: ${format(new Date(q.createdAt), 'dd/MM/yyyy')}</div>
           </div>
         </div>
@@ -218,15 +218,15 @@ export default function QuotationsPage() {
         <div style="display: flex; justify-content: space-between; margin-bottom: 16px; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
           <div>
             <strong>Quotation For:</strong>
-            <div style="font-size: 13px; font-weight: bold; margin-top: 2px;">${q.customerName || q.lead?.customerName || q.contact?.name || 'Unassigned'}</div>
-            <div>${q.lead?.company?.name || q.lead?.companyName || ''}</div>
-            <div>Phone: ${q.lead?.customerPhone || q.contact?.phone || '—'}</div>
-            <div>Email: ${q.lead?.customerEmail || q.contact?.email || '—'}</div>
+            <div style="font-size: 13px; font-weight: bold; margin-top: 2px;">${escapePrintHtml(q.customerName || q.lead?.customerName || q.contact?.name || 'Unassigned')}</div>
+            <div>${escapePrintHtml(q.lead?.company?.name || q.lead?.companyName || '')}</div>
+            <div>Phone: ${escapePrintHtml(q.lead?.customerPhone || q.contact?.phone || '—')}</div>
+            <div>Email: ${escapePrintHtml(q.lead?.customerEmail || q.contact?.email || '—')}</div>
           </div>
           <div style="text-align: right;">
-            <div><strong>Status:</strong> ${safeStatus(q.status)}</div>
+            <div><strong>Status:</strong> ${escapePrintHtml(safeStatus(q.status))}</div>
             <div><strong>Valid Until:</strong> ${format(new Date(q.validUntil), 'dd/MM/yyyy')}</div>
-            <div><strong>Prepared By:</strong> ${q.createdBy?.name || 'Sales Team'}</div>
+            <div><strong>Prepared By:</strong> ${escapePrintHtml(q.createdBy?.name || 'Sales Team')}</div>
           </div>
         </div>
 
@@ -245,8 +245,8 @@ export default function QuotationsPage() {
             ${(q.lines || []).map((l: any, i: number) => `
               <tr>
                 <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: center;">${i + 1}</td>
-                <td style="border: 1px solid #cbd5e1; padding: 7px 9px;"><strong>${l.sku?.skuCode || ''}</strong> - ${l.sku?.name || 'Item'}</td>
-                <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">${l.quantity} ${l.unit || 'NOS'}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 7px 9px;"><strong>${escapePrintHtml(l.sku?.skuCode || '')}</strong> - ${escapePrintHtml(l.sku?.name || l.description || 'Item')}</td>
+                <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">${l.quantity} ${escapePrintHtml(l.unit || 'NOS')}</td>
                 <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">${Number(l.unitPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                 <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right;">${Number(l.discount || 0).toLocaleString('en-IN')}</td>
                 <td style="border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right; font-weight: bold;">${Number(l.totalPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
@@ -266,12 +266,12 @@ export default function QuotationsPage() {
         ${q.terms ? `
           <div style="background: #fafafa; border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; font-size: 11px; color: #444; margin-bottom: 20px;">
             <strong>Terms & Conditions:</strong>
-            <div style="white-space: pre-line; margin-top: 4px;">${q.terms}</div>
+            <div style="white-space: pre-line; margin-top: 4px;">${escapePrintHtml(q.terms)}</div>
           </div>
         ` : ''}
 
         <div style="margin-top: 40px; text-align: right;">
-          <div style="font-size: 11px; color: #555;">For ${BRAND_CONFIG.displayName}</div>
+          <div style="font-size: 11px; color: #555;">For ${escapePrintHtml(BRAND_CONFIG.displayName)}</div>
           <div style="margin-top: 40px; font-weight: bold; border-top: 1px solid #cbd5e1; display: inline-block; padding-top: 4px;">
             Authorized Signatory
           </div>

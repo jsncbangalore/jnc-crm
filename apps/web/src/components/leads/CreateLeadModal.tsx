@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { leadsApi } from '../../services/api';
 import { AccessibleModal } from '../common/AccessibleModal';
 import { FormField } from '../common/FormField';
+import SavedPresetPicker from '../common/SavedPresetPicker';
 import {
   NameField,
   PhoneField,
@@ -336,6 +337,36 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
       maxWidth="max-w-2xl"
     >
       <form onSubmit={(e) => handleSubmit(e, 'close')} className="p-4 sm:p-6 space-y-4 text-left" noValidate autoComplete="off" data-lpignore="true">
+        {!leadToEdit && (
+          <SavedPresetPicker
+            moduleName="lead"
+            defaultSuggestedName={() => form.companyName.trim() || form.customerName.trim() || 'Lead Inquiry Template'}
+            getCurrentPayload={() => ({ ...form })}
+            onApplyPreset={(p) => {
+              setForm((prev) => ({
+                ...prev,
+                customerName: p.customerName ?? prev.customerName,
+                customerPhone: p.customerPhone ?? prev.customerPhone,
+                customerEmail: p.customerEmail ?? prev.customerEmail,
+                companyName: p.companyName ?? prev.companyName,
+                state: p.state ?? prev.state,
+                city: p.city ?? prev.city,
+                productCategory: p.productCategory ?? prev.productCategory,
+                customCategory: p.customCategory ?? prev.customCategory,
+                productName: p.productName ?? prev.productName,
+                selectedSkuCode: p.selectedSkuCode ?? prev.selectedSkuCode,
+                quantity: p.quantity ?? prev.quantity,
+                unit: p.unit ?? prev.unit,
+                unitPrice: p.unitPrice ?? prev.unitPrice,
+                estimatedValue: p.estimatedValue ?? prev.estimatedValue,
+                isAutoValue: p.isAutoValue ?? prev.isAutoValue,
+                urgency: p.urgency ?? prev.urgency,
+                queryMessage: p.queryMessage ?? prev.queryMessage,
+              }));
+              setErrors({});
+            }}
+          />
+        )}
         {/* Soft Duplicate Warning Card */}
         {duplicateWarning && (
           <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700/50 space-y-2">

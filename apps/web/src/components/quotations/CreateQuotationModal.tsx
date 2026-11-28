@@ -29,6 +29,7 @@ import {
   toPlainText,
 } from '@crm/shared-validation';
 import { useAuth } from '../../contexts/AuthContext';
+import SavedPresetPicker from '../common/SavedPresetPicker';
 
 export interface CreateQuotationModalProps {
   isOpen: boolean;
@@ -318,6 +319,35 @@ export const CreateQuotationModal: React.FC<CreateQuotationModalProps> = ({
       maxWidth="max-w-4xl"
     >
       <form onSubmit={(e) => handleSubmit(e, 'close')} className="p-4 sm:p-6 space-y-4 text-left" noValidate autoComplete="off" data-lpignore="true">
+        <SavedPresetPicker
+          moduleName="quotation"
+          defaultSuggestedName={() => customerName.trim() ? `${customerName.trim()} Quote` : 'Quotation Template'}
+          getCurrentPayload={() => ({
+            customerId,
+            customerName,
+            customerPhone,
+            customerEmail,
+            companyName,
+            deliveryState,
+            deliveryCity,
+            taxRate,
+            terms,
+            lines,
+          })}
+          onApplyPreset={(p) => {
+            if (p.customerId !== undefined) setCustomerId(p.customerId || null);
+            if (p.customerName !== undefined) setCustomerName(p.customerName || '');
+            if (p.customerPhone !== undefined) setCustomerPhone(p.customerPhone || '');
+            if (p.customerEmail !== undefined) setCustomerEmail(p.customerEmail || '');
+            if (p.companyName !== undefined) setCompanyName(p.companyName || '');
+            if (p.deliveryState) setDeliveryState(p.deliveryState);
+            if (p.deliveryCity) setDeliveryCity(p.deliveryCity);
+            if (p.taxRate !== undefined) setTaxRate(Number(p.taxRate) || 18);
+            if (p.terms !== undefined) setTerms(p.terms || '');
+            if (Array.isArray(p.lines) && p.lines.length > 0) setLines(p.lines);
+            setErrors({});
+          }}
+        />
         {errors.form && (
           <div data-testid="quotation-error-banner" className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-xs text-red-600 dark:text-red-400 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">

@@ -336,7 +336,7 @@ export default function LeadsPage() {
           const winRate = closedCount > 0 ? Math.round((wonCount / closedCount) * 100) : 0;
 
           const rawUsers: any[] = Array.isArray(usersRes.data) ? usersRes.data : ((usersRes.data as any)?.items || []);
-          const salesReps = rawUsers.filter((u: any) => ['sales', 'employee', 'tenant_admin', 'admin'].includes(u.role));
+          const salesReps = rawUsers.filter((u: any) => ['sales_representative', 'sales', 'employee', 'project_manager', 'sub_administrator', 'sub_admin', 'administrator', 'tenant_admin', 'admin'].includes(u.role));
 
           data = {
             summary: { totalLeads, newToday, urgentCount, pipelineValue, winRate, followUpsDueToday },

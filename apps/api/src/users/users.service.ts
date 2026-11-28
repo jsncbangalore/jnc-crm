@@ -19,6 +19,13 @@ import { AuditService } from '../audit/audit.service';
 import { requireTenantId } from '../common/tenant.util';
 import { parsePagination } from '../common/pagination.util';
 import { ROLE_RANKS, isPlatformOwner, ALL_ROLES, UserRole } from '../auth/roles';
+import {
+  isTenantAdminRole,
+  normalizeRole,
+  getDefaultHomePageForRole,
+  normalizeCompanyPageKey,
+  sanitizeCompanyPageKeys,
+} from '../common/roles-permissions';
 import { getEffectivePagesForUser, getLegacyPagesForRole, invalidateUserAccessCache } from '../auth/effective-page-access';
 import { ALL_COMPANY_PAGE_KEYS, isPlatformPageKey, isValidCompanyPageKey } from '../auth/page-registry';
 import { runUserPageAccessMigration } from '../auth/migration-helper';
@@ -573,26 +580,28 @@ export class UsersService {
       let configuredPages: string[] = [];
       let homePage: string | null = null;
 
-      if (u.role === 'tenant_admin' || u.role === 'platform_super_admin') {
+      if (isTenantAdminRole(u.role)) {
         pagesCount = ALL_COMPANY_PAGE_KEYS.length;
         configuredPages = [...ALL_COMPANY_PAGE_KEYS];
+        homePage = 'dashboard';
       } else if (u.pageAccess?.pages) {
         try {
           const parsed = JSON.parse(u.pageAccess.pages);
-          if (Array.isArray(parsed)) {
-            configuredPages = parsed;
-          } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.pages)) {
-            configuredPages = parsed.pages;
-            homePage = parsed.homePage || null;
-          }
+          const rawPages = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object' && Array.isArray(parsed.pages) ? parsed.pages : []);
+          configuredPages = sanitizeCompanyPageKeys(rawPages);
+          if (!configuredPages.includes('daily_activities')) configuredPages.push('daily_activities');
+          if (!configuredPages.includes('notifications')) configuredPages.push('notifications');
+          homePage = (parsed && !Array.isArray(parsed) && parsed.homePage) ? normalizeCompanyPageKey(parsed.homePage) : null;
           pagesCount = configuredPages.length;
         } catch {}
       } else if (u.teamRef?.allowedPages) {
         try {
           const parsed = JSON.parse(u.teamRef.allowedPages);
           if (Array.isArray(parsed)) {
-            configuredPages = parsed;
-            pagesCount = parsed.length;
+            configuredPages = sanitizeCompanyPageKeys(parsed);
+            if (!configuredPages.includes('daily_activities')) configuredPages.push('daily_activities');
+            if (!configuredPages.includes('notifications')) configuredPages.push('notifications');
+            pagesCount = configuredPages.length;
           }
         } catch {}
       }
@@ -680,7 +689,7 @@ export class UsersService {
     if (!isPlatform && user.id !== modifier.id) {
       const modifierRank = ROLE_RANKS[modifier.role] || 0;
       const targetRank = ROLE_RANKS[user.role] || 0;
-      if (modifier.role !== 'tenant_admin') {
+      if (!isTenantAdminRole(modifier.role)) {
         if (targetRank >= modifierRank) {
           throw new ForbiddenException('You cannot modify a user with an equal or higher role rank.');
         }
@@ -841,7 +850,7 @@ export class UsersService {
     if (!isPlatform && user.id !== modifier.id) {
       const modifierRank = ROLE_RANKS[modifier.role] || 0;
       const targetRank = ROLE_RANKS[user.role] || 0;
-      if (modifier.role !== 'tenant_admin') {
+      if (!isTenantAdminRole(modifier.role)) {
         if (targetRank >= modifierRank) {
           throw new ForbiddenException('You cannot reset credentials for a user with an equal or higher role rank.');
         }
@@ -972,7 +981,7 @@ export class UsersService {
     if (!isPlatform) {
       const modifierRank = ROLE_RANKS[modifier.role] || 0;
       const targetRank = ROLE_RANKS[user.role] || 0;
-      if (modifier.role !== 'tenant_admin') {
+      if (!isTenantAdminRole(modifier.role)) {
         if (targetRank >= modifierRank) {
           throw new ForbiddenException('You cannot change status for a user with an equal or higher role rank.');
         }
@@ -983,10 +992,10 @@ export class UsersService {
       }
     }
 
-    // Last active tenant_admin check
-    if (user.role === 'tenant_admin' && user.isActive && user.tenantId) {
+    // Last active administrator/tenant_admin check
+    if (normalizeRole(user.role) === 'administrator' && user.isActive && user.tenantId) {
       const activeAdminsCount = await this.prisma.user.count({
-        where: { tenantId: user.tenantId, role: 'tenant_admin', isActive: true, deletedAt: null },
+        where: { tenantId: user.tenantId, role: { in: ['administrator', 'tenant_admin', 'admin'] }, isActive: true, deletedAt: null },
       });
       if (activeAdminsCount <= 1) {
         throw new BadRequestException('Cannot deactivate the last active Company Administrator of this company.');
@@ -1033,7 +1042,7 @@ export class UsersService {
     if (!isPlatform) {
       const modifierRank = ROLE_RANKS[modifier.role] || 0;
       const targetRank = ROLE_RANKS[user.role] || 0;
-      if (modifier.role !== 'tenant_admin') {
+      if (!isTenantAdminRole(modifier.role)) {
         if (targetRank >= modifierRank) {
           throw new ForbiddenException('You cannot delete a user with an equal or higher role rank.');
         }
@@ -1044,10 +1053,10 @@ export class UsersService {
       }
     }
 
-    // Last active tenant_admin check
-    if (user.role === 'tenant_admin' && user.tenantId) {
+    // Last active administrator/tenant_admin check
+    if (normalizeRole(user.role) === 'administrator' && user.tenantId) {
       const activeAdminsCount = await this.prisma.user.count({
-        where: { tenantId: user.tenantId, role: 'tenant_admin', isActive: true, deletedAt: null },
+        where: { tenantId: user.tenantId, role: { in: ['administrator', 'tenant_admin', 'admin'] }, isActive: true, deletedAt: null },
       });
       if (activeAdminsCount <= 1) {
         throw new BadRequestException('Cannot delete the last active Company Administrator of this company.');
@@ -1484,7 +1493,7 @@ export class UsersService {
       throw new ForbiddenException('Cannot reset 2-step verification for users in another company.');
     }
 
-    if (actor.role !== 'tenant_admin' && !isPlatform && actor.role !== 'admin') {
+    if (!isTenantAdminRole(actor.role) && !isPlatform) {
       throw new ForbiddenException('Insufficient permissions to reset 2-step verification.');
     }
 
@@ -1619,7 +1628,7 @@ export class UsersService {
       throw new ForbiddenException('Cannot modify users in another company.');
     }
 
-    if (actor.role !== 'tenant_admin' && !isPlatform && actor.role !== 'admin') {
+    if (!isTenantAdminRole(actor.role) && !isPlatform) {
       throw new ForbiddenException('Insufficient permissions to extend grace period.');
     }
 
@@ -1747,24 +1756,32 @@ export class UsersService {
       throw new BadRequestException('Platform pages cannot be granted to company users.');
     }
 
-    const invalidPages = pages.filter((p) => !isValidCompanyPageKey(p));
+    const retiredOrLegacyKeys = new Set(['reports', 'settings', 'analytics', 'purchase_bills']);
+    const invalidPages = pages.filter((p) => !retiredOrLegacyKeys.has(p) && !isValidCompanyPageKey(p));
     if (invalidPages.length > 0) {
       throw new BadRequestException(`Invalid company page keys: ${invalidPages.join(', ')}`);
+    }
+
+    // Normalize legacy keys (purchase_bills -> bills), strip retired keys, and enforce mandatory Daily Activities & Notifications when granting access
+    const normalizedPages = sanitizeCompanyPageKeys(pages);
+    if (normalizedPages.length > 0) {
+      if (!normalizedPages.includes('daily_activities')) normalizedPages.push('daily_activities');
+      if (!normalizedPages.includes('notifications')) normalizedPages.push('notifications');
     }
 
     // Rule 8.2: A sub-admin cannot edit users of equal or higher rank
     const actorRank = ROLE_RANKS[actor.role] || 0;
     const targetRank = ROLE_RANKS[targetUser.role] || 0;
-    if (!isPlatformOwner(actor) && actor.role !== 'tenant_admin') {
+    if (!isPlatformOwner(actor) && !isTenantAdminRole(actor.role)) {
       if (actorRank <= targetRank) {
         throw new ForbiddenException('You cannot modify page access permissions for a user of equal or higher rank.');
       }
     }
 
     // Rule 8.1: Nobody can grant a page they do not have themselves
-    if (!isPlatformOwner(actor) && actor.role !== 'tenant_admin') {
+    if (!isPlatformOwner(actor) && !isTenantAdminRole(actor.role)) {
       const actorEffectivePages = await getEffectivePagesForUser(this.prisma, actor);
-      const unheldPages = pages.filter((p) => !actorEffectivePages.includes(p));
+      const unheldPages = normalizedPages.filter((p) => !actorEffectivePages.includes(p));
       if (unheldPages.length > 0) {
         throw new ForbiddenException(
           `You cannot grant page access permissions that you do not hold yourself: ${unheldPages.join(', ')}`,
@@ -1772,31 +1789,31 @@ export class UsersService {
       }
     }
 
-    // Rule 8.5: Only tenant_admin and admin may grant administrative pages
-    const requestedAdminPages = pages.filter((p) => ADMIN_PAGES.includes(p));
-    if (requestedAdminPages.length > 0 && !isPlatformOwner(actor) && actor.role !== 'tenant_admin' && actor.role !== 'admin') {
+    // Rule 8.5: Only administrator / tenant_admin and admin may grant administrative pages
+    const requestedAdminPages = normalizedPages.filter((p) => ADMIN_PAGES.includes(p));
+    if (requestedAdminPages.length > 0 && !isPlatformOwner(actor) && !isTenantAdminRole(actor.role)) {
       throw new ForbiddenException(
         `Only company administrators may grant administrative pages: ${requestedAdminPages.join(', ')}`,
       );
     }
 
-    // Rule: platform_admin and tenant_admin must always have all pages and can never be left with 0 pages
-    if (['platform_admin', 'platform_super_admin', 'tenant_admin'].includes(targetUser.role)) {
-      if (pages.length === 0 || pages.length < ALL_COMPANY_PAGE_KEYS.length) {
-        throw new BadRequestException('platform_admin and tenant_admin must always retain access to all company pages and cannot be left with 0 pages or reduced access.');
+    // Rule: platform_admin and administrator/tenant_admin must always have all pages and can never be left with 0 pages
+    if (isTenantAdminRole(targetUser.role)) {
+      if (normalizedPages.length === 0 || normalizedPages.length < ALL_COMPANY_PAGE_KEYS.length) {
+        throw new BadRequestException('Company Administrators must always retain access to all company pages and cannot be left with 0 pages or reduced access.');
       }
     }
 
     // Rule 8.3: The last company admin cannot be reduced
-    if (targetUser.role === 'tenant_admin' || targetUser.role === 'admin') {
+    if (normalizeRole(targetUser.role) === 'administrator') {
       const activeAdmins = await this.prisma.user.count({
         where: {
           tenantId: targetUser.tenantId || tenantId,
-          role: { in: ['tenant_admin', 'admin'] },
+          role: { in: ['administrator', 'tenant_admin', 'admin'] },
           isActive: true,
         },
       });
-      if (activeAdmins <= 1 && pages.length < ALL_COMPANY_PAGE_KEYS.length) {
+      if (activeAdmins <= 1 && normalizedPages.length < ALL_COMPANY_PAGE_KEYS.length) {
         throw new BadRequestException('The last company administrator cannot have their access reduced.');
       }
     }
@@ -1809,20 +1826,24 @@ export class UsersService {
       } catch {}
     }
 
-    if (homePage && !pages.includes(homePage)) {
+    const cleanHomePage = homePage ? normalizeCompanyPageKey(homePage) : null;
+    if (cleanHomePage && !normalizedPages.includes(cleanHomePage)) {
       throw new BadRequestException(
-        `Default landing page "${homePage}" is not included in the granted pages list: ${pages.join(', ')}`,
+        `Default landing page "${cleanHomePage}" is not included in the granted pages list: ${normalizedPages.join(', ')}`,
       );
     }
 
+    const roleDefaultHome = getDefaultHomePageForRole(targetUser.role);
     let homePageToSave: string | null = null;
-    if (homePage && pages.includes(homePage)) {
-      homePageToSave = homePage;
-    } else if (pages.length > 0) {
-      homePageToSave = pages[0];
+    if (cleanHomePage && normalizedPages.includes(cleanHomePage)) {
+      homePageToSave = cleanHomePage;
+    } else if (roleDefaultHome && normalizedPages.includes(roleDefaultHome)) {
+      homePageToSave = roleDefaultHome;
+    } else if (normalizedPages.length > 0) {
+      homePageToSave = normalizedPages.find((p) => p !== 'notifications') || normalizedPages[0];
     }
 
-    const payload = JSON.stringify({ pages, homePage: homePageToSave });
+    const payload = JSON.stringify({ pages: normalizedPages, homePage: homePageToSave });
 
     // Upsert UserPageAccess
     await this.prisma.userPageAccess.upsert({
@@ -1855,7 +1876,7 @@ export class UsersService {
     return {
       success: true,
       userId: targetUser.id,
-      pages,
+      pages: normalizedPages,
       homePage: homePageToSave,
       effectivePages,
       message: 'User page access permissions updated successfully.',
@@ -1884,18 +1905,18 @@ export class UsersService {
     // Rule 8.2: Sub-admin ranking check
     const actorRank = ROLE_RANKS[actor.role] || 0;
     const targetRank = ROLE_RANKS[targetUser.role] || 0;
-    if (!isPlatformOwner(actor) && actor.role !== 'tenant_admin') {
+    if (!isPlatformOwner(actor) && !isTenantAdminRole(actor.role)) {
       if (actorRank <= targetRank) {
         throw new ForbiddenException('You cannot modify page access permissions for a user of equal or higher rank.');
       }
     }
 
     // Rule 8.3: Last admin protection
-    if (targetUser.role === 'tenant_admin' || targetUser.role === 'admin') {
+    if (normalizeRole(targetUser.role) === 'administrator') {
       const activeAdmins = await this.prisma.user.count({
         where: {
           tenantId: targetUser.tenantId || tenantId,
-          role: { in: ['tenant_admin', 'admin'] },
+          role: { in: ['administrator', 'tenant_admin', 'admin'] },
           isActive: true,
         },
       });
@@ -1965,7 +1986,7 @@ export class UsersService {
     }
 
     // Actor cannot grant unheld pages
-    if (!isPlatformOwner(actor) && actor.role !== 'tenant_admin') {
+    if (!isPlatformOwner(actor) && !isTenantAdminRole(actor.role)) {
       const actorPages = await getEffectivePagesForUser(this.prisma, actor);
       const unheld = pages.filter((p) => !actorPages.includes(p));
       if (unheld.length > 0) {
@@ -1975,7 +1996,7 @@ export class UsersService {
 
     // Only tenant_admin and admin may grant administrative pages
     const templateAdminPages = pages.filter((p) => ADMIN_PAGES.includes(p));
-    if (templateAdminPages.length > 0 && !isPlatformOwner(actor) && actor.role !== 'tenant_admin' && actor.role !== 'admin') {
+    if (templateAdminPages.length > 0 && !isPlatformOwner(actor) && !isTenantAdminRole(actor.role)) {
       throw new ForbiddenException(
         `Only company administrators may include administrative pages in access templates: ${templateAdminPages.join(', ')}`,
       );
@@ -2028,7 +2049,7 @@ export class UsersService {
         throw new BadRequestException(`Invalid company page keys: ${invalidPages.join(', ')}`);
       }
 
-      if (!isPlatformOwner(actor) && actor.role !== 'tenant_admin') {
+      if (!isPlatformOwner(actor) && !isTenantAdminRole(actor.role)) {
         const actorPages = await getEffectivePagesForUser(this.prisma, actor);
         const unheld = dto.pages.filter((p) => !actorPages.includes(p));
         if (unheld.length > 0) {
@@ -2038,7 +2059,7 @@ export class UsersService {
 
       // Only tenant_admin and admin may grant administrative pages
       const templateAdminPages = dto.pages.filter((p) => ADMIN_PAGES.includes(p));
-      if (templateAdminPages.length > 0 && !isPlatformOwner(actor) && actor.role !== 'tenant_admin' && actor.role !== 'admin') {
+      if (templateAdminPages.length > 0 && !isPlatformOwner(actor) && !isTenantAdminRole(actor.role)) {
         throw new ForbiddenException(
           `Only company administrators may include administrative pages in access templates: ${templateAdminPages.join(', ')}`,
         );

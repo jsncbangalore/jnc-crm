@@ -69,7 +69,6 @@ export class InventoryController {
   }
 
   @Post('movements')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   recordMovement(@Body() data: RecordMovementDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.recordMovement(data, user);
   }
@@ -87,7 +86,6 @@ export class InventoryController {
   }
 
   @Get('reorder-alerts')
-  @Roles('tenant_admin', 'admin')
   getReorderAlerts(@CurrentUser() user: ScopedUser) {
     return this.inventoryService.getReorderAlerts(user);
   }
@@ -98,7 +96,6 @@ export class InventoryController {
   }
 
   @Post('warehouses')
-  @Roles('tenant_admin', 'admin')
   createWarehouse(
     @Body() data: CreateWarehouseDto,
     @CurrentUser() user: ScopedUser,
@@ -119,25 +116,22 @@ export class InventoryController {
   }
 
   @Post('skus')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   createSku(@Body() data: CreateSkuDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.createSku(data, user);
   }
 
   @Patch('skus/:id')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   updateSku(@Param('id') id: string, @Body() data: UpdateSkuDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.updateSku(id, data, user);
   }
 
   @Delete('skus/:id')
-  @Roles('tenant_admin', 'admin')
   deleteSku(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.deleteSku(id, user);
   }
 
   @Post('skus/bulk-delete')
-  @Roles('tenant_admin', 'admin')
+  @Roles('administrator', 'tenant_admin', 'admin')
   async bulkDeleteSkus(@Body() body: BulkDeleteSkusDto, @CurrentUser() user: ScopedUser) {
     const trimmedConf = body.confirmation?.trim();
 
@@ -422,13 +416,11 @@ export class InventoryController {
   }
 
   @Post('project-stock')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   async createProjectStock(@Body() data: CreateProjectStockDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.createProjectStockPosition(data, user);
   }
 
   @Patch('project-stock/:id')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   async updateProjectStock(
     @Param('id') id: string,
     @Body() data: UpdateProjectStockDto,
@@ -439,7 +431,6 @@ export class InventoryController {
 
   @Post('project-stock/:id/purchase')
   @PageAccess('inventory', 'bills', 'purchase_bills')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   async recordProjectStockPurchase(
     @Param('id') id: string,
     @Body() body: RecordProjectStockPurchaseDto,
@@ -450,7 +441,6 @@ export class InventoryController {
 
   @Post('project-stock/atomic-purchase')
   @PageAccess('inventory', 'bills', 'purchase_bills')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   async recordComponentPurchase(
     @Body() body: RecordComponentPurchaseDto,
     @CurrentUser() user: ScopedUser,
@@ -459,13 +449,11 @@ export class InventoryController {
   }
 
   @Delete('project-stock/:id')
-  @Roles('tenant_admin', 'admin')
   async deleteProjectStock(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.deleteProjectStockPosition(id, user);
   }
 
   @Post('project-stock/bulk')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   async bulkImportProjectStock(@Body() body: BulkImportProjectStockDto, @CurrentUser() user: ScopedUser) {
     if (!body.rows || !Array.isArray(body.rows)) {
       throw new BadRequestException('Invalid payload: rows array required');
@@ -474,7 +462,7 @@ export class InventoryController {
   }
 
   @Post('clear-all')
-  @Roles('tenant_admin')
+  @Roles('administrator', 'tenant_admin', 'admin')
   async clearAllInventory(@Body() body: ClearAllInventoryDto, @CurrentUser() user: ScopedUser) {
     if (process.env.NODE_ENV === 'production') {
       throw new ForbiddenException('Clear all inventory is strictly disabled in production.');
@@ -519,7 +507,6 @@ export class InventoryController {
 
   @Post('purchase-documents/upload')
   @PageAccess('inventory', 'bills', 'purchase_bills', 'suppliers')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
@@ -663,7 +650,6 @@ export class InventoryController {
 
   @Post('suppliers/:supplierId/purchase')
   @PageAccess('inventory', 'suppliers')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   async recordSupplierPurchase(
     @Param('supplierId') supplierId: string,
     @Body() body: RecordPurchaseDto,
@@ -688,14 +674,12 @@ export class InventoryController {
 
   @Post('purchase-bills')
   @PageAccess('bills', 'purchase_bills')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   async createPurchaseBill(@Body() body: CreatePurchaseBillDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.createPurchaseBill(body, user);
   }
 
   @Delete('purchase-bills/:id')
   @PageAccess('bills', 'purchase_bills')
-  @Roles('tenant_admin', 'admin')
   async deletePurchaseBill(@Param('id') id: string, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.deletePurchaseBill(id, user);
   }
@@ -704,7 +688,6 @@ export class InventoryController {
   // ─── High-Speed Bulk Component Editing ──────────────────────────────────────
 
   @Post('bulk-edit')
-  @Roles('tenant_admin', 'admin', 'sub_admin')
   async bulkEditComponents(@Body() body: BulkEditComponentsDto, @CurrentUser() user: ScopedUser) {
     return this.inventoryService.bulkEditComponents(body, user);
   }

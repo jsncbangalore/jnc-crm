@@ -836,7 +836,7 @@ export default function MyAccountPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {(user?.role === 'tenant_admin' || user?.role === 'admin') && (
+          {['administrator', 'tenant_admin', 'admin'].includes(user?.role || '') && (
             <button
               type="button"
               onClick={() => navigate('/settings/branding')}
@@ -993,7 +993,7 @@ export default function MyAccountPage() {
                     </p>
                   </div>
                 )}
-                {(user?.role === 'tenant_admin' || user?.role === 'admin') && (
+                {['administrator', 'tenant_admin', 'admin'].includes(user?.role || '') && (
                   <button
                     type="button"
                     onClick={() => navigate('/settings/branding')}
@@ -1215,7 +1215,7 @@ export default function MyAccountPage() {
                     </div>
                   </div>
 
-                  {(user?.role === 'tenant_admin' || user?.role === 'admin') && (
+                  {['administrator', 'tenant_admin', 'admin'].includes(user?.role || '') && (
                     <button
                       type="button"
                       onClick={() => navigate('/settings/branding')}

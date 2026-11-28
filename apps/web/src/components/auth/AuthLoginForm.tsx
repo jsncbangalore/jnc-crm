@@ -25,11 +25,6 @@ import { authApi, platformAuthApi, subscribeColdStart, getApiErrorMessage, getAp
 import { checkApiCompatibility } from '../../utils/versionCheck';
 import TwoFactorChallenge from '../common/TwoFactorChallenge';
 
-const DemoLoginPanel = import.meta.env.DEV
-  ? React.lazy(() => import('./DemoLoginPanel'))
-  : null;
-
-
 export interface AuthLoginFormProps {
   portal: 'company' | 'platform';
 }
@@ -582,13 +577,6 @@ export default function AuthLoginForm({ portal }: AuthLoginFormProps) {
           {subtitleText}
         </p>
       </div>
-
-      {/* Dev Demo Login Panel (Local development only, completely omitted in production builds) */}
-      {import.meta.env.DEV && DemoLoginPanel && (
-        <React.Suspense fallback={null}>
-          <DemoLoginPanel />
-        </React.Suspense>
-      )}
 
       {/* Cold Start Indicator */}
       {isWakingUp && (

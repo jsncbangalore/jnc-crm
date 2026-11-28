@@ -951,7 +951,7 @@ export class PaymentsService {
 
     // Permission check: limited to accountant, finance, and admin
     const userRole = (user.role || '').toLowerCase();
-    const allowedRoles = ['accountant', 'finance', 'admin', 'sub_admin', 'tenant_admin', 'platform_super_admin'];
+    const allowedRoles = ['accountant', 'finance_specialist', 'finance', 'administrator', 'admin', 'sub_administrator', 'sub_admin', 'tenant_admin', 'platform_super_admin'];
     if (!allowedRoles.includes(userRole)) {
       throw new ForbiddenException('Payment reversal is restricted to accountants, finance staff, and administrators.');
     }

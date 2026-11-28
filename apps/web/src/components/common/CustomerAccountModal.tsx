@@ -36,7 +36,7 @@ export default function CustomerAccountModal({
   onClose,
 }: CustomerAccountModalProps) {
   const { user } = useAuth();
-  const canReverse = ['admin', 'tenant_admin', 'accountant', 'finance', 'platform_super_admin'].includes(user?.role || '');
+  const canReverse = ['administrator', 'admin', 'tenant_admin', 'sub_administrator', 'sub_admin', 'accountant', 'finance_specialist', 'finance', 'platform_super_admin', 'platform_admin'].includes(user?.role || '');
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
